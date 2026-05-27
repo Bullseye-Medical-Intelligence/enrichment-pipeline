@@ -1,0 +1,17 @@
+{
+  "project_id": "P-001",
+  "client_name": "Sample MedDevice Co.",
+  "target_specialty": "OBGYN",
+  "target_geography": ["TX", "FL", "GA"],
+  "active_exclusion_rules": [
+    "hospital_owned",
+    "health_system_affiliated",
+    "rei_on_staff",
+    "wrong_specialty",
+    "outside_geography"
+  ],
+  "bullseye_min_score": 75,
+  "max_pages_per_practice": 5,
+  "request_timeout_seconds": 15,
+  "request_retries": 3
+}
