@@ -237,6 +237,43 @@ The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
 
 ---
 
+## BEMI Design System (Permanent)
+
+All UI in this repo must match the BEMI Dashboard identity. These rules are permanent.
+
+### Palette
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--ink` | `#0a0a0a` | Body text, dark backgrounds, near-black buttons |
+| `--surface` | `#f7f6f4` | Page background, form inputs, light panels |
+| `--accent` | `#c84b2f` | Terracotta — CTAs, eyebrow labels, active borders, override indicators |
+| `--muted-dark` | `rgba(247,246,244,0.45)` | Labels on dark (ink) backgrounds |
+
+### Typography
+- **Display / numerals**: `Instrument Serif` (Google Fonts) — page headings, stats, login mark
+- **UI text**: `DM Sans` (Google Fonts) — all body copy, labels, buttons
+- **Eyebrow labels**: 10–11px, `font-weight: 600`, `letter-spacing: 0.12em`, `text-transform: uppercase`, color `--accent`
+
+### Components
+- **Navbar**: ink background, `Instrument Serif` "BEMI" wordmark in surface color
+- **Stat blocks**: ink background, `Instrument Serif` 28px numerals in surface color, labels in `--muted-dark`
+- **Badges**: `border-radius: 100px`, 10px uppercase text — tier/status/QC
+- **Primary button**: ink background, surface text, `border-radius: 100px`
+- **Submit / CTA button**: accent background (`#c84b2f`), white text, `border-radius: 100px`
+- **Secondary / ghost button**: transparent, ink border, ink text
+- **Filter pills**: same pill shape; active state uses ink fill
+- **Signal rows**: left border — green = yes, red = no, slate = not_found
+- **Detail panel border-top**: 2px solid accent
+- **Section headers in detail panel**: eyebrow style (uppercase, accent color)
+
+### Copy rules
+- No em dashes (use commas or short sentences instead)
+- No filler openers ("Great", "Sure", "Absolutely")
+- Eyebrow labels always ALL CAPS
+- Buttons are imperative: "Sign In", "Upload and Start Enrichment", "Save"
+
+---
+
 ## What Future Sessions Must Never Add to This Repo
 
 - Enrichment logic, scoring formulas, or signal definitions
