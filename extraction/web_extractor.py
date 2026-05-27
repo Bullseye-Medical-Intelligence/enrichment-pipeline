@@ -3,6 +3,15 @@ web_extractor.py
 Extracts visible text from practice websites using requests + BeautifulSoup.
 Identifies and crawls relevant subpages (services, providers, about, contact).
 Phase 2: Playwright for JS-heavy sites. MVP: static HTML only.
+
+CHANGE (FIX 4): batch_extract() now sets source_confidence based on extraction
+quality instead of always leaving it as "partial". Previously, source_confidence
+could never reach "complete" even on rich multi-page extractions. New thresholds:
+  2+ pages crawled AND > 3000 chars → "complete"
+  1 page crawled OR <= 3000 chars   → "partial"
+  No text extracted                 → "limited" (unchanged)
+Does not override source_confidence already set to "limited" or "failed" by
+url_validator (those records failed before reaching web extraction).
 """
 
 import re
@@ -283,6 +292,16 @@ def batch_extract(records: list[dict], timeout: int = 15,
         record["_pages_crawled"] = result.pages_crawled
 
         if result.success:
+            # FIX 4: Set source_confidence based on extraction richness.
+            # Do not override "limited" or "failed" set upstream by url_validator.
+            existing_conf = record.get("source_confidence")
+            if existing_conf not in ("limited", "failed"):
+                pages_crawled = len(result.pages_crawled)
+                text_len = len(result.context_text)
+                if pages_crawled >= 2 and text_len > 3000:
+                    record["source_confidence"] = "complete"
+                else:
+                    record["source_confidence"] = "partial"
             print(f"    ✓ Extracted {len(result.context_text)} chars from {len(result.pages_crawled)} pages")
         else:
             record["source_confidence"] = record.get("source_confidence") or "limited"

@@ -2,6 +2,20 @@
 exclusion_checker.py
 Applies exclusion rules to enriched records.
 Hard exclusions always fire. Configurable exclusions fire only when listed in run_config.
+
+CHANGES (P1 fixes):
+- FIX 1: apply_exclusions() no longer sets target_tier = "Excluded" for CLEAR records.
+  CLEAR records are now always "Bullseye" (score >= bullseye_min) or "Watchlist"
+  (score < bullseye_min). "Excluded" tier is reserved exclusively for records where
+  exclusion_status = "EXCLUDED". The previous behavior produced contradictory output
+  (exclusion_status: CLEAR, target_tier: Excluded, exclusion_reason: null) which
+  broke the dashboard's QC display.
+
+- FIX 2: wrong_specialty is now a purely deterministic check. It no longer requires
+  "_llm_exclusion_triggers" to contain "wrong_specialty" to fire. If the record's
+  specialty field does not case-insensitively match run_config target_specialty, the
+  exclusion fires immediately. The LLM cannot override or suppress a specialty mismatch.
+  Only applies when both record_specialty and target_specialty are non-empty.
 """
 
 # ---------------------------------------------------------------------------
@@ -50,6 +64,9 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     Sets exclusion_status, exclusion_reason, and target_tier.
     Caps bullseye_score for excluded records.
 
+    CLEAR records are assigned target_tier "Bullseye" or "Watchlist" only.
+    target_tier = "Excluded" is set if and only if exclusion_status = "EXCLUDED".
+
     Args:
         record: Enriched record dict.
         run_config: Loaded run_config.json dict.
@@ -60,6 +77,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     active_rules = set(run_config.get("active_exclusion_rules", []))
     target_geography = run_config.get("target_geography", [])
     target_specialty = (run_config.get("target_specialty") or "").strip()
+    bullseye_min = run_config.get("bullseye_min_score", 75)
 
     # Collect all triggered exclusions
     triggered = []
@@ -71,49 +89,45 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
 
     # --- Hard exclusions ---
 
-    # Geography check (pipeline-level, overrides LLM)
-    if "outside_geography" in (HARD_EXCLUSION_RULES & (active_rules | HARD_EXCLUSION_RULES)):
-        if target_geography and _check_geography(record, target_geography):
-            triggered.append("outside_geography")
-            state = record.get("address_state", "unknown")
+    # FIX 2: wrong_specialty is deterministic — no LLM agreement required.
+    # Fire if record specialty and target specialty are both set and don't match.
+    record_specialty = (record.get("specialty") or "").strip()
+    if target_specialty and record_specialty:
+        if record_specialty.lower() != target_specialty.lower():
+            triggered.append("wrong_specialty")
             rationale_parts.append(
-                f"Practice is in {state}, outside target geography "
-                f"({', '.join(target_geography)})."
+                f"Practice specialty '{record_specialty}' does not match "
+                f"target specialty '{target_specialty}'."
             )
 
-    # Specialty check
-    if target_specialty and "wrong_specialty" in HARD_EXCLUSION_RULES:
-        record_specialty = (record.get("specialty") or "").strip()
-        if record_specialty and record_specialty.lower() != target_specialty.lower():
-            # Check if LLM also flagged it or if specialty clearly doesn't match
-            if "wrong_specialty" in llm_triggers:
-                triggered.append("wrong_specialty")
-                rationale_parts.append(
-                    f"Practice specialty '{record_specialty}' does not match "
-                    f"target '{target_specialty}'."
-                )
+    # Geography check (pipeline-level)
+    if target_geography and _check_geography(record, target_geography):
+        triggered.append("outside_geography")
+        state = record.get("address_state", "unknown")
+        rationale_parts.append(
+            f"Practice is in {state}, outside target geography "
+            f"({', '.join(target_geography)})."
+        )
 
-    # LLM-detected hard exclusions
-    for trigger in llm_triggers:
-        if trigger in HARD_EXCLUSION_RULES and trigger not in triggered:
+    # LLM-detected hard exclusions (excluding wrong_specialty, which we handle above)
+    hard_from_llm = llm_triggers & HARD_EXCLUSION_RULES - {"wrong_specialty", "outside_geography"}
+    for trigger in sorted(hard_from_llm):
+        if trigger not in triggered:
             triggered.append(trigger)
 
-    if llm_rationale and llm_triggers & HARD_EXCLUSION_RULES:
+    if llm_rationale and hard_from_llm:
         rationale_parts.append(llm_rationale)
 
     # --- Configurable exclusions (only if active in run_config) ---
-    for trigger in llm_triggers:
-        if (trigger in CONFIGURABLE_EXCLUSION_RULES
-                and trigger in active_rules
-                and trigger not in triggered):
+    configurable_from_llm = llm_triggers & CONFIGURABLE_EXCLUSION_RULES & active_rules
+    for trigger in sorted(configurable_from_llm):
+        if trigger not in triggered:
             triggered.append(trigger)
 
-    # If we have configurable triggers and LLM provided rationale, include it
-    if llm_rationale and llm_triggers & CONFIGURABLE_EXCLUSION_RULES & active_rules:
-        if llm_rationale not in rationale_parts:
-            rationale_parts.append(llm_rationale)
+    if llm_rationale and configurable_from_llm and llm_rationale not in rationale_parts:
+        rationale_parts.append(llm_rationale)
 
-    # No-web-presence configurable exclusion (pipeline-detectable)
+    # No-web-presence: deterministic pipeline-level check (configurable)
     if ("no_web_presence" in active_rules
             and "no_web_presence" not in triggered):
         url_valid = record.get("_url_valid", True)
@@ -125,6 +139,8 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
             )
 
     # --- Apply results ---
+    score = record.get("bullseye_score", 0)
+
     if triggered:
         record["exclusion_status"] = "EXCLUDED"
         record["exclusion_reason"] = " | ".join(rationale_parts) if rationale_parts else (
@@ -133,22 +149,15 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
         record["target_tier"] = "Excluded"
 
         # Cap score for excluded records
-        if record.get("bullseye_score", 0) > EXCLUDED_SCORE_CAP:
+        if score > EXCLUDED_SCORE_CAP:
             record["bullseye_score"] = EXCLUDED_SCORE_CAP
 
         print(f"    ⊘ EXCLUDED: {', '.join(triggered)}")
+
     else:
+        # FIX 1: CLEAR records are always "Bullseye" or "Watchlist" — never "Excluded".
         record["exclusion_status"] = "CLEAR"
         record["exclusion_reason"] = None
-
-        # Set target_tier based on score if not already set
-        bullseye_min = run_config.get("bullseye_min_score", 75)
-        score = record.get("bullseye_score", 0)
-        if score >= bullseye_min:
-            record["target_tier"] = "Bullseye"
-        elif score >= 50:
-            record["target_tier"] = "Watchlist"
-        else:
-            record["target_tier"] = "Excluded"
+        record["target_tier"] = "Bullseye" if score >= bullseye_min else "Watchlist"
 
     return record

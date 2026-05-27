@@ -2,6 +2,17 @@
 signal_extractor.py
 Calls the Claude API for signal extraction, scoring, and sales angle generation.
 This is the primary LLM enrichment step — every record passes through here.
+
+CHANGE (FIX 3): _validate_and_clean_signals() now normalizes the LLM response
+to exactly match the configured ICP signal set. Previously, expected_ids was
+built but never used — if Claude omitted a signal or returned a phantom
+signal_id, the list was passed directly to scoring, producing incorrect scores.
+
+New behavior:
+- Unknown signal_ids (not in icp_signals) are discarded.
+- Missing signals (in icp_signals but not in LLM response) are inserted with
+  signal_state="not_found", confidence="low", empty evidence/source fields.
+- Output list always has exactly len(icp_signals) entries in icp_signals order.
 """
 
 import json
@@ -168,39 +179,64 @@ def _parse_response(raw: str) -> dict:
 def _validate_and_clean_signals(raw_signals: list[dict],
                                   icp_signals: list[dict]) -> list[dict]:
     """
-    Validate and clean signal objects from LLM response.
-    Enforces allowed values; fills defaults for missing fields.
-    """
-    # Build lookup of expected signals
-    expected_ids = {s["signal_id"]: s for s in icp_signals}
-    cleaned = []
+    Validate and normalize LLM signal output against the configured ICP signal set.
 
+    Steps:
+    1. Parse and validate each LLM-returned signal (state, confidence values).
+    2. Discard any signal whose signal_id is not in icp_signals (phantom/invented).
+    3. For every signal_id in icp_signals: use the LLM result if present, otherwise
+       insert a default not_found entry.
+    4. Return exactly len(icp_signals) entries in icp_signals order.
+    """
+    # Build lookup of configured signals by ID
+    icp_by_id = {s["signal_id"]: s for s in icp_signals}
+
+    # Parse and validate raw LLM output, keyed by signal_id.
+    # Discard entries with unknown IDs.
+    validated_map: dict[str, dict] = {}
     for sig in raw_signals:
         signal_id = sig.get("signal_id", "")
-        signal_label = sig.get("signal_label", "")
+        if signal_id not in icp_by_id:
+            continue  # Discard unknown/invented signal IDs
 
-        # Validate signal_state
         state = (sig.get("signal_state") or "not_found").lower().strip()
         if state not in VALID_SIGNAL_STATES:
             state = "not_found"
 
-        # Validate confidence
         conf = (sig.get("confidence") or "low").lower().strip()
         if conf not in VALID_CONFIDENCES:
             conf = "low"
 
-        cleaned.append({
+        validated_map[signal_id] = {
             "signal_id": signal_id,
-            "signal_label": signal_label,
+            "signal_label": icp_by_id[signal_id]["signal_label"],
             "signal_state": state,
             "evidence_text": (sig.get("evidence_text") or "").strip(),
             "source_url": (sig.get("source_url") or "").strip(),
             "source_type": "practice_website",
             "confidence": conf,
             "analyst_note": "",
-        })
+        }
 
-    return cleaned
+    # Build final list in icp_signals order, inserting defaults for any omitted signal
+    normalized = []
+    for icp_sig in icp_signals:
+        sid = icp_sig["signal_id"]
+        if sid in validated_map:
+            normalized.append(validated_map[sid])
+        else:
+            normalized.append({
+                "signal_id": sid,
+                "signal_label": icp_sig["signal_label"],
+                "signal_state": "not_found",
+                "evidence_text": "",
+                "source_url": "",
+                "source_type": "practice_website",
+                "confidence": "low",
+                "analyst_note": "",
+            })
+
+    return normalized
 
 
 # ---------------------------------------------------------------------------

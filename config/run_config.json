@@ -8,7 +8,8 @@
     "health_system_affiliated",
     "rei_on_staff",
     "wrong_specialty",
-    "outside_geography"
+    "outside_geography",
+    "no_web_presence"
   ],
   "bullseye_min_score": 75,
   "max_pages_per_practice": 5,

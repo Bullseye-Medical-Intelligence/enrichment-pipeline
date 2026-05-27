@@ -3,6 +3,11 @@ scorer.py
 Scoring validation — final pass to ensure all scores are in range,
 all signal_state values are valid, and all required fields are populated.
 Called after exclusion check (Step 7).
+
+CHANGE (FIX 1): validate_and_finalize() fallback tier inference now assigns
+"Watchlist" (not "Excluded") to CLEAR records with low bullseye_score. This
+is consistent with the fix to exclusion_checker.py — "Excluded" tier must
+only appear when exclusion_status = "EXCLUDED".
 """
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
@@ -85,16 +90,15 @@ def validate_and_finalize(record: dict) -> dict:
     # --- Target tier ---
     tier = record.get("target_tier")
     if tier not in VALID_TARGET_TIERS:
-        # Infer from score
+        # Infer from score and exclusion status.
+        # CLEAR records are always Bullseye or Watchlist — never Excluded.
         score = record["bullseye_score"]
         if record["exclusion_status"] == "EXCLUDED":
             record["target_tier"] = "Excluded"
         elif score >= 75:
             record["target_tier"] = "Bullseye"
-        elif score >= 50:
-            record["target_tier"] = "Watchlist"
         else:
-            record["target_tier"] = "Excluded"
+            record["target_tier"] = "Watchlist"
         errors.append(f"Invalid target_tier '{tier}', inferred from score")
 
     # --- Source confidence ---
