@@ -3,6 +3,16 @@ scorer.py
 Scoring validation — final pass to ensure all scores are in range,
 all signal_state values are valid, and all required fields are populated.
 Called after exclusion check (Step 7).
+
+CHANGE (FIX 1): validate_and_finalize() fallback tier inference now assigns
+"Watchlist" (not "Excluded") to CLEAR records with low bullseye_score. This
+is consistent with the fix to exclusion_checker.py — "Excluded" tier must
+only appear when exclusion_status = "EXCLUDED".
+
+CHANGE (stale-helper follow-up): Explicit invariant check added. Even when
+both exclusion_status and target_tier are individually valid enum members,
+validate_and_finalize() now detects and repairs the contradiction
+(CLEAR + Excluded, or EXCLUDED + non-Excluded) unconditionally.
 """
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
@@ -84,17 +94,33 @@ def validate_and_finalize(record: dict) -> dict:
 
     # --- Target tier ---
     tier = record.get("target_tier")
-    if tier not in VALID_TARGET_TIERS:
-        # Infer from score
+    exc_status = record["exclusion_status"]  # already validated above
+
+    # Enforce invariant: target_tier == "Excluded" iff exclusion_status == "EXCLUDED".
+    # Both values may individually be valid enum members while contradicting each other,
+    # so this check runs unconditionally — not just when tier is outside the enum.
+    if exc_status == "CLEAR" and tier == "Excluded":
         score = record["bullseye_score"]
-        if record["exclusion_status"] == "EXCLUDED":
+        record["target_tier"] = "Bullseye" if score >= 75 else "Watchlist"
+        errors.append(
+            f"Invariant violation: exclusion_status=CLEAR but target_tier=Excluded; "
+            f"repaired to {record['target_tier']}"
+        )
+    elif exc_status == "EXCLUDED" and tier != "Excluded":
+        record["target_tier"] = "Excluded"
+        errors.append(
+            f"Invariant violation: exclusion_status=EXCLUDED but target_tier={tier!r}; "
+            f"repaired to Excluded"
+        )
+    elif tier not in VALID_TARGET_TIERS:
+        # Unknown tier value — infer from score and status
+        score = record["bullseye_score"]
+        if exc_status == "EXCLUDED":
             record["target_tier"] = "Excluded"
         elif score >= 75:
             record["target_tier"] = "Bullseye"
-        elif score >= 50:
-            record["target_tier"] = "Watchlist"
         else:
-            record["target_tier"] = "Excluded"
+            record["target_tier"] = "Watchlist"
         errors.append(f"Invalid target_tier '{tier}', inferred from score")
 
     # --- Source confidence ---
