@@ -70,3 +70,19 @@ class ValidationFailure(BaseModel):
     """400 response when pre-flight validation fails."""
 
     detail: str
+
+
+VALID_OVERRIDE_TIERS: frozenset[str] = frozenset(
+    {"Bullseye", "Strong", "Warm", "Cold", "Excluded"}
+)
+VALID_QC_STATUSES: frozenset[str] = frozenset({"pending", "approved", "rejected"})
+
+
+class ReviewEdit(BaseModel):
+    """Analyst review edit submitted from the results dashboard."""
+
+    analyst_note: str = ""
+    override_tier: Optional[str] = None
+    override_reason: Optional[str] = None
+    qc_status: str = "pending"
+    reviewed_by: Optional[str] = None

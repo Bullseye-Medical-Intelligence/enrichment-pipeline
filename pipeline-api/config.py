@@ -54,3 +54,35 @@ REQUIRED_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {
 VALID_RUN_STATUSES: frozenset[str] = frozenset(
     {"pending", "running", "complete", "failed"}
 )
+
+# ---------------------------------------------------------------------------
+# UI / session auth
+# ---------------------------------------------------------------------------
+
+# Single-user mode (UI_USERS overrides these when set)
+UI_USERNAME: str = os.environ.get("UI_USERNAME", "")
+UI_PASSWORD: str = os.environ.get("UI_PASSWORD", "")
+
+# Multi-user: "user1:pass1,user2:pass2"
+UI_USERS_RAW: str = os.environ.get("UI_USERS", "")
+
+# Secret key for signing session cookies — required for production
+SESSION_SECRET_KEY: str = os.environ.get("SESSION_SECRET_KEY", "")
+
+# Session lifetime in hours
+SESSION_MAX_AGE_HOURS: int = int(os.environ.get("SESSION_MAX_AGE_HOURS", "8"))
+
+
+def get_valid_users() -> dict[str, str]:
+    """Return {username: password} from UI_USERS or UI_USERNAME/UI_PASSWORD."""
+    if UI_USERS_RAW:
+        users = {}
+        for pair in UI_USERS_RAW.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                u, p = pair.split(":", 1)
+                users[u.strip()] = p.strip()
+        return users
+    if UI_USERNAME and UI_PASSWORD:
+        return {UI_USERNAME: UI_PASSWORD}
+    return {}

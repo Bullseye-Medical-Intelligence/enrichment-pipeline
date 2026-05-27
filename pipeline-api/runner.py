@@ -10,9 +10,13 @@ import logging
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import runs
-from config import PIPELINE_REPO_PATH, PIPELINE_SCRIPT, PYTHON_EXECUTABLE
+from config import OUTPUT_RUNS_PATH, PIPELINE_REPO_PATH, PIPELINE_SCRIPT, PYTHON_EXECUTABLE
+
+if TYPE_CHECKING:
+    from fastapi import BackgroundTasks, UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +105,60 @@ async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
             logger.exception(
                 "Failed to write failed status for run %s after monitor error", run_id
             )
+
+
+async def orchestrate_run(
+    file,
+    source_type: str,
+    project_id: str,
+    operator: str,
+    background_tasks,
+) -> tuple[str, int]:
+    """
+    Full run creation flow: validate CSV, save input, create run record,
+    spawn pipeline subprocess, and register background monitor.
+
+    Used by both the Bearer-auth API route and the session-auth UI route
+    to avoid duplicating this orchestration logic.
+
+    Args:
+        file: UploadFile from the HTTP request.
+        source_type: 'outscraper' or 'manual'.
+        project_id: Client project identifier.
+        operator: Name of the user triggering the run.
+        background_tasks: FastAPI BackgroundTasks instance.
+
+    Returns:
+        (run_id, row_count)
+
+    Raises:
+        ValueError if pre-flight validation fails.
+    """
+    import validator  # imported here to avoid circular imports at module load
+
+    content, row_count = await validator.validate_csv_upload(file, source_type, project_id)
+
+    run_id = runs.generate_run_id()
+    run_directory = OUTPUT_RUNS_PATH / run_id
+    run_directory.mkdir(parents=True, exist_ok=True)
+
+    (run_directory / "input.csv").write_bytes(content)
+
+    runs.create_run(
+        run_id=run_id,
+        project_id=project_id,
+        source_type=source_type,
+        input_filename=getattr(file, "filename", None) or "upload.csv",
+        operator=operator,
+        records_input=row_count,
+    )
+
+    process = spawn_pipeline(run_id, run_directory / "input.csv", source_type, run_directory)
+    runs.update_run_status(run_id, status="running")
+    background_tasks.add_task(monitor_pipeline, run_id, process)
+
+    logger.info("Run %s started by '%s' (%d rows)", run_id, operator, row_count)
+    return run_id, row_count
 
 
 def _read_completion_counts(run_id: str) -> dict:

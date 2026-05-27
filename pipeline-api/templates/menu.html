@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Home — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Welcome, {{ username }}</h2>
+  <p class="page-subtitle">Bullseye Medical Intelligence — Internal Pipeline</p>
+</div>
+
+<div class="action-cards">
+  <a href="/upload" class="action-card action-primary">
+    <div class="action-icon">+</div>
+    <div class="action-label">Start New Run</div>
+    <div class="action-desc">Upload an Outscraper CSV and run enrichment</div>
+  </a>
+  <a href="/dashboard" class="action-card">
+    <div class="action-icon">≡</div>
+    <div class="action-label">View All Runs</div>
+    <div class="action-desc">Browse enrichment history and results</div>
+  </a>
+</div>
+
+{% if recent_runs %}
+<div class="card">
+  <h3 class="card-title">Recent Runs</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Run ID</th>
+        <th>Status</th>
+        <th>Source</th>
+        <th>Records</th>
+        <th>Bullseye</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in recent_runs %}
+      <tr>
+        <td><a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a></td>
+        <td><span class="badge badge-status-{{ run.status }}">{{ run.status }}</span></td>
+        <td>{{ run.source_type }}</td>
+        <td>{{ run.records_input }}</td>
+        <td>{{ run.bullseye_count }}</td>
+        <td class="text-muted">{{ run.created_at[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">
+  <p>No runs yet. <a href="/upload">Start your first run →</a></p>
+</div>
+{% endif %}
+{% endblock %}

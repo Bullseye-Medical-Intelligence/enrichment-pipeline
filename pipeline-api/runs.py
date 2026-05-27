@@ -137,6 +137,11 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
     return summaries[:max_runs]
 
 
+def generate_run_id() -> str:
+    """Generate a unique run ID in RUN-YYYYMMDD-HHMMSS format."""
+    return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+
+
 def _write_status(run_id: str, status: RunStatus) -> None:
     """Write status.json to disk, overwriting any existing file."""
     status_path = run_dir(run_id) / STATUS_FILENAME

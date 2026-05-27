@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Results: {{ run_id }} — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>{{ run_id }}</h2>
+    <p class="page-subtitle">
+      <span class="badge badge-status-{{ status.status }}">{{ status.status }}</span>
+      &nbsp;{{ status.source_type }} &nbsp;·&nbsp; {{ status.records_input }} input records
+      &nbsp;·&nbsp; Operator: {{ status.operator }}
+    </p>
+  </div>
+  <div class="header-actions">
+    {% if status.status == "complete" %}
+    <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary">Download JSON</a>
+    <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Download CSV</a>
+    {% endif %}
+    <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
+  </div>
+</div>
+
+{% if status.status == "running" %}
+<div class="alert alert-info" id="running-alert">
+  Enrichment is running. This page will refresh automatically.
+  <script>setTimeout(function(){ location.reload(); }, 8000);</script>
+</div>
+{% elif status.status == "failed" %}
+<div class="alert alert-error">
+  This run failed.
+  {% if status.error_summary %}<br><code>{{ status.error_summary[:300] }}</code>{% endif %}
+</div>
+{% elif status.status == "pending" %}
+<div class="alert alert-info">Run is queued.</div>
+{% endif %}
+
+{% if records %}
+{# ── Stats bar ────────────────────────────────────────────────────── #}
+<div class="stats-bar">
+  <div class="stat-item"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
+  <div class="stat-item stat-bullseye"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
+  <div class="stat-item stat-strong"><span class="stat-num">{{ stats.strong }}</span><span class="stat-label">Strong</span></div>
+  <div class="stat-item stat-warm"><span class="stat-num">{{ stats.warm }}</span><span class="stat-label">Warm</span></div>
+  <div class="stat-item stat-cold"><span class="stat-num">{{ stats.cold }}</span><span class="stat-label">Cold</span></div>
+  <div class="stat-item stat-watchlist"><span class="stat-num">{{ stats.watchlist }}</span><span class="stat-label">Watchlist</span></div>
+  <div class="stat-item stat-excluded"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
+  <div class="stat-item stat-pending"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
+</div>
+
+{# ── Filter bar ───────────────────────────────────────────────────── #}
+<div class="filter-bar">
+  <span class="filter-label">Filter:</span>
+  <button class="filter-btn active" onclick="filterRecords('all', this)">All</button>
+  <button class="filter-btn" onclick="filterRecords('bullseye', this)">Bullseye</button>
+  <button class="filter-btn" onclick="filterRecords('strong', this)">Strong</button>
+  <button class="filter-btn" onclick="filterRecords('warm', this)">Warm</button>
+  <button class="filter-btn" onclick="filterRecords('cold', this)">Cold</button>
+  <button class="filter-btn" onclick="filterRecords('watchlist', this)">Watchlist</button>
+  <button class="filter-btn" onclick="filterRecords('excluded', this)">Excluded</button>
+  <span class="filter-sep">|</span>
+  <button class="filter-btn" onclick="filterByQC('pending', this)">Pending Review</button>
+  <button class="filter-btn" onclick="filterByQC('approved', this)">Approved</button>
+  <button class="filter-btn" onclick="filterByQC('rejected', this)">Rejected</button>
+</div>
+
+{# ── Records table ────────────────────────────────────────────────── #}
+<div class="card table-card">
+  <table class="data-table results-table" id="results-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Practice</th>
+        <th>Specialty</th>
+        <th>Location</th>
+        <th>Tier</th>
+        <th>Original</th>
+        <th>Score</th>
+        <th>QC</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in records %}
+      {% set rid = record.record_id | default("") %}
+      {% set review = record.review %}
+      {% set displayed = record.displayed_tier | default("") %}
+      <tr class="record-row"
+          data-tier="{{ displayed | lower }}"
+          data-qc="{{ review.qc_status }}"
+          onclick="toggleDetail('{{ rid }}')"
+          style="cursor:pointer">
+        <td class="expand-icon" id="icon-{{ rid }}">▶</td>
+        <td>
+          <strong>{{ record.practice_name | default("—") }}</strong>
+          {% if record.website_url %}<br><span class="text-muted small">{{ record.website_url }}</span>{% endif %}
+        </td>
+        <td>{{ record.specialty | default("—") }}</td>
+        <td>{{ record.address_city | default("") }}{% if record.address_state %}, {{ record.address_state }}{% endif %}</td>
+        <td>
+          <span class="badge badge-tier-{{ displayed | lower }}">
+            {{ displayed or "—" }}
+          </span>
+          {% if review.override_tier %}
+          <span class="override-indicator" title="Analyst override">✎</span>
+          {% endif %}
+        </td>
+        <td class="text-muted">{{ record.target_tier | default("—") }}</td>
+        <td>{{ record.bullseye_score | default("—") }}</td>
+        <td>
+          <span class="badge badge-qc-{{ review.qc_status }}">{{ review.qc_status }}</span>
+        </td>
+      </tr>
+
+      {# ── Detail / review row (hidden by default) ─────────────────── #}
+      <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
+        <td colspan="8">
+          <div class="detail-panel">
+            <div class="detail-cols">
+
+              {# Signals #}
+              <div class="detail-section">
+                <h4>Signals</h4>
+                {% if record.signals %}
+                <div class="signals-list">
+                  {% for sig in record.signals %}
+                  <div class="signal-item signal-{{ sig.signal_state }}">
+                    <div class="signal-header">
+                      <span class="signal-label">{{ sig.signal_label }}</span>
+                      <span class="signal-state-badge state-{{ sig.signal_state }}">{{ sig.signal_state | upper }}</span>
+                      <span class="signal-conf text-muted">{{ sig.confidence }}</span>
+                    </div>
+                    {% if sig.evidence_text %}
+                    <p class="signal-evidence">{{ sig.evidence_text }}</p>
+                    {% endif %}
+                    {% if sig.source_url %}
+                    <a class="signal-source" href="{{ sig.source_url }}" target="_blank" rel="noopener noreferrer">View source ↗</a>
+                    {% endif %}
+                  </div>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No signals extracted.</p>
+                {% endif %}
+              </div>
+
+              {# Sales angles + exclusion #}
+              <div class="detail-section">
+                {% if record.sales_angle %}
+                <h4>Sales Angles</h4>
+                <ul class="sales-list">
+                  {% for angle in record.sales_angle %}
+                  <li>{{ angle }}</li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if record.exclusion_reason %}
+                <h4>Exclusion Rationale</h4>
+                <p class="exclusion-reason">{{ record.exclusion_reason }}</p>
+                {% endif %}
+
+                <h4>Scores</h4>
+                <table class="score-table">
+                  <tr><td>Bullseye</td><td><strong>{{ record.bullseye_score | default("—") }}</strong></td></tr>
+                  <tr><td>Fit</td><td>{{ record.fit_signal_score | default("—") }}</td></tr>
+                  <tr><td>Confidence</td><td>{{ record.confidence_score | default("—") }}</td></tr>
+                  <tr><td>Status</td><td>{{ record.fit_confidence_status | default("—") }}</td></tr>
+                </table>
+              </div>
+
+              {# Review controls #}
+              <div class="detail-section review-section" id="review-{{ rid }}">
+                <h4>Analyst Review</h4>
+
+                <div class="form-group">
+                  <label>Analyst Note</label>
+                  <textarea class="review-note" rows="3"
+                            id="note-{{ rid }}"
+                            placeholder="Add your notes here...">{{ review.analyst_note }}</textarea>
+                </div>
+
+                <div class="form-group">
+                  <label>Override Tier</label>
+                  <select id="override-{{ rid }}" onchange="toggleReasonField('{{ rid }}')">
+                    <option value="">— No override (use pipeline tier) —</option>
+                    <option value="Bullseye" {% if review.override_tier == "Bullseye" %}selected{% endif %}>Bullseye</option>
+                    <option value="Strong"   {% if review.override_tier == "Strong"   %}selected{% endif %}>Strong</option>
+                    <option value="Warm"     {% if review.override_tier == "Warm"     %}selected{% endif %}>Warm</option>
+                    <option value="Cold"     {% if review.override_tier == "Cold"     %}selected{% endif %}>Cold</option>
+                    <option value="Excluded" {% if review.override_tier == "Excluded" %}selected{% endif %}>Excluded</option>
+                  </select>
+                </div>
+
+                <div class="form-group" id="reason-group-{{ rid }}"
+                     style="{% if not review.override_tier %}display:none{% endif %}">
+                  <label>Override Reason <span class="required">*</span></label>
+                  <textarea class="review-reason" rows="2"
+                            id="reason-{{ rid }}"
+                            placeholder="Required: why are you overriding the pipeline's classification?">{{ review.override_reason or "" }}</textarea>
+                </div>
+
+                <div class="form-group">
+                  <label>QC Status</label>
+                  <div class="qc-buttons">
+                    <button class="btn btn-sm qc-btn {% if review.qc_status == 'approved' %}btn-qc-active-approved{% endif %}"
+                            onclick="setQC('{{ rid }}', 'approved')">✓ Approve</button>
+                    <button class="btn btn-sm qc-btn {% if review.qc_status == 'rejected' %}btn-qc-active-rejected{% endif %}"
+                            onclick="setQC('{{ rid }}', 'rejected')">✗ Reject</button>
+                    <button class="btn btn-sm qc-btn {% if review.qc_status == 'pending' %}btn-qc-active-pending{% endif %}"
+                            onclick="setQC('{{ rid }}', 'pending')">○ Reset</button>
+                  </div>
+                </div>
+
+                <div class="review-actions">
+                  <button class="btn btn-primary btn-sm"
+                          onclick="saveReview('{{ run_id }}', '{{ rid }}')">
+                    Save
+                  </button>
+                  <span class="save-status" id="save-status-{{ rid }}"></span>
+                </div>
+
+                {% if review.reviewed_by %}
+                <p class="review-meta text-muted small">
+                  Last saved by {{ review.reviewed_by }}
+                  {% if review.reviewed_at %}at {{ review.reviewed_at[:16].replace("T", " ") }}{% endif %}
+                </p>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% elif status.status == "complete" %}
+<div class="card empty-state">
+  <p>No records found in this run's output.</p>
+</div>
+{% endif %}
+{% endblock %}

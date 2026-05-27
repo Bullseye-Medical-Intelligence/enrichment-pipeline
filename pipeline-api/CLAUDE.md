@@ -147,14 +147,27 @@ to open a run directory and understand what happened.
 
 ## Locked API Surface
 
-Five endpoints for MVP. No more.
-
+Bearer-auth JSON API (main.py — unchanged):
 ```
-POST   /runs                    Upload CSV, start pipeline, return run_id
-GET    /runs                    List all runs (newest first, max 50)
-GET    /runs/{run_id}           Full status.json for a run
-GET    /runs/{run_id}/log       run_log.json (run must have exited)
-GET    /runs/{run_id}/results   enriched_targets.json (run must be complete)
+POST   /runs                       Upload CSV, start pipeline, return run_id
+GET    /runs                       List all runs (newest first, max 50)
+GET    /runs/{run_id}              Full status.json for a run
+GET    /runs/{run_id}/log          run_log.json (run must have exited)
+GET    /runs/{run_id}/results      enriched_targets.json (run must be complete)
+```
+
+Session-auth HTML UI (ui.py):
+```
+GET    /login                      Login form
+POST   /login                      Validate credentials, set cookie
+GET    /logout                     Clear session
+GET    /                           Main menu
+GET    /dashboard                  Run list
+GET    /dashboard/{run_id}         Results + inline review
+GET    /runs/{run_id}/download/json  File download
+GET    /runs/{run_id}/download/csv   File download
+POST   /api/ui/runs                Create run from browser upload
+POST   /api/ui/reviews/{run_id}/{record_id}  Save review edit
 ```
 
 Phase 2 additions (do not build now):
@@ -206,6 +219,24 @@ Status transitions: `pending` → `running` → `complete` or `failed`
 
 ---
 
+## UI Layer Rules
+
+The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
+
+- **ui.py only**: All HTML routes live in `ui.py`. API routes in `main.py` are not touched.
+- **No React, npm, or build step**: Jinja2 + plain CSS + minimal vanilla JS only.
+- **Pipeline output is immutable**: `reviews.py` reads `enriched_targets.json` but never writes to it.
+- **Reviews are additive**: Analyst edits go to `reviews.json` only (atomic writes via tempfile + os.replace).
+- **No business logic in templates or app.js**: Tier display logic in Jinja2 (`override_tier or target_tier`). JS only handles UI interactions and fetch() calls.
+- **No hardcoded client, product, or specialty rules**: The UI is generic. No OBGYN, Femasys, fertility, etc.
+- **No client portal, billing, or multi-tenant logic**: Internal team tool only.
+- **When a feature is removed**: Delete its routes, templates, CSS, JS, imports, and tests. No dead code.
+- **Override requires reason**: `override_tier` set → `override_reason` required. Enforced in `reviews.py`.
+- **Server is source of truth**: `reviewed_at` always set server-side. JS never sets timestamps.
+- **Final displayed tier**: `override_tier` if set, else pipeline `target_tier`. Always show both.
+
+---
+
 ## What Future Sessions Must Never Add to This Repo
 
 - Enrichment logic, scoring formulas, or signal definitions
@@ -213,10 +244,10 @@ Status transitions: `pending` → `running` → `complete` or `failed`
 - Web scraping or HTTP calls to external sites (except passing paths to pipeline)
 - A database or any persistent state beyond filesystem JSON
 - A task queue (Celery, RQ, etc.)
-- Any frontend code, HTML templates, or static file serving
-- A second auth system — the Bearer token model is the auth model
+- A second auth system — Bearer token (API) and session cookie (UI) are the two auth models, nothing more
 - Direct imports from the pipeline repo (subprocess only, no shared code)
 - Re-implementation of any logic that exists in the pipeline repo
+- Hardcoded client, product, specialty, or campaign names
 
 ---
 

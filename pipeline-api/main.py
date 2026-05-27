@@ -1,24 +1,23 @@
 """
 main.py
-FastAPI application: route registration, startup validation, and global
-exception handling. Route handlers contain only orchestration logic —
-no business rules.
+FastAPI application: route registration, startup, and global exception handling.
+Route handlers contain only orchestration calls — no business rules.
 """
 
 import json
 import logging
 import traceback
-from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 import auth
 import runner
 import runs
-import validator
-from config import HOST, OUTPUT_RUNS_PATH, PORT
-from schema import ErrorResponse, RunCreateResponse, RunListResponse, RunStatus
+from config import HOST, PORT
+from schema import RunCreateResponse, RunListResponse, RunStatus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +35,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url=None,
 )
+
+# Mount static files for the web UI
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# Register UI routes (login, dashboard, upload, results)
+from ui import router as ui_router  # noqa: E402 — after app creation
+app.include_router(ui_router)
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +69,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# API Routes — Bearer token auth, JSON only
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -78,39 +86,13 @@ async def create_run(
     project_id: str = Form(...),
     operator: str = Form(...),
 ) -> RunCreateResponse:
-    """
-    Validate the CSV, create a run directory, launch the pipeline subprocess,
-    and return immediately. The pipeline runs in the background.
-    """
+    """Validate the CSV, launch the pipeline subprocess, and return immediately."""
     try:
-        content, row_count = await validator.validate_csv_upload(
-            file, source_type, project_id
+        run_id, _ = await runner.orchestrate_run(
+            file, source_type, project_id, operator, background_tasks
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    run_id = _generate_run_id()
-    run_dir = OUTPUT_RUNS_PATH / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    input_path = run_dir / "input.csv"
-    input_path.write_bytes(content)
-
-    runs.create_run(
-        run_id=run_id,
-        project_id=project_id,
-        source_type=source_type,
-        input_filename=file.filename or "upload.csv",
-        operator=operator,
-        records_input=row_count,
-    )
-
-    process = runner.spawn_pipeline(run_id, input_path, source_type, run_dir)
-    runs.update_run_status(run_id, status="running")
-
-    background_tasks.add_task(runner.monitor_pipeline, run_id, process)
-
-    logger.info("Run %s started by '%s' (%d rows)", run_id, operator, row_count)
     return RunCreateResponse(run_id=run_id, status="running")
 
 
@@ -134,8 +116,7 @@ async def list_runs() -> RunListResponse:
 )
 async def get_run(run_id: str) -> RunStatus:
     """Return the full status.json content for the given run."""
-    status = _require_run(run_id)
-    return status
+    return _require_run(run_id)
 
 
 @app.get(
@@ -144,10 +125,7 @@ async def get_run(run_id: str) -> RunStatus:
     summary="Get the run log for a completed run",
 )
 async def get_run_log(run_id: str):
-    """
-    Return run_log.json for a run that has exited (complete or failed).
-    Returns 425 if the run is still pending or running.
-    """
+    """Return run_log.json for a run that has exited (complete or failed)."""
     status = _require_run(run_id)
     _require_exited(status)
 
@@ -157,7 +135,6 @@ async def get_run_log(run_id: str):
             status_code=404,
             detail=f"run_log.json not found for run '{run_id}'",
         )
-
     with open(log_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -168,10 +145,7 @@ async def get_run_log(run_id: str):
     summary="Get enriched targets for a successfully completed run",
 )
 async def get_run_results(run_id: str):
-    """
-    Return enriched_targets.json for a run with status 'complete'.
-    Returns 425 if the run has not reached 'complete'.
-    """
+    """Return enriched_targets.json for a run with status 'complete'."""
     status = _require_run(run_id)
     _require_complete(status)
 
@@ -181,7 +155,6 @@ async def get_run_results(run_id: str):
             status_code=404,
             detail=f"enriched_targets.json not found for run '{run_id}'",
         )
-
     with open(results_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -189,11 +162,6 @@ async def get_run_results(run_id: str):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _generate_run_id() -> str:
-    """Generate a unique run ID in RUN-YYYYMMDD-HHMMSS format."""
-    return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
-
 
 def _require_run(run_id: str) -> RunStatus:
     """Return RunStatus or raise HTTP 404."""

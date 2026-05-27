@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}All Runs — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Enrichment Runs</h2>
+  <a href="/upload" class="btn btn-primary">+ New Run</a>
+</div>
+
+{% if runs %}
+<div class="card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Run ID</th>
+        <th>Status</th>
+        <th>Source</th>
+        <th>Input</th>
+        <th>Bullseye</th>
+        <th>Watchlist</th>
+        <th>Excluded</th>
+        <th>Errors</th>
+        <th>Created</th>
+        <th>Completed</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td>
+          {% if run.status == "complete" %}
+            <a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a>
+          {% else %}
+            <a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a>
+          {% endif %}
+        </td>
+        <td>
+          <span class="badge badge-status-{{ run.status }}">{{ run.status }}</span>
+          {% if run.status == "running" %}
+          <span class="spinner" title="Running..."></span>
+          {% endif %}
+        </td>
+        <td>{{ run.source_type }}</td>
+        <td>{{ run.records_input }}</td>
+        <td>{{ run.bullseye_count }}</td>
+        <td>{{ run.watchlist_count }}</td>
+        <td>{{ run.excluded_count }}</td>
+        <td>{% if run.error_count > 0 %}<span class="text-error">{{ run.error_count }}</span>{% else %}0{% endif %}</td>
+        <td class="text-muted">{{ run.created_at[:16].replace("T", " ") }}</td>
+        <td class="text-muted">
+          {% if run.completed_at %}{{ run.completed_at[:16].replace("T", " ") }}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">
+  <p>No runs yet. <a href="/upload">Start your first run →</a></p>
+</div>
+{% endif %}
+{% endblock %}
