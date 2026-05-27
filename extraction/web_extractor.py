@@ -1,0 +1,291 @@
+"""
+web_extractor.py
+Extracts visible text from practice websites using requests + BeautifulSoup.
+Identifies and crawls relevant subpages (services, providers, about, contact).
+Phase 2: Playwright for JS-heavy sites. MVP: static HTML only.
+"""
+
+import re
+import time
+from urllib.parse import urljoin, urlparse
+
+import requests
+from bs4 import BeautifulSoup
+
+
+# Default headers to reduce bot-blocking
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+# Keywords that indicate a relevant subpage worth crawling
+RELEVANT_SUBPAGE_KEYWORDS = [
+    "service", "procedure", "treatment", "care",
+    "provider", "physician", "doctor", "staff", "team", "about",
+    "speciali", "gynecol", "obstet", "women", "reproduct",
+    "contraception", "iud", "infertil", "hormones", "pcos",
+    "contact",
+]
+
+# Max characters of text to extract per page (before combining)
+MAX_CHARS_PER_PAGE = 8000
+
+# Max combined characters across all pages for a single record
+MAX_COMBINED_CHARS = 25000
+
+# Tags whose content we always skip (not visible or not useful)
+SKIP_TAGS = {
+    "script", "style", "noscript", "meta", "head", "header",
+    "footer", "nav", "form", "iframe", "img", "svg",
+    "link", "button", "input", "select", "textarea",
+}
+
+
+class ExtractionResult:
+    """Result of web text extraction for a single practice."""
+
+    def __init__(self, url: str, context_text: str, pages_crawled: list[str],
+                 error: str = ""):
+        self.url = url
+        self.context_text = context_text
+        self.pages_crawled = pages_crawled
+        self.error = error
+        self.success = bool(context_text)
+
+
+def _fetch_html(url: str, timeout: int = 15, retries: int = 3) -> tuple[str, str]:
+    """
+    Fetch HTML from a URL with retry logic.
+    Returns (html_content, final_url) or ("", url) on failure.
+    """
+    last_error = ""
+    for attempt in range(retries + 1):
+        if attempt > 0:
+            wait = 2 ** attempt
+            time.sleep(wait)
+        try:
+            response = requests.get(
+                url,
+                headers=DEFAULT_HEADERS,
+                timeout=timeout,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            # Respect content type — skip non-HTML
+            ct = response.headers.get("content-type", "")
+            if "html" not in ct.lower():
+                return "", response.url
+            return response.text, response.url
+        except requests.exceptions.HTTPError as e:
+            last_error = f"HTTP error: {e}"
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code < 500:
+                break  # Don't retry 4xx
+        except requests.exceptions.Timeout:
+            last_error = f"Timeout after {timeout}s"
+        except requests.exceptions.SSLError as e:
+            last_error = f"SSL error: {str(e)[:80]}"
+            break
+        except Exception as e:
+            last_error = f"Error: {str(e)[:80]}"
+            break
+
+    return "", url
+
+
+def _extract_visible_text(html: str) -> str:
+    """
+    Parse HTML and extract visible text content.
+    Strips tags, scripts, styles, and navigation noise.
+    Returns cleaned plain text.
+    """
+    if not html:
+        return ""
+
+    soup = BeautifulSoup(html, "lxml")
+
+    # Remove noise elements
+    for tag in SKIP_TAGS:
+        for element in soup.find_all(tag):
+            element.decompose()
+
+    # Get text
+    text = soup.get_text(separator="\n", strip=True)
+
+    # Clean up: collapse multiple blank lines, strip excess whitespace
+    lines = [line.strip() for line in text.splitlines()]
+    lines = [line for line in lines if line]  # remove empty lines
+    cleaned = "\n".join(lines)
+
+    # Collapse runs of 3+ newlines to 2
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+
+    return cleaned[:MAX_CHARS_PER_PAGE]
+
+
+def _find_relevant_subpages(html: str, base_url: str,
+                              max_pages: int = 5) -> list[str]:
+    """
+    Parse the homepage HTML and find internal links to relevant subpages.
+    Returns a list of absolute URLs to crawl (excluding base_url itself).
+    """
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "lxml")
+    parsed_base = urlparse(base_url)
+    base_domain = parsed_base.netloc.lower()
+
+    candidates = {}  # url → relevance score
+
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag.get("href", "").strip()
+        link_text = (a_tag.get_text() or "").lower().strip()
+
+        # Skip empty, anchor-only, mailto, tel, js links
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+
+        # Build absolute URL
+        abs_url = urljoin(base_url, href).split("#")[0].rstrip("/")
+
+        # Only follow links on the same domain
+        parsed = urlparse(abs_url)
+        if parsed.netloc.lower() != base_domain:
+            continue
+
+        # Skip if it's the base page itself
+        if abs_url == base_url.rstrip("/"):
+            continue
+
+        # Score by keyword presence in URL path + link text
+        combined = f"{parsed.path.lower()} {link_text}"
+        score = sum(1 for kw in RELEVANT_SUBPAGE_KEYWORDS if kw in combined)
+
+        if score > 0 and abs_url not in candidates:
+            candidates[abs_url] = score
+
+    # Sort by relevance score, take top N (excluding base)
+    sorted_urls = sorted(candidates.keys(), key=lambda u: candidates[u], reverse=True)
+    return sorted_urls[: max_pages - 1]  # reserve 1 slot for homepage
+
+
+def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
+                            max_pages: int = 5) -> ExtractionResult:
+    """
+    Extract visible text from a practice website.
+    Crawls homepage + up to (max_pages - 1) relevant subpages.
+
+    Args:
+        url: Practice homepage URL (already validated).
+        timeout: Per-request timeout in seconds.
+        retries: Retry attempts per request.
+        max_pages: Maximum pages to crawl per practice.
+
+    Returns:
+        ExtractionResult with combined context_text and metadata.
+    """
+    if not url:
+        return ExtractionResult(url="", context_text="",
+                                 pages_crawled=[], error="No URL provided")
+
+    pages_crawled = []
+    all_text_blocks = []
+
+    # Step 1: Fetch and extract homepage
+    print(f"    Fetching homepage: {url}")
+    html, final_url = _fetch_html(url, timeout=timeout, retries=retries)
+
+    if not html:
+        return ExtractionResult(
+            url=url,
+            context_text="",
+            pages_crawled=[],
+            error="Could not fetch homepage HTML",
+        )
+
+    homepage_text = _extract_visible_text(html)
+    if homepage_text:
+        all_text_blocks.append(f"[Source: {final_url}]\n{homepage_text}")
+        pages_crawled.append(final_url)
+
+    # Step 2: Find and crawl relevant subpages
+    subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages)
+    print(f"    Found {len(subpages)} relevant subpages to crawl")
+
+    for subpage_url in subpages:
+        if len(all_text_blocks) >= max_pages:
+            break
+
+        print(f"    Fetching subpage: {subpage_url}")
+        time.sleep(0.5)  # Polite crawl delay
+
+        sub_html, sub_final = _fetch_html(subpage_url, timeout=timeout, retries=1)
+        if sub_html:
+            sub_text = _extract_visible_text(sub_html)
+            if sub_text:
+                all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
+                pages_crawled.append(sub_final)
+
+    # Step 3: Combine all text, trimmed to budget
+    combined = "\n\n---\n\n".join(all_text_blocks)
+    if len(combined) > MAX_COMBINED_CHARS:
+        combined = combined[:MAX_COMBINED_CHARS] + "\n\n[... truncated for token budget ...]"
+
+    return ExtractionResult(
+        url=url,
+        context_text=combined,
+        pages_crawled=pages_crawled,
+    )
+
+
+def batch_extract(records: list[dict], timeout: int = 15,
+                   retries: int = 3, max_pages: int = 5) -> list[dict]:
+    """
+    Run web extraction across all records with a valid URL.
+    Updates each record in-place with extracted text and metadata.
+
+    Args:
+        records: List of canonical records (after URL validation).
+        timeout: Per-request timeout in seconds.
+        retries: Retry attempts per request.
+        max_pages: Maximum pages per practice.
+
+    Returns:
+        The same records list with extraction fields added.
+    """
+    total = len(records)
+
+    for i, record in enumerate(records):
+        url = record.get("website_url", "")
+        url_valid = record.get("_url_valid", False)
+
+        print(f"\n  [{i+1}/{total}] Extracting: {record.get('practice_name', 'Unknown')}")
+
+        if not url_valid or not url:
+            record["_context_text"] = ""
+            record["_pages_crawled"] = []
+            if not record.get("source_confidence"):
+                record["source_confidence"] = "limited"
+            print(f"    Skipped — URL not valid")
+            continue
+
+        result = extract_practice_text(
+            url=url, timeout=timeout, retries=retries, max_pages=max_pages
+        )
+
+        record["_context_text"] = result.context_text
+        record["_pages_crawled"] = result.pages_crawled
+
+        if result.success:
+            print(f"    ✓ Extracted {len(result.context_text)} chars from {len(result.pages_crawled)} pages")
+        else:
+            record["source_confidence"] = record.get("source_confidence") or "limited"
+            print(f"    ✗ Extraction failed: {result.error}")
+
+    return records

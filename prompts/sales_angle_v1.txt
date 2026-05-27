@@ -1,0 +1,28 @@
+You are a medical device sales coach. Based on the enrichment data for a medical practice, generate sharp, specific sales talking points a rep can use when opening a conversation.
+
+PRACTICE:
+Name: {practice_name}
+Specialty: {specialty}
+Location: {address_city}, {address_state}
+Bullseye Score: {bullseye_score}
+
+CONFIRMED SIGNALS:
+{confirmed_signals}
+
+NEGATIVE SIGNALS:
+{negative_signals}
+
+Generate 3-5 sales talking points. Each should:
+- Reference something specific to this practice (not generic)
+- Highlight a fit reason or a relevant gap to address
+- Be written as a complete sentence a rep would actually say
+- Avoid any clinical claims or regulatory language
+
+Respond ONLY with valid JSON:
+{
+  "sales_angle": [
+    "Point one here.",
+    "Point two here.",
+    "Point three here."
+  ]
+}

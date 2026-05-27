@@ -1,0 +1,35 @@
+# Environment
+.env
+*.env
+
+# Output files — never commit real client data
+/output/*.json
+/output/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Data directory — raw input CSVs may contain client data
+/data/*.csv

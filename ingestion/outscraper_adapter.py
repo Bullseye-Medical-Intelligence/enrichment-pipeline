@@ -1,0 +1,198 @@
+"""
+outscraper_adapter.py
+Maps Outscraper CSV exports to the Bullseye canonical target schema.
+
+Outscraper field names must NOT leak into pipeline logic downstream.
+This adapter is the only place they exist.
+"""
+
+import csv
+import hashlib
+import re
+from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# Outscraper → Bullseye field mapping
+# Keys are Outscraper column names; values are Bullseye canonical field names
+# Only fields we actively map are listed here. All others are discarded.
+# ---------------------------------------------------------------------------
+OUTSCRAPER_FIELD_MAP = {
+    "name": "practice_name",
+    "full_address": "_full_address",   # parsed separately
+    "state": "address_state",
+    "city": "address_city",
+    "postal_code": "address_zip",
+    "phone": "phone",
+    "site": "website_url",
+    "type": "_type_raw",               # used for specialty matching, then discarded
+    "npi": "npi_optional",
+    # Additional Outscraper columns that sometimes appear:
+    "owner_name": "_owner_name_raw",
+    "description": "_description_raw",
+    "subtypes": "_subtypes_raw",
+}
+
+# Specialty keywords for matching Outscraper "type" to canonical specialty
+SPECIALTY_KEYWORD_MAP = {
+    "OBGYN": [
+        "obgyn", "ob/gyn", "ob-gyn", "gynecolog", "obstetric",
+        "women's health", "womens health", "reproductive",
+    ],
+    "Urology": ["urol"],
+    "Dermatology": ["dermatol"],
+    "Cardiology": ["cardiolog"],
+    "Orthopedics": ["orthoped", "orthopaed"],
+    "Internal Medicine": ["internal medicine"],
+    "Family Medicine": ["family medicine", "family practice"],
+}
+
+
+def _generate_record_id(npi: Optional[str], practice_name: str,
+                         address_state: str, address_zip: str) -> str:
+    """
+    Generate a stable, deterministic record ID.
+    Prefers NPI if present; otherwise hashes practice_name + state + zip.
+    """
+    if npi and npi.strip():
+        return f"T-{npi.strip()}"
+    raw = f"{practice_name.lower().strip()}|{address_state.lower().strip()}|{address_zip.strip()}"
+    h = hashlib.sha256(raw.encode()).hexdigest()[:8]
+    return f"T-{h}"
+
+
+def _parse_full_address(full_address: str) -> dict:
+    """
+    Attempt to parse city, state, zip from a full address string.
+    Returns a dict with address_city, address_state, address_zip.
+    Falls back to empty strings on parse failure.
+    """
+    result = {"address_city": "", "address_state": "", "address_zip": ""}
+    if not full_address:
+        return result
+
+    # Try to match "City, ST 12345" or "City, ST 12345-6789" at end of string
+    pattern = r"([A-Za-z\s\.]+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)"
+    match = re.search(pattern, full_address)
+    if match:
+        result["address_city"] = match.group(1).strip()
+        result["address_state"] = match.group(2).strip()
+        result["address_zip"] = match.group(3).strip()
+    return result
+
+
+def _infer_specialty(type_raw: str) -> str:
+    """
+    Map Outscraper 'type' field to a canonical specialty string.
+    Returns "Unknown" if no match found.
+    """
+    if not type_raw:
+        return "Unknown"
+    lower = type_raw.lower()
+    for specialty, keywords in SPECIALTY_KEYWORD_MAP.items():
+        for kw in keywords:
+            if kw in lower:
+                return specialty
+    return type_raw.title()  # Fall back to titlecased raw value
+
+
+def _normalize_url(url: str) -> str:
+    """Ensure URL has a scheme; strip trailing slashes."""
+    if not url:
+        return ""
+    url = url.strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    return url.rstrip("/")
+
+
+def _clean_phone(phone: str) -> str:
+    """Return phone string as-is from Outscraper (already formatted)."""
+    return (phone or "").strip()
+
+
+def load_outscraper_csv(filepath: str) -> list[dict]:
+    """
+    Load an Outscraper CSV file and return a list of records normalized
+    to the Bullseye canonical target schema.
+
+    Args:
+        filepath: Path to the Outscraper CSV file.
+
+    Returns:
+        List of canonical record dicts.
+    """
+    records = []
+    skipped = []
+
+    with open(filepath, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    for row_num, row in enumerate(rows, start=2):  # row 1 is header
+        try:
+            record = _map_row(row, row_num)
+            records.append(record)
+        except Exception as e:
+            skipped.append({
+                "row": row_num,
+                "error": str(e),
+                "raw": dict(row),
+            })
+
+    if skipped:
+        print(f"[outscraper_adapter] Skipped {len(skipped)} rows due to errors:")
+        for s in skipped:
+            print(f"  Row {s['row']}: {s['error']}")
+
+    print(f"[outscraper_adapter] Loaded {len(records)} records from {filepath}")
+    return records
+
+
+def _map_row(row: dict, row_num: int) -> dict:
+    """Map a single Outscraper CSV row to the canonical schema."""
+
+    # Pull raw values using Outscraper field names (only place this happens)
+    practice_name = (row.get("name") or "").strip()
+    full_address = (row.get("full_address") or "").strip()
+    address_state = (row.get("state") or "").strip()
+    address_city = (row.get("city") or "").strip()
+    address_zip = (row.get("postal_code") or "").strip()
+    phone = _clean_phone(row.get("phone") or "")
+    website_url = _normalize_url(row.get("site") or "")
+    type_raw = (row.get("type") or "").strip()
+    npi = (row.get("npi") or "").strip() or None
+
+    # If city/state/zip are missing, try to parse from full_address
+    if not address_city or not address_state or not address_zip:
+        parsed = _parse_full_address(full_address)
+        address_city = address_city or parsed["address_city"]
+        address_state = address_state or parsed["address_state"]
+        address_zip = address_zip or parsed["address_zip"]
+
+    # Require at minimum a practice name
+    if not practice_name:
+        raise ValueError(f"Row {row_num}: missing practice name")
+
+    specialty = _infer_specialty(type_raw)
+    record_id = _generate_record_id(npi, practice_name, address_state, address_zip)
+
+    # Build canonical record — all downstream pipeline steps use ONLY these fields
+    return {
+        "id": record_id,
+        "practice_name": practice_name,
+        "provider_names": [],          # Outscraper doesn't reliably provide this
+        "specialty": specialty,
+        "npi_optional": npi or None,
+        "website_url": website_url,
+        "phone": phone,
+        "address_city": address_city,
+        "address_state": address_state,
+        "address_zip": address_zip,
+        "metro_region_tag": address_city,  # Default to city; can be overridden by config
+        "state_mandate_status": "",        # Populated by enrichment step if needed
+        # Pipeline tracking fields (populated downstream)
+        "raw_input_source": "",
+        "_source_type": "outscraper",
+        "_row_num": row_num,
+    }
