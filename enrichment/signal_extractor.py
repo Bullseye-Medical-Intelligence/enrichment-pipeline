@@ -71,20 +71,28 @@ def _build_signal_checklist(signals: list[dict]) -> str:
 
 
 def _build_prompt(record: dict, context_text: str, icp_signals: list[dict]) -> str:
-    """Build the full signal extraction prompt for a record."""
+    """
+    Build the full signal extraction prompt for a record.
+    Uses explicit str.replace() instead of .format() so that JSON examples
+    in the prompt template (which contain { and }) are left untouched.
+    """
     template = _load_prompt_template()
     checklist_text = _build_signal_checklist(icp_signals)
 
-    return template.format(
-        practice_name=record.get("practice_name", "Unknown"),
-        specialty=record.get("specialty", "Unknown"),
-        address_city=record.get("address_city", ""),
-        address_state=record.get("address_state", ""),
-        address_zip=record.get("address_zip", ""),
-        website_url=record.get("website_url", ""),
-        context_text=context_text or "(No website text available — limited public presence)",
-        signal_checklist=checklist_text,
-    )
+    replacements = {
+        "{practice_name}": record.get("practice_name", "Unknown"),
+        "{specialty}": record.get("specialty", "Unknown"),
+        "{address_city}": record.get("address_city", ""),
+        "{address_state}": record.get("address_state", ""),
+        "{address_zip}": record.get("address_zip", ""),
+        "{website_url}": record.get("website_url", ""),
+        "{context_text}": context_text or "(No website text available — limited public presence)",
+        "{signal_checklist}": checklist_text,
+    }
+    result = template
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, str(value))
+    return result
 
 
 # ---------------------------------------------------------------------------

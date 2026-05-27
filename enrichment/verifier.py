@@ -49,20 +49,28 @@ def _format_primary_signals(signals: list[dict]) -> str:
 
 
 def _build_prompt(record: dict, context_text: str) -> str:
-    """Build the verification prompt for a record."""
+    """
+    Build the verification prompt for a record.
+    Uses explicit str.replace() instead of .format() so that JSON examples
+    in the prompt template (which contain { and }) are left untouched.
+    """
     template = _load_prompt_template()
-    return template.format(
-        practice_name=record.get("practice_name", "Unknown"),
-        specialty=record.get("specialty", "Unknown"),
-        address_city=record.get("address_city", ""),
-        address_state=record.get("address_state", ""),
-        website_url=record.get("website_url", ""),
-        bullseye_score=record.get("bullseye_score", 0),
-        fit_signal_score=record.get("fit_signal_score", 0),
-        confidence_score=record.get("confidence_score", 0),
-        primary_signals=_format_primary_signals(record.get("signals", [])),
-        context_text=context_text or "(No website text available)",
-    )
+    replacements = {
+        "{practice_name}": record.get("practice_name", "Unknown"),
+        "{specialty}": record.get("specialty", "Unknown"),
+        "{address_city}": record.get("address_city", ""),
+        "{address_state}": record.get("address_state", ""),
+        "{website_url}": record.get("website_url", ""),
+        "{bullseye_score}": str(record.get("bullseye_score", 0)),
+        "{fit_signal_score}": str(record.get("fit_signal_score", 0)),
+        "{confidence_score}": str(record.get("confidence_score", 0)),
+        "{primary_signals}": _format_primary_signals(record.get("signals", [])),
+        "{context_text}": context_text or "(No website text available)",
+    }
+    result = template
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, str(value))
+    return result
 
 
 def _call_gpt(prompt: str, client: openai.OpenAI, model: str,

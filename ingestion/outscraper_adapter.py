@@ -13,6 +13,40 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
+# US state full name → 2-letter abbreviation
+# Outscraper exports often use full state names; pipeline always stores abbreviations
+# ---------------------------------------------------------------------------
+US_STATE_ABBREV = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
+    "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+    "ohio": "OH", "oklahoma": "OK", "oregon": "OR", "pennsylvania": "PA",
+    "rhode island": "RI", "south carolina": "SC", "south dakota": "SD",
+    "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT",
+    "virginia": "VA", "washington": "WA", "west virginia": "WV",
+    "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
+}
+
+
+def _normalize_state(state: str) -> str:
+    """Convert full state name to 2-letter abbreviation. Pass-through if already abbreviated."""
+    if not state:
+        return ""
+    s = state.strip()
+    # Already an abbreviation
+    if len(s) == 2:
+        return s.upper()
+    # Look up full name
+    return US_STATE_ABBREV.get(s.lower(), s.upper())
+
+
+# ---------------------------------------------------------------------------
 # Outscraper → Bullseye field mapping
 # Keys are Outscraper column names; values are Bullseye canonical field names
 # Only fields we actively map are listed here. All others are discarded.
@@ -25,6 +59,7 @@ OUTSCRAPER_FIELD_MAP = {
     "postal_code": "address_zip",
     "phone": "phone",
     "site": "website_url",
+    "website": "website_url",          # alternate column name in some exports
     "type": "_type_raw",               # used for specialty matching, then discarded
     "npi": "npi_optional",
     # Additional Outscraper columns that sometimes appear:
@@ -155,11 +190,12 @@ def _map_row(row: dict, row_num: int) -> dict:
     # Pull raw values using Outscraper field names (only place this happens)
     practice_name = (row.get("name") or "").strip()
     full_address = (row.get("full_address") or "").strip()
-    address_state = (row.get("state") or "").strip()
+    address_state = _normalize_state(row.get("state") or "")
     address_city = (row.get("city") or "").strip()
     address_zip = (row.get("postal_code") or "").strip()
     phone = _clean_phone(row.get("phone") or "")
-    website_url = _normalize_url(row.get("site") or "")
+    # Handle both "site" and "website" column names
+    website_url = _normalize_url(row.get("site") or row.get("website") or "")
     type_raw = (row.get("type") or "").strip()
     npi = (row.get("npi") or "").strip() or None
 
@@ -167,7 +203,7 @@ def _map_row(row: dict, row_num: int) -> dict:
     if not address_city or not address_state or not address_zip:
         parsed = _parse_full_address(full_address)
         address_city = address_city or parsed["address_city"]
-        address_state = address_state or parsed["address_state"]
+        address_state = _normalize_state(parsed["address_state"]) if not address_state else address_state
         address_zip = address_zip or parsed["address_zip"]
 
     # Require at minimum a practice name
