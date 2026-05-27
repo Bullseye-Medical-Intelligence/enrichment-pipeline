@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}BEMI Pipeline{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <a href="/" class="nav-logo">BEMI</a>
+      <span class="nav-subtitle">Pipeline</span>
+    </div>
+    <div class="nav-links">
+      {% if username is defined and username %}
+        <a href="/dashboard" class="nav-link">Runs</a>
+        <a href="/upload" class="nav-link">New Run</a>
+        <span class="nav-user">{{ username }}</span>
+        <a href="/logout" class="nav-link nav-logout">Logout</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  {% if flash %}
+  <div class="flash flash-{{ flash.type }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -199,7 +199,9 @@ def _validate_and_clean_signals(raw_signals: list[dict],
         if signal_id not in icp_by_id:
             continue  # Discard unknown/invented signal IDs
 
-        state = (sig.get("signal_state") or "not_found").lower().strip()
+        # Coerce to str before .lower() — LLM may return JSON true/false (bool)
+        raw_state = sig.get("signal_state")
+        state = str(raw_state).lower().strip() if raw_state is not None else "not_found"
         if state not in VALID_SIGNAL_STATES:
             state = "not_found"
 
@@ -314,18 +316,6 @@ def _determine_fit_confidence_status(bullseye_score: int,
     else:
         return "LOW FIT / LOW EVIDENCE"
 
-
-def _determine_target_tier(bullseye_score: int,
-                             exclusion_status: str,
-                             bullseye_min_score: int = 75) -> str:
-    """Determine target_tier from score and exclusion status."""
-    if exclusion_status == "EXCLUDED":
-        return "Excluded"
-    if bullseye_score >= bullseye_min_score:
-        return "Bullseye"
-    if bullseye_score >= 50:
-        return "Watchlist"
-    return "Excluded"
 
 
 # ---------------------------------------------------------------------------

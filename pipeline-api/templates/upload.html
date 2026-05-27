@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}New Run — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Start New Enrichment Run</h2>
+  <p class="page-subtitle">Upload an Outscraper CSV export to begin enrichment.</p>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card upload-card">
+  <form method="post" action="/api/ui/runs" enctype="multipart/form-data" class="upload-form">
+
+    <div class="form-group">
+      <label for="file">Outscraper CSV File</label>
+      <input type="file" id="file" name="file" accept=".csv" required>
+      <p class="form-hint">
+        Export your lead list from Outscraper as a CSV. The file must include columns:
+        <code>name</code>, <code>full_address</code>, <code>phone</code>, <code>site</code>, <code>type</code>.
+        Maximum 10,000 rows and 50 MB.
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label for="source_type">CSV Source</label>
+      <select id="source_type" name="source_type" required>
+        <option value="outscraper" selected>Outscraper export</option>
+        <option value="manual">Manual (Bullseye canonical format)</option>
+      </select>
+      <p class="form-hint">
+        Choose <strong>Outscraper export</strong> if this came directly from Outscraper.
+        Choose <strong>Manual</strong> only if the CSV is already in Bullseye's internal format.
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label for="project_id">Project ID</label>
+      <input type="text" id="project_id" name="project_id" required
+             placeholder="e.g. P-001 or client-name-2026">
+      <p class="form-hint">A short identifier for this client or campaign. No spaces.</p>
+    </div>
+
+    <div class="form-group">
+      <label for="operator">Your Name</label>
+      <input type="text" id="operator" name="operator" required
+             value="{{ username }}" placeholder="your name">
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-submit">Upload and Start Enrichment</button>
+      <a href="/" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<div class="card info-card">
+  <h4>What happens after you upload</h4>
+  <ol class="step-list">
+    <li>Your CSV is validated and saved.</li>
+    <li>The enrichment pipeline starts automatically in the background.</li>
+    <li>You are taken to the run status page. Results appear when the run completes.</li>
+    <li>Enrichment takes roughly 2-4 minutes for 10 records, 10-20 minutes for 50 records, and 45-90 minutes for 200 records.</li>
+  </ol>
+</div>
+{% endblock %}
