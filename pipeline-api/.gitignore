@@ -1,0 +1,19 @@
+# Environment — never commit
+.env
+
+# Output run directories — never commit client data
+/output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
