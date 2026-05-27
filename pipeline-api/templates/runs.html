@@ -27,13 +27,7 @@
     <tbody>
       {% for run in runs %}
       <tr>
-        <td>
-          {% if run.status == "complete" %}
-            <a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a>
-          {% else %}
-            <a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a>
-          {% endif %}
-        </td>
+        <td><a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a></td>
         <td>
           <span class="badge badge-status-{{ run.status }}">{{ run.status }}</span>
           {% if run.status == "running" %}

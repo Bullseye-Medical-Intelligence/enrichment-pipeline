@@ -11,10 +11,11 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
+import exports
 import reviews
 import runner
 import runs
@@ -33,9 +34,6 @@ _jinja_env = Environment(
 def _render(name: str, status_code: int = 200, **context) -> HTMLResponse:
     """Render a Jinja2 template and return an HTMLResponse."""
     return HTMLResponse(_jinja_env.get_template(name).render(**context), status_code=status_code)
-
-# Tiers known to the UI (pipeline tiers + analyst override tiers)
-_ALL_TIERS = {"Bullseye", "Strong", "Warm", "Cold", "Watchlist", "Excluded"}
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +122,8 @@ async def results_page(
         results_path = run_directory / "enriched_targets.json"
         if results_path.exists():
             with open(results_path, "r", encoding="utf-8") as f:
-                raw_records = json.load(f)
+                _data = json.load(f)
+            raw_records = _data.get("records", _data) if isinstance(_data, dict) else _data
             all_reviews = reviews.get_reviews(run_id, run_directory)
             for record in raw_records:
                 record_id = record.get("record_id", "")
@@ -169,6 +168,34 @@ async def download_csv(run_id: str, username: str = Depends(auth.require_session
         raise HTTPException(status_code=404, detail="enriched_targets.csv not found")
     return FileResponse(str(path), filename=f"{run_id}_enriched_targets.csv",
                         media_type="text/csv")
+
+
+@router.get("/runs/{run_id}/export/approved")
+async def export_approved(run_id: str, username: str = Depends(auth.require_session)):
+    """Download a CSV of approved, non-excluded records with analyst review overlay."""
+    run_directory = runs.run_dir(run_id)
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    buf = exports.build_approved_csv(run_id, run_directory)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_approved.csv"'},
+    )
+
+
+@router.get("/runs/{run_id}/export/excluded")
+async def export_excluded(run_id: str, username: str = Depends(auth.require_session)):
+    """Download a CSV of all records whose effective tier is Excluded."""
+    run_directory = runs.run_dir(run_id)
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    buf = exports.build_excluded_csv(run_id, run_directory)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_excluded.csv"'},
+    )
 
 
 @router.post("/api/ui/runs")

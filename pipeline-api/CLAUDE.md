@@ -145,29 +145,62 @@ to open a run directory and understand what happened.
 
 ---
 
+## UI Architecture Decision (Permanent)
+
+The server-rendered HTML UI (ui.py + templates/) is the production internal operator tool.
+The React/Vite BEMI Dashboard is a demo reference only and is NOT integrated with this API.
+Do not build React integration unless that decision is explicitly reversed.
+
+---
+
+## enriched_targets.json Schema
+
+The pipeline writes this wrapper object (not a raw array):
+```json
+{
+  "run_id": "RUN-20260527-143000",
+  "generated_at": "2026-05-27T14:30:00Z",
+  "record_count": 47,
+  "records": [...]
+}
+```
+
+When reading enriched_targets.json, always extract the records array:
+```python
+data = json.load(f)
+records = data.get("records", data) if isinstance(data, dict) else data
+```
+Never iterate `data` directly — it will iterate dict keys, not records.
+
+---
+
 ## Locked API Surface
 
-Bearer-auth JSON API (main.py — unchanged):
+Bearer-auth JSON API (main.py):
 ```
-POST   /runs                       Upload CSV, start pipeline, return run_id
-GET    /runs                       List all runs (newest first, max 50)
-GET    /runs/{run_id}              Full status.json for a run
-GET    /runs/{run_id}/log          run_log.json (run must have exited)
-GET    /runs/{run_id}/results      enriched_targets.json (run must be complete)
+POST   /runs                            Upload CSV, start pipeline, return run_id
+GET    /runs                            List all runs (newest first, max 50)
+GET    /runs/{run_id}                   Full status.json for a run
+GET    /runs/{run_id}/log               run_log.json (run must have exited)
+GET    /runs/{run_id}/results           enriched_targets.json wrapper (run must be complete)
+GET    /runs/{run_id}/export/approved   CSV of approved non-excluded records
+GET    /runs/{run_id}/export/excluded   CSV of excluded records
 ```
 
 Session-auth HTML UI (ui.py):
 ```
-GET    /login                      Login form
-POST   /login                      Validate credentials, set cookie
-GET    /logout                     Clear session
-GET    /                           Main menu
-GET    /dashboard                  Run list
-GET    /dashboard/{run_id}         Results + inline review
-GET    /runs/{run_id}/download/json  File download
-GET    /runs/{run_id}/download/csv   File download
-POST   /api/ui/runs                Create run from browser upload
-POST   /api/ui/reviews/{run_id}/{record_id}  Save review edit
+GET    /login                                    Login form
+POST   /login                                    Validate credentials, set cookie
+GET    /logout                                   Clear session
+GET    /                                         Main menu
+GET    /dashboard                                Run list
+GET    /dashboard/{run_id}                       Results + inline review
+GET    /runs/{run_id}/download/json              Full enriched_targets.json download
+GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
+GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
+GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
+POST   /api/ui/runs                              Create run from browser upload
+POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 ```
 
 Phase 2 additions (do not build now):

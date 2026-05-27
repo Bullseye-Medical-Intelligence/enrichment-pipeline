@@ -10,10 +10,11 @@ import traceback
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import auth
+import exports
 import runner
 import runs
 from config import HOST, PORT
@@ -145,7 +146,9 @@ async def get_run_log(run_id: str):
     summary="Get enriched targets for a successfully completed run",
 )
 async def get_run_results(run_id: str):
-    """Return enriched_targets.json for a run with status 'complete'."""
+    """Return enriched_targets.json for a run with status 'complete'.
+    Response shape: {run_id, generated_at, record_count, records: [...]}.
+    """
     status = _require_run(run_id)
     _require_complete(status)
 
@@ -157,6 +160,40 @@ async def get_run_results(run_id: str):
         )
     with open(results_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+@app.get(
+    "/runs/{run_id}/export/approved",
+    dependencies=[Depends(auth.verify_api_key)],
+    summary="Download a CSV of approved, non-excluded records",
+)
+async def api_export_approved(run_id: str):
+    """Return a CSV of approved non-excluded records with analyst review overlay."""
+    _require_complete(_require_run(run_id))
+    run_directory = runs.run_dir(run_id)
+    buf = exports.build_approved_csv(run_id, run_directory)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_approved.csv"'},
+    )
+
+
+@app.get(
+    "/runs/{run_id}/export/excluded",
+    dependencies=[Depends(auth.verify_api_key)],
+    summary="Download a CSV of excluded records",
+)
+async def api_export_excluded(run_id: str):
+    """Return a CSV of all records whose effective tier is Excluded."""
+    _require_complete(_require_run(run_id))
+    run_directory = runs.run_dir(run_id)
+    buf = exports.build_excluded_csv(run_id, run_directory)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_excluded.csv"'},
+    )
 
 
 # ---------------------------------------------------------------------------
