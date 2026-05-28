@@ -12,7 +12,7 @@ if not exist ".env" (
     exit /b 1
 )
 
-netstat -an 2>nul | findstr ":8000 " >nul
+netstat -an 2>nul | findstr ":8000 " | findstr "LISTENING" >nul
 if %errorlevel% equ 0 (
     echo WARNING: Port 8000 is already in use.
     echo The server may already be running. Open http://localhost:8000/login in your browser,
