@@ -2,21 +2,9 @@
 exclusion_checker.py
 Applies exclusion rules to enriched records.
 Hard exclusions always fire. Configurable exclusions fire only when listed in run_config.
-
-CHANGES (P1 fixes):
-- FIX 1: apply_exclusions() no longer sets target_tier = "Excluded" for CLEAR records.
-  CLEAR records are now always "Bullseye" (score >= bullseye_min) or "Watchlist"
-  (score < bullseye_min). "Excluded" tier is reserved exclusively for records where
-  exclusion_status = "EXCLUDED". The previous behavior produced contradictory output
-  (exclusion_status: CLEAR, target_tier: Excluded, exclusion_reason: null) which
-  broke the dashboard's QC display.
-
-- FIX 2: wrong_specialty is now a purely deterministic check. It no longer requires
-  "_llm_exclusion_triggers" to contain "wrong_specialty" to fire. If the record's
-  specialty field does not case-insensitively match run_config target_specialty, the
-  exclusion fires immediately. The LLM cannot override or suppress a specialty mismatch.
-  Only applies when both record_specialty and target_specialty are non-empty.
 """
+
+import re
 
 # ---------------------------------------------------------------------------
 # Exclusion rule definitions
@@ -46,19 +34,24 @@ ALL_KNOWN_EXCLUSION_RULES = HARD_EXCLUSION_RULES | CONFIGURABLE_EXCLUSION_RULES
 EXCLUDED_SCORE_CAP = 40
 
 
+def _specialty_words(text: str) -> set[str]:
+    return set(re.findall(r'[a-z0-9]+', text.lower()))
+
+
 def _specialty_matches(record_specialty: str, target_specialty: str) -> bool:
     """
-    Return True if record_specialty matches any token in target_specialty.
+    Return True if record_specialty matches any comma-separated token in target_specialty.
 
-    Matching is case-insensitive and bidirectional: a token from target is
-    considered a match if it appears anywhere in the record specialty string,
-    or the record specialty appears in a token. This lets "Fertility Clinic"
-    match a target of "OBGYN, Fertility" without requiring an exact string.
+    Uses word-boundary tokenization so short tokens like "ENT" cannot accidentally
+    match mid-word in strings like "urgent care" (where "ent" is a substring of "urgent").
+    A target token matches when all its words appear as whole words in the record specialty.
     """
-    rec = record_specialty.lower().strip()
+    rec_words = _specialty_words(record_specialty)
+    if not rec_words:
+        return False
     for token in target_specialty.split(","):
-        tok = token.strip().lower()
-        if tok and (tok in rec or rec in tok):
+        tok_words = _specialty_words(token.strip())
+        if tok_words and tok_words.issubset(rec_words):
             return True
     return False
 
