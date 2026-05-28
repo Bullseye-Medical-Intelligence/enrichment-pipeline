@@ -206,7 +206,7 @@
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
         <td>
           <strong>{{ record.practice_name | default("—") }}</strong>
-          {% if record.website_url %}<br><span class="text-muted small">{{ record.website_url }}</span>{% endif %}
+          {% if record.website_url %}<br><a class="text-muted small" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
         <td>{{ record.specialty | default("—") }}</td>
         <td>{{ record.address_city | default("") }}{% if record.address_state %}, {{ record.address_state }}{% endif %}</td>
@@ -229,6 +229,12 @@
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
         <td colspan="8">
           <div class="detail-panel">
+            {% if record.phone or record.website_url %}
+            <div class="detail-contact-header">
+              {% if record.phone %}<span class="detail-phone">📞 {{ record.phone }}</span>{% endif %}
+              {% if record.website_url %}<a class="detail-website" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">🌐 {{ record.website_url }}</a>{% endif %}
+            </div>
+            {% endif %}
             <div class="detail-cols">
 
               {# Signals #}
@@ -237,17 +243,22 @@
                 {% if record.signals %}
                 <div class="signals-list">
                   {% for sig in record.signals %}
-                  <div class="signal-item signal-{{ sig.signal_state }}">
+                  {% set sig_weight = sig.positive_weight | default(1) | int %}
+                  {% set is_good = (sig.signal_state == "yes" and sig_weight > 0) or (sig.signal_state == "no" and sig_weight < 0) %}
+                  {% set is_bad  = (sig.signal_state == "yes" and sig_weight < 0) or (sig.signal_state == "no" and sig_weight > 0) %}
+                  {% set display_state = "not_found" if sig.signal_state == "not_found" else ("yes" if is_good else ("no" if is_bad else sig.signal_state)) %}
+                  <div class="signal-item signal-{{ display_state }}">
                     <div class="signal-header">
                       <span class="signal-label">{{ sig.signal_label }}</span>
-                      <span class="signal-state-badge state-{{ sig.signal_state }}">{{ sig.signal_state | upper }}</span>
-                      <span class="signal-conf text-muted">{{ sig.confidence }}</span>
+                      {% if sig.source_url %}
+                      <a class="signal-state-badge state-{{ display_state }}" href="{{ sig.source_url }}" target="_blank" rel="noopener noreferrer">{{ sig.signal_state | upper | replace("_", " ") }}</a>
+                      {% else %}
+                      <span class="signal-state-badge state-{{ display_state }}">{{ sig.signal_state | upper | replace("_", " ") }}</span>
+                      {% endif %}
+                      <span class="signal-conf text-muted">{{ sig.confidence | title }}</span>
                     </div>
                     {% if sig.evidence_text %}
                     <p class="signal-evidence">{{ sig.evidence_text }}</p>
-                    {% endif %}
-                    {% if sig.source_url %}
-                    <a class="signal-source" href="{{ sig.source_url }}" target="_blank" rel="noopener noreferrer">View source ↗</a>
                     {% endif %}
                   </div>
                   {% endfor %}
@@ -278,7 +289,7 @@
                   <tr><td>Bullseye</td><td><strong>{{ record.bullseye_score | default("—") }}</strong></td></tr>
                   <tr><td>Fit</td><td>{{ record.fit_signal_score | default("—") }}</td></tr>
                   <tr><td>Confidence</td><td>{{ record.confidence_score | default("—") }}</td></tr>
-                  <tr><td>Status</td><td>{{ record.fit_confidence_status | default("—") }}</td></tr>
+                  <tr><td>Status</td><td>{{ record.fit_confidence_status | default("—") | title }}</td></tr>
                 </table>
               </div>
 
