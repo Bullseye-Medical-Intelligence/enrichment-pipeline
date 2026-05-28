@@ -16,7 +16,7 @@ url_validator (those records failed before reaching web extraction).
 
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, urlparse
 
 import requests
