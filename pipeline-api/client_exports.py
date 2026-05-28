@@ -97,19 +97,21 @@ def _displayed_tier(record: dict, all_reviews: dict) -> str:
 
 
 def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
-    """Return approved, non-hard-excluded records sorted by score (desc).
+    """Return approved records sorted by score (desc).
 
-    Mirrors exports.build_approved_csv: a hard pipeline exclusion cannot be
-    bypassed by an analyst override.
+    Mirrors exports.build_approved_csv exactly: an analyst override_tier bypasses
+    the pipeline's automatic exclusion_status; without an explicit override, a hard
+    EXCLUDED pipeline classification still blocks the record.
     """
     approved = []
     for rec in records:
         review = all_reviews.get(record_adapter.get_record_id(rec), {})
         if review.get("qc_status") != "approved":
             continue
-        if rec.get("exclusion_status") == "EXCLUDED":
+        displayed = _displayed_tier(rec, all_reviews).lower()
+        if displayed == "excluded":
             continue
-        if _displayed_tier(rec, all_reviews).lower() == "excluded":
+        if not review.get("override_tier") and rec.get("exclusion_status") == "EXCLUDED":
             continue
         approved.append(rec)
     approved.sort(key=lambda r: r.get("bullseye_score") or 0, reverse=True)

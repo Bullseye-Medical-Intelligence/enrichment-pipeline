@@ -34,16 +34,20 @@ def build_approved_csv(run_id: str, run_directory: Path) -> io.BytesIO:
 
     A record is included only when ALL of:
     - qc_status == "approved"
-    - original exclusion_status != "EXCLUDED"  (hard pipeline exclusion cannot be bypassed)
     - effective displayed_tier != "excluded"
+    - if no analyst override_tier is set, original exclusion_status != "EXCLUDED"
+      (a hard pipeline exclusion is bypassed only when the analyst has explicitly
+      set a positive override_tier and provided an override_reason)
     """
     def _approved(rec: dict, rev: dict) -> bool:
         if rev.get("qc_status") != "approved":
             return False
-        if rec.get("exclusion_status") == "EXCLUDED":
-            return False
         displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
-        return displayed != "excluded"
+        if displayed == "excluded":
+            return False
+        if not rev.get("override_tier") and rec.get("exclusion_status") == "EXCLUDED":
+            return False
+        return True
 
     return _build_csv(run_id, run_directory, _approved)
 

@@ -145,7 +145,8 @@ def _csv_ids(buf: io.BytesIO):
     return {row["record_id"] for row in csv.DictReader(io.StringIO(text))}
 
 
-def test_approved_export_excludes_hard_excluded(tmp_path):
+def test_approved_export_includes_overridden_excluded(tmp_path):
+    """Analyst override_tier + approved bypasses the pipeline's hard exclusion."""
     records = [
         {"record_id": "T-1", "target_tier": "Bullseye", "exclusion_status": "CLEAR"},
         {"record_id": "T-2", "target_tier": "Excluded", "exclusion_status": "EXCLUDED"},
@@ -154,19 +155,34 @@ def test_approved_export_excludes_hard_excluded(tmp_path):
     reviews_map = {
         "T-1": {"override_tier": None, "override_reason": None, "qc_status": "approved",
                 "analyst_note": "", "reviewed_by": "t", "reviewed_at": "now"},
-        # Hard-excluded but analyst tried to override to Bullseye + approve.
-        "T-2": {"override_tier": "Bullseye", "override_reason": "looks good",
+        # Hard-excluded, analyst explicitly overrode tier and approved.
+        "T-2": {"override_tier": "Bullseye", "override_reason": "independent practice — exclusion wrong",
                 "qc_status": "approved", "analyst_note": "", "reviewed_by": "t",
                 "reviewed_at": "now"},
-        # Approved-but-pending stays out (qc pending).
         "T-3": {"override_tier": None, "override_reason": None, "qc_status": "pending",
                 "analyst_note": "", "reviewed_by": None, "reviewed_at": None},
     }
     _write_run(tmp_path, records, reviews_map)
 
     ids = _csv_ids(exports.build_approved_csv("RUN-20260527-143000-aaaa", tmp_path))
-    assert ids == {"T-1"}
-    assert "T-2" not in ids  # hard exclusion cannot be bypassed by override
+    assert "T-1" in ids           # CLEAR + approved → always in
+    assert "T-2" in ids           # EXCLUDED + analyst override + approved → in
+    assert "T-3" not in ids       # pending QC → out
+
+
+def test_approved_export_blocks_excluded_without_override(tmp_path):
+    """Hard-excluded record with no analyst override stays out of approved CSV."""
+    records = [
+        {"record_id": "T-2", "target_tier": "Excluded", "exclusion_status": "EXCLUDED"},
+    ]
+    reviews_map = {
+        "T-2": {"override_tier": None, "override_reason": None, "qc_status": "approved",
+                "analyst_note": "", "reviewed_by": "t", "reviewed_at": "now"},
+    }
+    _write_run(tmp_path, records, reviews_map)
+
+    ids = _csv_ids(exports.build_approved_csv("RUN-20260527-143000-aaaa", tmp_path))
+    assert "T-2" not in ids  # approved but no explicit override → hard exclusion stands
 
 
 def test_excluded_export_includes_excluded(tmp_path):

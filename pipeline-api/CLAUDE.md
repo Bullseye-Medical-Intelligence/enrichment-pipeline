@@ -256,7 +256,10 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
 - **Built from immutable output + review overlay.** Reads `enriched_targets.json`
   and the `reviews.json` overlay; never mutates either.
 - **Reuses `exports.py`** for the approved/excluded CSVs — no duplicated filter
-  logic. The approved set still omits hard `exclusion_status == "EXCLUDED"`.
+  logic. An analyst `override_tier` on a pipeline-excluded record bypasses the
+  automatic exclusion when the analyst also approves it. Without an explicit
+  override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
+  approved set.
 - **Client-safe only.** The ZIP contains `executive_summary.md`,
   `approved_targets.csv`, `excluded_targets.csv`, `top_target_briefs.md`, and
   `methodology.md`. It never includes `run_log.json`, `reviews.json`, or the raw

@@ -107,14 +107,36 @@ def test_package_excludes_internal_artifacts(tmp_path):
     assert "enriched_targets.json" not in names
 
 
-def test_approved_csv_excludes_hard_excluded(tmp_path):
+def test_approved_csv_includes_overridden_excluded(tmp_path):
+    """Hard-excluded record with explicit analyst override_tier + approved → included."""
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
         approved = zf.read("approved_targets.csv").decode("utf-8")
-    assert "T-1" in approved
-    assert "T-2" not in approved  # hard exclusion cannot be bypassed by override
-    assert "T-3" not in approved  # not approved (pending)
+    assert "T-1" in approved         # CLEAR + approved → always included
+    assert "T-2" in approved         # EXCLUDED + analyst override Bullseye + approved → included
+    assert "T-3" not in approved     # pending review → not included
+
+
+def test_approved_csv_blocks_excluded_without_override(tmp_path):
+    """Hard-excluded record with no override_tier stays out of approved CSV."""
+    records = [
+        {"record_id": "T-X", "practice_name": "Big Hospital OBGYN",
+         "target_tier": "Excluded", "bullseye_score": 25,
+         "exclusion_status": "EXCLUDED"},
+    ]
+    reviews_map = {
+        "T-X": {"override_tier": None, "override_reason": None,
+                "qc_status": "approved", "analyst_note": "",
+                "reviewed_by": "t", "reviewed_at": "now"},
+    }
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+
+    import exports
+    buf = exports.build_approved_csv("RUN-test", tmp_path)
+    content = buf.getvalue().decode("utf-8")
+    assert "T-X" not in content  # approved but no override → hard exclusion still blocks
 
 
 def test_executive_summary_has_context(tmp_path):
@@ -127,7 +149,7 @@ def test_executive_summary_has_context(tmp_path):
     assert "FemaSeed" in summary
     assert "OBGYN" in summary
     assert "FemaSeed OBGYN ICP" in summary
-    assert "Approved targets:** 1" in summary
+    assert "Approved targets:** 2" in summary  # T-1 (CLEAR) + T-2 (EXCLUDED+override)
 
 
 def test_methodology_excludes_phi_language(tmp_path):
@@ -144,7 +166,7 @@ def test_top_briefs_lists_approved(tmp_path):
     with zipfile.ZipFile(buf) as zf:
         briefs = zf.read("top_target_briefs.md").decode("utf-8")
     assert "Alpha Womens Health" in briefs
-    assert "Beta Hospital OBGYN" not in briefs  # excluded, not in client briefs
+    assert "Beta Hospital OBGYN" in briefs  # EXCLUDED but analyst overrode + approved → in briefs
 
 
 # ---------------------------------------------------------------------------
