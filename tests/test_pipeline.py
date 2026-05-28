@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from ingestion.outscraper_adapter import _normalize_state
+from ingestion.outscraper_adapter import _normalize_state, infer_specialty
 from enrichment.signal_extractor import _validate_and_clean_signals
 from enrichment.exclusion_checker import apply_exclusions
 from enrichment.scorer import validate_and_finalize
@@ -205,6 +205,48 @@ class TestSignalNormalization:
         result = _validate_and_clean_signals(raw, SAMPLE_ICP_SIGNALS)
         assert result[0]["signal_label"] == "IUD insertion listed"
 
+    def test_positive_weight_carried_from_icp_on_matched_signal(self):
+        """positive_weight is copied from the ICP definition onto matched signals."""
+        raw = [{"signal_id": "S-ICP-002", "signal_label": "REI on staff",
+                "signal_state": "yes", "confidence": "high",
+                "evidence_text": "e", "source_url": ""}]
+        result = _validate_and_clean_signals(raw, SAMPLE_ICP_SIGNALS)
+        by_id = {s["signal_id"]: s for s in result}
+        assert by_id["S-ICP-002"]["positive_weight"] == -20
+
+    def test_positive_weight_carried_on_not_found_signal(self):
+        """not_found defaults still carry the ICP positive_weight (for UI coloring)."""
+        result = _validate_and_clean_signals([], SAMPLE_ICP_SIGNALS)
+        by_id = {s["signal_id"]: s for s in result}
+        assert by_id["S-ICP-001"]["positive_weight"] == 15
+        assert by_id["S-ICP-002"]["positive_weight"] == -20
+
+
+# ---------------------------------------------------------------------------
+# Specialty inference (type column, with practice-name fallback)
+# ---------------------------------------------------------------------------
+
+class TestSpecialtyInference:
+
+    def test_type_keyword_maps_to_canonical(self):
+        assert infer_specialty("Obstetrician-gynecologist") == "OBGYN"
+
+    def test_empty_type_falls_back_to_name(self):
+        assert infer_specialty("", "Atlanta Obstetrics & Gynecology Associates") == "OBGYN"
+
+    def test_name_fallback_only_used_when_type_unmatched(self):
+        # type is empty, name carries the signal
+        assert infer_specialty("", "Lakeside Urology Center") == "Urology"
+
+    def test_unrecognized_type_kept_as_titlecased_label(self):
+        assert infer_specialty("Wellness Center", "") == "Wellness Center"
+
+    def test_unknown_when_neither_matches(self):
+        assert infer_specialty("", "Main Street Medical") == "Unknown"
+
+    def test_empty_inputs_return_unknown(self):
+        assert infer_specialty("", "") == "Unknown"
+
 
 # ---------------------------------------------------------------------------
 # Specialty exclusion — deterministic
@@ -240,6 +282,12 @@ class TestSpecialtyExclusion:
         # Should not exclude on specialty alone (no specialty to compare)
         triggered = result.get("exclusion_reason") or ""
         assert "wrong_specialty" not in triggered
+
+    def test_unknown_specialty_does_not_fire_wrong_specialty(self):
+        """'Unknown' means detection failed, not a confirmed mismatch — no exclusion."""
+        record = _clear_record(specialty="Unknown")
+        result = apply_exclusions(record, BASE_RUN_CONFIG)
+        assert "wrong_specialty" not in (result.get("exclusion_reason") or "")
 
     def test_empty_target_specialty_skips_check(self):
         """If run_config has no target_specialty, check is skipped."""

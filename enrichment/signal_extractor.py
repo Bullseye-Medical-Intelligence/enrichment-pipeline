@@ -221,6 +221,7 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "source_url": (sig.get("source_url") or "").strip(),
             "source_type": "practice_website",
             "confidence": conf,
+            "positive_weight": icp_by_id[signal_id].get("positive_weight", 0),
             "analyst_note": "",
         }
 
@@ -239,6 +240,7 @@ def _validate_and_clean_signals(raw_signals: list[dict],
                 "source_url": "",
                 "source_type": "practice_website",
                 "confidence": "low",
+                "positive_weight": icp_sig.get("positive_weight", 0),
                 "analyst_note": "",
             })
 
@@ -276,10 +278,7 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
         matched = signal_map.get(sid)
 
         if matched and matched["signal_state"] == "yes":
-            if weight > 0:
-                fit_delta += weight
-            else:
-                fit_delta += weight  # negative weight subtracted
+            fit_delta += weight  # positive weights add, negative weights subtract
             confidence_values.append(conf_score_map.get(matched["confidence"], 40))
 
     # Fit signal score: 50 base + weighted delta, clamped 0-100

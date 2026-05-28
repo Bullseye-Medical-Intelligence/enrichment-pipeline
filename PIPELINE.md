@@ -317,6 +317,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
       "source_url": "https://example-practice.com/services",
       "source_type": "practice_website",
       "confidence": "high",
+      "positive_weight": 15,
       "analyst_note": ""
     }
   ],
@@ -348,6 +349,8 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 ### Field rules carried over from dashboard CLAUDE.md:
 
 **signal_state:** `"yes"`, `"no"`, or `"not_found"` only. Never null, true, false, or empty string.
+
+**positive_weight:** Carried over from the ICP signal definition. Positive for signals where a `"yes"` is good; negative where a `"yes"` is bad (e.g. "REI on staff"). Consumers use the sign to color a signal green or red: a `"no"` on a negative-weight signal is a positive indicator.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 

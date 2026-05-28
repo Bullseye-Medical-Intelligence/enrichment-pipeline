@@ -116,19 +116,24 @@ def _parse_full_address(full_address: str) -> dict:
     return result
 
 
-def _infer_specialty(type_raw: str) -> str:
+def infer_specialty(type_raw: str, practice_name: str = "") -> str:
     """
-    Map Outscraper 'type' field to a canonical specialty string.
-    Returns "Unknown" if no match found.
+    Map the Outscraper 'type' field to a canonical specialty string, falling
+    back to keywords in the practice name when 'type' is absent or unmatched.
+    Returns "Unknown" if neither yields a match.
     """
-    if not type_raw:
-        return "Unknown"
-    lower = type_raw.lower()
-    for specialty, keywords in SPECIALTY_KEYWORD_MAP.items():
-        for kw in keywords:
-            if kw in lower:
-                return specialty
-    return type_raw.title()  # Fall back to titlecased raw value
+    for text in (type_raw, practice_name):
+        lower = (text or "").lower()
+        if not lower:
+            continue
+        for specialty, keywords in SPECIALTY_KEYWORD_MAP.items():
+            for kw in keywords:
+                if kw in lower:
+                    return specialty
+    # 'type' present but unmatched: keep it as a titlecased label.
+    if (type_raw or "").strip():
+        return type_raw.title()
+    return "Unknown"
 
 
 def _normalize_url(url: str) -> str:
@@ -210,7 +215,7 @@ def _map_row(row: dict, row_num: int) -> dict:
     if not practice_name:
         raise ValueError(f"Row {row_num}: missing practice name")
 
-    specialty = _infer_specialty(type_raw)
+    specialty = infer_specialty(type_raw, practice_name)
     record_id = _generate_record_id(npi, practice_name, address_state, address_zip)
 
     # Build canonical record — all downstream pipeline steps use ONLY these fields

@@ -27,6 +27,7 @@ import record_adapter
 import reviews
 import runner
 import runs
+import validator
 from schema import ReviewEdit
 
 logger = logging.getLogger(__name__)
@@ -587,6 +588,21 @@ async def ui_create_run(
             selected_context=_project_upload_context(selected),
         )
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+
+
+@router.post("/api/ui/runs/preview")
+async def ui_preview_run(
+    file: UploadFile,
+    source_type: str = Form(...),
+    username: str = Depends(auth.require_session),
+):
+    """Validate an upload and return an import summary without starting a run."""
+    content = await file.read()
+    try:
+        summary = validator.preflight_summary(content, source_type)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"detail": str(e)})
+    return JSONResponse(content=summary)
 
 
 @router.post("/api/ui/reviews/{run_id}/{record_id}")

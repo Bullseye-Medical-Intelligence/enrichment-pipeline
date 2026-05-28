@@ -20,7 +20,7 @@
 {% endif %}
 
 <div class="card upload-card">
-  <form method="post" action="/api/ui/runs" enctype="multipart/form-data" class="upload-form">
+  <form method="post" action="/api/ui/runs" enctype="multipart/form-data" class="upload-form" id="upload-form">
 
     <div class="form-group">
       <label for="project_id">Project</label>
@@ -64,9 +64,10 @@
       <label for="file">Outscraper CSV File</label>
       <input type="file" id="file" name="file" accept=".csv" required>
       <p class="form-hint">
-        Export your lead list from Outscraper as a CSV. The file must include columns:
-        <code>name</code>, <code>full_address</code>, <code>phone</code>, <code>site</code>, <code>type</code>.
-        Maximum 10,000 rows and 50 MB.
+        Export your lead list from Outscraper as a CSV. The file must include
+        <code>name</code> and <code>phone</code>, plus a website column
+        (<code>site</code> or <code>website</code>). A <code>type</code> column
+        improves specialty detection but is optional. Maximum 10,000 rows and 50 MB.
       </p>
     </div>
 
@@ -93,6 +94,18 @@
       <a href="/" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
+</div>
+
+<div id="preview-overlay" class="modal-overlay" style="display:none">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+    <p class="eyebrow">Confirm Import</p>
+    <h3 id="preview-title">Ready to import</h3>
+    <div id="preview-body"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-submit" id="preview-confirm">Start Enrichment</button>
+      <button type="button" class="btn btn-secondary" id="preview-cancel">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <div class="card info-card">

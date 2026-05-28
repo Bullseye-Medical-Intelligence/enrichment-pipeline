@@ -6,8 +6,9 @@ Used for analyst-prepared lists or records sourced outside Outscraper.
 
 import csv
 import hashlib
-import re
 from typing import Optional
+
+from ingestion.outscraper_adapter import infer_specialty
 
 
 # Required fields in a canonical manual CSV
@@ -123,7 +124,7 @@ def _map_row(row: dict, row_num: int) -> dict:
         "id": record_id,
         "practice_name": practice_name,
         "provider_names": _parse_provider_names(provider_names_raw),
-        "specialty": (row.get("specialty") or "").strip() or "Unknown",
+        "specialty": (row.get("specialty") or "").strip() or infer_specialty("", practice_name),
         "npi_optional": npi,
         "website_url": website_url,
         "phone": (row.get("phone") or "").strip(),

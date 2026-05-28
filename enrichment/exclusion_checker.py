@@ -99,10 +99,12 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
 
     # --- Hard exclusions ---
 
-    # FIX 2: wrong_specialty is deterministic — no LLM agreement required.
-    # Fire if record specialty and target specialty are both set and don't match.
+    # wrong_specialty is deterministic — no LLM agreement required.
+    # Fire only when the record specialty is known and does not match the target.
+    # "Unknown" means detection failed, not a confirmed mismatch, so it is not a
+    # hard exclusion on its own — let scoring and signals decide instead.
     record_specialty = (record.get("specialty") or "").strip()
-    if target_specialty and record_specialty:
+    if target_specialty and record_specialty and record_specialty.lower() != "unknown":
         if not _specialty_matches(record_specialty, target_specialty):
             triggered.append("wrong_specialty")
             rationale_parts.append(

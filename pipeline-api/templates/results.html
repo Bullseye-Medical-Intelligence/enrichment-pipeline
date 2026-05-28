@@ -243,7 +243,7 @@
                 {% if record.signals %}
                 <div class="signals-list">
                   {% for sig in record.signals %}
-                  {% set sig_weight = sig.positive_weight | default(1) | int %}
+                  {% set sig_weight = sig.positive_weight | default(0) | int %}
                   {% set is_good = (sig.signal_state == "yes" and sig_weight > 0) or (sig.signal_state == "no" and sig_weight < 0) %}
                   {% set is_bad  = (sig.signal_state == "yes" and sig_weight < 0) or (sig.signal_state == "no" and sig_weight > 0) %}
                   {% set display_state = "not_found" if sig.signal_state == "not_found" else ("yes" if is_good else ("no" if is_bad else sig.signal_state)) %}

@@ -149,3 +149,81 @@ def _validate_columns(fieldnames: list[str], source_type: str) -> None:
             "CSV is missing a website URL column for source 'outscraper'. "
             "Include either 'site' or 'website'."
         )
+
+
+def preflight_summary(content: bytes, source_type: str) -> dict:
+    """
+    Validate a CSV and return a human-facing import summary without mutating it.
+
+    Runs the same hard checks as validate_csv_upload, then inspects the rows for
+    likely duplicates and data-quality warnings to surface before a run starts.
+
+    Raises:
+        ValueError on any hard validation failure.
+    """
+    _validate_source_type(source_type)
+    _validate_file_size(content)
+    text = _decode_csv_bytes(content)
+    rows, fieldnames = _parse_csv(text)
+    _validate_row_count(rows)
+    _validate_columns(fieldnames, source_type)
+    return _analyze_rows(rows, fieldnames, source_type)
+
+
+def _first_value(row: dict, keys: tuple[str, ...]) -> str:
+    """Return the first non-empty value across the given column names."""
+    for key in keys:
+        value = (row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> dict:
+    """Summarize a parsed CSV: importable count, likely duplicates, warnings."""
+    name_cols = ("name", "practice_name")
+    url_cols = ("site", "website", "website_url")
+    state_cols = ("state", "address_state")
+
+    seen: set[str] = set()
+    duplicate_count = 0
+    dropped_count = 0
+
+    for raw in rows:
+        # Headers vary in case across exports; match the adapters' lowercase access.
+        row = {k.lower(): v for k, v in raw.items() if k}
+        name = _first_value(row, name_cols)
+        if not name:
+            dropped_count += 1
+            continue
+        url = _first_value(row, url_cols).lower().rstrip("/")
+        state = _first_value(row, state_cols).lower()
+        key = url or f"{name.lower()}|{state}"
+        if key in seen:
+            duplicate_count += 1
+        else:
+            seen.add(key)
+
+    warnings: list[str] = []
+    if dropped_count:
+        warnings.append(
+            f"{dropped_count} row(s) have no practice name and cannot be imported."
+        )
+    if duplicate_count:
+        warnings.append(
+            f"{duplicate_count} row(s) look like duplicates "
+            "(same website, or same practice name and state)."
+        )
+    if source_type == "outscraper" and "type" not in set(fieldnames):
+        warnings.append(
+            "No 'type' column found. Specialty is inferred from practice names "
+            "where possible; unmatched practices are marked Unknown."
+        )
+
+    return {
+        "row_count": len(rows),
+        "importable": len(rows) - dropped_count,
+        "duplicate_count": duplicate_count,
+        "dropped_count": dropped_count,
+        "warnings": warnings,
+    }
