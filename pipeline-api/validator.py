@@ -135,6 +135,7 @@ def _validate_row_count(rows: list[dict]) -> None:
 
 def _validate_columns(fieldnames: list[str], source_type: str) -> None:
     """Raise ValueError if required columns are missing for the source_type."""
+    from config import OUTSCRAPER_URL_COLUMNS
     required = REQUIRED_COLUMNS_BY_SOURCE[source_type]
     actual = set(fieldnames)
     missing = required - actual
@@ -142,4 +143,9 @@ def _validate_columns(fieldnames: list[str], source_type: str) -> None:
         raise ValueError(
             f"CSV is missing required columns for source '{source_type}': "
             f"{sorted(missing)}"
+        )
+    if source_type == "outscraper" and not (OUTSCRAPER_URL_COLUMNS & actual):
+        raise ValueError(
+            "CSV is missing a website URL column for source 'outscraper'. "
+            "Include either 'site' or 'website'."
         )
