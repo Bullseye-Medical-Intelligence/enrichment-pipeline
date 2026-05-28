@@ -35,15 +35,20 @@ def _is_approved(rec: dict, rev: dict) -> bool:
     Gate rules (all must hold):
     - qc_status == "approved"
     - effective displayed_tier != "excluded"
-    - if no analyst override_tier is set, original exclusion_status != "EXCLUDED"
+    - without an analyst override_tier, the pipeline tier is exportable:
+      not "EXCLUDED" and not "Needs Verification" (unconfirmed accounts ship
+      only after an analyst confirms them with an override)
     """
     if rev.get("qc_status") != "approved":
         return False
     displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
     if displayed == "excluded":
         return False
-    if not rev.get("override_tier") and rec.get("exclusion_status") == "EXCLUDED":
-        return False
+    if not rev.get("override_tier"):
+        if rec.get("exclusion_status") == "EXCLUDED":
+            return False
+        if rec.get("target_tier") == "Needs Verification":
+            return False
     return True
 
 

@@ -314,6 +314,7 @@ host. Task queue / database / Redis remain out of scope until that ceiling is cr
   "records_input": 50,
   "records_output": 47,
   "bullseye_count": 12,
+  "needs_verification_count": 3,
   "watchlist_count": 28,
   "excluded_count": 7,
   "error_count": 3,

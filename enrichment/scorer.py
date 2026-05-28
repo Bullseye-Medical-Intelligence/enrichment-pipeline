@@ -17,7 +17,7 @@ validate_and_finalize() now detects and repairs the contradiction
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
 VALID_EXCLUSION_STATUSES = {"CLEAR", "EXCLUDED"}
-VALID_TARGET_TIERS = {"Bullseye", "Watchlist", "Excluded"}
+VALID_TARGET_TIERS = {"Bullseye", "Needs Verification", "Watchlist", "Excluded"}
 VALID_SOURCE_CONFIDENCES = {"complete", "partial", "limited", "failed"}
 VALID_ENRICHMENT_STATUSES = {"complete", "partial", "failed", "needs_review"}
 VALID_QC_STATUSES = {"pending"}  # Pipeline always outputs "pending"

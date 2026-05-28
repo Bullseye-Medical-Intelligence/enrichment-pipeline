@@ -57,6 +57,22 @@ def validate_icp_profile(data: dict) -> None:
             signal["positive_weight"], bool
         ):
             raise ValueError(f"ICP signal #{i + 1} 'positive_weight' must be numeric.")
+        # Optional tiering fields — validate only when present.
+        if "not_found_weight" in signal and (
+            not isinstance(signal["not_found_weight"], (int, float))
+            or isinstance(signal["not_found_weight"], bool)
+        ):
+            raise ValueError(f"ICP signal #{i + 1} 'not_found_weight' must be numeric.")
+        if "verification_required" in signal and not isinstance(
+            signal["verification_required"], bool
+        ):
+            raise ValueError(
+                f"ICP signal #{i + 1} 'verification_required' must be true or false."
+            )
+        if "cap_tier" in signal and signal["cap_tier"] not in ("Watchlist", "Needs Verification"):
+            raise ValueError(
+                f"ICP signal #{i + 1} 'cap_tier' must be 'Watchlist' or 'Needs Verification'."
+            )
 
 
 def get_icp_profile(icp_profile_id: str) -> dict:

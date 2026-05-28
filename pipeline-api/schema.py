@@ -28,6 +28,7 @@ class RunStatus(BaseModel):
     records_input: int = 0
     records_output: int = 0
     bullseye_count: int = 0
+    needs_verification_count: int = 0
     watchlist_count: int = 0
     excluded_count: int = 0
     error_count: int = 0

@@ -33,6 +33,37 @@ ALL_KNOWN_EXCLUSION_RULES = HARD_EXCLUSION_RULES | CONFIGURABLE_EXCLUSION_RULES
 # Max bullseye_score for excluded records
 EXCLUDED_SCORE_CAP = 40
 
+# Tier ladder for CLEAR records (worst to best). A signal can cap the tier at a
+# lower rung; an unconfirmed required signal caps a would-be Bullseye at
+# "Needs Verification". "Excluded" only ever comes from an exclusion rule.
+TIER_RANK = {"Excluded": 0, "Watchlist": 1, "Needs Verification": 2, "Bullseye": 3}
+_RANK_TO_TIER = {rank: tier for tier, rank in TIER_RANK.items()}
+
+
+def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
+    """Assign a CLEAR record's tier from its score, signal caps, and verification flags.
+
+    Starts from the score-based tier, lets any "yes" signal with a cap_tier pull
+    the ceiling down, then caps a would-be Bullseye at "Needs Verification" when a
+    verification_required signal is unconfirmed (not_found).
+    """
+    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Watchlist"]
+    signals = record.get("signals") or []
+
+    for sig in signals:
+        cap = sig.get("cap_tier")
+        if cap and cap in TIER_RANK and sig.get("signal_state") == "yes":
+            rank = min(rank, TIER_RANK[cap])
+
+    needs_verification = any(
+        sig.get("verification_required") and sig.get("signal_state") == "not_found"
+        for sig in signals
+    )
+    if needs_verification:
+        rank = min(rank, TIER_RANK["Needs Verification"])
+
+    return _RANK_TO_TIER[rank]
+
 
 def _specialty_words(text: str) -> set[str]:
     return set(re.findall(r'[a-z0-9]+', text.lower()))
@@ -167,9 +198,10 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
         print(f"    [X] EXCLUDED: {', '.join(triggered)}")
 
     else:
-        # FIX 1: CLEAR records are always "Bullseye" or "Watchlist" — never "Excluded".
+        # CLEAR records are tiered by score, signal caps, and verification flags.
+        # Never "Excluded" — that tier requires exclusion_status == "EXCLUDED".
         record["exclusion_status"] = "CLEAR"
         record["exclusion_reason"] = None
-        record["target_tier"] = "Bullseye" if score >= bullseye_min else "Watchlist"
+        record["target_tier"] = _assign_tier(record, score, bullseye_min)
 
     return record

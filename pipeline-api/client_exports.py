@@ -112,8 +112,9 @@ def _displayed_tier(record: dict, all_reviews: dict) -> str:
 def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
     """Return approved records sorted by score (desc).
 
-    Mirrors exports._is_approved: analyst override_tier bypasses pipeline hard
-    exclusion; without an explicit override a hard EXCLUDED record is still blocked.
+    Mirrors exports._is_approved: analyst override_tier bypasses pipeline gating;
+    without an explicit override, a hard EXCLUDED record or a "Needs Verification"
+    record is blocked (unconfirmed accounts ship only after analyst confirmation).
     """
     approved = []
     for rec in records:
@@ -123,8 +124,11 @@ def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
         displayed = _displayed_tier(rec, all_reviews).lower()
         if displayed == "excluded":
             continue
-        if not review.get("override_tier") and rec.get("exclusion_status") == "EXCLUDED":
-            continue
+        if not review.get("override_tier"):
+            if rec.get("exclusion_status") == "EXCLUDED":
+                continue
+            if rec.get("target_tier") == "Needs Verification":
+                continue
         approved.append(rec)
     approved.sort(key=lambda r: r.get("bullseye_score") or 0, reverse=True)
     return approved

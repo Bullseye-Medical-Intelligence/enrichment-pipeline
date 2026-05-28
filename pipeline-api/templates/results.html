@@ -154,6 +154,7 @@
 <div class="stats-bar">
   <div class="stat-item"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
   <div class="stat-item stat-bullseye"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
+  <div class="stat-item stat-needs-verification"><span class="stat-num">{{ stats.needs_verification }}</span><span class="stat-label">Needs Verification</span></div>
   <div class="stat-item stat-strong"><span class="stat-num">{{ stats.strong }}</span><span class="stat-label">Strong</span></div>
   <div class="stat-item stat-warm"><span class="stat-num">{{ stats.warm }}</span><span class="stat-label">Warm</span></div>
   <div class="stat-item stat-cold"><span class="stat-num">{{ stats.cold }}</span><span class="stat-label">Cold</span></div>
@@ -167,6 +168,7 @@
   <span class="filter-label">Filter:</span>
   <button class="filter-btn active" onclick="filterRecords('all', this)">All</button>
   <button class="filter-btn" onclick="filterRecords('bullseye', this)">Bullseye</button>
+  <button class="filter-btn" onclick="filterRecords('needs-verification', this)">Needs Verification</button>
   <button class="filter-btn" onclick="filterRecords('strong', this)">Strong</button>
   <button class="filter-btn" onclick="filterRecords('warm', this)">Warm</button>
   <button class="filter-btn" onclick="filterRecords('cold', this)">Cold</button>
@@ -199,7 +201,7 @@
       {% set review = record.review %}
       {% set displayed = record.displayed_tier | default("") %}
       <tr class="record-row"
-          data-tier="{{ displayed | lower }}"
+          data-tier="{{ displayed | lower | replace(' ', '-') }}"
           data-qc="{{ review.qc_status }}"
           onclick="toggleDetail('{{ rid }}')"
           style="cursor:pointer">
@@ -211,7 +213,7 @@
         <td>{{ record.specialty | default("—") }}</td>
         <td>{{ record.address_city | default("") }}{% if record.address_state %}, {{ record.address_state }}{% endif %}</td>
         <td>
-          <span class="badge badge-tier-{{ displayed | lower }}">
+          <span class="badge badge-tier-{{ displayed | lower | replace(' ', '-') }}">
             {{ displayed or "—" }}
           </span>
           {% if review.override_tier %}

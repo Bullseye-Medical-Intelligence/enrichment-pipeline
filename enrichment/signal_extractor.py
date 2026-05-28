@@ -222,6 +222,8 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "source_type": "practice_website",
             "confidence": conf,
             "positive_weight": icp_by_id[signal_id].get("positive_weight", 0),
+            "verification_required": bool(icp_by_id[signal_id].get("verification_required", False)),
+            "cap_tier": icp_by_id[signal_id].get("cap_tier", ""),
             "analyst_note": "",
         }
 
@@ -241,6 +243,8 @@ def _validate_and_clean_signals(raw_signals: list[dict],
                 "source_type": "practice_website",
                 "confidence": "low",
                 "positive_weight": icp_sig.get("positive_weight", 0),
+                "verification_required": bool(icp_sig.get("verification_required", False)),
+                "cap_tier": icp_sig.get("cap_tier", ""),
                 "analyst_note": "",
             })
 
@@ -275,11 +279,14 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     for icp_signal in icp_signals:
         sid = icp_signal["signal_id"]
         weight = weight_map.get(sid, 0)
+        not_found_weight = icp_signal.get("not_found_weight", 0)
         matched = signal_map.get(sid)
 
         if matched and matched["signal_state"] == "yes":
             fit_delta += weight  # positive weights add, negative weights subtract
             confidence_values.append(conf_score_map.get(matched["confidence"], 40))
+        elif matched and matched["signal_state"] == "not_found":
+            fit_delta += not_found_weight  # penalty for an unconfirmed signal (usually negative)
 
     # Fit signal score: 50 base + weighted delta, clamped 0-100
     fit_signal_score = max(MIN_SCORE, min(MAX_SCORE, 50 + fit_delta))

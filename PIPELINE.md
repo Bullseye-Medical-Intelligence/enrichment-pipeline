@@ -354,7 +354,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 
-**target_tier:** `"Bullseye"`, `"Watchlist"`, or `"Excluded"` only.
+**target_tier:** `"Bullseye"`, `"Needs Verification"`, `"Watchlist"`, or `"Excluded"` only. `"Needs Verification"` is a CLEAR record that scored as a candidate but has an unconfirmed `verification_required` signal (call to confirm before shipping). `"Excluded"` appears if and only if `exclusion_status == "EXCLUDED"`.
 
 **qc_status:** Always `"pending"` in pipeline output. The dashboard sets all other values. Never set approved, needs_review, or rejected in pipeline output.
 
@@ -520,6 +520,21 @@ stalled socket can never hang a run.
   ]
 }
 ```
+
+#### Optional signal tiering fields
+
+Each signal may also carry these optional fields (all default to off):
+
+- **`not_found_weight`** (number, default `0`): score delta applied when the
+  signal is `not_found`. Use a negative value when an unconfirmed signal should
+  lower the score (e.g. cash-pay visibility you expect but could not find).
+- **`verification_required`** (bool, default `false`): when this signal is
+  `not_found`, a would-be Bullseye is capped at `"Needs Verification"` so an
+  analyst confirms it before the account ships.
+- **`cap_tier`** (`"Watchlist"` or `"Needs Verification"`): when the signal is
+  `"yes"`, the record's tier is capped at this ceiling regardless of score. Use
+  for near-disqualifying signals (e.g. a confirmed hospital affiliation caps at
+  `"Watchlist"`).
 
 ---
 

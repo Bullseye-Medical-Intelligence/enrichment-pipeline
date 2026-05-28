@@ -237,6 +237,36 @@ def test_icp_path_rejects_traversal(store):
         icp_profiles.icp_profile_path("../../secret")
 
 
+def _icp_with_signal(**signal_extra):
+    base = {
+        "signal_id": "S-1", "signal_label": "x",
+        "prompt_instruction": "y", "positive_weight": 10,
+    }
+    base.update(signal_extra)
+    return {"icp_id": "t", "name": "T", "version": "v1", "signals": [base]}
+
+
+def test_icp_validation_accepts_optional_tiering_fields():
+    icp_profiles.validate_icp_profile(_icp_with_signal(
+        not_found_weight=-15, verification_required=True, cap_tier="Watchlist"
+    ))
+
+
+def test_icp_validation_rejects_non_numeric_not_found_weight():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(not_found_weight="lots"))
+
+
+def test_icp_validation_rejects_non_bool_verification_required():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(verification_required="yes"))
+
+
+def test_icp_validation_rejects_bad_cap_tier():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(cap_tier="Excluded"))
+
+
 # ---------------------------------------------------------------------------
 # Upload rejection for a missing project
 # ---------------------------------------------------------------------------

@@ -23,8 +23,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 
 from ingestion.outscraper_adapter import _normalize_state, infer_specialty
-from enrichment.signal_extractor import _validate_and_clean_signals
-from enrichment.exclusion_checker import apply_exclusions
+from enrichment.signal_extractor import _validate_and_clean_signals, _calculate_scores
+from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
 
 
@@ -220,6 +220,104 @@ class TestSignalNormalization:
         by_id = {s["signal_id"]: s for s in result}
         assert by_id["S-ICP-001"]["positive_weight"] == 15
         assert by_id["S-ICP-002"]["positive_weight"] == -20
+
+    def test_tiering_fields_carried_from_icp(self):
+        """verification_required and cap_tier flow from the ICP onto each signal."""
+        icp = [{
+            "signal_id": "S-V", "signal_label": "Cash pay visible",
+            "prompt_instruction": "?", "positive_weight": 10,
+            "verification_required": True, "cap_tier": "Watchlist",
+        }]
+        result = _validate_and_clean_signals([], icp)
+        assert result[0]["verification_required"] is True
+        assert result[0]["cap_tier"] == "Watchlist"
+
+    def test_tiering_fields_default_off_when_absent(self):
+        """Signals without the optional fields default to off / empty."""
+        result = _validate_and_clean_signals([], SAMPLE_ICP_SIGNALS)
+        assert result[0]["verification_required"] is False
+        assert result[0]["cap_tier"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Scoring — not_found_weight penalty
+# ---------------------------------------------------------------------------
+
+class TestScoring:
+
+    def test_not_found_weight_penalizes_unconfirmed_signal(self):
+        icp = [{"signal_id": "S-1", "signal_label": "Cash pay",
+                "prompt_instruction": "?", "positive_weight": 10,
+                "not_found_weight": -15}]
+        signals = [{"signal_id": "S-1", "signal_state": "not_found", "confidence": "low"}]
+        scores = _calculate_scores(signals, icp)
+        # base 50 + (-15) = 35
+        assert scores["fit_signal_score"] == 35
+
+    def test_not_found_weight_defaults_to_zero(self):
+        icp = [{"signal_id": "S-1", "signal_label": "Cash pay",
+                "prompt_instruction": "?", "positive_weight": 10}]
+        signals = [{"signal_id": "S-1", "signal_state": "not_found", "confidence": "low"}]
+        scores = _calculate_scores(signals, icp)
+        assert scores["fit_signal_score"] == 50  # no penalty configured
+
+
+# ---------------------------------------------------------------------------
+# Tier assignment — verification + cap_tier
+# ---------------------------------------------------------------------------
+
+class TestTierAssignment:
+
+    def _record_with_signals(self, signals):
+        rec = _clear_record(score=90)
+        rec["signals"] = signals
+        return rec
+
+    def test_high_score_no_flags_is_bullseye(self):
+        assert _assign_tier(self._record_with_signals([]), 90, 75) == "Bullseye"
+
+    def test_low_score_no_flags_is_watchlist(self):
+        assert _assign_tier(self._record_with_signals([]), 50, 75) == "Watchlist"
+
+    def test_unconfirmed_required_signal_caps_bullseye_at_needs_verification(self):
+        signals = [{"signal_id": "S-1", "signal_state": "not_found",
+                    "verification_required": True, "cap_tier": ""}]
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Needs Verification"
+
+    def test_confirmed_required_signal_does_not_cap(self):
+        signals = [{"signal_id": "S-1", "signal_state": "yes",
+                    "verification_required": True, "cap_tier": ""}]
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Bullseye"
+
+    def test_cap_tier_yes_caps_at_watchlist(self):
+        signals = [{"signal_id": "S-hosp", "signal_state": "yes",
+                    "verification_required": False, "cap_tier": "Watchlist"}]
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Watchlist"
+
+    def test_cap_tier_beats_verification(self):
+        """A hospital-affiliation Watchlist cap wins over a Needs Verification flag."""
+        signals = [
+            {"signal_id": "S-hosp", "signal_state": "yes",
+             "verification_required": False, "cap_tier": "Watchlist"},
+            {"signal_id": "S-cash", "signal_state": "not_found",
+             "verification_required": True, "cap_tier": ""},
+        ]
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Watchlist"
+
+    def test_verification_does_not_lift_watchlist(self):
+        """A not_found required signal never raises a low-score Watchlist up a rung."""
+        signals = [{"signal_id": "S-1", "signal_state": "not_found",
+                    "verification_required": True, "cap_tier": ""}]
+        assert _assign_tier(self._record_with_signals(signals), 50, 75) == "Watchlist"
+
+    def test_apply_exclusions_sets_needs_verification_tier(self):
+        """End to end: a CLEAR record with an unconfirmed required signal is tiered NV."""
+        rec = _clear_record(score=90, specialty="OBGYN")
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "not_found",
+                           "verification_required": True, "cap_tier": ""}]
+        result = apply_exclusions(rec, BASE_RUN_CONFIG)
+        assert result["exclusion_status"] == "CLEAR"
+        assert result["target_tier"] == "Needs Verification"
 
 
 # ---------------------------------------------------------------------------

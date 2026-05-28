@@ -881,6 +881,7 @@ def _calculate_stats(records: list[dict]) -> dict:
     stats = {
         "total": len(records),
         "bullseye": 0,
+        "needs_verification": 0,
         "strong": 0,
         "warm": 0,
         "cold": 0,
@@ -891,7 +892,7 @@ def _calculate_stats(records: list[dict]) -> dict:
         "rejected": 0,
     }
     for r in records:
-        tier = (r.get("displayed_tier") or "").lower()
+        tier = (r.get("displayed_tier") or "").lower().replace(" ", "_")
         if tier in stats:
             stats[tier] += 1
         qc = (r.get("review") or {}).get("qc_status", "pending")

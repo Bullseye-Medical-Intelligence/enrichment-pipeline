@@ -342,6 +342,9 @@ def _read_completion_counts(run_id: str) -> dict:
             counts["bullseye_count"] = sum(
                 1 for r in records if r.get("target_tier") == "Bullseye"
             )
+            counts["needs_verification_count"] = sum(
+                1 for r in records if r.get("target_tier") == "Needs Verification"
+            )
             counts["watchlist_count"] = sum(
                 1 for r in records if r.get("target_tier") == "Watchlist"
             )
