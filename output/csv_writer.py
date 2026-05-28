@@ -99,5 +99,5 @@ def write_csv(records: list[dict], output_dir: str = "./output",
     atomic_write(output_path, _write, newline="")
 
     size_kb = output_path.stat().st_size / 1024
-    print(f"[csv_writer] Wrote {len(records)} records → {output_path} ({size_kb:.1f} KB)")
+    print(f"[csv_writer] Wrote {len(records)} records -> {output_path} ({size_kb:.1f} KB)")
     return str(output_path.resolve())

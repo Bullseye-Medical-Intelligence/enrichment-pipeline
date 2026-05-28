@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 pipeline.py
-Bullseye Enrichment Pipeline — Main Entry Point
+Bullseye Enrichment Pipeline - Main Entry Point
 ================================================
 Orchestrates all 8 pipeline steps per PIPELINE.md spec.
 
@@ -12,14 +12,14 @@ Usage:
     python pipeline.py --input data/export.csv --source outscraper --limit 10
 
 Steps:
-    1. INGEST       — Load CSV, normalize to canonical schema, dedup
-    2. URL VALIDATE — HEAD requests, reachability check
-    3. WEB EXTRACT  — requests + BeautifulSoup page text extraction
-    4. SIGNAL EXTRACT (Claude) — LLM signal extraction, scoring, sales angles
-    5. VERIFICATION (GPT) — Bullseye-tier records only
-    6. EXCLUSION CHECK — Apply hard + configurable exclusion rules
-    7. SCORING VALIDATION — Clamp scores, validate fields
-    8. OUTPUT GENERATION — Write JSON, CSV, run_log.json
+    1. INGEST       - Load CSV, normalize to canonical schema, dedup
+    2. URL VALIDATE - HEAD requests, reachability check
+    3. WEB EXTRACT  - requests + BeautifulSoup page text extraction
+    4. SIGNAL EXTRACT (Claude) - LLM signal extraction, scoring, sales angles
+    5. VERIFICATION (GPT) - Bullseye-tier records only
+    6. EXCLUSION CHECK - Apply hard + configurable exclusion rules
+    7. SCORING VALIDATION - Clamp scores, validate fields
+    8. OUTPUT GENERATION - Write JSON, CSV, run_log.json
 """
 
 import argparse
@@ -179,9 +179,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 1: INGEST
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 1: INGEST")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     if source_type == "outscraper":
         raw_records = load_outscraper_csv(input_file)
@@ -203,28 +203,28 @@ def run_pipeline(input_file: str, source_type: str,
     if dupes_removed > 0:
         msg = f"Removed {dupes_removed} duplicate records"
         all_warnings.append(msg)
-        print(f"  ⚠ {msg}")
+        print(f"  [WARN] {msg}")
 
     # Validate required fields
     records, invalid = _validate_required_fields(records)
     all_errors.extend(invalid)
     if invalid:
-        print(f"  ⚠ {len(invalid)} records dropped: missing required fields")
+        print(f"  [WARN] {len(invalid)} records dropped: missing required fields")
 
     # Apply limit for testing
     if limit and limit > 0:
         records = records[:limit]
         print(f"  Limit applied: processing {len(records)} of {records_input_total} records")
 
-    print(f"\n  ✓ {len(records)} records ready for enrichment")
+    print(f"\n  [OK] {len(records)} records ready for enrichment")
 
     if dry_run:
-        print(f"\n{'─'*40}")
-        print(f"DRY RUN MODE — Skipping Steps 2–8 (no LLM calls, no HTTP requests)")
-        print(f"{'─'*40}")
+        print(f"\n{'-'*40}")
+        print(f"DRY RUN MODE - Skipping Steps 2-8 (no LLM calls, no HTTP requests)")
+        print(f"{'-'*40}")
         print(f"\n  Would process {len(records)} records.")
         for r in records[:5]:
-            print(f"  → {r['id']}: {r['practice_name']} ({r['address_city']}, {r['address_state']})")
+            print(f"  -> {r['id']}: {r['practice_name']} ({r['address_city']}, {r['address_state']})")
         if len(records) > 5:
             print(f"  ... and {len(records) - 5} more")
         elapsed = time.time() - start_time
@@ -234,9 +234,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 2: URL VALIDATION
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 2: URL VALIDATION")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     records = batch_validate_urls(records, timeout=timeout, retries=retries,
                                    max_workers=io_concurrency)
@@ -247,9 +247,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 3: WEB EXTRACTION
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 3: WEB EXTRACTION")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     records = batch_extract(records, timeout=timeout, retries=retries,
                              max_pages=max_pages, keywords=subpage_keywords,
@@ -261,9 +261,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 4: SIGNAL EXTRACTION (Claude)
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 4: SIGNAL EXTRACTION (Claude)")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     for i, record in enumerate(records):
         print(f"\n  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')}")
@@ -279,7 +279,7 @@ def run_pipeline(input_file: str, source_type: str,
         except Exception as e:
             # Catch-all: never crash the run on a single record
             error_msg = str(e)[:200]
-            print(f"    ✗ Unhandled error in signal extraction: {error_msg}")
+            print(f"    [FAIL] Unhandled error in signal extraction: {error_msg}")
             record.update({
                 "signals": [],
                 "bullseye_score": 0,
@@ -308,16 +308,16 @@ def run_pipeline(input_file: str, source_type: str,
         time.sleep(0.5)
 
     # -------------------------------------------------------------------------
-    # STEP 5: BULLSEYE VERIFICATION (GPT — conditional)
+    # STEP 5: BULLSEYE VERIFICATION (GPT - conditional)
     # -------------------------------------------------------------------------
     bullseye_records = [
         r for r in records if r.get("bullseye_score", 0) >= bullseye_min
     ]
 
     if bullseye_records:
-        print(f"\n{'─'*40}")
+        print(f"\n{'-'*40}")
         print(f"STEP 5: BULLSEYE VERIFICATION (GPT)")
-        print(f"{'─'*40}")
+        print(f"{'-'*40}")
         print(f"  {len(bullseye_records)} records qualify for verification")
 
         for i, record in enumerate(bullseye_records):
@@ -328,7 +328,7 @@ def run_pipeline(input_file: str, source_type: str,
                 record = verify_bullseye_record(record, context_text)
             except Exception as e:
                 error_msg = str(e)[:200]
-                print(f"    ✗ Verification error: {error_msg}")
+                print(f"    [FAIL] Verification error: {error_msg}")
                 all_errors.append({
                     "record_id": record.get("id", "unknown"),
                     "step": "verification",
@@ -346,21 +346,21 @@ def run_pipeline(input_file: str, source_type: str,
                 f"and are flagged needs_review"
             )
     else:
-        print(f"\n  STEP 5: SKIPPED — no records scored >= {bullseye_min}")
+        print(f"\n  STEP 5: SKIPPED - no records scored >= {bullseye_min}")
 
     # -------------------------------------------------------------------------
     # STEP 6: EXCLUSION CHECK
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 6: EXCLUSION CHECK")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     for record in records:
         try:
             record = apply_exclusions(record, run_config)
         except Exception as e:
             error_msg = str(e)[:200]
-            print(f"  ✗ Exclusion check error for {record.get('id', '?')}: {error_msg}")
+            print(f"  [FAIL] Exclusion check error for {record.get('id', '?')}: {error_msg}")
             record["exclusion_status"] = "CLEAR"
             record["exclusion_reason"] = None
             all_errors.append({
@@ -376,9 +376,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 7: SCORING VALIDATION
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 7: SCORING VALIDATION")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     for record in records:
         record = validate_and_finalize(record)
@@ -399,9 +399,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 8: OUTPUT GENERATION
     # -------------------------------------------------------------------------
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"STEP 8: OUTPUT GENERATION")
-    print(f"{'─'*40}")
+    print(f"{'-'*40}")
 
     json_path = write_json(output_records, output_dir=output_dir, run_id=run_id)
     csv_path = write_csv(output_records, output_dir=output_dir,
@@ -457,7 +457,7 @@ def run_pipeline(input_file: str, source_type: str,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Bullseye Enrichment Pipeline — convert raw prospect lists to intelligence",
+        description="Bullseye Enrichment Pipeline - convert raw prospect lists to intelligence",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -496,7 +496,7 @@ Examples:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Parse and normalize only — no LLM calls, no HTTP requests",
+        help="Parse and normalize only - no LLM calls, no HTTP requests",
     )
     parser.add_argument(
         "--limit",

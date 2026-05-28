@@ -152,7 +152,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
         if score > EXCLUDED_SCORE_CAP:
             record["bullseye_score"] = EXCLUDED_SCORE_CAP
 
-        print(f"    ⊘ EXCLUDED: {', '.join(triggered)}")
+        print(f"    [X] EXCLUDED: {', '.join(triggered)}")
 
     else:
         # FIX 1: CLEAR records are always "Bullseye" or "Watchlist" — never "Excluded".

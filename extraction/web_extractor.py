@@ -310,7 +310,7 @@ def batch_extract(records: list[dict], timeout: int = 15,
                 record["_context_text"] = ""
                 record["_pages_crawled"] = []
                 record["source_confidence"] = record.get("source_confidence") or "limited"
-                print(f"    ✗ Extraction error: {record.get('practice_name', 'Unknown')}: {error}")
+                print(f"    [FAIL] Extraction error: {record.get('practice_name', 'Unknown')}: {error}")
                 continue
 
             record["_context_text"] = result.context_text
@@ -327,10 +327,10 @@ def batch_extract(records: list[dict], timeout: int = 15,
                         record["source_confidence"] = "complete"
                     else:
                         record["source_confidence"] = "partial"
-                print(f"    ✓ {record.get('practice_name', 'Unknown')}: "
+                print(f"    [OK] {record.get('practice_name', 'Unknown')}: "
                       f"{len(result.context_text)} chars from {len(result.pages_crawled)} pages")
             else:
                 record["source_confidence"] = record.get("source_confidence") or "limited"
-                print(f"    ✗ Extraction failed: {result.error}")
+                print(f"    [FAIL] Extraction failed: {result.error}")
 
     return records

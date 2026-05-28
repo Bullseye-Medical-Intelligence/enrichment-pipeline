@@ -1,7 +1,7 @@
 """
 verifier.py
 GPT-based verification for Bullseye-tier records (bullseye_score >= 75).
-Second-opinion quality gate — not a vote, not an override.
+Second-opinion quality gate - not a vote, not an override.
 """
 
 import json
@@ -164,7 +164,7 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
     try:
         client = _get_client()
     except EnvironmentError as e:
-        # No OpenAI key — log and skip verification
+        # No OpenAI key - log and skip verification
         note = f"[Verification skipped: {e}]"
         record["internal_notes"] = f"{record.get('internal_notes', '')} {note}".strip()
         print(f"    Verification skipped: {e}")
@@ -183,11 +183,11 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
         overall_notes = verification.get("overall_notes", "")
 
         if verification_result == "agree" and verifier_scores_bullseye:
-            # Models agree — enrichment_status unchanged (remains "complete")
+            # Models agree - enrichment_status unchanged (remains "complete")
             note = f"[GPT verification: AGREE. {overall_notes}]".strip()
-            print(f"    ✓ Verification: AGREE")
+            print(f"    [OK] Verification: AGREE")
         else:
-            # Disagreement — flag for human review
+            # Disagreement - flag for human review
             record["enrichment_status"] = "needs_review"
             disagreement_detail = "; ".join(
                 f"{d.get('signal_id', '?')}: {d.get('verifier_note', '')}"
@@ -200,7 +200,7 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
                 f"Disagreements: {disagreement_detail}. "
                 f"Notes: {overall_notes}]"
             ).strip()
-            print(f"    ✗ Verification: DISAGREE — flagged needs_review")
+            print(f"    [FAIL] Verification: DISAGREE - flagged needs_review")
 
         # Append to internal_notes
         existing = record.get("internal_notes") or ""
@@ -211,13 +211,13 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
         existing = record.get("internal_notes") or ""
         record["internal_notes"] = f"{existing} {note}".strip()
         record["enrichment_status"] = "needs_review"
-        print(f"    ✗ GPT response parse failed: {e}")
+        print(f"    [FAIL] GPT response parse failed: {e}")
 
     except RuntimeError as e:
         note = f"[GPT verification API error: {str(e)[:150]}]"
         existing = record.get("internal_notes") or ""
         record["internal_notes"] = f"{existing} {note}".strip()
-        print(f"    ✗ GPT API failed: {e}")
-        # Don't change enrichment_status on API failure — not a disagreement
+        print(f"    [FAIL] GPT API failed: {e}")
+        # Don't change enrichment_status on API failure - not a disagreement
 
     return record

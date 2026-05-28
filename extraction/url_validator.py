@@ -188,7 +188,7 @@ def batch_validate_urls(records: list[dict], timeout: int = 15,
                 record["_url_error"] = error or "Validation error"
                 record["source_confidence"] = "limited"
                 failed += 1
-                print(f"    ✗ FAILED: {record.get('website_url', '')}: {error}")
+                print(f"    [FAIL] FAILED: {record.get('website_url', '')}: {error}")
                 continue
 
             record["_url_valid"] = result.is_valid
@@ -200,7 +200,7 @@ def batch_validate_urls(records: list[dict], timeout: int = 15,
             else:
                 record["source_confidence"] = "limited"
                 failed += 1
-                print(f"    ✗ FAILED: {result.error}")
+                print(f"    [FAIL] FAILED: {result.error}")
 
     print(f"[url_validator] {validated} valid, {failed} failed, {skipped} skipped (no URL)")
     return records
