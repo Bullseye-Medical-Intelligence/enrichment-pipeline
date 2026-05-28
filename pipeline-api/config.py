@@ -96,7 +96,7 @@ DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
 VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})
 
 OUTSCRAPER_REQUIRED_COLUMNS: frozenset[str] = frozenset(
-    {"name", "full_address", "phone", "site", "type"}
+    {"name", "phone", "website", "type"}
 )
 MANUAL_REQUIRED_COLUMNS: frozenset[str] = frozenset({"practice_name"})
 
