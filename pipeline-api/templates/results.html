@@ -66,10 +66,42 @@
 </div>
 {% endif %}
 
-{% if status.status == "running" %}
-<div class="alert alert-info" id="running-alert">
-  Enrichment is running. This page will refresh automatically.
-  <script>setTimeout(function(){ location.reload(); }, 8000);</script>
+{% if status.status in ("running", "pending") %}
+<div class="run-progress-card">
+  <div class="run-progress-header">
+    <span class="spinner"></span>
+    <strong>Enrichment in progress</strong>
+    <span class="run-progress-elapsed" id="elapsed-display"></span>
+  </div>
+  {% if progress %}
+  <div class="run-progress-step">Step {{ progress.step_num }}/{{ progress.step_total }}: {{ progress.step_name }}</div>
+  <div class="run-progress-bar-wrap">
+    {% if progress.records_total > 0 %}
+    <div class="run-progress-bar" style="width:{{ [(progress.records_done / progress.records_total * 100)|int, 100]|min }}%"></div>
+    {% else %}
+    <div class="run-progress-bar run-progress-indeterminate"></div>
+    {% endif %}
+  </div>
+  {% if progress.records_total > 0 %}
+  <div class="run-progress-detail">{{ progress.records_done }} / {{ progress.records_total }} records</div>
+  {% endif %}
+  {% else %}
+  <div class="run-progress-step">Starting up...</div>
+  <div class="run-progress-bar-wrap"><div class="run-progress-bar run-progress-indeterminate"></div></div>
+  {% endif %}
+  <script>
+    (function(){
+      var created = new Date("{{ status.created_at }}");
+      function tick(){
+        var s = Math.floor((Date.now() - created)/1000);
+        var m = Math.floor(s/60); s = s%60;
+        document.getElementById("elapsed-display").textContent =
+          (m > 0 ? m+"m " : "") + s + "s elapsed";
+      }
+      tick(); setInterval(tick, 1000);
+      setTimeout(function(){ location.reload(); }, 5000);
+    })();
+  </script>
 </div>
 {% elif status.status == "failed" %}
 <div class="alert alert-error">

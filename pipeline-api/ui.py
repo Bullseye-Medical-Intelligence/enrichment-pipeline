@@ -262,6 +262,7 @@ async def results_page(
 
     stats = _calculate_stats(merged_records)
     project_context = _build_project_context(run_id)
+    progress = runs.read_progress(run_id) if status.status in ("running", "pending") else None
 
     return _render(
         "results.html",
@@ -271,6 +272,7 @@ async def results_page(
         records=merged_records,
         stats=stats,
         project_context=project_context,
+        progress=progress,
     )
 
 
@@ -301,10 +303,13 @@ async def download_csv(run_id: str, username: str = Depends(auth.require_session
 @router.get("/runs/{run_id}/export/approved")
 async def export_approved(run_id: str, username: str = Depends(auth.require_session)):
     """Download a CSV of approved, non-excluded records with analyst review overlay."""
-    run_directory = runs.run_dir(run_id)
-    if not run_directory.exists():
+    status = runs.get_run(run_id)
+    if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-    buf = exports.build_approved_csv(run_id, run_directory)
+    if status.status != "complete":
+        raise HTTPException(status_code=425,
+            detail=f"Run is not complete (status: {status.status}). Wait for it to finish.")
+    buf = exports.build_approved_csv(run_id, runs.run_dir(run_id))
     return StreamingResponse(
         buf,
         media_type="text/csv",
@@ -315,10 +320,13 @@ async def export_approved(run_id: str, username: str = Depends(auth.require_sess
 @router.get("/runs/{run_id}/export/excluded")
 async def export_excluded(run_id: str, username: str = Depends(auth.require_session)):
     """Download a CSV of all records whose effective tier is Excluded."""
-    run_directory = runs.run_dir(run_id)
-    if not run_directory.exists():
+    status = runs.get_run(run_id)
+    if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-    buf = exports.build_excluded_csv(run_id, run_directory)
+    if status.status != "complete":
+        raise HTTPException(status_code=425,
+            detail=f"Run is not complete (status: {status.status}). Wait for it to finish.")
+    buf = exports.build_excluded_csv(run_id, runs.run_dir(run_id))
     return StreamingResponse(
         buf,
         media_type="text/csv",

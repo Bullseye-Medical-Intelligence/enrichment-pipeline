@@ -7,6 +7,7 @@ asynchronously, updating status.json when the process exits.
 import asyncio
 import json
 import logging
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,11 +66,13 @@ def spawn_pipeline(
     ]
     logger.info("Spawning pipeline for run %s: %s", run_id, " ".join(cmd))
 
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     process = subprocess.Popen(
         cmd,
         cwd=str(PIPELINE_REPO_PATH),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     return process
 
@@ -87,14 +90,24 @@ async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
         _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
 
         if process.returncode == 0:
-            counts = _read_completion_counts(run_id)
-            runs.update_run_status(
-                run_id,
-                status="complete",
-                completed_at=datetime.now(timezone.utc).isoformat(),
-                **counts,
-            )
-            logger.info("Run %s completed successfully", run_id)
+            directory = runs.run_dir(run_id)
+            if not (directory / "enriched_targets.json").exists():
+                runs.update_run_status(
+                    run_id,
+                    status="failed",
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                    error_summary="Pipeline exited 0 but enriched_targets.json was not written.",
+                )
+                logger.error("Run %s: exit 0 but enriched_targets.json missing", run_id)
+            else:
+                counts = _read_completion_counts(run_id)
+                runs.update_run_status(
+                    run_id,
+                    status="complete",
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                    **counts,
+                )
+                logger.info("Run %s completed successfully", run_id)
         else:
             error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
             runs.update_run_status(

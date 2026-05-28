@@ -96,6 +96,27 @@ def _deduplicate_records(records: list[dict]) -> tuple[list[dict], int]:
     return deduped, dupes
 
 
+def _write_progress(output_dir: str, step_num: int, step_name: str,
+                     records_done: int = 0, records_total: int = 0) -> None:
+    """Write current step to progress.json so the UI can poll it."""
+    path = Path(output_dir) / "progress.json"
+    data = {
+        "step_num": step_num,
+        "step_name": step_name,
+        "step_total": 8,
+        "records_done": records_done,
+        "records_total": records_total,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        tmp = str(path) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass  # Non-fatal: progress display is best-effort
+
+
 def _validate_required_fields(records: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Validate that records have minimum required fields.
@@ -179,6 +200,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 1: INGEST
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 1, "Ingesting records")
     print(f"\n{'-'*40}")
     print(f"STEP 1: INGEST")
     print(f"{'-'*40}")
@@ -234,6 +256,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 2: URL VALIDATION
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 2, "URL validation", 0, len(records))
     print(f"\n{'-'*40}")
     print(f"STEP 2: URL VALIDATION")
     print(f"{'-'*40}")
@@ -247,6 +270,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 3: WEB EXTRACTION
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 3, "Web extraction", 0, len(records))
     print(f"\n{'-'*40}")
     print(f"STEP 3: WEB EXTRACTION")
     print(f"{'-'*40}")
@@ -261,11 +285,13 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 4: SIGNAL EXTRACTION (Claude)
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 4, "Signal extraction (Claude)", 0, len(records))
     print(f"\n{'-'*40}")
     print(f"STEP 4: SIGNAL EXTRACTION (Claude)")
     print(f"{'-'*40}")
 
     for i, record in enumerate(records):
+        _write_progress(output_dir, 4, "Signal extraction (Claude)", i, len(records))
         print(f"\n  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')}")
         context_text = record.get("_context_text", "")
         try:
@@ -315,6 +341,7 @@ def run_pipeline(input_file: str, source_type: str,
     ]
 
     if bullseye_records:
+        _write_progress(output_dir, 5, "Bullseye verification (GPT)", 0, len(bullseye_records))
         print(f"\n{'-'*40}")
         print(f"STEP 5: BULLSEYE VERIFICATION (GPT)")
         print(f"{'-'*40}")
@@ -351,6 +378,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 6: EXCLUSION CHECK
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 6, "Exclusion check", 0, len(records))
     print(f"\n{'-'*40}")
     print(f"STEP 6: EXCLUSION CHECK")
     print(f"{'-'*40}")
@@ -376,6 +404,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 7: SCORING VALIDATION
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 7, "Scoring validation", 0, len(records))
     print(f"\n{'-'*40}")
     print(f"STEP 7: SCORING VALIDATION")
     print(f"{'-'*40}")
@@ -399,6 +428,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 8: OUTPUT GENERATION
     # -------------------------------------------------------------------------
+    _write_progress(output_dir, 8, "Writing output files", 0, len(records))
     print(f"\n{'-'*40}")
     print(f"STEP 8: OUTPUT GENERATION")
     print(f"{'-'*40}")

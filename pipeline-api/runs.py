@@ -196,6 +196,18 @@ def generate_run_id() -> str:
     return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
 
 
+def read_progress(run_id: str) -> Optional[dict]:
+    """Read progress.json from a run directory, or None if absent/unreadable."""
+    try:
+        path = run_dir(run_id) / "progress.json"
+        if not path.exists():
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        return None
+
+
 def _write_status(run_id: str, status: RunStatus) -> None:
     """Write status.json to disk, overwriting any existing file."""
     status_path = run_dir(run_id) / STATUS_FILENAME

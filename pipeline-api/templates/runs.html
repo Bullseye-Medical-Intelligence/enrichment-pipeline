@@ -2,6 +2,9 @@
 {% block title %}All Runs — BEMI Pipeline{% endblock %}
 
 {% block content %}
+{% if runs and runs | selectattr("status", "in", ["running", "pending"]) | list %}
+<script>setTimeout(function(){ location.reload(); }, 5000);</script>
+{% endif %}
 <div class="page-header">
   <h2>Enrichment Runs</h2>
   <a href="/upload" class="btn btn-primary">+ New Run</a>
