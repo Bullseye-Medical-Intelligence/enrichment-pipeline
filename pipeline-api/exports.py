@@ -29,7 +29,7 @@ _REVIEW_COLUMNS = [
 ]
 
 
-def _is_approved(rec: dict, rev: dict) -> bool:
+def is_approved(rec: dict, rev: dict) -> bool:
     """Return True when a record passes the approved-export gate.
 
     Gate rules (all must hold):
@@ -41,8 +41,7 @@ def _is_approved(rec: dict, rev: dict) -> bool:
     """
     if rev.get("qc_status") != "approved":
         return False
-    displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
-    if displayed == "excluded":
+    if record_adapter.displayed_tier(rec, rev).lower() == "excluded":
         return False
     if not rev.get("override_tier"):
         if rec.get("exclusion_status") == "EXCLUDED":
@@ -52,67 +51,65 @@ def _is_approved(rec: dict, rev: dict) -> bool:
     return True
 
 
-def build_approved_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+def build_approved_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
     """Return a BytesIO CSV of approved records (all tiers)."""
-    return _build_csv(run_id, run_directory, _is_approved)
+    return _build_csv(run_id, run_directory, is_approved, records, all_reviews)
 
 
-def build_bullseye_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+def build_bullseye_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
     """Return a BytesIO CSV of approved Bullseye-tier records only."""
     def _bullseye(rec: dict, rev: dict) -> bool:
-        if not _is_approved(rec, rev):
-            return False
-        displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
-        return displayed == "bullseye"
+        return is_approved(rec, rev) and record_adapter.displayed_tier(rec, rev).lower() == "bullseye"
 
-    return _build_csv(run_id, run_directory, _bullseye)
+    return _build_csv(run_id, run_directory, _bullseye, records, all_reviews)
 
 
-def build_warm_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+def build_warm_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
     """Return a BytesIO CSV of approved Strong/Warm-tier records."""
     _WARM_TIERS = {"strong", "warm"}
 
     def _warm(rec: dict, rev: dict) -> bool:
-        if not _is_approved(rec, rev):
-            return False
-        displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
-        return displayed in _WARM_TIERS
+        return is_approved(rec, rev) and record_adapter.displayed_tier(rec, rev).lower() in _WARM_TIERS
 
-    return _build_csv(run_id, run_directory, _warm)
+    return _build_csv(run_id, run_directory, _warm, records, all_reviews)
 
 
-def build_excluded_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+def build_excluded_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
     """Return a BytesIO CSV of records whose effective tier is Excluded."""
     def _excluded(rec: dict, rev: dict) -> bool:
-        displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
-        return displayed == "excluded"
+        return record_adapter.displayed_tier(rec, rev).lower() == "excluded"
 
-    return _build_csv(run_id, run_directory, _excluded)
+    return _build_csv(run_id, run_directory, _excluded, records, all_reviews)
 
 
 def _build_csv(
     run_id: str,
     run_directory: Path,
     filter_fn: Callable[[dict, dict], bool],
+    records: list[dict] | None = None,
+    all_reviews: dict | None = None,
 ) -> io.BytesIO:
     """Load, merge, filter records and return a UTF-8 encoded BytesIO CSV.
 
     filter_fn receives (record, review) and returns True to include the row.
+    Callers that already hold the records/reviews (e.g. the client-package
+    builder) may pass them in to avoid re-reading the same files.
     """
-    results_path = run_directory / "enriched_targets.json"
-    if not results_path.exists():
+    if records is None:
+        results_path = run_directory / "enriched_targets.json"
+        if not results_path.exists():
+            return io.BytesIO()
+        with open(results_path, "r", encoding="utf-8") as f:
+            records = record_adapter.normalize_records_payload(json.load(f))
+
+    if not records:
         return io.BytesIO()
 
-    with open(results_path, "r", encoding="utf-8") as f:
-        raw_records = record_adapter.normalize_records_payload(json.load(f))
-
-    if not raw_records:
-        return io.BytesIO()
-
-    all_reviews = reviews.get_reviews(run_id, run_directory)
+    if all_reviews is None:
+        all_reviews = reviews.get_reviews(run_id, run_directory)
 
     # Derive column order from first record (scalar fields only) then append review overlay
-    first = raw_records[0]
+    first = records[0]
     record_columns = [k for k, v in first.items() if not isinstance(v, (dict, list))]
     all_columns = record_columns + _REVIEW_COLUMNS
 
@@ -120,17 +117,16 @@ def _build_csv(
     writer = csv.DictWriter(buf, fieldnames=all_columns, extrasaction="ignore")
     writer.writeheader()
 
-    for rec in raw_records:
+    for rec in records:
         rid = record_adapter.get_record_id(rec)
         review = all_reviews.get(rid, reviews.default_review())
 
         if not filter_fn(rec, review):
             continue
 
-        displayed_tier = review.get("override_tier") or rec.get("target_tier", "")
         row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in rec.items()}
         row.update({
-            "displayed_tier": displayed_tier,
+            "displayed_tier": record_adapter.displayed_tier(rec, review),
             "qc_status": review.get("qc_status", "pending"),
             "analyst_note": review.get("analyst_note") or "",
             "override_tier": review.get("override_tier") or "",

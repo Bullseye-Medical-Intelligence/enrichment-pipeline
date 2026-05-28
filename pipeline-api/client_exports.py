@@ -56,11 +56,16 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     icp = icp_profiles.read_snapshot(run_directory) or {}
 
     approved = _approved_records(records, all_reviews)
-    excluded_count = sum(1 for r in records if _displayed_tier(r, all_reviews).lower() == "excluded")
+    excluded_count = sum(
+        1 for r in records
+        if record_adapter.effective_tier(r, all_reviews).lower() == "excluded"
+    )
 
-    bullseye_csv = exports.build_bullseye_csv(run_id, run_directory).getvalue()
-    warm_csv = exports.build_warm_csv(run_id, run_directory).getvalue()
-    excluded_csv = exports.build_excluded_csv(run_id, run_directory).getvalue()
+    # Reuse the records/reviews already loaded above — the CSV builders accept
+    # them so the same files are not re-read three more times.
+    bullseye_csv = exports.build_bullseye_csv(run_id, run_directory, records, all_reviews).getvalue()
+    warm_csv = exports.build_warm_csv(run_id, run_directory, records, all_reviews).getvalue()
+    excluded_csv = exports.build_excluded_csv(run_id, run_directory, records, all_reviews).getvalue()
 
     pdf_bytes = _build_pdf(
         run_id, status, project, icp,
@@ -103,33 +108,12 @@ def _load_records(run_directory: Path) -> list[dict]:
         return record_adapter.normalize_records_payload(json.load(f))
 
 
-def _displayed_tier(record: dict, all_reviews: dict) -> str:
-    """Return the effective tier: analyst override if set, else pipeline tier."""
-    review = all_reviews.get(record_adapter.get_record_id(record), {})
-    return review.get("override_tier") or record.get("target_tier", "")
-
-
 def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
-    """Return approved records sorted by score (desc).
-
-    Mirrors exports._is_approved: analyst override_tier bypasses pipeline gating;
-    without an explicit override, a hard EXCLUDED record or a "Needs Verification"
-    record is blocked (unconfirmed accounts ship only after analyst confirmation).
-    """
-    approved = []
-    for rec in records:
-        review = all_reviews.get(record_adapter.get_record_id(rec), {})
-        if review.get("qc_status") != "approved":
-            continue
-        displayed = _displayed_tier(rec, all_reviews).lower()
-        if displayed == "excluded":
-            continue
-        if not review.get("override_tier"):
-            if rec.get("exclusion_status") == "EXCLUDED":
-                continue
-            if rec.get("target_tier") == "Needs Verification":
-                continue
-        approved.append(rec)
+    """Return approved records (per exports.is_approved) sorted by score (desc)."""
+    approved = [
+        rec for rec in records
+        if exports.is_approved(rec, all_reviews.get(record_adapter.get_record_id(rec), {}))
+    ]
     approved.sort(key=lambda r: r.get("bullseye_score") or 0, reverse=True)
     return approved
 
@@ -178,8 +162,6 @@ def _run_metadata(
 ) -> dict:
     """Build the machine-readable run_metadata.json payload."""
     geography = status.target_geography or project.get("target_geography") or []
-    if isinstance(geography, list):
-        geography = geography  # keep as list in JSON
     return {
         "run_id": run_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),

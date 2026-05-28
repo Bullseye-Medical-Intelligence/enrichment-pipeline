@@ -23,7 +23,6 @@ Steps:
 """
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -42,6 +41,7 @@ from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
 from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import batch_extract
+from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE
 from enrichment.signal_extractor import extract_signals
 from enrichment.verifier import verify_bullseye_record
 from enrichment.exclusion_checker import apply_exclusions
@@ -214,7 +214,7 @@ def run_pipeline(input_file: str, source_type: str,
     timeout = run_config.get("request_timeout_seconds", 15)
     retries = run_config.get("request_retries", 3)
     max_pages = run_config.get("max_pages_per_practice", 5)
-    bullseye_min = run_config.get("bullseye_min_score", 75)
+    bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
     subpage_keywords = run_config.get("subpage_keywords") or None
     io_concurrency = int(run_config.get("io_concurrency", 6))
 
@@ -591,7 +591,7 @@ Examples:
             print(f"ERROR: Config file not found: {cfg_path}", file=sys.stderr)
             sys.exit(1)
 
-    result = run_pipeline(
+    run_pipeline(
         input_file=args.input,
         source_type=args.source,
         output_dir=args.output_dir,

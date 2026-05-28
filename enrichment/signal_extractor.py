@@ -3,12 +3,8 @@ signal_extractor.py
 Calls the Claude API for signal extraction, scoring, and sales angle generation.
 This is the primary LLM enrichment step — every record passes through here.
 
-CHANGE (FIX 3): _validate_and_clean_signals() now normalizes the LLM response
-to exactly match the configured ICP signal set. Previously, expected_ids was
-built but never used — if Claude omitted a signal or returned a phantom
-signal_id, the list was passed directly to scoring, producing incorrect scores.
-
-New behavior:
+_validate_and_clean_signals() normalizes the LLM response to exactly match the
+configured ICP signal set:
 - Unknown signal_ids (not in icp_signals) are discarded.
 - Missing signals (in icp_signals but not in LLM response) are inserted with
   signal_state="not_found", confidence="low", empty evidence/source fields.
@@ -24,6 +20,18 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
+from enrichment.constants import (
+    BASE_FIT_SCORE,
+    CONFIDENCE_SCORE_MAP,
+    CONFIDENCE_WEIGHT,
+    FIT_WEIGHT,
+    HIGH_CONFIDENCE_THRESHOLD,
+    HIGH_FIT_THRESHOLD,
+    MAX_SCORE,
+    MIN_SCORE,
+    NO_SIGNAL_CONFIDENCE,
+)
+
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -35,10 +43,6 @@ PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_v1.t
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
 VALID_CONFIDENCES = {"high", "medium", "low"}
-
-# Scoring parameters
-MAX_SCORE = 100
-MIN_SCORE = 0
 
 # Per-call LLM timeout (seconds). Prevents a stalled socket from hanging a run.
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("LLM_REQUEST_TIMEOUT_SECONDS", "60"))
@@ -274,7 +278,6 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
 
     fit_delta = 0
     confidence_values = []
-    conf_score_map = {"high": 90, "medium": 65, "low": 40}
 
     for icp_signal in icp_signals:
         sid = icp_signal["signal_id"]
@@ -284,21 +287,23 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
 
         if matched and matched["signal_state"] == "yes":
             fit_delta += weight  # positive weights add, negative weights subtract
-            confidence_values.append(conf_score_map.get(matched["confidence"], 40))
+            confidence_values.append(
+                CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
+            )
         elif matched and matched["signal_state"] == "not_found":
             fit_delta += not_found_weight  # penalty for an unconfirmed signal (usually negative)
 
-    # Fit signal score: 50 base + weighted delta, clamped 0-100
-    fit_signal_score = max(MIN_SCORE, min(MAX_SCORE, 50 + fit_delta))
+    # Fit signal score: base + weighted delta, clamped to score bounds
+    fit_signal_score = max(MIN_SCORE, min(MAX_SCORE, BASE_FIT_SCORE + fit_delta))
 
     # Confidence score: average of confidence values for confirmed signals
     if confidence_values:
         confidence_score = round(sum(confidence_values) / len(confidence_values))
     else:
-        confidence_score = 30  # Low confidence when no signals confirmed
+        confidence_score = NO_SIGNAL_CONFIDENCE
 
-    # Bullseye score: 60% fit + 40% confidence
-    bullseye_score = round(0.6 * fit_signal_score + 0.4 * confidence_score)
+    # Bullseye score: weighted blend of fit and confidence
+    bullseye_score = round(FIT_WEIGHT * fit_signal_score + CONFIDENCE_WEIGHT * confidence_score)
     bullseye_score = max(MIN_SCORE, min(MAX_SCORE, bullseye_score))
 
     return {
@@ -314,8 +319,8 @@ def _determine_fit_confidence_status(bullseye_score: int,
     Determine fit_confidence_status from scores.
     Returns one of the four canonical quadrant labels.
     """
-    high_fit = bullseye_score >= 70
-    high_confidence = confidence_score >= 65
+    high_fit = bullseye_score >= HIGH_FIT_THRESHOLD
+    high_confidence = confidence_score >= HIGH_CONFIDENCE_THRESHOLD
 
     if high_fit and high_confidence:
         return "HIGH FIT / HIGH EVIDENCE"

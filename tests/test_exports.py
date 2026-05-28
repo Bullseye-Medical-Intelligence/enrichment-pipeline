@@ -1,5 +1,5 @@
 """
-Tests for the approved-export gate (exports._is_approved).
+Tests for the approved-export gate (exports.is_approved).
 
 Deterministic — no filesystem, no network. Verifies which (record, review)
 pairs are eligible for the client deliverable exports, with focus on the
@@ -30,24 +30,24 @@ def _rev(qc="approved", override=None):
 
 def test_approved_bullseye_is_eligible():
     rec = {"target_tier": "Bullseye", "exclusion_status": "CLEAR"}
-    assert exports._is_approved(rec, _rev()) is True
+    assert exports.is_approved(rec, _rev()) is True
 
 
 def test_needs_verification_not_eligible_without_override():
     rec = {"target_tier": "Needs Verification", "exclusion_status": "CLEAR"}
-    assert exports._is_approved(rec, _rev()) is False
+    assert exports.is_approved(rec, _rev()) is False
 
 
 def test_needs_verification_eligible_when_overridden_to_positive_tier():
     rec = {"target_tier": "Needs Verification", "exclusion_status": "CLEAR"}
-    assert exports._is_approved(rec, _rev(override="Bullseye")) is True
+    assert exports.is_approved(rec, _rev(override="Bullseye")) is True
 
 
 def test_needs_verification_not_eligible_when_not_approved():
     rec = {"target_tier": "Needs Verification", "exclusion_status": "CLEAR"}
-    assert exports._is_approved(rec, _rev(qc="pending")) is False
+    assert exports.is_approved(rec, _rev(qc="pending")) is False
 
 
 def test_excluded_still_blocked_without_override():
     rec = {"target_tier": "Excluded", "exclusion_status": "EXCLUDED"}
-    assert exports._is_approved(rec, _rev()) is False
+    assert exports.is_approved(rec, _rev()) is False

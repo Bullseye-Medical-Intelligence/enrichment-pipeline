@@ -6,6 +6,8 @@ Hard exclusions always fire. Configurable exclusions fire only when listed in ru
 
 import re
 
+from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, EXCLUDED_SCORE_CAP
+
 # ---------------------------------------------------------------------------
 # Exclusion rule definitions
 # ---------------------------------------------------------------------------
@@ -29,9 +31,6 @@ CONFIGURABLE_EXCLUSION_RULES = {
 }
 
 ALL_KNOWN_EXCLUSION_RULES = HARD_EXCLUSION_RULES | CONFIGURABLE_EXCLUSION_RULES
-
-# Max bullseye_score for excluded records
-EXCLUDED_SCORE_CAP = 40
 
 # Tier ladder for CLEAR records (worst to best). A signal can cap the tier at a
 # lower rung; an unconfirmed required signal caps a would-be Bullseye at
@@ -118,7 +117,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     active_rules = set(run_config.get("active_exclusion_rules", []))
     target_geography = run_config.get("target_geography", [])
     target_specialty = (run_config.get("target_specialty") or "").strip()
-    bullseye_min = run_config.get("bullseye_min_score", 75)
+    bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
 
     # Collect all triggered exclusions
     triggered = []

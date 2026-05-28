@@ -4,13 +4,11 @@ Extracts visible text from practice websites using requests + BeautifulSoup.
 Identifies and crawls relevant subpages (services, providers, about, contact).
 Phase 2: Playwright for JS-heavy sites. MVP: static HTML only.
 
-CHANGE (FIX 4): batch_extract() now sets source_confidence based on extraction
-quality instead of always leaving it as "partial". Previously, source_confidence
-could never reach "complete" even on rich multi-page extractions. New thresholds:
-  2+ pages crawled AND > 3000 chars → "complete"
-  1 page crawled OR <= 3000 chars   → "partial"
-  No text extracted                 → "limited" (unchanged)
-Does not override source_confidence already set to "limited" or "failed" by
+batch_extract() sets source_confidence from extraction quality:
+  2+ pages crawled AND > 3000 chars -> "complete"
+  1 page crawled OR <= 3000 chars   -> "partial"
+  No text extracted                 -> "limited"
+It does not override a "limited"/"failed" confidence already set by
 url_validator (those records failed before reaching web extraction).
 """
 

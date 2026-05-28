@@ -15,6 +15,8 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 
+import record_adapter
+
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -41,15 +43,13 @@ def build_executive_report(
     approved_records should already be filtered (qc_status=approved, non-excluded)
     and sorted by score desc. all_reviews is the full review map {record_id: review}.
     """
-    import record_adapter  # local import to avoid circular issues at module load
-
     bullseye = [
         r for r in approved_records
-        if _displayed_tier(r, all_reviews).lower() == "bullseye"
+        if record_adapter.effective_tier(r, all_reviews).lower() == "bullseye"
     ]
     warm = [
         r for r in approved_records
-        if _displayed_tier(r, all_reviews).lower() in ("strong", "warm")
+        if record_adapter.effective_tier(r, all_reviews).lower() in ("strong", "warm")
     ]
 
     geography = status.target_geography or project.get("target_geography") or []
@@ -100,12 +100,6 @@ def build_executive_report(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-def _displayed_tier(record: dict, all_reviews: dict) -> str:
-    import record_adapter
-    review = all_reviews.get(record_adapter.get_record_id(record), {})
-    return review.get("override_tier") or record.get("target_tier", "")
-
 
 def _prepare_record(rec: dict, review: dict) -> dict:
     """Map a raw enriched record + review to a template-ready dict."""

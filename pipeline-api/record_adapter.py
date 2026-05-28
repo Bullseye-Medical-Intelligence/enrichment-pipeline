@@ -22,3 +22,13 @@ def normalize_records_payload(data) -> list[dict]:
     if isinstance(data, list):
         return data
     return []
+
+
+def displayed_tier(record: dict, review: dict) -> str:
+    """Return the effective tier: analyst override if set, else the pipeline tier."""
+    return (review or {}).get("override_tier") or record.get("target_tier", "")
+
+
+def effective_tier(record: dict, all_reviews: dict) -> str:
+    """displayed_tier resolved against a {record_id: review} map."""
+    return displayed_tier(record, all_reviews.get(get_record_id(record), {}))

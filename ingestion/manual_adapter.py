@@ -5,10 +5,14 @@ Used for analyst-prepared lists or records sourced outside Outscraper.
 """
 
 import csv
-import hashlib
-from typing import Optional
 
-from ingestion.outscraper_adapter import infer_specialty
+# Record-ID and URL normalisation are shared with the Outscraper adapter so the
+# two ingestion paths produce identical IDs and URL formatting.
+from ingestion.outscraper_adapter import (
+    infer_specialty,
+    _generate_record_id,
+    _normalize_url,
+)
 
 
 # Required fields in a canonical manual CSV
@@ -29,26 +33,6 @@ CANONICAL_FIELDS = [
     "metro_region_tag",
     "state_mandate_status",
 ]
-
-
-def _generate_record_id(npi: Optional[str], practice_name: str,
-                         address_state: str, address_zip: str) -> str:
-    """Generate a stable, deterministic record ID."""
-    if npi and npi.strip():
-        return f"T-{npi.strip()}"
-    raw = f"{practice_name.lower().strip()}|{address_state.lower().strip()}|{address_zip.strip()}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:8]
-    return f"T-{h}"
-
-
-def _normalize_url(url: str) -> str:
-    """Ensure URL has a scheme; strip trailing slashes."""
-    if not url:
-        return ""
-    url = url.strip()
-    if url and not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    return url.rstrip("/")
 
 
 def _parse_provider_names(raw: str) -> list:

@@ -433,7 +433,7 @@ async def results_page(
                     **record,
                     "record_id": record_id,
                     "review": review,
-                    "displayed_tier": review.get("override_tier") or record.get("target_tier", ""),
+                    "displayed_tier": record_adapter.displayed_tier(record, review),
                 })
 
     stats = _calculate_stats(merged_records)

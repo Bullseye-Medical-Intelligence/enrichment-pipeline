@@ -13,6 +13,7 @@ from fastapi import UploadFile
 from config import (
     MAX_CSV_ROWS,
     MAX_CSV_SIZE_BYTES,
+    OUTSCRAPER_URL_COLUMNS,
     REQUIRED_COLUMNS_BY_SOURCE,
     VALID_SOURCE_TYPES,
 )
@@ -135,7 +136,6 @@ def _validate_row_count(rows: list[dict]) -> None:
 
 def _validate_columns(fieldnames: list[str], source_type: str) -> None:
     """Raise ValueError if required columns are missing for the source_type."""
-    from config import OUTSCRAPER_URL_COLUMNS
     required = REQUIRED_COLUMNS_BY_SOURCE[source_type]
     actual = set(fieldnames)
     missing = required - actual
