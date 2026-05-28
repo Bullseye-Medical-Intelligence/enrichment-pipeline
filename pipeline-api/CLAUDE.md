@@ -395,6 +395,29 @@ All UI in this repo must match the BEMI Dashboard identity. These rules are perm
 
 ---
 
+## BEMI React Dashboard — Known Issues (Demo-Only)
+
+The React/Vite dashboard (`bullseye-medical-intelligence/bemi`) is demo-only and
+not integrated with this API. If it is ever promoted to production, fix these
+first:
+
+- `src/utils/classifyTarget.js` — `isApprovedExportEligible()` only checks
+  `qc_status === 'approved' && exclusion_status === 'CLEAR'`. A record an analyst
+  overrides to Excluded (CLEAR pipeline status, override_tier = Excluded) will
+  still appear in the approved export. The effective displayed tier must drive
+  the filter, not the raw pipeline status.
+- `src/utils/qcStorage.js` — QC state is keyed by `target.id` only, not by
+  run/import session. If two imports reuse IDs, old analyst decisions bleed into
+  the new import. Storage key must include a run ID or import fingerprint, or QC
+  must be cleared on import.
+- `src/utils/parseImport.js` / `src/components/ImportModal.jsx` — duplicate IDs
+  are logged as errors but the records still load. Duplicates must be stripped or
+  the import must be rejected outright before entering React state.
+
+Do not invest in these until the React app is promoted to production.
+
+---
+
 ## Phase 2 Backlog (Do Not Build Now)
 
 - `POST /runs/{run_id}/cancel` — interrupt a running pipeline process

@@ -90,15 +90,15 @@ async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
         _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
 
         if process.returncode == 0:
-            directory = runs.run_dir(run_id)
-            if not (directory / "enriched_targets.json").exists():
+            failure_msg = _validate_output_files(run_id)
+            if failure_msg:
                 runs.update_run_status(
                     run_id,
                     status="failed",
                     completed_at=datetime.now(timezone.utc).isoformat(),
-                    error_summary="Pipeline exited 0 but enriched_targets.json was not written.",
+                    error_summary=failure_msg,
                 )
-                logger.error("Run %s: exit 0 but enriched_targets.json missing", run_id)
+                logger.error("Run %s: output validation failed: %s", run_id, failure_msg)
             else:
                 counts = _read_completion_counts(run_id)
                 runs.update_run_status(
@@ -236,6 +236,43 @@ def _write_json(path: Path, data: dict) -> None:
     """Write a snapshot JSON file into a freshly created run directory."""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def _validate_output_files(run_id: str) -> str | None:
+    """
+    Verify that both required output files exist, parse, and have expected shape.
+
+    Returns None on success, or a human-readable error string on failure.
+    A non-None return means the run should be marked failed even if exit code was 0.
+    """
+    directory = runs.run_dir(run_id)
+
+    enriched_path = directory / "enriched_targets.json"
+    if not enriched_path.exists():
+        return "Pipeline exited 0 but enriched_targets.json was not written."
+    try:
+        with open(enriched_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        records = record_adapter.normalize_records_payload(payload)
+        if not isinstance(records, list):
+            return "enriched_targets.json parsed but 'records' is not a list."
+    except json.JSONDecodeError as e:
+        return f"enriched_targets.json is malformed JSON: {e}"
+    except Exception as e:
+        return f"enriched_targets.json could not be read: {e}"
+
+    log_path = directory / "run_log.json"
+    if not log_path.exists():
+        return "Pipeline exited 0 but run_log.json was not written."
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            log = json.load(f)
+        if not isinstance(log, dict):
+            return "run_log.json parsed but is not a JSON object."
+    except json.JSONDecodeError as e:
+        return f"run_log.json is malformed JSON: {e}"
+
+    return None
 
 
 def _read_completion_counts(run_id: str) -> dict:
