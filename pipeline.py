@@ -28,7 +28,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -66,7 +66,7 @@ DEFAULT_OUTPUT_DIR = "./output"
 
 def _generate_run_id() -> str:
     """Generate a unique run ID based on timestamp."""
-    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"RUN-{ts}"
 
 
