@@ -42,6 +42,7 @@ _VALID_ICP = {
     "icp_id": "test-icp",
     "name": "Test ICP",
     "version": "icp-v1",
+    "description": "A test ICP.",
     "signals": [
         {
             "signal_id": "S-1",
@@ -56,6 +57,18 @@ _OUTSCRAPER_CSV = (
     b"name,full_address,phone,site,type\n"
     b"Acme Clinic,123 Main St,555-1000,https://acme.example,clinic\n"
 )
+
+
+def _project_data(project_id="p-001", client_name="Acme", specialty="OBGYN",
+                  geography=None, icp="test-icp"):
+    return {
+        "project_id": project_id,
+        "client_name": client_name,
+        "target_specialty": specialty,
+        "target_geography": geography if geography is not None else ["TX"],
+        "icp_profile_id": icp,
+        "created_by": "tester",
+    }
 
 
 @pytest.fixture
@@ -101,54 +114,64 @@ class _FakeBackgroundTasks:
 
 def test_create_project_writes_config(store):
     _write_icp(store)
-    cfg = projects.create_project(
-        project_id="P-001",
-        client_name="Acme Co.",
-        target_specialty="OBGYN",
-        target_geography=["TX", "FL"],
-        icp_profile_id="test-icp",
-        created_by="tester",
-    )
-    assert cfg["project_id"] == "P-001"
+    cfg = projects.create_project(_project_data(geography=["TX", "FL"]))
+    assert cfg["project_id"] == "p-001"
     assert cfg["icp_profile_id"] == "test-icp"
-    # Persisted and re-readable.
-    again = projects.get_project("P-001")
-    assert again["client_name"] == "Acme Co."
+    again = projects.get_project("p-001")
+    assert again["client_name"] == "Acme"
     assert again["target_geography"] == ["TX", "FL"]
-    # Generic defaults applied, no specialty-specific values.
+    # Generic defaults applied.
     assert again["bullseye_min_score"] == config.DEFAULT_BULLSEYE_MIN_SCORE
+    assert again["io_concurrency"] == config.DEFAULT_IO_CONCURRENCY
 
 
 def test_create_project_rejects_duplicate(store):
     _write_icp(store)
-    projects.create_project("P-001", "Acme", "OBGYN", ["TX"], "test-icp", "tester")
+    projects.create_project(_project_data())
     with pytest.raises(ValueError):
-        projects.create_project("P-001", "Acme", "OBGYN", ["TX"], "test-icp", "tester")
+        projects.create_project(_project_data())
 
 
 def test_create_project_rejects_missing_icp(store):
     with pytest.raises(ValueError):
-        projects.create_project("P-002", "Acme", "OBGYN", ["TX"], "no-such-icp", "tester")
+        projects.create_project(_project_data(project_id="p-002", icp="no-such-icp"))
 
 
-@pytest.mark.parametrize("bad_id", ["../escape", "has space", "", "a/b", "x" * 65])
+@pytest.mark.parametrize("bad_id", ["../escape", "has space", "", "a/b", "P-001", "x" * 65])
 def test_create_project_rejects_bad_id(store, bad_id):
     _write_icp(store)
     with pytest.raises(ValueError):
-        projects.create_project(bad_id, "Acme", "OBGYN", ["TX"], "test-icp", "tester")
+        projects.create_project(_project_data(project_id=bad_id))
 
 
-def test_validate_config_missing_fields():
+def test_validate_project_config_missing_fields():
     with pytest.raises(ValueError):
-        projects.validate_config({"project_id": "P-1"})  # missing the rest
+        projects.validate_project_config({"project_id": "p-1"})  # missing the rest
+
+
+def test_validate_project_config_bad_score(store):
+    _write_icp(store)
+    data = projects.default_project_config()
+    data.update(_project_data())
+    data["bullseye_min_score"] = 150  # out of 0-100 range
+    with pytest.raises(ValueError):
+        projects.validate_project_config(data)
 
 
 def test_list_projects(store):
     _write_icp(store)
-    projects.create_project("P-001", "Acme", "OBGYN", ["TX"], "test-icp", "tester")
-    projects.create_project("P-002", "Beta", "Cardiology", ["CA"], "test-icp", "tester")
+    projects.create_project(_project_data(project_id="p-001"))
+    projects.create_project(_project_data(project_id="p-002", client_name="Beta"))
     ids = [p["project_id"] for p in projects.list_projects()]
-    assert ids == ["P-001", "P-002"]
+    assert ids == ["p-001", "p-002"]
+
+
+def test_update_project(store):
+    _write_icp(store)
+    projects.create_project(_project_data())
+    updated = projects.update_project("p-001", {"client_name": "Acme Renamed"})
+    assert updated["client_name"] == "Acme Renamed"
+    assert projects.get_project("p-001")["client_name"] == "Acme Renamed"
 
 
 def test_project_dir_rejects_traversal(store):
@@ -162,26 +185,26 @@ def test_project_dir_rejects_traversal(store):
 
 def test_icp_list_and_load(store):
     _write_icp(store)
-    listed = icp_profiles.list_profiles()
-    assert listed == [{
-        "icp_id": "test-icp",
-        "name": "Test ICP",
-        "version": "icp-v1",
-        "signal_count": 1,
-    }]
-    loaded = icp_profiles.load_profile("test-icp")
+    listed = icp_profiles.list_icp_profiles()
+    assert len(listed) == 1
+    entry = listed[0]
+    assert entry["icp_id"] == "test-icp"
+    assert entry["name"] == "Test ICP"
+    assert entry["version"] == "icp-v1"
+    assert entry["signal_count"] == 1
+    loaded = icp_profiles.get_icp_profile("test-icp")
     assert loaded["signals"][0]["signal_id"] == "S-1"
 
 
 def test_icp_load_missing_raises(store):
     with pytest.raises(ValueError):
-        icp_profiles.load_profile("ghost")
+        icp_profiles.get_icp_profile("ghost")
 
 
 def test_icp_load_malformed_raises(store):
     (store["icp"] / "broken.json").write_text("{ not valid json ")
     with pytest.raises(ValueError):
-        icp_profiles.load_profile("broken")
+        icp_profiles.get_icp_profile("broken")
 
 
 def test_icp_load_missing_signals_raises(store):
@@ -189,13 +212,23 @@ def test_icp_load_missing_signals_raises(store):
         {"icp_id": "empty", "name": "E", "version": "v1", "signals": []}
     ))
     with pytest.raises(ValueError):
-        icp_profiles.load_profile("empty")
+        icp_profiles.get_icp_profile("empty")
+
+
+def test_icp_load_bad_signal_shape_raises(store):
+    (store["icp"] / "bad.json").write_text(json.dumps({
+        "icp_id": "bad", "name": "Bad", "version": "v1",
+        "signals": [{"signal_id": "S-1", "signal_label": "x", "prompt_instruction": "y",
+                     "positive_weight": "not-a-number"}],
+    }))
+    with pytest.raises(ValueError):
+        icp_profiles.get_icp_profile("bad")
 
 
 def test_icp_list_skips_malformed(store):
     _write_icp(store)
     (store["icp"] / "broken.json").write_text("nonsense")
-    ids = [p["icp_id"] for p in icp_profiles.list_profiles()]
+    ids = [p["icp_id"] for p in icp_profiles.list_icp_profiles()]
     assert ids == ["test-icp"]
 
 
@@ -212,7 +245,19 @@ def test_orchestrate_rejects_missing_project(store):
     upload = _FakeUpload(_OUTSCRAPER_CSV)
     with pytest.raises(ValueError, match="does not exist"):
         asyncio.run(runner.orchestrate_run(
-            upload, "outscraper", "P-DOES-NOT-EXIST", "tester", _FakeBackgroundTasks()
+            upload, "outscraper", "does-not-exist", "tester", _FakeBackgroundTasks()
+        ))
+
+
+def test_orchestrate_rejects_missing_icp(store):
+    # Project exists but its ICP file was removed.
+    _write_icp(store)
+    projects.create_project(_project_data())
+    (store["icp"] / "test-icp.json").unlink()
+    upload = _FakeUpload(_OUTSCRAPER_CSV)
+    with pytest.raises(ValueError):
+        asyncio.run(runner.orchestrate_run(
+            upload, "outscraper", "p-001", "tester", _FakeBackgroundTasks()
         ))
 
 
@@ -222,7 +267,7 @@ def test_orchestrate_rejects_missing_project(store):
 
 def test_orchestrate_snapshots_and_command_flags(store, monkeypatch):
     _write_icp(store)
-    projects.create_project("P-001", "Acme", "OBGYN", ["TX"], "test-icp", "tester")
+    projects.create_project(_project_data())
 
     captured = {}
 
@@ -241,7 +286,7 @@ def test_orchestrate_snapshots_and_command_flags(store, monkeypatch):
     upload = _FakeUpload(_OUTSCRAPER_CSV)
     bg = _FakeBackgroundTasks()
     run_id, row_count = asyncio.run(
-        runner.orchestrate_run(upload, "outscraper", "P-001", "tester", bg)
+        runner.orchestrate_run(upload, "outscraper", "p-001", "tester", bg)
     )
 
     assert row_count == 1
@@ -252,17 +297,21 @@ def test_orchestrate_snapshots_and_command_flags(store, monkeypatch):
     snap_icp = run_dir / config.ICP_SNAPSHOT_FILENAME
     assert snap_cfg.exists()
     assert snap_icp.exists()
-    assert json.loads(snap_cfg.read_text())["project_id"] == "P-001"
+    assert json.loads(snap_cfg.read_text())["project_id"] == "p-001"
     assert json.loads(snap_icp.read_text())["icp_id"] == "test-icp"
+
+    # status.json carries project/ICP metadata.
+    status = runs.get_run(run_id)
+    assert status.client_name == "Acme"
+    assert status.icp_profile_id == "test-icp"
+    assert status.icp_profile_name == "Test ICP"
 
     # Pipeline command carries --config and --icp pointing at the snapshots.
     cmd = captured["cmd"]
     assert "--config" in cmd and "--icp" in cmd
     assert str(snap_cfg) == cmd[cmd.index("--config") + 1]
     assert str(snap_icp) == cmd[cmd.index("--icp") + 1]
-
-    # A monitor task was registered (run proceeds normally).
-    assert bg.tasks
+    assert bg.tasks  # monitor registered
 
 
 # ---------------------------------------------------------------------------
@@ -272,14 +321,14 @@ def test_orchestrate_snapshots_and_command_flags(store, monkeypatch):
 def test_snapshot_readers_none_for_legacy_run(store):
     legacy = store["runs"] / "RUN-20260101-090000-aaaa"
     legacy.mkdir(parents=True)
-    # No snapshots present — readers must degrade gracefully, not raise.
     assert projects.read_config_snapshot(legacy) is None
     assert icp_profiles.read_snapshot(legacy) is None
 
 
-def test_legacy_run_lists(store):
+def test_legacy_run_lists_and_parses(store):
     legacy = store["runs"] / "RUN-20260101-090000-bbbb"
     legacy.mkdir(parents=True)
+    # Status.json written before project metadata existed (no client_name, etc.).
     (legacy / "status.json").write_text(json.dumps({
         "run_id": "RUN-20260101-090000-bbbb",
         "project_id": "old",
@@ -291,3 +340,7 @@ def test_legacy_run_lists(store):
     }))
     listed = [r.run_id for r in runs.list_runs()]
     assert "RUN-20260101-090000-bbbb" in listed
+    # Old status.json still parses with the extended schema.
+    status = runs.get_run("RUN-20260101-090000-bbbb")
+    assert status.client_name is None
+    assert status.target_geography == []

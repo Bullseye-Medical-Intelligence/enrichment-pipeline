@@ -44,6 +44,7 @@ def create_run(
     input_filename: str,
     operator: str,
     records_input: int,
+    metadata: Optional[dict] = None,
 ) -> RunStatus:
     """
     Create the run directory and write an initial status.json with status 'pending'.
@@ -55,6 +56,9 @@ def create_run(
         input_filename: Original filename of the uploaded CSV.
         operator: Name/email of the operator who triggered the run.
         records_input: Number of CSV rows (excluding header).
+        metadata: Optional project/ICP context fields (client_name,
+            product_name, target_specialty, target_geography, icp_profile_id,
+            icp_profile_name, icp_profile_version).
 
     Returns:
         The initial RunStatus object.
@@ -72,6 +76,7 @@ def create_run(
         operator=operator,
         output_path=str(directory / "enriched_targets.json"),
         records_input=records_input,
+        **(metadata or {}),
     )
     _write_status(run_id, status)
     return status
@@ -146,6 +151,9 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
                     error_count=data.get("error_count", 0),
                     created_at=data["created_at"],
                     completed_at=data.get("completed_at"),
+                    project_id=data.get("project_id"),
+                    client_name=data.get("client_name"),
+                    icp_profile_id=data.get("icp_profile_id"),
                 )
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:

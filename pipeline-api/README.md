@@ -73,6 +73,9 @@ Session-auth HTML UI (`ui.py`) adds project/ICP management:
 | POST | `/projects` | Create a project |
 | GET | `/projects/{project_id}` | Project detail |
 | GET | `/icp-profiles` | List loaded ICP profiles |
+| GET | `/runs/{run_id}/export/approved` | Approved targets CSV |
+| GET | `/runs/{run_id}/export/excluded` | Excluded targets CSV |
+| GET | `/runs/{run_id}/client-package` | Client deliverable ZIP (complete runs) |
 
 `POST /runs` requires a `project_id` that names an existing project; the project
 determines which ICP profile and config the pipeline uses.
@@ -173,6 +176,11 @@ contain `icp_id`, `name`, `version`, and a non-empty `signals` array:
 `signals` is what the pipeline enriches against. Positive weights raise fit;
 negative weights lower it. Confirm a profile is loaded at `GET /icp-profiles`.
 
+A copy-paste starting template lives at `pipeline-api/examples/icp_profile.example.json`.
+To load it: copy it into `ICP_PROFILES_PATH`, rename the file to `{icp_id}.json`,
+set a matching `icp_id`, and replace the signals for your client/specialty. Example
+files are never loaded automatically.
+
 ### 10.2 Create a project
 
 1. Sign in and go to **Projects → New Project**.
@@ -191,22 +199,53 @@ negative weights lower it. Confirm a profile is loaded at `GET /icp-profiles`.
    and ICP into the run folder, and launches the pipeline with
    `--config {run}/project_config_snapshot.json --icp {run}/icp_snapshot.json`.
 
-### 10.4 Run a pilot
+### 10.4 Review records (junior-operator safe)
+
+On the results page each record expands to show its signals, evidence, scores,
+and sales angles. Reviewers set QC status (approve / reject / reset) and may
+override the tier — an override requires a reason. Guidance shown on the page:
+
+- Review the evidence before approving.
+- Overrides require a reason.
+- Excluded records are exported separately.
+- The approved export always omits the pipeline's original hard exclusions
+  (a hard `exclusion_status == "EXCLUDED"` cannot be bypassed by an override).
+
+Reviews are saved to `reviews.json` (additive metadata); `enriched_targets.json`
+is never modified.
+
+### 10.5 Export the client deliverable
+
+From a completed run, **Download Client Package** produces a ZIP built from the
+immutable enriched output plus the review overlay:
+
+- `executive_summary.md` — client, project, product, specialty, geography, ICP
+  name/version, volumes (screened / output / approved / excluded), date, method
+- `approved_targets.csv` — approved, non-hard-excluded records
+- `excluded_targets.csv` — records whose effective tier is Excluded
+- `top_target_briefs.md` — the top approved targets with evidence and angles
+- `methodology.md` — the standing public-data methodology statement
+
+The package never includes `run_log.json`, `reviews.json`, or the raw
+`enriched_targets.json`. The individual **Export Approved** / **Export Excluded**
+CSV buttons remain available.
+
+### 10.6 Run a pilot
 
 1. Create an ICP profile for the specialty and drop it in `ICP_PROFILES_PATH`.
 2. Create a project pointing at that profile.
 3. Start a run with a small Outscraper CSV (10–25 rows) to validate signal
    coverage and timing before processing a full batch.
-4. When the run completes, open the results page to QC records, then use
-   **Export Approved** / **Export Excluded** for the handoff CSVs.
+4. QC the results, then download the client package for the handoff.
 
-### 10.5 Still out of scope
+### 10.7 Still out of scope
 
 - No visual ICP builder — profiles are hand-authored JSON files.
 - No database, task queue, or Redis — state stays on the filesystem.
-- No client portal, CRM sync, or multi-tenant logic — internal tool only.
+- No client portal, CRM sync, billing, or role-based permissions — internal tool.
+- No PDF deliverables yet — the client package is Markdown + CSV in a ZIP.
 - The pipeline itself is unchanged; this layer only selects and snapshots its
-  inputs.
+  inputs and packages its outputs.
 
 ## 11. What Phase 2 Will Add
 

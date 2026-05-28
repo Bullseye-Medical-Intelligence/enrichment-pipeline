@@ -13,6 +13,8 @@
     <thead>
       <tr>
         <th>Run ID</th>
+        <th>Client / Project</th>
+        <th>ICP Profile</th>
         <th>Status</th>
         <th>Source</th>
         <th>Input</th>
@@ -28,6 +30,11 @@
       {% for run in runs %}
       <tr>
         <td><a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a></td>
+        <td>
+          {{ run.client_name | default("—") }}
+          {% if run.project_id %}<br><span class="text-muted small">{{ run.project_id }}</span>{% endif %}
+        </td>
+        <td class="text-muted">{{ run.icp_profile_id | default("—") }}</td>
         <td>
           <span class="badge badge-status-{{ run.status }}">{{ run.status }}</span>
           {% if run.status == "running" %}

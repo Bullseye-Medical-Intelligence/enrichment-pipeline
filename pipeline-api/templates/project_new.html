@@ -21,20 +21,38 @@
 <div class="card upload-card">
   <form method="post" action="/projects" class="upload-form">
 
+    <p class="eyebrow">Client</p>
+
     <div class="form-group">
       <label for="project_id">Project ID</label>
       <input type="text" id="project_id" name="project_id" required
              value="{{ form.project_id | default('') }}"
-             placeholder="e.g. P-001 or client-name-2026">
-      <p class="form-hint">Letters, digits, hyphen or underscore. No spaces. Used as the folder name.</p>
+             placeholder="e.g. femasys-socal-obgyn">
+      <p class="form-hint">Lowercase letters, digits, hyphen or underscore. No spaces. Used as the folder name.</p>
     </div>
 
     <div class="form-group">
       <label for="client_name">Client Name</label>
       <input type="text" id="client_name" name="client_name" required
              value="{{ form.client_name | default('') }}"
-             placeholder="e.g. Acme MedDevice Co.">
+             placeholder="e.g. Femasys">
     </div>
+
+    <div class="form-group">
+      <label for="client_website">Client Website</label>
+      <input type="text" id="client_website" name="client_website"
+             value="{{ form.client_website | default('') }}"
+             placeholder="https://www.example.com">
+    </div>
+
+    <div class="form-group">
+      <label for="product_name">Product Name</label>
+      <input type="text" id="product_name" name="product_name"
+             value="{{ form.product_name | default('') }}"
+             placeholder="e.g. FemaSeed">
+    </div>
+
+    <p class="eyebrow">Targeting</p>
 
     <div class="form-group">
       <label for="target_specialty">Target Specialty</label>
@@ -45,10 +63,10 @@
 
     <div class="form-group">
       <label for="target_geography">Target Geography</label>
-      <input type="text" id="target_geography" name="target_geography" required
+      <input type="text" id="target_geography" name="target_geography"
              value="{{ form.target_geography | default('') }}"
-             placeholder="Comma-separated, e.g. TX, FL, GA">
-      <p class="form-hint">Comma-separated list of states or regions.</p>
+             placeholder="Comma-separated, e.g. CA, TX, FL">
+      <p class="form-hint">Comma-separated list of states or regions. May be left blank.</p>
     </div>
 
     <div class="form-group">
@@ -63,6 +81,61 @@
       </select>
       <p class="form-hint">The ICP profile determines which signals the pipeline scores against.</p>
     </div>
+
+    <details class="advanced-fields">
+      <summary>Advanced settings (defaults are fine for most runs)</summary>
+
+      <div class="form-group">
+        <label for="active_exclusion_rules">Active Exclusion Rules</label>
+        <input type="text" id="active_exclusion_rules" name="active_exclusion_rules"
+               value="{{ form.active_exclusion_rules | default('') }}"
+               placeholder="Comma-separated. Blank = sensible defaults.">
+        <p class="form-hint">e.g. hospital_owned, health_system_affiliated, wrong_specialty, outside_geography</p>
+      </div>
+
+      <div class="form-group">
+        <label for="subpage_keywords">Subpage Keywords</label>
+        <input type="text" id="subpage_keywords" name="subpage_keywords"
+               value="{{ form.subpage_keywords | default('') }}"
+               placeholder="Comma-separated. Blank = generic site sections.">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="bullseye_min_score">Bullseye Min Score (0-100)</label>
+          <input type="number" id="bullseye_min_score" name="bullseye_min_score" min="0" max="100"
+                 value="{{ form.bullseye_min_score | default('') }}" placeholder="75">
+        </div>
+        <div class="form-group">
+          <label for="max_pages_per_practice">Max Pages / Practice</label>
+          <input type="number" id="max_pages_per_practice" name="max_pages_per_practice" min="1"
+                 value="{{ form.max_pages_per_practice | default('') }}" placeholder="5">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="request_timeout_seconds">Request Timeout (s)</label>
+          <input type="number" id="request_timeout_seconds" name="request_timeout_seconds" min="1"
+                 value="{{ form.request_timeout_seconds | default('') }}" placeholder="60">
+        </div>
+        <div class="form-group">
+          <label for="request_retries">Request Retries</label>
+          <input type="number" id="request_retries" name="request_retries" min="0"
+                 value="{{ form.request_retries | default('') }}" placeholder="3">
+        </div>
+        <div class="form-group">
+          <label for="io_concurrency">IO Concurrency</label>
+          <input type="number" id="io_concurrency" name="io_concurrency" min="1"
+                 value="{{ form.io_concurrency | default('') }}" placeholder="6">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="2" placeholder="Optional internal notes">{{ form.notes | default('') }}</textarea>
+      </div>
+    </details>
 
     <div class="form-actions">
       <button type="submit" class="btn btn-submit" {% if not icp_profiles %}disabled{% endif %}>Create Project</button>

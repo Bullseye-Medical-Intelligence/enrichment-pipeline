@@ -69,14 +69,28 @@ REQUIRED_PROJECT_FIELDS: tuple[str, ...] = (
 REQUIRED_ICP_FIELDS: tuple[str, ...] = ("icp_id", "name", "version", "signals")
 
 # Generic defaults applied to a new project. No specialty-specific values here:
-# exclusion rules are practice-structure rules, not condition/specialty rules.
+# exclusion rules are practice-structure rules and crawl keywords are generic
+# site sections, not condition/specialty terms.
 DEFAULT_BULLSEYE_MIN_SCORE: int = 75
+DEFAULT_MAX_PAGES_PER_PRACTICE: int = 5
+DEFAULT_REQUEST_TIMEOUT_SECONDS: int = 60
+DEFAULT_REQUEST_RETRIES: int = 3
+DEFAULT_IO_CONCURRENCY: int = 6
 DEFAULT_EXCLUSION_RULES: tuple[str, ...] = (
     "wrong_specialty",
     "outside_geography",
     "no_web_presence",
     "hospital_owned",
     "health_system_affiliated",
+)
+DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
+    "services",
+    "providers",
+    "about",
+    "team",
+    "staff",
+    "physicians",
+    "contact",
 )
 
 VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})

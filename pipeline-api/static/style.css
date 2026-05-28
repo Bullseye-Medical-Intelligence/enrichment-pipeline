@@ -517,3 +517,16 @@ ul, ol { padding-left: 1.4em; }
   overflow-x: auto;
   white-space: pre;
 }
+
+/* ── Advanced settings disclosure / multi-column form rows ────────── */
+.advanced-fields { margin: 8px 0 20px; }
+.advanced-fields summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.form-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.form-row .form-group { flex: 1; min-width: 140px; }
+.review-guidance { font-size: 13px; }

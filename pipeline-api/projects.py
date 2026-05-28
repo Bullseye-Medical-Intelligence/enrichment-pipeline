@@ -1,6 +1,6 @@
 """
 projects.py
-Project configuration storage: create, read, list, and validate projects.
+Project configuration storage: create, read, update, list, and validate projects.
 
 A project owns a single project_config.json that doubles as the pipeline's
 run config (pipeline.py --config) and names the ICP profile to enrich against.
@@ -19,12 +19,13 @@ import icp_profiles
 
 logger = logging.getLogger(__name__)
 
-# project_id becomes a directory name, so it is guarded against path traversal.
-_PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+# project_id becomes a directory name, so it is guarded against path traversal
+# and constrained to filesystem-safe, lowercase characters.
+_PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 def is_valid_project_id(project_id: str) -> bool:
-    """Return True if project_id is safe to use as a directory name."""
+    """Return True if project_id is filesystem-safe (lowercase, digits, -, _)."""
     return bool(_PROJECT_ID_PATTERN.match(project_id or ""))
 
 
@@ -40,13 +41,65 @@ def project_config_path(project_id: str) -> Path:
     return project_dir(project_id) / config.PROJECT_CONFIG_FILENAME
 
 
-def validate_config(cfg: dict) -> None:
-    """Raise ValueError if a project config is missing any required field."""
-    missing = [f for f in config.REQUIRED_PROJECT_FIELDS if not cfg.get(f)]
-    if missing:
+def default_project_config() -> dict:
+    """Return generic scoring/crawl defaults for a new project.
+
+    No specialty- or client-specific values: callers supply those fields.
+    """
+    return {
+        "client_website": "",
+        "product_name": "",
+        "target_geography": [],
+        "active_exclusion_rules": list(config.DEFAULT_EXCLUSION_RULES),
+        "bullseye_min_score": config.DEFAULT_BULLSEYE_MIN_SCORE,
+        "max_pages_per_practice": config.DEFAULT_MAX_PAGES_PER_PRACTICE,
+        "request_timeout_seconds": config.DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        "request_retries": config.DEFAULT_REQUEST_RETRIES,
+        "io_concurrency": config.DEFAULT_IO_CONCURRENCY,
+        "subpage_keywords": list(config.DEFAULT_SUBPAGE_KEYWORDS),
+        "notes": "",
+    }
+
+
+def validate_project_config(data: dict) -> None:
+    """Raise ValueError if a project config is invalid.
+
+    Enforces required fields, the filesystem-safe project_id, list-typed fields,
+    and integer ranges for the pipeline tuning parameters.
+    """
+    if not is_valid_project_id(data.get("project_id", "")):
         raise ValueError(
-            f"Project config is missing required field(s): {missing}"
+            "project_id is required and must be lowercase letters, digits, "
+            "hyphens or underscores (1-64 characters, no spaces)."
         )
+    for field in ("client_name", "target_specialty", "icp_profile_id"):
+        if not str(data.get(field, "")).strip():
+            raise ValueError(f"{field} is required and cannot be empty.")
+
+    if not isinstance(data.get("target_geography"), list):
+        raise ValueError("target_geography must be a list.")
+    if not isinstance(data.get("active_exclusion_rules"), list):
+        raise ValueError("active_exclusion_rules must be a list.")
+
+    keywords = data.get("subpage_keywords")
+    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
+        raise ValueError("subpage_keywords must be a list of strings.")
+
+    _validate_int(data, "bullseye_min_score", minimum=0, maximum=100)
+    _validate_int(data, "max_pages_per_practice", minimum=1)
+    _validate_int(data, "request_timeout_seconds", minimum=1)
+    _validate_int(data, "request_retries", minimum=0)
+    _validate_int(data, "io_concurrency", minimum=1)
+
+
+def _validate_int(data: dict, field: str, minimum: int, maximum: Optional[int] = None) -> None:
+    """Raise ValueError if a config field is not an int within [minimum, maximum]."""
+    value = data.get(field)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer.")
+    if value < minimum or (maximum is not None and value > maximum):
+        bound = f"{minimum}-{maximum}" if maximum is not None else f">= {minimum}"
+        raise ValueError(f"{field} must be {bound}.")
 
 
 def get_project(project_id: str) -> Optional[dict]:
@@ -80,55 +133,59 @@ def list_projects() -> list[dict]:
     return projects
 
 
-def create_project(
-    project_id: str,
-    client_name: str,
-    target_specialty: str,
-    target_geography: list[str],
-    icp_profile_id: str,
-    created_by: str,
-) -> dict:
+def create_project(project_data: dict) -> dict:
     """
     Create a new project directory and write its project_config.json.
 
-    Validates the project_id format, the referenced ICP profile, and the
-    required fields before writing. Generic scoring/exclusion defaults are
-    applied; no specialty-specific values are baked in.
+    Merges the supplied data over generic defaults, validates it, confirms the
+    referenced ICP profile is loadable, and rejects duplicates.
 
     Raises:
-        ValueError if the id is invalid, the project already exists, the ICP
-        profile is missing/malformed, or a required field is empty.
+        ValueError if the config is invalid, the project already exists, or the
+        referenced ICP profile is missing/malformed.
     """
-    if not is_valid_project_id(project_id):
-        raise ValueError(
-            f"Invalid project_id '{project_id}'. Use letters, digits, '-' or '_' "
-            "(1-64 characters, no spaces)."
-        )
+    cfg = {**default_project_config(), **{k: v for k, v in project_data.items() if v is not None}}
+    cfg.setdefault("created_at", datetime.now(timezone.utc).isoformat())
 
-    path = project_config_path(project_id)
+    validate_project_config(cfg)
+
+    path = project_config_path(cfg["project_id"])
     if path.exists():
-        raise ValueError(f"Project '{project_id}' already exists.")
+        raise ValueError(f"Project '{cfg['project_id']}' already exists.")
 
     # Referential integrity: a project must point at a real, loadable ICP profile.
-    icp_profiles.load_profile(icp_profile_id)
-
-    cfg = {
-        "project_id": project_id,
-        "client_name": client_name.strip(),
-        "target_specialty": target_specialty.strip(),
-        "target_geography": target_geography,
-        "icp_profile_id": icp_profile_id,
-        "bullseye_min_score": config.DEFAULT_BULLSEYE_MIN_SCORE,
-        "active_exclusion_rules": list(config.DEFAULT_EXCLUSION_RULES),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": created_by,
-    }
-    validate_config(cfg)
+    icp_profiles.get_icp_profile(cfg["icp_profile_id"])
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
-    logger.info("Created project '%s' (ICP '%s') by %s", project_id, icp_profile_id, created_by)
+    _write_config(path, cfg)
+    logger.info(
+        "Created project '%s' (ICP '%s') by %s",
+        cfg["project_id"], cfg["icp_profile_id"], cfg.get("created_by", "unknown"),
+    )
+    return cfg
+
+
+def update_project(project_id: str, project_data: dict) -> dict:
+    """
+    Overwrite an existing project's config with merged, validated data.
+
+    Raises:
+        ValueError if the project does not exist, the merged config is invalid,
+        or the referenced ICP profile is missing.
+    """
+    existing = get_project(project_id)
+    if existing is None:
+        raise ValueError(f"Project '{project_id}' does not exist.")
+
+    cfg = {**existing, **{k: v for k, v in project_data.items() if v is not None}}
+    cfg["project_id"] = project_id  # id is immutable; it is the folder name
+    cfg["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    validate_project_config(cfg)
+    icp_profiles.get_icp_profile(cfg["icp_profile_id"])
+
+    _write_config(project_config_path(project_id), cfg)
+    logger.info("Updated project '%s'", project_id)
     return cfg
 
 
@@ -142,3 +199,9 @@ def read_config_snapshot(run_directory: Path) -> Optional[dict]:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _write_config(path: Path, cfg: dict) -> None:
+    """Write a project_config.json to disk."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)

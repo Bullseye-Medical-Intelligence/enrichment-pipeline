@@ -24,10 +24,12 @@
 
     <div class="form-group">
       <label for="project_id">Project</label>
-      <select id="project_id" name="project_id" required {% if not projects %}disabled{% endif %}>
-        <option value="" disabled selected>— Select a project —</option>
+      <select id="project_id" name="project_id" required {% if not projects %}disabled{% endif %}
+              onchange="if(this.value){window.location='/upload?project_id='+encodeURIComponent(this.value);}">
+        <option value="" disabled {% if not selected_project %}selected{% endif %}>— Select a project —</option>
         {% for p in projects %}
-        <option value="{{ p.project_id }}">
+        <option value="{{ p.project_id }}"
+                {% if selected_project and selected_project.project_id == p.project_id %}selected{% endif %}>
           {{ p.project_id }} — {{ p.client_name }} ({{ p.target_specialty }})
         </option>
         {% endfor %}
@@ -37,6 +39,26 @@
         Need a new one? <a href="/projects/new">Create a project</a>.
       </p>
     </div>
+
+    {% if selected_context %}
+    <div class="card project-context" style="margin-bottom: 20px;">
+      <div class="context-grid">
+        {% if selected_context.client_name %}
+        <div class="context-item"><span class="context-label">Client</span><span class="context-value">{{ selected_context.client_name }}</span></div>
+        {% endif %}
+        {% if selected_context.product_name %}
+        <div class="context-item"><span class="context-label">Product</span><span class="context-value">{{ selected_context.product_name }}</span></div>
+        {% endif %}
+        {% if selected_context.target_specialty %}
+        <div class="context-item"><span class="context-label">Specialty</span><span class="context-value">{{ selected_context.target_specialty }}</span></div>
+        {% endif %}
+        {% if selected_context.target_geography %}
+        <div class="context-item"><span class="context-label">Geography</span><span class="context-value">{{ selected_context.target_geography }}</span></div>
+        {% endif %}
+        <div class="context-item"><span class="context-label">ICP Profile</span><span class="context-value">{{ selected_context.icp_name or selected_context.icp_profile_id }}{% if selected_context.icp_version %} (v{{ selected_context.icp_version }}){% endif %}</span></div>
+      </div>
+    </div>
+    {% endif %}
 
     <div class="form-group">
       <label for="file">Outscraper CSV File</label>

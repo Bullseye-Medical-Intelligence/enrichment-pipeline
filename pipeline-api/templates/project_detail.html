@@ -8,7 +8,7 @@
     <p class="page-subtitle">{{ project.client_name | default("—") }}</p>
   </div>
   <div class="header-actions">
-    <a href="/upload" class="btn btn-submit">Start Run for This Project</a>
+    <a href="/upload?project_id={{ project.project_id }}" class="btn btn-submit">Start Run for This Project</a>
     <a href="/projects" class="btn btn-secondary">← All Projects</a>
   </div>
 </div>
@@ -16,6 +16,8 @@
 <div class="card">
   <table class="score-table">
     <tr><td>Client Name</td><td><strong>{{ project.client_name | default("—") }}</strong></td></tr>
+    <tr><td>Client Website</td><td>{{ project.client_website | default("—") }}</td></tr>
+    <tr><td>Product Name</td><td>{{ project.product_name | default("—") }}</td></tr>
     <tr><td>Target Specialty</td><td>{{ project.target_specialty | default("—") }}</td></tr>
     <tr><td>Target Geography</td>
       <td>
@@ -32,6 +34,21 @@
         {% else %}—{% endif %}
       </td>
     </tr>
+    <tr><td>Subpage Keywords</td>
+      <td>
+        {% if project.subpage_keywords %}{{ project.subpage_keywords | join(", ") }}
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    <tr><td>Crawl Settings</td>
+      <td class="text-muted">
+        {{ project.max_pages_per_practice | default("—") }} pages ·
+        {{ project.request_timeout_seconds | default("—") }}s timeout ·
+        {{ project.request_retries | default("—") }} retries ·
+        {{ project.io_concurrency | default("—") }} workers
+      </td>
+    </tr>
+    {% if project.notes %}<tr><td>Notes</td><td>{{ project.notes }}</td></tr>{% endif %}
     <tr><td>Created</td><td class="text-muted">{{ project.created_at | default("—") }}</td></tr>
     <tr><td>Created By</td><td class="text-muted">{{ project.created_by | default("—") }}</td></tr>
   </table>

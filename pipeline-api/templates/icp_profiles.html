@@ -8,28 +8,36 @@
 </div>
 
 {% if profiles %}
-<div class="card table-card">
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>ICP ID</th>
-        <th>Name</th>
-        <th>Version</th>
-        <th>Signals</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for icp in profiles %}
-      <tr>
-        <td>{{ icp.icp_id }}</td>
-        <td>{{ icp.name }}</td>
-        <td>{{ icp.version }}</td>
-        <td>{{ icp.signal_count }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% for icp in profiles %}
+<div class="card">
+  <div class="page-header" style="margin-bottom: 12px;">
+    <div>
+      <h3 class="card-title">{{ icp.name }}</h3>
+      <p class="page-subtitle">
+        <code>{{ icp.icp_id }}</code> · v{{ icp.version }} · {{ icp.signal_count }} signals
+      </p>
+    </div>
+  </div>
+  {% if icp.description %}<p class="form-hint">{{ icp.description }}</p>{% endif %}
+  <details class="advanced-fields">
+    <summary>View signal list ({{ icp.signal_count }})</summary>
+    <table class="data-table">
+      <thead>
+        <tr><th>Signal ID</th><th>Label</th><th>Weight</th></tr>
+      </thead>
+      <tbody>
+        {% for sig in icp.signals %}
+        <tr>
+          <td><code>{{ sig.signal_id }}</code></td>
+          <td>{{ sig.signal_label }}</td>
+          <td>{{ sig.positive_weight }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
 </div>
+{% endfor %}
 {% else %}
 <div class="card empty-state">
   <p>No ICP profiles loaded. Add a profile JSON file (named <code>{icp_id}.json</code>) to the ICP profiles directory, then reload this page.</p>

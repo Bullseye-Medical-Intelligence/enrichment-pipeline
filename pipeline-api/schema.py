@@ -10,7 +10,11 @@ from pydantic import BaseModel
 
 
 class RunStatus(BaseModel):
-    """Full content of a run's status.json file."""
+    """Full content of a run's status.json file.
+
+    Project/ICP metadata fields are optional with defaults so status.json files
+    written before the project layer existed still load.
+    """
 
     run_id: str
     project_id: str
@@ -29,6 +33,14 @@ class RunStatus(BaseModel):
     error_count: int = 0
     pipeline_version: str = "v1.0"
     error_summary: str = ""
+    # Project / ICP context (snapshotted at run creation)
+    client_name: Optional[str] = None
+    product_name: Optional[str] = None
+    target_specialty: Optional[str] = None
+    target_geography: list[str] = []
+    icp_profile_id: Optional[str] = None
+    icp_profile_name: Optional[str] = None
+    icp_profile_version: Optional[str] = None
 
 
 class RunSummary(BaseModel):
@@ -44,6 +56,9 @@ class RunSummary(BaseModel):
     error_count: int
     created_at: str
     completed_at: Optional[str] = None
+    project_id: Optional[str] = None
+    client_name: Optional[str] = None
+    icp_profile_id: Optional[str] = None
 
 
 class RunListResponse(BaseModel):

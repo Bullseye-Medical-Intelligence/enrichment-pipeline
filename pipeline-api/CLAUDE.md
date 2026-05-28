@@ -126,8 +126,10 @@ to open a run directory and understand what happened.
   auth.py          ← API key validation dependency
   runner.py        ← subprocess management, pipeline invocation
   runs.py          ← run state: create/read/update/list via status.json
-  projects.py      ← project config storage: create/read/list/validate
+  projects.py      ← project config storage: create/read/update/list/validate
   icp_profiles.py  ← ICP profile listing/loading from disk
+  exports.py       ← filtered CSV exports (approved / excluded)
+  client_exports.py← client deliverable ZIP (summary + CSVs + briefs)
   validator.py     ← pre-flight CSV validation
   schema.py        ← Pydantic models for all request/response types
   config.py        ← environment variable loading, path constants
@@ -212,6 +214,7 @@ GET    /runs/{run_id}/download/json              Full enriched_targets.json down
 GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
+GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs)
 POST   /api/ui/runs                              Create run from browser upload
 POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 ```
@@ -245,6 +248,20 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   profile files, never in source.
 - **No visual ICP builder.** ICP profiles are hand-authored JSON files dropped
   into `ICP_PROFILES_PATH`. Listing/reading only.
+
+## Client Deliverable Export
+
+`client_exports.py` builds the client package ZIP for a completed run.
+
+- **Built from immutable output + review overlay.** Reads `enriched_targets.json`
+  and the `reviews.json` overlay; never mutates either.
+- **Reuses `exports.py`** for the approved/excluded CSVs — no duplicated filter
+  logic. The approved set still omits hard `exclusion_status == "EXCLUDED"`.
+- **Client-safe only.** The ZIP contains `executive_summary.md`,
+  `approved_targets.csv`, `excluded_targets.csv`, `top_target_briefs.md`, and
+  `methodology.md`. It never includes `run_log.json`, `reviews.json`, or the raw
+  `enriched_targets.json`.
+- **No PDF dependency.** Markdown + CSV in a stdlib `zipfile`. No external libs.
 
 ---
 

@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
+import client_exports
 import exports
 import icp_profiles
 import projects
@@ -78,9 +79,15 @@ async def logout():
 
 @router.get("/", response_class=HTMLResponse)
 async def menu(request: Request, username: str = Depends(auth.require_session)):
-    """Render the main menu with the 5 most recent runs."""
+    """Render the main menu with recent runs and project/ICP counts."""
     recent = runs.list_runs(max_runs=5)
-    return _render("menu.html", username=username, recent_runs=recent)
+    return _render(
+        "menu.html",
+        username=username,
+        recent_runs=recent,
+        project_count=len(projects.list_projects()),
+        icp_count=len(icp_profiles.list_icp_profiles()),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +106,7 @@ async def new_project_page(request: Request, username: str = Depends(auth.requir
     return _render(
         "project_new.html",
         username=username,
-        icp_profiles=icp_profiles.list_profiles(),
+        icp_profiles=icp_profiles.list_icp_profiles(),
         error=None,
         form={},
     )
@@ -111,37 +118,48 @@ async def create_project_submit(
     project_id: str = Form(...),
     client_name: str = Form(...),
     target_specialty: str = Form(...),
-    target_geography: str = Form(...),
+    target_geography: str = Form(""),
     icp_profile_id: str = Form(...),
+    client_website: str = Form(""),
+    product_name: str = Form(""),
+    active_exclusion_rules: str = Form(""),
+    subpage_keywords: str = Form(""),
+    bullseye_min_score: str = Form(""),
+    max_pages_per_practice: str = Form(""),
+    request_timeout_seconds: str = Form(""),
+    request_retries: str = Form(""),
+    io_concurrency: str = Form(""),
+    notes: str = Form(""),
     username: str = Depends(auth.require_session),
 ):
-    """Create a project from the form, then redirect to its detail page."""
-    geography = [g.strip() for g in target_geography.replace("\n", ",").split(",") if g.strip()]
+    """Create a project from the form, then redirect to its detail page.
+
+    Blank advanced fields fall back to the service's generic defaults.
+    """
+    form = {
+        "project_id": project_id, "client_name": client_name,
+        "target_specialty": target_specialty, "target_geography": target_geography,
+        "icp_profile_id": icp_profile_id, "client_website": client_website,
+        "product_name": product_name, "active_exclusion_rules": active_exclusion_rules,
+        "subpage_keywords": subpage_keywords, "bullseye_min_score": bullseye_min_score,
+        "max_pages_per_practice": max_pages_per_practice,
+        "request_timeout_seconds": request_timeout_seconds,
+        "request_retries": request_retries, "io_concurrency": io_concurrency,
+        "notes": notes,
+    }
     try:
-        projects.create_project(
-            project_id=project_id.strip(),
-            client_name=client_name,
-            target_specialty=target_specialty,
-            target_geography=geography,
-            icp_profile_id=icp_profile_id,
-            created_by=username,
-        )
+        project_data = _parse_project_form(form, created_by=username)
+        projects.create_project(project_data)
     except ValueError as e:
         return _render(
             "project_new.html",
             status_code=400,
             username=username,
-            icp_profiles=icp_profiles.list_profiles(),
+            icp_profiles=icp_profiles.list_icp_profiles(),
             error=str(e),
-            form={
-                "project_id": project_id,
-                "client_name": client_name,
-                "target_specialty": target_specialty,
-                "target_geography": target_geography,
-                "icp_profile_id": icp_profile_id,
-            },
+            form=form,
         )
-    return RedirectResponse(url=f"/projects/{project_id.strip()}", status_code=303)
+    return RedirectResponse(url=f"/projects/{project_data['project_id']}", status_code=303)
 
 
 @router.get("/projects/{project_id}", response_class=HTMLResponse)
@@ -167,7 +185,7 @@ async def icp_profiles_page(request: Request, username: str = Depends(auth.requi
     return _render(
         "icp_profiles.html",
         username=username,
-        profiles=icp_profiles.list_profiles(),
+        profiles=icp_profiles.list_icp_profiles(),
     )
 
 
@@ -176,13 +194,25 @@ async def icp_profiles_page(request: Request, username: str = Depends(auth.requi
 # ---------------------------------------------------------------------------
 
 @router.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request, username: str = Depends(auth.require_session)):
-    """Render the CSV upload form. The project is chosen from existing projects."""
+async def upload_page(
+    request: Request,
+    project_id: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Render the CSV upload form. The project is chosen from existing projects.
+
+    An optional ?project_id= preselects a project and shows its read-only
+    client/ICP context.
+    """
+    all_projects = projects.list_projects()
+    selected = projects.get_project(project_id) if project_id else None
     return _render(
         "upload.html",
         username=username,
         error=None,
-        projects=projects.list_projects(),
+        projects=all_projects,
+        selected_project=selected,
+        selected_context=_project_upload_context(selected),
     )
 
 
@@ -296,6 +326,25 @@ async def export_excluded(run_id: str, username: str = Depends(auth.require_sess
     )
 
 
+@router.get("/runs/{run_id}/client-package")
+async def client_package(run_id: str, username: str = Depends(auth.require_session)):
+    """Download a client deliverable ZIP for a completed run."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(
+            status_code=425,
+            detail=f"Run '{run_id}' has not completed (current status: {status.status}).",
+        )
+    buf = client_exports.build_client_package(run_id, runs.run_dir(run_id), status)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_client_package.zip"'},
+    )
+
+
 @router.post("/api/ui/runs")
 async def ui_create_run(
     background_tasks: BackgroundTasks,
@@ -315,12 +364,15 @@ async def ui_create_run(
             file, source_type, project_id, operator, background_tasks
         )
     except ValueError as e:
+        selected = projects.get_project(project_id) if project_id else None
         return _render(
             "upload.html",
             status_code=400,
             username=username,
             error=str(e),
             projects=projects.list_projects(),
+            selected_project=selected,
+            selected_context=_project_upload_context(selected),
         )
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
@@ -368,11 +420,85 @@ def _build_project_context(run_id: str) -> dict | None:
     return {
         "project_id": cfg.get("project_id"),
         "client_name": cfg.get("client_name"),
+        "product_name": cfg.get("product_name"),
         "target_specialty": cfg.get("target_specialty"),
         "target_geography": geography,
         "icp_name": icp.get("name"),
         "icp_version": icp.get("version"),
     }
+
+
+def _project_upload_context(project: dict | None) -> dict | None:
+    """Build the read-only project context shown on the upload page.
+
+    Resolves the project's ICP name/version for display. Returns None if no
+    project is selected.
+    """
+    if not project:
+        return None
+    icp_name = icp_version = None
+    icp_id = project.get("icp_profile_id")
+    if icp_id:
+        try:
+            profile = icp_profiles.get_icp_profile(icp_id)
+            icp_name, icp_version = profile.get("name"), profile.get("version")
+        except ValueError:
+            pass  # surfaced as a validation error when the run is started
+    geography = project.get("target_geography") or []
+    if isinstance(geography, list):
+        geography = ", ".join(geography)
+    return {
+        "client_name": project.get("client_name"),
+        "product_name": project.get("product_name"),
+        "target_specialty": project.get("target_specialty"),
+        "target_geography": geography,
+        "icp_profile_id": icp_id,
+        "icp_name": icp_name,
+        "icp_version": icp_version,
+    }
+
+
+def _parse_project_form(form: dict, created_by: str) -> dict:
+    """Parse create-project form strings into a typed project_data dict.
+
+    Lists are comma-separated; blank numeric fields are omitted so the service
+    applies its generic defaults.
+    """
+    def _csv_list(value: str) -> list[str]:
+        return [item.strip() for item in (value or "").replace("\n", ",").split(",") if item.strip()]
+
+    def _opt_int(value: str, field: str) -> int | None:
+        value = (value or "").strip()
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError(f"{field} must be a whole number.")
+
+    data: dict = {
+        "project_id": (form.get("project_id") or "").strip(),
+        "client_name": (form.get("client_name") or "").strip(),
+        "client_website": (form.get("client_website") or "").strip(),
+        "product_name": (form.get("product_name") or "").strip(),
+        "target_specialty": (form.get("target_specialty") or "").strip(),
+        "target_geography": _csv_list(form.get("target_geography")),
+        "icp_profile_id": (form.get("icp_profile_id") or "").strip(),
+        "notes": (form.get("notes") or "").strip(),
+        "created_by": created_by,
+    }
+    if form.get("active_exclusion_rules", "").strip():
+        data["active_exclusion_rules"] = _csv_list(form.get("active_exclusion_rules"))
+    if form.get("subpage_keywords", "").strip():
+        data["subpage_keywords"] = _csv_list(form.get("subpage_keywords"))
+    for field in (
+        "bullseye_min_score", "max_pages_per_practice", "request_timeout_seconds",
+        "request_retries", "io_concurrency",
+    ):
+        parsed = _opt_int(form.get(field), field)
+        if parsed is not None:
+            data[field] = parsed
+    return data
 
 
 def _calculate_stats(records: list[dict]) -> dict:

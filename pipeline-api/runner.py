@@ -164,8 +164,8 @@ async def orchestrate_run(
     project_config = projects.get_project(project_id)
     if project_config is None:
         raise ValueError(f"Project '{project_id}' does not exist. Create it first.")
-    projects.validate_config(project_config)
-    icp_profile = icp_profiles.load_profile(project_config["icp_profile_id"])
+    projects.validate_project_config(project_config)
+    icp_profile = icp_profiles.get_icp_profile(project_config["icp_profile_id"])
 
     content, row_count = await validator.validate_csv_upload(file, source_type, project_id)
 
@@ -190,6 +190,15 @@ async def orchestrate_run(
         input_filename=getattr(file, "filename", None) or "upload.csv",
         operator=operator,
         records_input=row_count,
+        metadata={
+            "client_name": project_config.get("client_name"),
+            "product_name": project_config.get("product_name"),
+            "target_specialty": project_config.get("target_specialty"),
+            "target_geography": project_config.get("target_geography") or [],
+            "icp_profile_id": project_config.get("icp_profile_id"),
+            "icp_profile_name": icp_profile.get("name"),
+            "icp_profile_version": icp_profile.get("version"),
+        },
     )
 
     process = spawn_pipeline(

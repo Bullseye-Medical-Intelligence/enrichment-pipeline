@@ -7,6 +7,12 @@
   <p class="page-subtitle">Bullseye Medical Intelligence — Internal Pipeline</p>
 </div>
 
+<div class="stats-bar">
+  <div class="stat-item"><span class="stat-num">{{ project_count | default(0) }}</span><span class="stat-label">Projects</span></div>
+  <div class="stat-item"><span class="stat-num">{{ icp_count | default(0) }}</span><span class="stat-label">ICP Profiles</span></div>
+  <div class="stat-item"><span class="stat-num">{{ recent_runs | length }}</span><span class="stat-label">Recent Runs</span></div>
+</div>
+
 <div class="action-cards">
   <a href="/upload" class="action-card action-primary">
     <div class="action-icon">+</div>
