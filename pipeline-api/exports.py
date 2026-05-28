@@ -29,23 +29,51 @@ _REVIEW_COLUMNS = [
 ]
 
 
-def build_approved_csv(run_id: str, run_directory: Path) -> io.BytesIO:
-    """Return a BytesIO CSV of approved records.
+def _is_approved(rec: dict, rev: dict) -> bool:
+    """Return True when a record passes the approved-export gate.
 
-    A record is included only when ALL of:
+    Gate rules (all must hold):
     - qc_status == "approved"
-    - original exclusion_status != "EXCLUDED"  (hard pipeline exclusion cannot be bypassed)
     - effective displayed_tier != "excluded"
+    - if no analyst override_tier is set, original exclusion_status != "EXCLUDED"
     """
-    def _approved(rec: dict, rev: dict) -> bool:
-        if rev.get("qc_status") != "approved":
-            return False
-        if rec.get("exclusion_status") == "EXCLUDED":
+    if rev.get("qc_status") != "approved":
+        return False
+    displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
+    if displayed == "excluded":
+        return False
+    if not rev.get("override_tier") and rec.get("exclusion_status") == "EXCLUDED":
+        return False
+    return True
+
+
+def build_approved_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+    """Return a BytesIO CSV of approved records (all tiers)."""
+    return _build_csv(run_id, run_directory, _is_approved)
+
+
+def build_bullseye_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+    """Return a BytesIO CSV of approved Bullseye-tier records only."""
+    def _bullseye(rec: dict, rev: dict) -> bool:
+        if not _is_approved(rec, rev):
             return False
         displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
-        return displayed != "excluded"
+        return displayed == "bullseye"
 
-    return _build_csv(run_id, run_directory, _approved)
+    return _build_csv(run_id, run_directory, _bullseye)
+
+
+def build_warm_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+    """Return a BytesIO CSV of approved Strong/Warm-tier records."""
+    _WARM_TIERS = {"strong", "warm"}
+
+    def _warm(rec: dict, rev: dict) -> bool:
+        if not _is_approved(rec, rev):
+            return False
+        displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
+        return displayed in _WARM_TIERS
+
+    return _build_csv(run_id, run_directory, _warm)
 
 
 def build_excluded_csv(run_id: str, run_directory: Path) -> io.BytesIO:

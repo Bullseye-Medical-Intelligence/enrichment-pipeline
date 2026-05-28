@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Executive Target Report — {{ client_name }}</title>
+<style>
+
+/* ═══════════════════════════════════════════════════════
+   PAGE SETUP
+   ═══════════════════════════════════════════════════════ */
+
+@page {
+  size: letter;
+  margin: 0.7in 0.65in 0.85in 0.65in;
+}
+
+@page cover {
+  size: letter;
+  margin: 0;
+}
+
+/* Page numbers and confidentiality footer on all non-cover pages */
+@page {
+  @bottom-left {
+    content: "Confidential \2014 For Client Use Only";
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 7pt;
+    color: #aaa;
+  }
+  @bottom-right {
+    content: counter(page) " of " counter(pages);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 7pt;
+    color: #aaa;
+  }
+}
+
+@page :first {
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   BASE
+   ═══════════════════════════════════════════════════════ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Liberation Sans', Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+a {
+  color: #c84b2f;
+  text-decoration: none;
+}
+
+h1, h2, h3 {
+  font-family: 'Liberation Serif', Georgia, 'Times New Roman', serif;
+  line-height: 1.15;
+  color: #0a0a0a;
+}
+
+p { margin: 0; }
+
+/* ═══════════════════════════════════════════════════════
+   PAGE BREAKS
+   ═══════════════════════════════════════════════════════ */
+
+.cover-page {
+  page: cover;
+}
+
+.interior-page {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* ═══════════════════════════════════════════════════════
+   COVER PAGE
+   ═══════════════════════════════════════════════════════ */
+
+.cover-page {
+  width: 8.5in;
+  min-height: 11in;
+  background-color: #0a0a0a;
+  color: #ffffff;
+  padding: 0.8in 0.75in;
+  display: flex;
+  flex-direction: column;
+}
+
+.cover-logo-wrap {
+  margin-bottom: 0;
+}
+
+.cover-logo {
+  height: 32px;
+  width: auto;
+}
+
+.cover-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.9in 0 0.6in;
+}
+
+.cover-rule {
+  width: 52px;
+  height: 3px;
+  background: #c84b2f;
+  margin-bottom: 1.2em;
+}
+
+.cover-eyebrow {
+  font-family: 'Liberation Sans', Arial, sans-serif;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  color: #c84b2f;
+  margin-bottom: 0.5em;
+}
+
+.cover-title {
+  font-family: 'Liberation Serif', Georgia, serif;
+  font-size: 40pt;
+  font-weight: 400;
+  color: #ffffff;
+  line-height: 1.05;
+  margin-bottom: 0.4em;
+}
+
+.cover-product {
+  font-size: 14pt;
+  color: #cccccc;
+  margin-bottom: 0.15em;
+}
+
+.cover-meta-line {
+  font-size: 10pt;
+  color: #888888;
+}
+
+.cover-meta-block {
+  margin-top: 1.2em;
+  border-top: 1px solid #2a2a2a;
+  padding-top: 0.8em;
+}
+
+.cover-meta-block p {
+  font-size: 9pt;
+  color: #666666;
+  margin-bottom: 0.2em;
+}
+
+.cover-meta-block strong {
+  color: #aaaaaa;
+}
+
+.cover-footer {
+  border-top: 1px solid #2a2a2a;
+  padding-top: 0.6em;
+}
+
+.cover-footer p {
+  font-size: 8pt;
+  color: #555555;
+  margin-bottom: 0.2em;
+}
+
+.cover-confidential {
+  font-size: 7.5pt;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #444444;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SHARED INTERIOR ELEMENTS
+   ═══════════════════════════════════════════════════════ */
+
+.page-header {
+  overflow: hidden;
+  border-bottom: 1.5px solid #e8e8e8;
+  padding-bottom: 0.45em;
+  margin-bottom: 1em;
+}
+
+.page-header-logo {
+  float: left;
+  height: 22px;
+  width: auto;
+}
+
+.page-header-right {
+  float: right;
+  font-size: 8pt;
+  color: #999;
+  line-height: 22px;
+}
+
+.section-label {
+  font-family: 'Liberation Sans', Arial, sans-serif;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #c84b2f;
+  margin-bottom: 0.55em;
+  margin-top: 1em;
+}
+
+.section-label:first-child { margin-top: 0; }
+
+/* ═══════════════════════════════════════════════════════
+   EXECUTIVE SUMMARY PAGE
+   ═══════════════════════════════════════════════════════ */
+
+.summary-page h2 {
+  font-size: 22pt;
+  margin-bottom: 0.7em;
+}
+
+/* Stats row using table for reliable WeasyPrint layout */
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0 1.4em;
+}
+
+.stats-table td {
+  width: 25%;
+  text-align: center;
+  padding: 0.8em 0.5em;
+  border: 1px solid #e8e8e8;
+  border-radius: 0;
+}
+
+.stat-label {
+  font-size: 7pt;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  display: block;
+  margin-bottom: 0.3em;
+}
+
+.stat-value {
+  font-size: 26pt;
+  font-weight: 700;
+  color: #0a0a0a;
+  line-height: 1;
+  display: block;
+}
+
+.stat-value-bullseye {
+  color: #c84b2f;
+}
+
+.summary-desc {
+  font-size: 9.5pt;
+  color: #444;
+  line-height: 1.65;
+  margin-bottom: 0.5em;
+}
+
+.package-contents-box {
+  margin: 0.4em 0 1em;
+  padding: 0.8em 1em;
+  background: #f8f7f5;
+  border-left: 3px solid #c84b2f;
+}
+
+.package-contents-box p {
+  font-size: 9pt;
+  color: #444;
+  margin-bottom: 0.35em;
+  line-height: 1.5;
+}
+
+.package-contents-box p:last-child { margin-bottom: 0; }
+
+.package-filename {
+  font-family: 'Liberation Mono', 'Courier New', monospace;
+  font-size: 8.5pt;
+  color: #0a0a0a;
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACCOUNT PAGES
+   ═══════════════════════════════════════════════════════ */
+
+.account-badge {
+  display: inline-block;
+  background: #c84b2f;
+  color: #ffffff;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 3px 10px 3px 8px;
+  border-radius: 100px;
+  margin-bottom: 0.5em;
+}
+
+.account-name {
+  font-size: 24pt;
+  color: #0a0a0a;
+  margin-bottom: 0.12em;
+  line-height: 1.1;
+}
+
+.account-meta-row {
+  font-size: 9.5pt;
+  color: #555;
+  margin-bottom: 0.12em;
+}
+
+.account-meta-row a {
+  color: #555;
+}
+
+.account-contact-row {
+  font-size: 9pt;
+  color: #555;
+  margin-bottom: 0.12em;
+}
+
+.account-contact-row a {
+  color: #c84b2f;
+}
+
+.account-divider {
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 0.75em 0;
+}
+
+/* Two-column layout: main content + sidebar, using floats for WeasyPrint reliability */
+.account-sidebar {
+  float: right;
+  width: 165px;
+  margin-left: 1em;
+  margin-bottom: 0.5em;
+}
+
+.account-main {
+  overflow: hidden; /* BFC — stays beside the float */
+}
+
+/* Score panel */
+.score-panel {
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  padding: 0.85em 0.7em;
+  text-align: center;
+  background: #fafafa;
+}
+
+.score-eyebrow {
+  font-size: 6.5pt;
+  color: #aaa;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  margin-bottom: 0.15em;
+  display: block;
+}
+
+.score-number {
+  font-family: 'Liberation Serif', Georgia, serif;
+  font-size: 44pt;
+  font-weight: 700;
+  color: #0a0a0a;
+  line-height: 1;
+  display: block;
+}
+
+.score-tier-label {
+  font-size: 7.5pt;
+  color: #c84b2f;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-bottom: 0.4em;
+  display: block;
+}
+
+.score-bar-track {
+  height: 4px;
+  background: #e8e8e8;
+  border-radius: 2px;
+  margin: 0.4em 0.2em;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  background: #c84b2f;
+  border-radius: 2px;
+}
+
+.score-confidence {
+  font-size: 7.5pt;
+  color: #999;
+  margin-top: 0.35em;
+  display: block;
+}
+
+/* Observable signals */
+.signals-wrap {
+  margin-bottom: 0.8em;
+}
+
+.signal-pill {
+  display: inline-block;
+  border: 1px solid #d4d4d4;
+  border-radius: 100px;
+  padding: 2.5px 9px;
+  font-size: 7.5pt;
+  color: #333;
+  background: #ffffff;
+  margin: 2px 3px 2px 0;
+}
+
+/* Sales hook */
+.sales-hook-box {
+  background: #fdf5f2;
+  border-left: 3px solid #c84b2f;
+  padding: 0.7em 0.9em;
+  margin-bottom: 0.8em;
+  border-radius: 0 3px 3px 0;
+}
+
+.sales-hook-text {
+  font-family: 'Liberation Serif', Georgia, serif;
+  font-style: italic;
+  font-size: 10pt;
+  color: #2a1a15;
+  line-height: 1.6;
+  margin-bottom: 0.3em;
+}
+
+.sales-hook-text:last-child { margin-bottom: 0; }
+
+/* Evidence */
+.evidence-item {
+  margin-bottom: 0.75em;
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+.evidence-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.evidence-label-row {
+  overflow: hidden;
+  margin-bottom: 0.2em;
+}
+
+.evidence-signal-name {
+  font-size: 9pt;
+  font-weight: 700;
+  color: #0a0a0a;
+  float: left;
+}
+
+.evidence-state-badge {
+  float: left;
+  margin-left: 0.5em;
+  margin-top: 1px;
+  font-size: 6pt;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 100px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
+
+.evidence-state-badge.absent {
+  background: #fce4ec;
+  color: #b71c1c;
+  border-color: #f8bbd0;
+}
+
+.evidence-text {
+  font-size: 9pt;
+  color: #444;
+  margin-bottom: 0.15em;
+  line-height: 1.5;
+  clear: both;
+}
+
+.evidence-source-label {
+  font-size: 7pt;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.evidence-source-link {
+  font-size: 7.5pt;
+  color: #c84b2f;
+  word-break: break-all;
+}
+
+/* Analyst note */
+.analyst-note-box {
+  margin-top: 0.7em;
+  padding: 0.5em 0.75em;
+  background: #f5f5f5;
+  border-radius: 3px;
+  font-size: 8.5pt;
+  color: #555;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════════
+   METHODOLOGY PAGE
+   ═══════════════════════════════════════════════════════ */
+
+.methodology-page h2 {
+  font-size: 22pt;
+  margin-bottom: 0.8em;
+}
+
+.methodology-page h3 {
+  font-size: 11pt;
+  color: #0a0a0a;
+  margin: 1em 0 0.3em;
+}
+
+.methodology-page p {
+  font-size: 9.5pt;
+  color: #444;
+  margin-bottom: 0.55em;
+  line-height: 1.65;
+}
+
+/* Tier definition table */
+.tier-def-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0 1em;
+}
+
+.tier-def-table td {
+  width: 50%;
+  vertical-align: top;
+  padding: 0.8em;
+  border: 1px solid #e8e8e8;
+}
+
+.tier-def-title {
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #c84b2f;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 0.3em;
+}
+
+.tier-def-text {
+  font-size: 8.5pt;
+  color: #555;
+  line-height: 1.55;
+}
+
+.run-footer {
+  margin-top: 2em;
+  padding-top: 0.6em;
+  border-top: 1px solid #ebebeb;
+  font-size: 7.5pt;
+  color: #bbb;
+}
+
+</style>
+</head>
+<body>
+
+
+<!-- ════════════════════════════════════════════════
+     COVER PAGE
+     ════════════════════════════════════════════════ -->
+<article class="cover-page">
+  <div class="cover-logo-wrap">
+    <img class="cover-logo" src="{{ logo_light }}" alt="Bullseye Medical Intelligence">
+  </div>
+
+  <div class="cover-body">
+    <div class="cover-rule"></div>
+    <p class="cover-eyebrow">Executive Target Report</p>
+    <h1 class="cover-title">{{ client_name }}</h1>
+    {% if product_name and product_name != '—' %}
+    <p class="cover-product">{{ product_name }}</p>
+    {% endif %}
+    <p class="cover-meta-line">
+      {{ target_specialty }}{% if geography and geography != '—' %}&nbsp;&nbsp;·&nbsp;&nbsp;{{ geography }}{% endif %}
+    </p>
+
+    <div class="cover-meta-block">
+      <p><strong>ICP Profile:</strong> {{ icp_name }}{% if icp_version and icp_version != '—' %} ({{ icp_version }}){% endif %}</p>
+      <p><strong>Bullseye Accounts:</strong> {{ bullseye_count }}</p>
+      <p><strong>Run ID:</strong> {{ run_id }}</p>
+    </div>
+  </div>
+
+  <div class="cover-footer">
+    <p>Generated {{ generated_date }}</p>
+    <p class="cover-confidential">Confidential &nbsp;·&nbsp; For Client Use Only</p>
+  </div>
+</article>
+
+
+<!-- ════════════════════════════════════════════════
+     EXECUTIVE SUMMARY
+     ════════════════════════════════════════════════ -->
+<article class="interior-page summary-page">
+  <div class="page-header">
+    <img class="page-header-logo" src="{{ logo_dark }}" alt="Bullseye Medical Intelligence">
+    <span class="page-header-right">Executive Summary</span>
+  </div>
+
+  <h2>Executive Summary</h2>
+
+  <table class="stats-table">
+    <tr>
+      <td>
+        <span class="stat-label">Screened</span>
+        <span class="stat-value">{{ screened }}</span>
+      </td>
+      <td>
+        <span class="stat-label">Bullseye</span>
+        <span class="stat-value stat-value-bullseye">{{ bullseye_count }}</span>
+      </td>
+      <td>
+        <span class="stat-label">Warm / Strong</span>
+        <span class="stat-value">{{ warm_count }}</span>
+      </td>
+      <td>
+        <span class="stat-label">Excluded</span>
+        <span class="stat-value">{{ excluded_count }}</span>
+      </td>
+    </tr>
+  </table>
+
+  <p class="section-label">About This Report</p>
+  <p class="summary-desc">
+    This report contains individual intelligence briefs for each Bullseye-tier account identified
+    in this analysis. Each brief includes observable fit signals drawn from publicly available
+    sources, a representative sales approach, evidence citations, and analyst notes where applicable.
+    {% if bullseye_count == 0 %}
+    No Bullseye-tier accounts were identified in this run.
+    {% else %}
+    {{ bullseye_count }} account brief{{ 's' if bullseye_count != 1 }} follow in the pages below.
+    {% endif %}
+  </p>
+
+  <p class="section-label" style="margin-top: 1.1em">Package Contents</p>
+  <div class="package-contents-box">
+    <p><span class="package-filename">Executive_Target_Report.pdf</span> &nbsp;— This document. Intelligence briefs for all Bullseye-tier accounts.</p>
+    <p><span class="package-filename">bullseye_accounts.csv</span> &nbsp;— Bullseye-tier approved accounts, structured for CRM import.</p>
+    <p><span class="package-filename">warm_accounts.csv</span> &nbsp;— Strong/Warm-tier approved accounts for follow-on outreach planning.</p>
+    <p><span class="package-filename">excluded_targets.csv</span> &nbsp;— Accounts excluded from active targeting; provided as an audit reference.</p>
+    <p><span class="package-filename">run_metadata.json</span> &nbsp;— Machine-readable run summary for integration workflows.</p>
+  </div>
+
+  <p class="section-label" style="margin-top: 1.1em">Methodology Note</p>
+  <p class="summary-desc">{{ methodology }}</p>
+</article>
+
+
+<!-- ════════════════════════════════════════════════
+     BULLSEYE ACCOUNT PAGES
+     ════════════════════════════════════════════════ -->
+{% for rec in bullseye_records %}
+<article class="interior-page account-page">
+  <div class="page-header">
+    <img class="page-header-logo" src="{{ logo_dark }}" alt="Bullseye Medical Intelligence">
+    <span class="page-header-right">{{ rec.name }}</span>
+  </div>
+
+  <span class="account-badge">&#9679; Bullseye Account</span>
+
+  <h1 class="account-name">{{ rec.name }}</h1>
+
+  <p class="account-meta-row">
+    {%- if rec.specialty and rec.specialty != '—' %}{{ rec.specialty }}{% endif %}
+    {%- if rec.specialty and rec.specialty != '—' and rec.location and rec.location != '—' %}&nbsp;&nbsp;·&nbsp;&nbsp;{% endif %}
+    {%- if rec.location and rec.location != '—' %}{{ rec.location }}{% endif %}
+  </p>
+
+  {% if rec.phone_formatted or rec.website %}
+  <p class="account-contact-row">
+    {%- if rec.phone_formatted %}
+    <a href="tel:{{ rec.phone }}">&#128222; {{ rec.phone_formatted }}</a>
+    {%- endif %}
+    {%- if rec.phone_formatted and rec.website %}&nbsp;&nbsp;·&nbsp;&nbsp;{% endif %}
+    {%- if rec.website %}
+    <a href="{{ rec.website }}">&#127760; {{ rec.website }}</a>
+    {%- endif %}
+  </p>
+  {% endif %}
+
+  <hr class="account-divider">
+
+  <!-- Sidebar floated right for score panel -->
+  <div class="account-sidebar">
+    <div class="score-panel">
+      <span class="score-eyebrow">Bullseye Score</span>
+      <span class="score-number">{{ rec.score if rec.score is not none else '—' }}</span>
+      <span class="score-tier-label">High Priority Target</span>
+      {% if rec.score is not none %}
+      <div class="score-bar-track">
+        <div class="score-bar-fill" style="width: {{ [rec.score, 100] | min }}%;"></div>
+      </div>
+      {% endif %}
+      {% if rec.confidence is not none %}
+      <span class="score-confidence">Confidence: {{ rec.confidence }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Main content beside sidebar -->
+  <div class="account-main">
+
+    {% if rec.signal_labels %}
+    <p class="section-label">Observable Signals</p>
+    <div class="signals-wrap">
+      {%- for label in rec.signal_labels %}
+      <span class="signal-pill">{{ label }}</span>
+      {%- endfor %}
+    </div>
+    {% endif %}
+
+    {% if rec.sales_angles %}
+    <p class="section-label">Why This Account</p>
+    <div class="sales-hook-box">
+      {%- for angle in rec.sales_angles %}
+      <p class="sales-hook-text">{{ angle }}</p>
+      {%- endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Evidence section spans full width below sidebar -->
+  <div style="clear: both;"></div>
+
+  {% if rec.signals_with_evidence %}
+  <p class="section-label">Evidence &amp; Signals</p>
+  {% for sig in rec.signals_with_evidence %}
+  <div class="evidence-item">
+    <div class="evidence-label-row">
+      <span class="evidence-signal-name">{{ sig.signal_label or '—' }}</span>
+      {%- if sig.signal_state %}
+      {%- set state_lower = sig.signal_state | lower %}
+      <span class="evidence-state-badge {% if state_lower == 'absent' %}absent{% endif %}">
+        {%- if state_lower == 'present' %}Confirmed
+        {%- elif state_lower == 'absent' %}Not Found
+        {%- else %}{{ sig.signal_state | title }}
+        {%- endif %}
+      </span>
+      {%- endif %}
+    </div>
+    {%- if sig.evidence_text %}
+    <p class="evidence-text">{{ sig.evidence_text }}</p>
+    {%- endif %}
+    {%- if sig.source_url %}
+    <span class="evidence-source-label">Source: </span><a class="evidence-source-link" href="{{ sig.source_url }}">{{ sig.source_url }}</a>
+    {%- endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if rec.analyst_note %}
+  <p class="section-label">Analyst Note</p>
+  <div class="analyst-note-box">{{ rec.analyst_note }}</div>
+  {% endif %}
+
+</article>
+{% endfor %}
+
+
+<!-- ════════════════════════════════════════════════
+     METHODOLOGY PAGE
+     ════════════════════════════════════════════════ -->
+<article class="interior-page methodology-page">
+  <div class="page-header">
+    <img class="page-header-logo" src="{{ logo_dark }}" alt="Bullseye Medical Intelligence">
+    <span class="page-header-right">Methodology &amp; Definitions</span>
+  </div>
+
+  <h2>Methodology &amp; Definitions</h2>
+
+  <p class="section-label">Tier Definitions</p>
+  <table class="tier-def-table">
+    <tr>
+      <td>
+        <p class="tier-def-title">&#9679; Bullseye</p>
+        <p class="tier-def-text">Highest-priority accounts demonstrating strong observable signal alignment across the ICP checklist. Recommended for immediate, personalized outreach. Individual intelligence briefs appear in this report.</p>
+      </td>
+      <td>
+        <p class="tier-def-title">Warm / Strong</p>
+        <p class="tier-def-text">Accounts showing partial fit or emerging signals. Suitable for near-term nurture sequences and follow-on outreach campaigns. Included in <span style="font-family:monospace;font-size:8pt">warm_accounts.csv</span> for CRM integration.</p>
+      </td>
+    </tr>
+  </table>
+
+  <p class="section-label" style="margin-top:0.8em">Data Sources &amp; Approach</p>
+  <p>{{ methodology }}</p>
+
+  <p class="section-label" style="margin-top:0.8em">Evidence Verification</p>
+  <p>Each signal in the Bullseye account briefs includes a source link where publicly available. Clients are encouraged to verify signal evidence directly before outreach. Source URLs link to the original public-facing pages reviewed during enrichment.</p>
+
+  <h3>CSV Exports</h3>
+  <p>Two CRM-ready CSV files are included alongside this report:</p>
+  <p style="margin-top:0.4em">
+    <strong>bullseye_accounts.csv</strong> — All approved Bullseye-tier accounts with enrichment fields and analyst review metadata, suitable for direct import into Salesforce, HubSpot, Outreach, or similar platforms.
+  </p>
+  <p>
+    <strong>warm_accounts.csv</strong> — Approved Strong/Warm-tier accounts for follow-on outreach planning. CSV field names are stable and integration-friendly.
+  </p>
+
+  <p class="run-footer">
+    Generated {{ generated_date }} &nbsp;·&nbsp; Run: {{ run_id }} &nbsp;·&nbsp; Bullseye Medical Intelligence
+  </p>
+</article>
+
+
+</body>
+</html>

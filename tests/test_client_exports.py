@@ -28,11 +28,11 @@ import config  # noqa: E402
 from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
-    "executive_summary.md",
-    "approved_targets.csv",
+    "Executive_Target_Report.pdf",
+    "bullseye_accounts.csv",
+    "warm_accounts.csv",
     "excluded_targets.csv",
-    "top_target_briefs.md",
-    "methodology.md",
+    "run_metadata.json",
 }
 
 
@@ -59,7 +59,7 @@ def _build_run(tmp_path):
         # Hard-excluded, analyst tried to override to Bullseye + approve.
         "T-2": {"override_tier": "Bullseye", "override_reason": "looks good",
                 "qc_status": "approved", "analyst_note": "", "reviewed_by": "t", "reviewed_at": "now"},
-        # Approved but only Watchlist tier (still approved → included).
+        # Pending review.
         "T-3": {"override_tier": None, "override_reason": None, "qc_status": "pending",
                 "analyst_note": "", "reviewed_by": None, "reviewed_at": None},
     }
@@ -105,46 +105,83 @@ def test_package_excludes_internal_artifacts(tmp_path):
     assert "reviews.json" not in names
     assert "run_log.json" not in names
     assert "enriched_targets.json" not in names
+    assert "executive_summary.md" not in names
+    assert "top_target_briefs.md" not in names
+    assert "methodology.md" not in names
+    assert "approved_targets.csv" not in names
 
 
-def test_approved_csv_excludes_hard_excluded(tmp_path):
+def test_bullseye_csv_includes_overridden_excluded(tmp_path):
+    """Hard-excluded record with explicit analyst override_tier=Bullseye + approved → in bullseye CSV."""
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
-        approved = zf.read("approved_targets.csv").decode("utf-8")
-    assert "T-1" in approved
-    assert "T-2" not in approved  # hard exclusion cannot be bypassed by override
-    assert "T-3" not in approved  # not approved (pending)
+        bullseye = zf.read("bullseye_accounts.csv").decode("utf-8")
+    assert "T-1" in bullseye         # CLEAR + Bullseye tier + approved → included
+    assert "T-2" in bullseye         # EXCLUDED + analyst override Bullseye + approved → included
+    assert "T-3" not in bullseye     # pending review → not included
 
 
-def test_executive_summary_has_context(tmp_path):
+def test_approved_csv_blocks_excluded_without_override(tmp_path):
+    """Hard-excluded record with no override_tier stays out of approved CSV."""
+    records = [
+        {"record_id": "T-X", "practice_name": "Big Hospital OBGYN",
+         "target_tier": "Excluded", "bullseye_score": 25,
+         "exclusion_status": "EXCLUDED"},
+    ]
+    reviews_map = {
+        "T-X": {"override_tier": None, "override_reason": None,
+                "qc_status": "approved", "analyst_note": "",
+                "reviewed_by": "t", "reviewed_at": "now"},
+    }
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+
+    import exports
+    buf = exports.build_approved_csv("RUN-test", tmp_path)
+    content = buf.getvalue().decode("utf-8")
+    assert "T-X" not in content  # approved but no override → hard exclusion still blocks
+
+
+def test_run_metadata_has_context(tmp_path):
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
-        summary = zf.read("executive_summary.md").decode("utf-8")
-    assert "Femasys" in summary
-    assert "femasys-socal-obgyn" in summary
-    assert "FemaSeed" in summary
-    assert "OBGYN" in summary
-    assert "FemaSeed OBGYN ICP" in summary
-    assert "Approved targets:** 1" in summary
+        meta = json.loads(zf.read("run_metadata.json").decode("utf-8"))
+    assert meta["client_name"] == "Femasys"
+    assert meta["project_id"] == "femasys-socal-obgyn"
+    assert meta["product_name"] == "FemaSeed"
+    assert meta["target_specialty"] == "OBGYN"
+    assert meta["icp_profile_name"] == "FemaSeed OBGYN ICP"
+    assert meta["records_approved"] == 2  # T-1 (CLEAR) + T-2 (EXCLUDED+override)
 
 
-def test_methodology_excludes_phi_language(tmp_path):
+def test_metadata_methodology_excludes_phi_language(tmp_path):
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
-        methodology = zf.read("methodology.md").decode("utf-8")
-    assert "does not use PHI" in methodology
+        meta = json.loads(zf.read("run_metadata.json").decode("utf-8"))
+    assert "does not use PHI" in meta["methodology"]
 
 
-def test_top_briefs_lists_approved(tmp_path):
+def test_pdf_present_and_not_empty(tmp_path):
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
-        briefs = zf.read("top_target_briefs.md").decode("utf-8")
-    assert "Alpha Womens Health" in briefs
-    assert "Beta Hospital OBGYN" not in briefs  # excluded, not in client briefs
+        pdf_bytes = zf.read("Executive_Target_Report.pdf")
+    assert len(pdf_bytes) > 0
+    assert pdf_bytes[:4] == b"%PDF"
+
+
+def test_warm_csv_empty_when_no_warm_records(tmp_path):
+    """Fixture has only Bullseye-tier approved records — warm CSV should contain no warm records."""
+    _build_run(tmp_path)
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    with zipfile.ZipFile(buf) as zf:
+        warm = zf.read("warm_accounts.csv").decode("utf-8")
+    # T-1 is Bullseye, T-2 is EXCLUDED+override Bullseye → no warm records
+    assert "T-1" not in warm
+    assert "T-2" not in warm
 
 
 # ---------------------------------------------------------------------------

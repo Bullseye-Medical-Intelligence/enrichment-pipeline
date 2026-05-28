@@ -2,8 +2,13 @@
 client_exports.py
 Client deliverable package generation for a completed run.
 
-Builds an in-memory ZIP from the immutable enriched_targets.json plus the
-additive reviews.json overlay. Reuses exports.py for the approved/excluded CSVs.
+Builds an in-memory ZIP containing:
+  Executive_Target_Report.pdf   — branded PDF (WeasyPrint)
+  bullseye_accounts.csv         — Bullseye-tier approved records
+  warm_accounts.csv             — Strong/Warm-tier approved records
+  excluded_targets.csv          — all excluded records
+  run_metadata.json             — machine-readable run summary
+
 No internal/debug artifacts (run_log.json, reviews.json, raw enriched JSON) are
 included in the package.
 """
@@ -22,8 +27,6 @@ import record_adapter
 import reviews
 
 logger = logging.getLogger(__name__)
-
-TOP_BRIEF_LIMIT = 10
 
 METHODOLOGY = (
     "Bullseye Medical Intelligence reviewed publicly available physician and "
@@ -55,17 +58,27 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     approved = _approved_records(records, all_reviews)
     excluded_count = sum(1 for r in records if _displayed_tier(r, all_reviews).lower() == "excluded")
 
-    approved_csv = exports.build_approved_csv(run_id, run_directory).getvalue()
+    bullseye_csv = exports.build_bullseye_csv(run_id, run_directory).getvalue()
+    warm_csv = exports.build_warm_csv(run_id, run_directory).getvalue()
     excluded_csv = exports.build_excluded_csv(run_id, run_directory).getvalue()
 
+    pdf_bytes = _build_pdf(
+        run_id, status, project, icp,
+        approved, all_reviews,
+        len(records), excluded_count,
+    )
+
+    metadata = _run_metadata(
+        run_id, status, project, icp,
+        len(records), len(approved), excluded_count,
+    )
+
     files = {
-        "executive_summary.md": _executive_summary(
-            status, project, icp, len(records), len(approved), excluded_count
-        ).encode("utf-8"),
-        "approved_targets.csv": approved_csv,
+        "Executive_Target_Report.pdf": pdf_bytes,
+        "bullseye_accounts.csv": bullseye_csv,
+        "warm_accounts.csv": warm_csv,
         "excluded_targets.csv": excluded_csv,
-        "top_target_briefs.md": _top_target_briefs(approved, all_reviews).encode("utf-8"),
-        "methodology.md": _methodology_md().encode("utf-8"),
+        "run_metadata.json": json.dumps(metadata, indent=2).encode("utf-8"),
     }
 
     buf = io.BytesIO()
@@ -97,19 +110,20 @@ def _displayed_tier(record: dict, all_reviews: dict) -> str:
 
 
 def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
-    """Return approved, non-hard-excluded records sorted by score (desc).
+    """Return approved records sorted by score (desc).
 
-    Mirrors exports.build_approved_csv: a hard pipeline exclusion cannot be
-    bypassed by an analyst override.
+    Mirrors exports._is_approved: analyst override_tier bypasses pipeline hard
+    exclusion; without an explicit override a hard EXCLUDED record is still blocked.
     """
     approved = []
     for rec in records:
         review = all_reviews.get(record_adapter.get_record_id(rec), {})
         if review.get("qc_status") != "approved":
             continue
-        if rec.get("exclusion_status") == "EXCLUDED":
+        displayed = _displayed_tier(rec, all_reviews).lower()
+        if displayed == "excluded":
             continue
-        if _displayed_tier(rec, all_reviews).lower() == "excluded":
+        if not review.get("override_tier") and rec.get("exclusion_status") == "EXCLUDED":
             continue
         approved.append(rec)
     approved.sort(key=lambda r: r.get("bullseye_score") or 0, reverse=True)
@@ -117,98 +131,64 @@ def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Document builders
+# PDF + metadata builders
 # ---------------------------------------------------------------------------
 
-def _executive_summary(status, project: dict, icp: dict, screened: int,
-                       approved: int, excluded: int) -> str:
-    """Build executive_summary.md from run + project + ICP context."""
+def _build_pdf(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    approved: list[dict],
+    all_reviews: dict,
+    screened: int,
+    excluded_count: int,
+) -> bytes:
+    """Render the Executive Target Report PDF; return raw bytes."""
+    try:
+        from reports import pdf_report
+        return pdf_report.build_executive_report(
+            run_id=run_id,
+            status=status,
+            project=project,
+            icp=icp,
+            approved_records=approved,
+            all_reviews=all_reviews,
+            screened=screened,
+            excluded_count=excluded_count,
+        )
+    except Exception:
+        logger.exception("PDF generation failed for run %s; returning empty PDF placeholder", run_id)
+        # Return a minimal valid PDF so the ZIP is never corrupt
+        return b"%PDF-1.4\n%%EOF\n"
+
+
+def _run_metadata(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    screened: int,
+    approved: int,
+    excluded: int,
+) -> dict:
+    """Build the machine-readable run_metadata.json payload."""
     geography = status.target_geography or project.get("target_geography") or []
     if isinstance(geography, list):
-        geography = ", ".join(geography)
-    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    output = status.records_output or screened
-
-    lines = [
-        "# Executive Summary",
-        "",
-        f"- **Client:** {status.client_name or project.get('client_name') or '—'}",
-        f"- **Project:** {status.project_id or '—'}",
-        f"- **Product:** {status.product_name or project.get('product_name') or '—'}",
-        f"- **Target Specialty:** {status.target_specialty or project.get('target_specialty') or '—'}",
-        f"- **Geography:** {geography or '—'}",
-        f"- **ICP Profile:** {status.icp_profile_name or icp.get('name') or '—'}"
-        f" ({status.icp_profile_version or icp.get('version') or '—'})",
-        "",
-        "## Volumes",
-        "",
-        f"- **Records screened:** {screened}",
-        f"- **Records enriched / output:** {output}",
-        f"- **Approved targets:** {approved}",
-        f"- **Excluded targets:** {excluded}",
-        f"- **Generated:** {generated}",
-        "",
-        "## Methodology",
-        "",
-        METHODOLOGY,
-    ]
-    return "\n".join(lines) + "\n"
-
-
-def _top_target_briefs(approved: list[dict], all_reviews: dict) -> str:
-    """Build top_target_briefs.md for the highest-scoring approved targets."""
-    lines = ["# Top Target Briefs", ""]
-    top = approved[:TOP_BRIEF_LIMIT]
-    if not top:
-        lines.append("No approved targets in this run.")
-        return "\n".join(lines) + "\n"
-
-    for i, rec in enumerate(top, start=1):
-        review = all_reviews.get(record_adapter.get_record_id(rec), {})
-        displayed = review.get("override_tier") or rec.get("target_tier", "—")
-        city = rec.get("address_city", "")
-        state = rec.get("address_state", "")
-        location = ", ".join(p for p in (city, state) if p) or "—"
-
-        lines.append(f"## {i}. {rec.get('practice_name', 'Unknown practice')}")
-        if rec.get("website_url"):
-            lines.append(f"- **Website:** {rec['website_url']}")
-        lines.append(f"- **Location:** {location}")
-        lines.append(f"- **Tier:** {displayed} (pipeline: {rec.get('target_tier', '—')})")
-        if rec.get("bullseye_score") is not None:
-            lines.append(f"- **Score:** {rec.get('bullseye_score')}"
-                         f" | Confidence: {rec.get('confidence_score', '—')}")
-
-        sales_angles = rec.get("sales_angle") or []
-        if sales_angles:
-            lines.append("- **Sales angle:**")
-            lines.extend(f"  - {angle}" for angle in sales_angles)
-
-        evidence = _top_evidence(rec)
-        if evidence:
-            lines.append("- **Evidence:**")
-            lines.extend(f"  - {e}" for e in evidence)
-
-        if review.get("analyst_note"):
-            lines.append(f"- **Analyst note:** {review['analyst_note']}")
-        lines.append("")
-    return "\n".join(lines) + "\n"
-
-
-def _top_evidence(record: dict, limit: int = 3) -> list[str]:
-    """Return up to `limit` client-safe evidence snippets with source URLs."""
-    snippets = []
-    for signal in record.get("signals") or []:
-        text = (signal.get("evidence_text") or "").strip()
-        if not text:
-            continue
-        source = signal.get("source_url")
-        snippets.append(f"{text} ({source})" if source else text)
-        if len(snippets) >= limit:
-            break
-    return snippets
-
-
-def _methodology_md() -> str:
-    """Build the standalone methodology.md document."""
-    return f"# Methodology\n\n{METHODOLOGY}\n"
+        geography = geography  # keep as list in JSON
+    return {
+        "run_id": run_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "client_name": status.client_name or project.get("client_name") or None,
+        "project_id": status.project_id or None,
+        "product_name": status.product_name or project.get("product_name") or None,
+        "target_specialty": status.target_specialty or project.get("target_specialty") or None,
+        "target_geography": geography,
+        "icp_profile_id": status.icp_profile_id or icp.get("icp_id") or None,
+        "icp_profile_name": status.icp_profile_name or icp.get("name") or None,
+        "icp_profile_version": status.icp_profile_version or icp.get("version") or None,
+        "records_screened": screened,
+        "records_approved": approved,
+        "records_excluded": excluded,
+        "methodology": METHODOLOGY,
+    }

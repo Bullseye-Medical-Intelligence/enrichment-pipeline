@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 36" width="220" height="36">
+  <!-- Outer ring -->
+  <circle cx="18" cy="18" r="15.5" fill="none" stroke="#c84b2f" stroke-width="1.8"/>
+  <!-- Middle ring -->
+  <circle cx="18" cy="18" r="8.5" fill="none" stroke="#c84b2f" stroke-width="1.8"/>
+  <!-- Center dot -->
+  <circle cx="18" cy="18" r="3" fill="#c84b2f"/>
+  <!-- Crosshairs (between outer and middle rings) -->
+  <line x1="18" y1="1.5" x2="18" y2="8.5" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="18" y1="27.5" x2="18" y2="34.5" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="1.5" y1="18" x2="8.5" y2="18" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="27.5" y1="18" x2="34.5" y2="18" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Company name -->
+  <text x="44" y="14" font-family="'Liberation Sans', Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#0a0a0a">Bullseye Medical</text>
+  <text x="44" y="28" font-family="'Liberation Sans', Arial, Helvetica, sans-serif" font-size="9.5" font-weight="400" fill="#666666" letter-spacing="1.8">INTELLIGENCE</text>
+</svg>
