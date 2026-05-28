@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import record_adapter
 import runs
 from config import OUTPUT_RUNS_PATH, PIPELINE_REPO_PATH, PIPELINE_SCRIPT, PYTHON_EXECUTABLE
 
@@ -66,9 +67,8 @@ async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
     """
     loop = asyncio.get_event_loop()
     try:
-        await loop.run_in_executor(None, process.wait)
-
-        _, stderr_bytes = process.stdout.read(), process.stderr.read()
+        # communicate() reads both pipes while waiting, preventing pipe-buffer deadlock.
+        _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
 
         if process.returncode == 0:
             counts = _read_completion_counts(run_id)
@@ -188,7 +188,7 @@ def _read_completion_counts(run_id: str) -> dict:
     if results_path.exists():
         try:
             with open(results_path, "r", encoding="utf-8") as f:
-                records = json.load(f)
+                records = record_adapter.normalize_records_payload(json.load(f))
             counts["bullseye_count"] = sum(
                 1 for r in records if r.get("target_tier") == "Bullseye"
             )

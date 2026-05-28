@@ -130,8 +130,6 @@ function _currentQC(recordId) {
 }
 
 function _updateRowBadges(recordId, overrideTier, qcStatus) {
-  /* update QC badge in the summary row */
-  var row = document.querySelector('[data-qc]#icon-' + recordId);
   var rows = document.querySelectorAll('.record-row');
   rows.forEach(function(r) {
     var icon = r.querySelector('#icon-' + recordId);
@@ -155,12 +153,3 @@ function _updateRowBadges(recordId, overrideTier, qcStatus) {
   });
 }
 
-/* ── Auto-save analyst note on blur ─────────────────────────── */
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.review-note').forEach(function(ta) {
-    var id = ta.id.replace('note-', '');
-    ta.addEventListener('blur', function() {
-      /* only auto-save note blur, full save requires button */
-    });
-  });
-});

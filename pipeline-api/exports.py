@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Callable
 
+import record_adapter
 import reviews
 
 logger = logging.getLogger(__name__)
@@ -29,43 +30,55 @@ _REVIEW_COLUMNS = [
 
 
 def build_approved_csv(run_id: str, run_directory: Path) -> io.BytesIO:
-    """Return a BytesIO CSV of approved, non-excluded records."""
-    return _build_csv(
-        run_id,
-        run_directory,
-        lambda tier, qc: qc == "approved" and tier.lower() != "excluded",
-    )
+    """Return a BytesIO CSV of approved records.
+
+    A record is included only when ALL of:
+    - qc_status == "approved"
+    - original exclusion_status != "EXCLUDED"  (hard pipeline exclusion cannot be bypassed)
+    - effective displayed_tier != "excluded"
+    """
+    def _approved(rec: dict, rev: dict) -> bool:
+        if rev.get("qc_status") != "approved":
+            return False
+        if rec.get("exclusion_status") == "EXCLUDED":
+            return False
+        displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
+        return displayed != "excluded"
+
+    return _build_csv(run_id, run_directory, _approved)
 
 
 def build_excluded_csv(run_id: str, run_directory: Path) -> io.BytesIO:
     """Return a BytesIO CSV of records whose effective tier is Excluded."""
-    return _build_csv(
-        run_id,
-        run_directory,
-        lambda tier, _qc: tier.lower() == "excluded",
-    )
+    def _excluded(rec: dict, rev: dict) -> bool:
+        displayed = (rev.get("override_tier") or rec.get("target_tier", "")).lower()
+        return displayed == "excluded"
+
+    return _build_csv(run_id, run_directory, _excluded)
 
 
 def _build_csv(
     run_id: str,
     run_directory: Path,
-    filter_fn: Callable[[str, str], bool],
+    filter_fn: Callable[[dict, dict], bool],
 ) -> io.BytesIO:
-    """Load, merge, filter records and return a UTF-8 encoded BytesIO CSV."""
+    """Load, merge, filter records and return a UTF-8 encoded BytesIO CSV.
+
+    filter_fn receives (record, review) and returns True to include the row.
+    """
     results_path = run_directory / "enriched_targets.json"
     if not results_path.exists():
         return io.BytesIO()
 
     with open(results_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    raw_records = data.get("records", data) if isinstance(data, dict) else data
+        raw_records = record_adapter.normalize_records_payload(json.load(f))
 
     if not raw_records:
         return io.BytesIO()
 
     all_reviews = reviews.get_reviews(run_id, run_directory)
 
-    # Derive column order from first record (scalar fields first, then review overlay)
+    # Derive column order from first record (scalar fields only) then append review overlay
     first = raw_records[0]
     record_columns = [k for k, v in first.items() if not isinstance(v, (dict, list))]
     all_columns = record_columns + _REVIEW_COLUMNS
@@ -74,19 +87,18 @@ def _build_csv(
     writer = csv.DictWriter(buf, fieldnames=all_columns, extrasaction="ignore")
     writer.writeheader()
 
-    for record in raw_records:
-        record_id = record.get("record_id", "")
-        review = all_reviews.get(record_id, reviews.default_review())
-        displayed_tier = review.get("override_tier") or record.get("target_tier", "")
-        qc_status = review.get("qc_status", "pending")
+    for rec in raw_records:
+        rid = record_adapter.get_record_id(rec)
+        review = all_reviews.get(rid, reviews.default_review())
 
-        if not filter_fn(displayed_tier, qc_status):
+        if not filter_fn(rec, review):
             continue
 
-        row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in record.items()}
+        displayed_tier = review.get("override_tier") or rec.get("target_tier", "")
+        row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in rec.items()}
         row.update({
             "displayed_tier": displayed_tier,
-            "qc_status": qc_status,
+            "qc_status": review.get("qc_status", "pending"),
             "analyst_note": review.get("analyst_note") or "",
             "override_tier": review.get("override_tier") or "",
             "override_reason": review.get("override_reason") or "",

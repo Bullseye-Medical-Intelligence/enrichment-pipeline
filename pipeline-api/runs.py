@@ -138,8 +138,9 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
 
 
 def generate_run_id() -> str:
-    """Generate a unique run ID in RUN-YYYYMMDD-HHMMSS format."""
-    return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    """Generate a collision-resistant run ID. Appends a 4-char hex suffix."""
+    import secrets
+    return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
 
 
 def _write_status(run_id: str, status: RunStatus) -> None:

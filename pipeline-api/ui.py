@@ -16,6 +16,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
 import exports
+import record_adapter
 import reviews
 import runner
 import runs
@@ -122,14 +123,14 @@ async def results_page(
         results_path = run_directory / "enriched_targets.json"
         if results_path.exists():
             with open(results_path, "r", encoding="utf-8") as f:
-                _data = json.load(f)
-            raw_records = _data.get("records", _data) if isinstance(_data, dict) else _data
+                raw_records = record_adapter.normalize_records_payload(json.load(f))
             all_reviews = reviews.get_reviews(run_id, run_directory)
             for record in raw_records:
-                record_id = record.get("record_id", "")
+                record_id = record_adapter.get_record_id(record)
                 review = all_reviews.get(record_id, reviews.default_review())
                 merged_records.append({
                     **record,
+                    "record_id": record_id,
                     "review": review,
                     "displayed_tier": review.get("override_tier") or record.get("target_tier", ""),
                 })
@@ -264,6 +265,8 @@ def _calculate_stats(records: list[dict]) -> dict:
         if tier in stats:
             stats[tier] += 1
         qc = (r.get("review") or {}).get("qc_status", "pending")
-        if qc in stats:
+        if qc == "pending":
+            stats["pending_review"] += 1
+        elif qc in stats:
             stats[qc] += 1
     return stats
