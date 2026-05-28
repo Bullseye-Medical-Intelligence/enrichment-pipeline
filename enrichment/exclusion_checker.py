@@ -46,6 +46,23 @@ ALL_KNOWN_EXCLUSION_RULES = HARD_EXCLUSION_RULES | CONFIGURABLE_EXCLUSION_RULES
 EXCLUDED_SCORE_CAP = 40
 
 
+def _specialty_matches(record_specialty: str, target_specialty: str) -> bool:
+    """
+    Return True if record_specialty matches any token in target_specialty.
+
+    Matching is case-insensitive and bidirectional: a token from target is
+    considered a match if it appears anywhere in the record specialty string,
+    or the record specialty appears in a token. This lets "Fertility Clinic"
+    match a target of "OBGYN, Fertility" without requiring an exact string.
+    """
+    rec = record_specialty.lower().strip()
+    for token in target_specialty.split(","):
+        tok = token.strip().lower()
+        if tok and (tok in rec or rec in tok):
+            return True
+    return False
+
+
 def _check_geography(record: dict, target_geography: list[str]) -> bool:
     """
     Return True if the record's state is outside the target geography.
@@ -93,7 +110,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     # Fire if record specialty and target specialty are both set and don't match.
     record_specialty = (record.get("specialty") or "").strip()
     if target_specialty and record_specialty:
-        if record_specialty.lower() != target_specialty.lower():
+        if not _specialty_matches(record_specialty, target_specialty):
             triggered.append("wrong_specialty")
             rationale_parts.append(
                 f"Practice specialty '{record_specialty}' does not match "
