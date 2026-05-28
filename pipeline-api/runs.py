@@ -154,6 +154,7 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
                     project_id=data.get("project_id"),
                     client_name=data.get("client_name"),
                     icp_profile_id=data.get("icp_profile_id"),
+                    error_summary=data.get("error_summary", ""),
                 )
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:

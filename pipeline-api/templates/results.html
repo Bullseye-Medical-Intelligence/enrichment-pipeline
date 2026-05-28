@@ -13,7 +13,7 @@
   </div>
   <div class="header-actions">
     {% if status.status == "complete" %}
-    <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
+    <a href="/runs/{{ run_id }}/client-package" class="btn {% if readiness and readiness.state == 'ready' %}btn-submit{% else %}btn-secondary{% endif %}">Download Client Package</a>
     <a href="/runs/{{ run_id }}/export/approved" class="btn btn-secondary">Export Approved</a>
     <a href="/runs/{{ run_id }}/export/excluded" class="btn btn-secondary">Export Excluded</a>
     <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary">Full JSON</a>
@@ -105,11 +105,31 @@
 </div>
 {% elif status.status == "failed" %}
 <div class="alert alert-error">
-  This run failed.
-  {% if status.error_summary %}<br><code>{{ status.error_summary[:300] }}</code>{% endif %}
+  <strong>This run failed.</strong>
+  {% if friendly_error %}<br>{{ friendly_error }}{% endif %}
 </div>
 {% elif status.status == "pending" %}
 <div class="alert alert-info">Run is queued.</div>
+{% endif %}
+
+{% if readiness %}
+{% if readiness.state == "needs_review" %}
+<div class="alert alert-warning">
+  <strong>{{ readiness.pending_count }} record{{ "s" if readiness.pending_count != 1 }} still need review</strong>
+  before this package is ready to send. Scroll down to review them.
+</div>
+{% elif readiness.state == "no_approved" %}
+<div class="alert alert-warning">
+  <strong>No approved targets yet.</strong>
+  Review records below and approve your selections before exporting.
+</div>
+{% elif readiness.state == "ready" %}
+<div class="alert alert-success">
+  <strong>Package ready.</strong>
+  {{ readiness.approved_count }} approved target{{ "s" if readiness.approved_count != 1 }}.
+  Download the client package when ready.
+</div>
+{% endif %}
 {% endif %}
 
 {% if records %}

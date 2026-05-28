@@ -39,7 +39,8 @@
         </td>
         <td class="text-muted">{{ run.icp_profile_id | default("—") }}</td>
         <td>
-          <span class="badge badge-status-{{ run.status }}">{{ run.status }}</span>
+          <span class="badge badge-status-{{ run.status }}"
+            {% if run.status == "failed" and run.error_summary %}title="{{ friendly_error(run.error_summary) }}"{% endif %}>{{ run.status }}</span>
           {% if run.status == "running" %}
           <span class="spinner" title="Running..."></span>
           {% endif %}
