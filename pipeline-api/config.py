@@ -23,6 +23,7 @@ OUTPUT_RUNS_PATH: Path = Path(os.environ.get("OUTPUT_RUNS_PATH", ""))
 # Optional with defaults
 # ---------------------------------------------------------------------------
 
+ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
 PYTHON_EXECUTABLE: str = os.environ.get("PYTHON_EXECUTABLE", "python3")
 MAX_CSV_SIZE_MB: int = int(os.environ.get("MAX_CSV_SIZE_MB", "50"))
 MAX_CSV_ROWS: int = int(os.environ.get("MAX_CSV_ROWS", "10000"))

@@ -11,12 +11,15 @@ import logging
 import re
 from pathlib import Path
 
+import anthropic
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
 import client_exports
+import config
 import exports
 import icp_profiles
 import projects
@@ -252,6 +255,104 @@ async def project_detail_page(
 # ---------------------------------------------------------------------------
 # ICP profiles
 # ---------------------------------------------------------------------------
+
+@router.get("/icp-profiles/new", response_class=HTMLResponse)
+async def icp_build_page(request: Request, username: str = Depends(auth.require_session)):
+    """Render the AI-assisted ICP profile builder form."""
+    return _render("icp_build.html", username=username, error=None, form={})
+
+
+@router.post("/icp-profiles/generate", response_class=HTMLResponse)
+async def icp_generate(
+    request: Request,
+    username: str = Depends(auth.require_session),
+    product_name: str = Form(...),
+    description: str = Form(...),
+    specialty: str = Form(...),
+    focus_areas: str = Form(""),
+    exclusion_notes: str = Form(""),
+    icp_id: str = Form(...),
+    icp_name: str = Form(...),
+    version: str = Form("1.0"),
+):
+    """Call Claude to generate ICP signals from the product description."""
+    form = {
+        "product_name": product_name, "description": description,
+        "specialty": specialty, "focus_areas": focus_areas,
+        "exclusion_notes": exclusion_notes, "icp_id": icp_id,
+        "icp_name": icp_name, "version": version,
+    }
+    if not config.ANTHROPIC_API_KEY:
+        return _render("icp_build.html", username=username, error=(
+            "ANTHROPIC_API_KEY is not configured. Add it to .env and restart the server."
+        ), form=form)
+    try:
+        signals = _generate_signals(
+            product_name=product_name, description=description,
+            specialty=specialty, focus_areas=focus_areas,
+            exclusion_notes=exclusion_notes,
+        )
+    except Exception as exc:
+        logger.warning("ICP signal generation failed: %s", exc)
+        return _render("icp_build.html", username=username, error=(
+            "Signal generation failed. Try again, or adjust your description."
+        ), form=form)
+    return _render(
+        "icp_review.html",
+        username=username,
+        error=None,
+        signals=signals,
+        icp_id=icp_id,
+        icp_name=icp_name,
+        version=version,
+        product_name=product_name,
+        specialty=specialty,
+    )
+
+
+@router.post("/icp-profiles/save")
+async def icp_save(
+    request: Request,
+    username: str = Depends(auth.require_session),
+    icp_id: str = Form(...),
+    icp_name: str = Form(...),
+    version: str = Form("1.0"),
+    signal_count: int = Form(...),
+    product_name: str = Form(""),
+    specialty: str = Form(""),
+):
+    """Validate and persist the edited ICP profile to disk."""
+    form_data = await request.form()
+    signals = []
+    for i in range(signal_count):
+        signals.append({
+            "signal_id": (form_data.get(f"signal_id_{i}") or "").strip(),
+            "signal_label": (form_data.get(f"signal_label_{i}") or "").strip(),
+            "prompt_instruction": (form_data.get(f"prompt_instruction_{i}") or "").strip(),
+            "positive_weight": int(form_data.get(f"positive_weight_{i}") or 0),
+        })
+    profile = {
+        "icp_id": icp_id.strip(),
+        "name": icp_name.strip(),
+        "version": version.strip() or "1.0",
+        "signals": signals,
+    }
+    try:
+        icp_profiles.save_icp_profile(profile)
+    except ValueError as exc:
+        return _render(
+            "icp_review.html",
+            username=username,
+            error=str(exc),
+            signals=signals,
+            icp_id=icp_id,
+            icp_name=icp_name,
+            version=version,
+            product_name=product_name,
+            specialty=specialty,
+        )
+    return RedirectResponse("/icp-profiles", status_code=303)
+
 
 @router.get("/icp-profiles", response_class=HTMLResponse)
 async def icp_profiles_page(request: Request, username: str = Depends(auth.require_session)):
@@ -676,6 +777,61 @@ def _compute_readiness(merged_records: list) -> dict:
     if approved == 0:
         return {"state": "no_approved", "pending_count": 0, "approved_count": 0}
     return {"state": "ready", "pending_count": 0, "approved_count": approved}
+
+
+_ICP_SIGNAL_PROMPT = """You are helping build an Ideal Customer Profile (ICP) for a medical sales tool.
+
+Product: {product_name}
+Description: {description}
+Target Specialty: {specialty}
+Key Services / Focus Areas: {focus_areas}
+Known Exclusion Criteria: {exclusion_notes}
+
+Generate 6-10 ICP signals to identify the best-fit medical practices.
+Each signal MUST be a JSON object with exactly these keys:
+  signal_id           — unique string like "S-001"
+  signal_label        — concise 3-8 word label
+  prompt_instruction  — one clear question: does the practice demonstrate this on their website?
+  positive_weight     — integer; positive = fit evidence, negative = poor fit (range: -30 to 20)
+
+Return ONLY a valid JSON array. No prose, no markdown, no code fences."""
+
+
+def _generate_signals(
+    product_name: str, description: str, specialty: str,
+    focus_areas: str, exclusion_notes: str,
+) -> list[dict]:
+    """Call Claude to generate ICP signal definitions.
+
+    Raises ValueError on API error or unparseable JSON response.
+    """
+    prompt = _ICP_SIGNAL_PROMPT.format(
+        product_name=product_name, description=description,
+        specialty=specialty, focus_areas=focus_areas or "Not specified",
+        exclusion_notes=exclusion_notes or "None specified",
+    )
+    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            timeout=60,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as exc:
+        raise ValueError(f"Claude API error: {exc}") from exc
+    raw = message.content[0].text.strip()
+    # Strip markdown fences if the model included them despite instructions
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+    try:
+        signals = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Model returned non-JSON: {exc}") from exc
+    if not isinstance(signals, list):
+        raise ValueError("Model returned an object instead of a JSON array.")
+    return signals
 
 
 def _calculate_stats(records: list[dict]) -> dict:

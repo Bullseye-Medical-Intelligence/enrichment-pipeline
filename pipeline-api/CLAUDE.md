@@ -45,7 +45,13 @@ Communication:
 ### RULE 1: This API wraps the pipeline. It does not become the pipeline.
 
 The API spawns pipeline.py as a subprocess. It does not contain enrichment
-logic, scoring formulas, signal definitions, or LLM prompt strings.
+logic, scoring formulas, or signal definitions.
+
+**One exception: the ICP Profile Builder** (`GET/POST /icp-profiles/new`,
+`POST /icp-profiles/generate`, `POST /icp-profiles/save` in `ui.py`) calls
+Claude via the `anthropic` SDK to generate draft signal definitions. This is
+strictly scoped to the builder flow. `ANTHROPIC_API_KEY` is loaded from `.env`
+via `config.py`. No other route in this API makes LLM calls.
 
 Bad:
 ```python
@@ -246,8 +252,11 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
 - **No hardcoded specialty.** Project defaults are generic (structural exclusion
   rules, a default score threshold). ICP signal content lives in operator-authored
   profile files, never in source.
-- **No visual ICP builder.** ICP profiles are hand-authored JSON files dropped
-  into `ICP_PROFILES_PATH`. Listing/reading only.
+- **ICP profiles are operator-authored files** dropped into `ICP_PROFILES_PATH`.
+  The one exception is the AI-assisted builder at `/icp-profiles/new`, which calls
+  Claude to generate a draft checklist. Domain experts must review and approve
+  generated signals before saving — the builder is a starting point, not a source
+  of truth. `save_icp_profile()` in `icp_profiles.py` writes new profiles atomically.
 
 ## Client Deliverable Export
 

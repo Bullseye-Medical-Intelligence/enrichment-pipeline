@@ -137,8 +137,8 @@
 <div class="alert alert-info review-guidance">
   <strong>Before you approve:</strong>
   Review the evidence for each record. Overrides require a reason.
-  Excluded records are exported separately, and the approved export always omits
-  the pipeline's original hard exclusions.
+  Excluded records appear in a separate CSV. To include a pipeline-excluded record
+  in the approved export, set an override tier AND approve it — otherwise the exclusion stands.
 </div>
 
 {# ── Stats bar ────────────────────────────────────────────────────── #}
@@ -286,7 +286,18 @@
 
                 <div class="form-group">
                   <label>Override Tier</label>
-                  <select id="override-{{ rid }}" onchange="toggleReasonField('{{ rid }}')">
+                  {% if record.exclusion_status == "EXCLUDED" %}
+                  <div class="alert alert-warning override-excl-warn"
+                       id="override-warn-{{ rid }}"
+                       style="{{ '' if review.override_tier and review.override_tier.lower() not in ('', 'excluded') else 'display:none' }}">
+                    <strong>Pipeline-excluded record.</strong>
+                    Overriding to a positive tier and approving will include this record in the client package.
+                  </div>
+                  {% endif %}
+                  <select id="override-{{ rid }}"
+                          class="override-tier-select"
+                          data-record-id="{{ rid }}"
+                          onchange="toggleReasonField('{{ rid }}')">
                     <option value="">— No override (use pipeline tier) —</option>
                     <option value="Bullseye" {% if review.override_tier == "Bullseye" %}selected{% endif %}>Bullseye</option>
                     <option value="Strong"   {% if review.override_tier == "Strong"   %}selected{% endif %}>Strong</option>
@@ -346,4 +357,15 @@
   <p>No records found in this run's output.</p>
 </div>
 {% endif %}
+
+<script>
+document.querySelectorAll('.override-tier-select').forEach(function(sel) {
+  sel.addEventListener('change', function() {
+    var warn = document.getElementById('override-warn-' + this.dataset.recordId);
+    if (!warn) return;
+    var v = this.value.toLowerCase();
+    warn.style.display = (v && v !== 'excluded') ? '' : 'none';
+  });
+});
+</script>
 {% endblock %}

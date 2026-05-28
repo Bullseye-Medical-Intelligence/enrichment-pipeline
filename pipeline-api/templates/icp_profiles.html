@@ -3,8 +3,13 @@
 
 {% block content %}
 <div class="page-header">
-  <h2>ICP Profiles</h2>
-  <p class="page-subtitle">Loaded signal checklists. Profiles are JSON files dropped into the profiles directory.</p>
+  <div>
+    <h2>ICP Profiles</h2>
+    <p class="page-subtitle">Loaded signal checklists. Profiles are JSON files dropped into the profiles directory.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/icp-profiles/new" class="btn btn-submit">Build with AI</a>
+  </div>
 </div>
 
 {% if profiles %}

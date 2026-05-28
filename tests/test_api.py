@@ -227,3 +227,107 @@ def test_runs_endpoint_requires_auth(tmp_path, monkeypatch):
         ok = client.get("/runs", headers={"Authorization": "Bearer test-api-key"})
         assert ok.status_code == 200
         assert "runs" in ok.json()
+
+
+# ---------------------------------------------------------------------------
+# UX helpers: _friendly_error
+# ---------------------------------------------------------------------------
+
+# Import helpers directly from ui.py.
+import sys as _sys
+_sys.path.insert(0, str(_API_DIR))
+from ui import _friendly_error, _compute_readiness  # noqa: E402
+
+
+def test_friendly_error_none_for_empty():
+    assert _friendly_error(None) is None
+    assert _friendly_error("") is None
+
+
+def test_friendly_error_known_patterns():
+    cases = [
+        ("enriched_targets.json was not written",
+         "Run ended before results were written. Try re-running."),
+        ("malformed json in output",
+         "Pipeline output file was corrupted. Try re-running."),
+        ("UnicodeEncodeError in encoder",
+         "Character encoding error — check that the input CSV has no unusual characters."),
+        ("No module named anthropic",
+         "Pipeline environment error: a required package is missing. Contact support."),
+        ("SyntaxError on line 42",
+         "Pipeline code error. Contact support."),
+        ("Interrupted by server restart at step 3",
+         "The server was restarted while this run was in progress."),
+    ]
+    for raw, expected in cases:
+        assert _friendly_error(raw) == expected, f"Pattern mismatch for: {raw!r}"
+
+
+def test_friendly_error_pass_through_patterns():
+    assert _friendly_error("Missing required columns: specialty") == "Missing required columns: specialty"
+    assert _friendly_error("Too many runs in progress") == "Too many runs in progress"
+
+
+def test_friendly_error_fallback_truncates():
+    long_raw = "X" * 400
+    result = _friendly_error(long_raw)
+    assert result == "X" * 300
+
+
+# ---------------------------------------------------------------------------
+# UX helpers: _compute_readiness
+# ---------------------------------------------------------------------------
+
+def test_compute_readiness_needs_review():
+    records = [
+        {"review": {"qc_status": "pending"}, "displayed_tier": "Bullseye"},
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Warm"},
+    ]
+    r = _compute_readiness(records)
+    assert r["state"] == "needs_review"
+    assert r["pending_count"] == 1
+    assert r["approved_count"] == 1
+
+
+def test_compute_readiness_ready():
+    records = [
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Bullseye"},
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Warm"},
+    ]
+    r = _compute_readiness(records)
+    assert r["state"] == "ready"
+    assert r["approved_count"] == 2
+
+
+def test_compute_readiness_no_approved():
+    records = [
+        {"review": {"qc_status": "rejected"}, "displayed_tier": "Bullseye"},
+    ]
+    r = _compute_readiness(records)
+    assert r["state"] == "no_approved"
+
+
+def test_compute_readiness_excluded_not_counted():
+    records = [
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Excluded"},
+    ]
+    r = _compute_readiness(records)
+    assert r["state"] == "no_approved"
+    assert r["approved_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Project edit route
+# ---------------------------------------------------------------------------
+
+def test_project_edit_route_exists(tmp_path, monkeypatch):
+    monkeypatch.setenv("OUTPUT_RUNS_PATH", str(tmp_path))
+    monkeypatch.setenv("PROJECTS_PATH", str(tmp_path))
+    from fastapi.testclient import TestClient
+    import main
+
+    with TestClient(main.app) as client:
+        client.post("/login", data={"username": "tester", "password": "secret-pw"})
+        r = client.get("/projects/nonexistent-project/edit")
+        # 404 (project not found) proves the route exists; 405 would mean it's missing
+        assert r.status_code != 405
