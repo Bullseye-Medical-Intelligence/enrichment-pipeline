@@ -17,6 +17,9 @@ load_dotenv()
 PROMPT_VERSION = "verification_v1"
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "verification_v1.txt"
 
+# Per-call LLM timeout (seconds). Prevents a stalled socket from hanging a run.
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("LLM_REQUEST_TIMEOUT_SECONDS", "60"))
+
 
 def _get_client() -> openai.OpenAI:
     """Return an initialized OpenAI client."""
@@ -99,6 +102,7 @@ def _call_gpt(prompt: str, client: openai.OpenAI, model: str,
                 ],
                 max_tokens=2048,
                 temperature=0.2,
+                timeout=REQUEST_TIMEOUT_SECONDS,
             )
             return response.choices[0].message.content
 

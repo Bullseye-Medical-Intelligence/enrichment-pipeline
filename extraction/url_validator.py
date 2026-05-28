@@ -5,6 +5,7 @@ Checks reachability, follows redirects, and categorizes failures.
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 import requests
@@ -137,25 +138,29 @@ def _attempt_validation(url: str, timeout: int, retries: int) -> UrlValidationRe
 
 
 def batch_validate_urls(records: list[dict], timeout: int = 15,
-                         retries: int = 3) -> list[dict]:
+                         retries: int = 3, max_workers: int = 1) -> list[dict]:
     """
     Run URL validation across all records with website_url set.
     Updates each record in-place with validation results.
+
+    Network calls run in a thread pool (max_workers); each record is
+    validated independently so one failure never affects the batch.
 
     Args:
         records: List of canonical records.
         timeout: Per-request timeout in seconds.
         retries: Retry attempts per URL.
+        max_workers: Concurrent validation workers (1 = sequential).
 
     Returns:
         The same records list with url_validation_* fields added.
     """
-    total = len(records)
     validated = 0
     skipped = 0
     failed = 0
 
-    for i, record in enumerate(records):
+    to_check = []
+    for record in records:
         url = record.get("website_url", "")
         if not url:
             record["_url_valid"] = False
@@ -163,23 +168,39 @@ def batch_validate_urls(records: list[dict], timeout: int = 15,
             record["_url_error"] = "No URL provided"
             record["source_confidence"] = "limited"
             skipped += 1
-            continue
-
-        print(f"  [{i+1}/{total}] Validating: {url}")
-        result = validate_url(url, timeout=timeout, retries=retries)
-
-        record["_url_valid"] = result.is_valid
-        record["_url_final"] = result.final_url
-        record["_url_error"] = result.error
-
-        if result.is_valid:
-            # Update website_url to the final resolved URL (after redirects)
-            record["website_url"] = result.final_url
-            validated += 1
         else:
-            record["source_confidence"] = "limited"
-            failed += 1
-            print(f"    ✗ FAILED: {result.error}")
+            to_check.append(record)
+
+    def _validate(record):
+        url = record.get("website_url", "")
+        try:
+            return record, validate_url(url, timeout=timeout, retries=retries), None
+        except Exception as e:  # isolate per-record failure
+            return record, None, str(e)
+
+    with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+        futures = [executor.submit(_validate, r) for r in to_check]
+        for future in as_completed(futures):
+            record, result, error = future.result()
+            if error is not None or result is None:
+                record["_url_valid"] = False
+                record["_url_final"] = ""
+                record["_url_error"] = error or "Validation error"
+                record["source_confidence"] = "limited"
+                failed += 1
+                print(f"    ✗ FAILED: {record.get('website_url', '')}: {error}")
+                continue
+
+            record["_url_valid"] = result.is_valid
+            record["_url_final"] = result.final_url
+            record["_url_error"] = result.error
+            if result.is_valid:
+                record["website_url"] = result.final_url
+                validated += 1
+            else:
+                record["source_confidence"] = "limited"
+                failed += 1
+                print(f"    ✗ FAILED: {result.error}")
 
     print(f"[url_validator] {validated} valid, {failed} failed, {skipped} skipped (no URL)")
     return records

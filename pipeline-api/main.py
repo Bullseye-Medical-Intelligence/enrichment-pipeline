@@ -7,6 +7,7 @@ Route handlers contain only orchestration calls — no business rules.
 import json
 import logging
 import traceback
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
@@ -26,6 +27,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """On startup, fail any run orphaned by a prior server instance."""
+    count = runs.reconcile_orphaned_runs()
+    if count:
+        logger.warning("Reconciled %d orphaned run(s) on startup", count)
+    yield
+
+
 app = FastAPI(
     title="BEMI Pipeline API",
     description=(
@@ -35,6 +45,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url=None,
+    lifespan=_lifespan,
 )
 
 # Mount static files for the web UI

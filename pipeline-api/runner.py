@@ -14,7 +14,13 @@ from typing import TYPE_CHECKING
 
 import record_adapter
 import runs
-from config import OUTPUT_RUNS_PATH, PIPELINE_REPO_PATH, PIPELINE_SCRIPT, PYTHON_EXECUTABLE
+from config import (
+    MAX_CONCURRENT_RUNS,
+    OUTPUT_RUNS_PATH,
+    PIPELINE_REPO_PATH,
+    PIPELINE_SCRIPT,
+    PYTHON_EXECUTABLE,
+)
 
 if TYPE_CHECKING:
     from fastapi import BackgroundTasks, UploadFile
@@ -135,6 +141,13 @@ async def orchestrate_run(
         ValueError if pre-flight validation fails.
     """
     import validator  # imported here to avoid circular imports at module load
+
+    active = runs.count_active_runs()
+    if active >= MAX_CONCURRENT_RUNS:
+        raise ValueError(
+            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+            f"Wait for a run to finish before starting another."
+        )
 
     content, row_count = await validator.validate_csv_upload(file, source_type, project_id)
 

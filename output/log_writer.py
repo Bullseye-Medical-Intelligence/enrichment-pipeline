@@ -9,6 +9,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from output.atomic_write import atomic_write
+
 
 def write_run_log(run_id: str, records: list[dict], errors: list[dict],
                    warnings: list[str], input_file: str, input_source_type: str,
@@ -31,7 +33,6 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
     Returns:
         Absolute path to the written log file.
     """
-    os.makedirs(output_dir, exist_ok=True)
     output_path = Path(output_dir) / "run_log.json"
 
     # Count outcomes from final records
@@ -86,8 +87,7 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
         "warnings": warnings,
     }
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(log, f, indent=2, ensure_ascii=False)
+    atomic_write(output_path, lambda f: json.dump(log, f, indent=2, ensure_ascii=False))
 
     print(f"[log_writer] Run log → {output_path}")
     print(

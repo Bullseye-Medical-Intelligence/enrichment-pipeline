@@ -5,9 +5,10 @@ This is the primary output file imported by the dashboard.
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
+
+from output.atomic_write import atomic_write
 
 
 def write_json(records: list[dict], output_dir: str = "./output",
@@ -23,7 +24,6 @@ def write_json(records: list[dict], output_dir: str = "./output",
     Returns:
         Absolute path to the written file.
     """
-    os.makedirs(output_dir, exist_ok=True)
     output_path = Path(output_dir) / "enriched_targets.json"
 
     output = {
@@ -33,8 +33,10 @@ def write_json(records: list[dict], output_dir: str = "./output",
         "records": records,
     }
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(output, f, indent=2, ensure_ascii=False, default=str)
+    atomic_write(
+        output_path,
+        lambda f: json.dump(output, f, indent=2, ensure_ascii=False, default=str),
+    )
 
     size_kb = output_path.stat().st_size / 1024
     print(f"[json_writer] Wrote {len(records)} records → {output_path} ({size_kb:.1f} KB)")

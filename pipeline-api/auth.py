@@ -4,6 +4,7 @@ Authentication for both API routes (Bearer token) and UI routes (session cookie)
 These two auth paths are entirely separate — no coupling between them.
 """
 
+import hmac
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -39,7 +40,7 @@ def verify_api_key(
         logger.error("PIPELINE_API_KEY is not configured — all requests will be rejected")
         raise HTTPException(status_code=500, detail="API key not configured on server")
 
-    if credentials.credentials != PIPELINE_API_KEY:
+    if not hmac.compare_digest(credentials.credentials, PIPELINE_API_KEY):
         client_ip = request.client.host if request.client else "unknown"
         logger.warning(
             "Auth failure from %s at %s",
@@ -64,9 +65,16 @@ def _get_serializer() -> URLSafeTimedSerializer:
 
 
 def validate_credentials(username: str, password: str) -> bool:
-    """Return True if username/password match the configured UI users."""
+    """Return True if username/password match the configured UI users.
+
+    Uses a constant-time comparison to avoid leaking password length/content
+    via response timing.
+    """
     users = get_valid_users()
-    return users.get(username) == password
+    expected = users.get(username)
+    if expected is None:
+        return False
+    return hmac.compare_digest(expected, password)
 
 
 def get_session_username(request: Request) -> Optional[str]:

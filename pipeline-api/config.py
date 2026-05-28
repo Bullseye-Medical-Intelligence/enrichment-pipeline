@@ -26,6 +26,7 @@ OUTPUT_RUNS_PATH: Path = Path(os.environ.get("OUTPUT_RUNS_PATH", ""))
 PYTHON_EXECUTABLE: str = os.environ.get("PYTHON_EXECUTABLE", "python3")
 MAX_CSV_SIZE_MB: int = int(os.environ.get("MAX_CSV_SIZE_MB", "50"))
 MAX_CSV_ROWS: int = int(os.environ.get("MAX_CSV_ROWS", "10000"))
+MAX_CONCURRENT_RUNS: int = int(os.environ.get("MAX_CONCURRENT_RUNS", "3"))
 HOST: str = os.environ.get("HOST", "0.0.0.0")
 PORT: int = int(os.environ.get("PORT", "8000"))
 

@@ -479,9 +479,21 @@ CLAUDE_MODEL=claude-sonnet-4-6
   "bullseye_min_score": 75,
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
-  "request_retries": 3
+  "request_retries": 3,
+  "io_concurrency": 6,
+  "subpage_keywords": ["service", "provider", "about", "contact", "..."]
 }
 ```
+
+Optional keys:
+- `io_concurrency` (default 6): worker count for the I/O-bound steps (URL
+  validation, web extraction). Set to 1 for fully sequential behavior.
+- `subpage_keywords`: relevance keywords for subpage crawl scoring. Keep
+  specialty-specific terms here, never hardcoded in source. Omit to use the
+  generic default set in `extraction/web_extractor.py:DEFAULT_SUBPAGE_KEYWORDS`.
+
+Env: `LLM_REQUEST_TIMEOUT_SECONDS` (default 60) caps every Claude/GPT call so a
+stalled socket can never hang a run.
 
 ### `config/icp_checklist.json` (committed — defines signals for this engagement):
 

@@ -14,5 +14,13 @@
   "bullseye_min_score": 75,
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
-  "request_retries": 3
+  "request_retries": 3,
+  "io_concurrency": 6,
+  "subpage_keywords": [
+    "service", "procedure", "treatment", "care",
+    "provider", "physician", "doctor", "staff", "team", "about",
+    "speciali", "gynecol", "obstet", "women", "reproduct",
+    "contraception", "iud", "infertil", "hormones", "pcos",
+    "contact"
+  ]
 }

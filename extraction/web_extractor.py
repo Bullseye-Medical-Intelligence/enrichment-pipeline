@@ -33,13 +33,13 @@ DEFAULT_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-# Keywords that indicate a relevant subpage worth crawling
-RELEVANT_SUBPAGE_KEYWORDS = [
+# Generic, specialty-agnostic default keywords for relevant-subpage scoring.
+# Specialty-specific terms belong in run_config.json ("subpage_keywords"),
+# not in source — keeps the extractor portable across campaigns.
+DEFAULT_SUBPAGE_KEYWORDS = [
     "service", "procedure", "treatment", "care",
     "provider", "physician", "doctor", "staff", "team", "about",
-    "speciali", "gynecol", "obstet", "women", "reproduct",
-    "contraception", "iud", "infertil", "hormones", "pcos",
-    "contact",
+    "speciali", "contact",
 ]
 
 # Max characters of text to extract per page (before combining)
@@ -138,13 +138,17 @@ def _extract_visible_text(html: str) -> str:
 
 
 def _find_relevant_subpages(html: str, base_url: str,
-                              max_pages: int = 5) -> list[str]:
+                              max_pages: int = 5,
+                              keywords: list[str] = None) -> list[str]:
     """
     Parse the homepage HTML and find internal links to relevant subpages.
     Returns a list of absolute URLs to crawl (excluding base_url itself).
     """
     if not html:
         return []
+
+    if keywords is None:
+        keywords = DEFAULT_SUBPAGE_KEYWORDS
 
     soup = BeautifulSoup(html, "lxml")
     parsed_base = urlparse(base_url)
@@ -174,7 +178,7 @@ def _find_relevant_subpages(html: str, base_url: str,
 
         # Score by keyword presence in URL path + link text
         combined = f"{parsed.path.lower()} {link_text}"
-        score = sum(1 for kw in RELEVANT_SUBPAGE_KEYWORDS if kw in combined)
+        score = sum(1 for kw in keywords if kw in combined)
 
         if score > 0 and abs_url not in candidates:
             candidates[abs_url] = score
@@ -185,7 +189,8 @@ def _find_relevant_subpages(html: str, base_url: str,
 
 
 def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
-                            max_pages: int = 5) -> ExtractionResult:
+                            max_pages: int = 5,
+                            keywords: list[str] = None) -> ExtractionResult:
     """
     Extract visible text from a practice website.
     Crawls homepage + up to (max_pages - 1) relevant subpages.
@@ -195,6 +200,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         timeout: Per-request timeout in seconds.
         retries: Retry attempts per request.
         max_pages: Maximum pages to crawl per practice.
+        keywords: Subpage-relevance keywords (defaults to generic set).
 
     Returns:
         ExtractionResult with combined context_text and metadata.
@@ -224,7 +230,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         pages_crawled.append(final_url)
 
     # Step 2: Find and crawl relevant subpages
-    subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages)
+    subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
     print(f"    Found {len(subpages)} relevant subpages to crawl")
 
     for subpage_url in subpages:
@@ -254,57 +260,77 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
 
 
 def batch_extract(records: list[dict], timeout: int = 15,
-                   retries: int = 3, max_pages: int = 5) -> list[dict]:
+                   retries: int = 3, max_pages: int = 5,
+                   keywords: list[str] = None, max_workers: int = 1) -> list[dict]:
     """
     Run web extraction across all records with a valid URL.
     Updates each record in-place with extracted text and metadata.
+
+    Network crawls run in a thread pool (max_workers); each record is
+    extracted independently so one failure never affects the batch.
 
     Args:
         records: List of canonical records (after URL validation).
         timeout: Per-request timeout in seconds.
         retries: Retry attempts per request.
         max_pages: Maximum pages per practice.
+        keywords: Subpage-relevance keywords (defaults to generic set).
+        max_workers: Concurrent extraction workers (1 = sequential).
 
     Returns:
         The same records list with extraction fields added.
     """
-    total = len(records)
-
-    for i, record in enumerate(records):
+    to_crawl = []
+    for record in records:
         url = record.get("website_url", "")
         url_valid = record.get("_url_valid", False)
-
-        print(f"\n  [{i+1}/{total}] Extracting: {record.get('practice_name', 'Unknown')}")
-
         if not url_valid or not url:
             record["_context_text"] = ""
             record["_pages_crawled"] = []
             if not record.get("source_confidence"):
                 record["source_confidence"] = "limited"
-            print(f"    Skipped — URL not valid")
-            continue
-
-        result = extract_practice_text(
-            url=url, timeout=timeout, retries=retries, max_pages=max_pages
-        )
-
-        record["_context_text"] = result.context_text
-        record["_pages_crawled"] = result.pages_crawled
-
-        if result.success:
-            # FIX 4: Set source_confidence based on extraction richness.
-            # Do not override "limited" or "failed" set upstream by url_validator.
-            existing_conf = record.get("source_confidence")
-            if existing_conf not in ("limited", "failed"):
-                pages_crawled = len(result.pages_crawled)
-                text_len = len(result.context_text)
-                if pages_crawled >= 2 and text_len > 3000:
-                    record["source_confidence"] = "complete"
-                else:
-                    record["source_confidence"] = "partial"
-            print(f"    ✓ Extracted {len(result.context_text)} chars from {len(result.pages_crawled)} pages")
         else:
-            record["source_confidence"] = record.get("source_confidence") or "limited"
-            print(f"    ✗ Extraction failed: {result.error}")
+            to_crawl.append(record)
+
+    def _extract(record):
+        try:
+            result = extract_practice_text(
+                url=record.get("website_url", ""), timeout=timeout,
+                retries=retries, max_pages=max_pages, keywords=keywords,
+            )
+            return record, result, None
+        except Exception as e:  # isolate per-record failure
+            return record, None, str(e)
+
+    with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+        futures = [executor.submit(_extract, r) for r in to_crawl]
+        for future in as_completed(futures):
+            record, result, error = future.result()
+            if error is not None or result is None:
+                record["_context_text"] = ""
+                record["_pages_crawled"] = []
+                record["source_confidence"] = record.get("source_confidence") or "limited"
+                print(f"    ✗ Extraction error: {record.get('practice_name', 'Unknown')}: {error}")
+                continue
+
+            record["_context_text"] = result.context_text
+            record["_pages_crawled"] = result.pages_crawled
+
+            if result.success:
+                # Set source_confidence based on extraction richness.
+                # Do not override "limited"/"failed" set upstream by url_validator.
+                existing_conf = record.get("source_confidence")
+                if existing_conf not in ("limited", "failed"):
+                    pages_crawled = len(result.pages_crawled)
+                    text_len = len(result.context_text)
+                    if pages_crawled >= 2 and text_len > 3000:
+                        record["source_confidence"] = "complete"
+                    else:
+                        record["source_confidence"] = "partial"
+                print(f"    ✓ {record.get('practice_name', 'Unknown')}: "
+                      f"{len(result.context_text)} chars from {len(result.pages_crawled)} pages")
+            else:
+                record["source_confidence"] = record.get("source_confidence") or "limited"
+                print(f"    ✗ Extraction failed: {result.error}")
 
     return records

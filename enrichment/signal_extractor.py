@@ -40,6 +40,9 @@ VALID_CONFIDENCES = {"high", "medium", "low"}
 MAX_SCORE = 100
 MIN_SCORE = 0
 
+# Per-call LLM timeout (seconds). Prevents a stalled socket from hanging a run.
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("LLM_REQUEST_TIMEOUT_SECONDS", "60"))
+
 
 # ---------------------------------------------------------------------------
 # Client initialization
@@ -128,6 +131,7 @@ def _call_claude(prompt: str, client: anthropic.Anthropic, model: str,
             message = client.messages.create(
                 model=model,
                 max_tokens=4096,
+                timeout=REQUEST_TIMEOUT_SECONDS,
                 messages=[
                     {
                         "role": "user",

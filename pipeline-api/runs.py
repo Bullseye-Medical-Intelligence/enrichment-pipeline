@@ -6,6 +6,8 @@ All run state lives on the filesystem. No in-memory state.
 
 import json
 import logging
+import re
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -15,9 +17,23 @@ from schema import RunStatus, RunSummary
 
 logger = logging.getLogger(__name__)
 
+# Accepts current IDs (RUN-YYYYMMDD-HHMMSS-xxxx) and legacy suffix-less ones.
+_RUN_ID_PATTERN = re.compile(r"^RUN-\d{8}-\d{6}(?:-[a-f0-9]{4})?$")
+
+
+def is_valid_run_id(run_id: str) -> bool:
+    """Return True if run_id matches the canonical RUN-ID format."""
+    return bool(_RUN_ID_PATTERN.match(run_id))
+
 
 def run_dir(run_id: str) -> Path:
-    """Return the filesystem directory for a given run."""
+    """Return the filesystem directory for a given run.
+
+    Rejects any run_id that is not a canonical RUN-ID, blocking path
+    traversal (e.g. '../../etc') before it reaches the filesystem.
+    """
+    if not is_valid_run_id(run_id):
+        raise ValueError(f"Invalid run_id: {run_id!r}")
     return OUTPUT_RUNS_PATH / run_id
 
 
@@ -68,6 +84,8 @@ def get_run(run_id: str) -> Optional[RunStatus]:
     Returns:
         RunStatus if found, None if the run directory does not exist.
     """
+    if not is_valid_run_id(run_id):
+        return None
     status_path = run_dir(run_id) / STATUS_FILENAME
     if not status_path.exists():
         return None
@@ -137,9 +155,36 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
     return summaries[:max_runs]
 
 
+def count_active_runs() -> int:
+    """Return the number of runs currently in 'pending' or 'running' state."""
+    return sum(1 for s in list_runs() if s.status in ("pending", "running"))
+
+
+def reconcile_orphaned_runs() -> int:
+    """Mark any run still 'running'/'pending' as failed.
+
+    Called on server startup: monitors do not survive a restart, so any run
+    still in an active state has been orphaned and will never complete.
+    Returns the number of runs reconciled.
+    """
+    reconciled = 0
+    for summary in list_runs():
+        if summary.status in ("pending", "running"):
+            try:
+                update_run_status(
+                    summary.run_id,
+                    status="failed",
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                    error_summary="Interrupted by server restart (run did not survive).",
+                )
+                reconciled += 1
+            except FileNotFoundError:
+                logger.warning("Could not reconcile orphaned run %s", summary.run_id)
+    return reconciled
+
+
 def generate_run_id() -> str:
     """Generate a collision-resistant run ID. Appends a 4-char hex suffix."""
-    import secrets
     return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
 
 

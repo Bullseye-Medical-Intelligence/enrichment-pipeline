@@ -209,6 +209,24 @@ Phase 2 additions (do not build now):
 
 ---
 
+## Operational Safeguards
+
+- **run_id is always validated** (`runs.is_valid_run_id` / `run_dir`) against
+  `^RUN-\d{8}-\d{6}(-[a-f0-9]{4})?$` before building any filesystem path. This
+  blocks path traversal. Invalid IDs read as 404, never 500.
+- **Concurrent-run cap**: `MAX_CONCURRENT_RUNS` (config, default 3). `orchestrate_run`
+  rejects new runs over the cap so a small host cannot be exhausted.
+- **Orphan recovery**: on startup (`main.py` lifespan) any run still `pending`/`running`
+  is marked `failed` — monitors do not survive a restart, so such runs are orphaned.
+- **Constant-time auth**: API key and UI password comparisons use `hmac.compare_digest`.
+- **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
+  output (`output/atomic_write.py`) use temp-file + `os.replace()`.
+
+Scale note: current design targets ~10 operators / ≤1000-record batches on a single
+host. Task queue / database / Redis remain out of scope until that ceiling is crossed.
+
+---
+
 ## Locked status.json Schema
 
 ```json

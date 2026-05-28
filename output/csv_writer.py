@@ -5,8 +5,9 @@ Useful for quick review in Excel/Sheets.
 """
 
 import csv
-import os
 from pathlib import Path
+
+from output.atomic_write import atomic_write
 
 
 # Columns included in the flat CSV export (signals are excluded — too nested)
@@ -80,8 +81,6 @@ def write_csv(records: list[dict], output_dir: str = "./output",
     Returns:
         Absolute path to the written file.
     """
-    import os
-    os.makedirs(output_dir, exist_ok=True)
     output_path = Path(output_dir) / "enriched_targets.csv"
 
     rows = []
@@ -92,10 +91,12 @@ def write_csv(records: list[dict], output_dir: str = "./output",
             record["source_pipeline_version"] = pipeline_version
         rows.append(_flatten_record(record))
 
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
+    def _write(f):
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+    atomic_write(output_path, _write, newline="")
 
     size_kb = output_path.stat().st_size / 1024
     print(f"[csv_writer] Wrote {len(records)} records → {output_path} ({size_kb:.1f} KB)")

@@ -164,6 +164,8 @@ def run_pipeline(input_file: str, source_type: str,
     retries = run_config.get("request_retries", 3)
     max_pages = run_config.get("max_pages_per_practice", 5)
     bullseye_min = run_config.get("bullseye_min_score", 75)
+    subpage_keywords = run_config.get("subpage_keywords") or None
+    io_concurrency = int(run_config.get("io_concurrency", 6))
 
     print(f"  Project: {run_config.get('client_name', 'Unknown')}")
     print(f"  Target specialty: {run_config.get('target_specialty', 'Any')}")
@@ -236,7 +238,8 @@ def run_pipeline(input_file: str, source_type: str,
     print(f"STEP 2: URL VALIDATION")
     print(f"{'─'*40}")
 
-    records = batch_validate_urls(records, timeout=timeout, retries=retries)
+    records = batch_validate_urls(records, timeout=timeout, retries=retries,
+                                   max_workers=io_concurrency)
 
     url_valid_count = sum(1 for r in records if r.get("_url_valid", False))
     print(f"\n  {url_valid_count}/{len(records)} URLs valid")
@@ -249,7 +252,8 @@ def run_pipeline(input_file: str, source_type: str,
     print(f"{'─'*40}")
 
     records = batch_extract(records, timeout=timeout, retries=retries,
-                             max_pages=max_pages)
+                             max_pages=max_pages, keywords=subpage_keywords,
+                             max_workers=io_concurrency)
 
     extracted_count = sum(1 for r in records if r.get("_context_text", ""))
     print(f"\n  {extracted_count}/{len(records)} records with extracted text")
