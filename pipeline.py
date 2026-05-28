@@ -26,7 +26,9 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -96,14 +98,18 @@ def _deduplicate_records(records: list[dict]) -> tuple[list[dict], int]:
     return deduped, dupes
 
 
+_checkpoint_lock = threading.Lock()
+
+
 def _write_step4_checkpoint(output_dir: str, record: dict) -> None:
-    """Append a completed Step 4 record to the NDJSON checkpoint file (best-effort)."""
+    """Append a completed Step 4 record to the NDJSON checkpoint file (best-effort, thread-safe)."""
     path = Path(output_dir) / "step4_checkpoint.ndjson"
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError:
-        pass  # Non-fatal: worst case is re-processing this record on resume
+    with _checkpoint_lock:
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass  # Non-fatal: worst case is re-processing this record on resume
 
 
 def _load_step4_checkpoint(output_dir: str) -> dict:
@@ -217,6 +223,7 @@ def run_pipeline(input_file: str, source_type: str,
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
     subpage_keywords = run_config.get("subpage_keywords") or None
     io_concurrency = int(run_config.get("io_concurrency", 6))
+    llm_concurrency = int(run_config.get("llm_concurrency", 3))
 
     print(f"  Project: {run_config.get('client_name', 'Unknown')}")
     print(f"  Target specialty: {run_config.get('target_specialty', 'Any')}")
@@ -324,57 +331,86 @@ def run_pipeline(input_file: str, source_type: str,
     if checkpoint:
         print(f"  Resuming from checkpoint: {len(checkpoint)} records already processed.")
 
+    # Restore checkpoint records; collect only unprocessed records for the thread pool
+    to_process = []
     for i, record in enumerate(records):
         record_id = record.get("id") or record.get("record_id", "")
         if record_id and record_id in checkpoint:
             records[i] = checkpoint[record_id]
-            print(f"\n  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')} — checkpoint")
-            continue
+            print(f"  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')} — checkpoint")
+        else:
+            to_process.append((i, record))
 
-        _write_progress(output_dir, 4, "Signal extraction (Claude)", i, len(records))
-        print(f"\n  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')}")
-        context_text = record.get("_context_text", "")
-        try:
-            record = extract_signals(
-                record=record,
-                icp_signals=icp_signals,
-                context_text=context_text,
-                run_id=run_id,
-                bullseye_min_score=bullseye_min,
-            )
-        except Exception as e:
-            # Catch-all: never crash the run on a single record
-            error_msg = str(e)[:200]
-            print(f"    [FAIL] Unhandled error in signal extraction: {error_msg}")
-            record.update({
-                "signals": [],
-                "bullseye_score": 0,
-                "fit_signal_score": 0,
-                "confidence_score": 0,
-                "fit_confidence_status": "LOW FIT / LOW EVIDENCE",
-                "sales_angle": [],
-                "source_confidence": record.get("source_confidence") or "failed",
-                "enrichment_status": "failed",
-                "qc_status": "pending",
-                "internal_notes": f"Unhandled error: {error_msg}",
-                "analyst_override_classification": None,
-                "override_reason": None,
-                "client_facing_rationale": None,
-                "_llm_exclusion_triggers": [],
-                "_llm_exclusion_rationale": "",
-            })
-            all_errors.append({
-                "record_id": record.get("id", "unknown"),
-                "step": "signal_extraction",
-                "error": error_msg,
-                "resolution": "Record marked failed, enrichment_status=failed",
-            })
+    errors_lock = threading.Lock()
+    checkpoint_start = len(checkpoint)
 
-        records[i] = record
-        _write_step4_checkpoint(output_dir, record)
+    def _extract_with_retry(idx: int, rec: dict) -> tuple[int, dict, str | None]:
+        """Call extract_signals with exponential backoff on rate-limit errors."""
+        context_text = rec.get("_context_text", "")
+        for attempt in range(5):
+            try:
+                return idx, extract_signals(
+                    record=rec,
+                    icp_signals=icp_signals,
+                    context_text=context_text,
+                    run_id=run_id,
+                    bullseye_min_score=bullseye_min,
+                ), None
+            except Exception as e:
+                err_str = str(e)
+                is_rate_limit = (
+                    "429" in err_str
+                    or "rate_limit" in err_str.lower()
+                    or "rate limit" in err_str.lower()
+                    or "overloaded" in err_str.lower()
+                )
+                if is_rate_limit and attempt < 4:
+                    wait = min(5 * (2 ** attempt), 60)
+                    print(f"    [RATE LIMIT] {rec.get('practice_name', '?')} — retrying in {wait}s")
+                    time.sleep(wait)
+                    continue
+                return idx, rec, err_str[:200]
+        return idx, rec, "Max retries exceeded"  # unreachable
 
-        # Rate limit: small delay between LLM calls
-        time.sleep(0.5)
+    done_count = 0
+    with ThreadPoolExecutor(max_workers=max(1, llm_concurrency)) as executor:
+        futures = [executor.submit(_extract_with_retry, idx, rec) for idx, rec in to_process]
+        for future in as_completed(futures):
+            idx, record, error = future.result()
+            done_count += 1
+            total_done = checkpoint_start + done_count
+            _write_progress(output_dir, 4, "Signal extraction (Claude)", total_done, len(records))
+            print(f"\n  [{total_done}/{len(records)}] {record.get('practice_name', 'Unknown')}")
+
+            if error is not None:
+                print(f"    [FAIL] Unhandled error in signal extraction: {error}")
+                record.update({
+                    "signals": [],
+                    "bullseye_score": 0,
+                    "fit_signal_score": 0,
+                    "confidence_score": 0,
+                    "fit_confidence_status": "LOW FIT / LOW EVIDENCE",
+                    "sales_angle": [],
+                    "source_confidence": record.get("source_confidence") or "failed",
+                    "enrichment_status": "failed",
+                    "qc_status": "pending",
+                    "internal_notes": f"Unhandled error: {error}",
+                    "analyst_override_classification": None,
+                    "override_reason": None,
+                    "client_facing_rationale": None,
+                    "_llm_exclusion_triggers": [],
+                    "_llm_exclusion_rationale": "",
+                })
+                with errors_lock:
+                    all_errors.append({
+                        "record_id": record.get("id", "unknown"),
+                        "step": "signal_extraction",
+                        "error": error,
+                        "resolution": "Record marked failed, enrichment_status=failed",
+                    })
+
+            records[idx] = record
+            _write_step4_checkpoint(output_dir, record)
 
     # -------------------------------------------------------------------------
     # STEP 5: BULLSEYE VERIFICATION (GPT - conditional)
