@@ -267,6 +267,31 @@ def test_icp_validation_rejects_bad_cap_tier():
         icp_profiles.validate_icp_profile(_icp_with_signal(cap_tier="Excluded"))
 
 
+def test_icp_validation_accepts_reinforces_referencing_known_signal():
+    profile = {
+        "icp_id": "t", "name": "T", "version": "v1",
+        "signals": [
+            {"signal_id": "S-cash", "signal_label": "Cash pay",
+             "prompt_instruction": "?", "positive_weight": 30,
+             "verification_required": True},
+            {"signal_id": "S-elective", "signal_label": "Elective",
+             "prompt_instruction": "?", "positive_weight": 20,
+             "reinforces": "S-cash"},
+        ],
+    }
+    icp_profiles.validate_icp_profile(profile)
+
+
+def test_icp_validation_rejects_reinforces_unknown_signal():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(reinforces="S-does-not-exist"))
+
+
+def test_icp_validation_rejects_non_string_reinforces():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(reinforces=123))
+
+
 # ---------------------------------------------------------------------------
 # Upload rejection for a missing project
 # ---------------------------------------------------------------------------

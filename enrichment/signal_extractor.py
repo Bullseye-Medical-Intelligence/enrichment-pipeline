@@ -27,6 +27,7 @@ from enrichment.constants import (
     FIT_WEIGHT,
     HIGH_CONFIDENCE_THRESHOLD,
     HIGH_FIT_THRESHOLD,
+    INFERENCE_CREDIT,
     MAX_SCORE,
     MIN_SCORE,
     NO_SIGNAL_CONFIDENCE,
@@ -228,6 +229,7 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "positive_weight": icp_by_id[signal_id].get("positive_weight", 0),
             "verification_required": bool(icp_by_id[signal_id].get("verification_required", False)),
             "cap_tier": icp_by_id[signal_id].get("cap_tier", ""),
+            "state_inferred": False,
             "analyst_note": "",
         }
 
@@ -249,10 +251,34 @@ def _validate_and_clean_signals(raw_signals: list[dict],
                 "positive_weight": icp_sig.get("positive_weight", 0),
                 "verification_required": bool(icp_sig.get("verification_required", False)),
                 "cap_tier": icp_sig.get("cap_tier", ""),
+                "state_inferred": False,
                 "analyst_note": "",
             })
 
     return normalized
+
+
+def _apply_reinforcement(signals: list[dict], icp_signals: list[dict]) -> None:
+    """Mark a not_found signal as inferred when a reinforcing signal is confirmed.
+
+    An ICP signal may declare `reinforces: "<other_signal_id>"`. When that
+    reinforcing signal resolves to "yes" while its target is "not_found", the
+    target's presence is inferred indirectly — for example, listed elective or
+    cosmetic procedures imply cash pay even when the words "cash pay" never
+    appear on the site. Sets state_inferred=True on the target so scoring grants
+    partial credit and tiering skips the verification gate. Mutates in place.
+    """
+    by_id = {s["signal_id"]: s for s in signals}
+    for icp_sig in icp_signals:
+        target_id = icp_sig.get("reinforces")
+        if not target_id:
+            continue
+        source = by_id.get(icp_sig["signal_id"])
+        target = by_id.get(target_id)
+        if (source and target
+                and source["signal_state"] == "yes"
+                and target["signal_state"] == "not_found"):
+            target["state_inferred"] = True
 
 
 # ---------------------------------------------------------------------------
@@ -261,42 +287,68 @@ def _validate_and_clean_signals(raw_signals: list[dict],
 
 def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     """
-    Calculate bullseye_score, fit_signal_score, and confidence_score.
+    Calculate fit_signal_score, confidence_score, and bullseye_score as a
+    commercial-fit confidence reading dictated by the ICP.
 
-    Scoring logic:
-    - Start from a base of 50
-    - Add/subtract weights based on signal_state ("yes" = full weight, "no" = 0, "not_found" = 0)
-    - Negative-weight signals are subtracted when "yes"
-    - confidence_score is the average confidence across confirmed signals
-    - bullseye_score is a weighted average of fit and confidence
+    fit_signal_score is the share of the *achievable* positive weight a practice
+    actually captures, expressed 0–100. Matching every desirable signal lands
+    near 100; matching only minor ones earns proportionally less, so a long tail
+    of low-value signals can never out-score the few that matter. Logic:
+
+    - max_positive = sum of all positive (desirable) signal weights — the ideal.
+    - A confirmed ("yes") desirable signal adds its full weight to achieved.
+    - An inferred desirable signal (state_inferred, set by reinforcement) adds
+      INFERENCE_CREDIT of its weight — partial credit for indirect evidence.
+    - An unconfirmed ("not_found") desirable signal applies its not_found_weight
+      penalty (usually 0 or negative).
+    - A confirmed friction signal (negative weight, "yes") subtracts its weight.
+    - confidence_score is the mean confidence across confirmed/inferred signals.
+    - bullseye_score is the weighted blend of fit and confidence.
     """
-    # Build weight lookup from ICP checklist
-    weight_map = {s["signal_id"]: s.get("positive_weight", 0) for s in icp_signals}
-
-    # Map signals by ID
     signal_map = {s["signal_id"]: s for s in signals}
 
-    fit_delta = 0
+    max_positive = 0.0
+    achieved = 0.0
     confidence_values = []
 
     for icp_signal in icp_signals:
         sid = icp_signal["signal_id"]
-        weight = weight_map.get(sid, 0)
+        weight = icp_signal.get("positive_weight", 0)
         not_found_weight = icp_signal.get("not_found_weight", 0)
         matched = signal_map.get(sid)
+        state = matched["signal_state"] if matched else "not_found"
+        inferred = bool(matched and matched.get("state_inferred"))
 
-        if matched and matched["signal_state"] == "yes":
-            fit_delta += weight  # positive weights add, negative weights subtract
-            confidence_values.append(
-                CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
-            )
-        elif matched and matched["signal_state"] == "not_found":
-            fit_delta += not_found_weight  # penalty for an unconfirmed signal (usually negative)
+        if weight >= 0:
+            max_positive += weight
+            if state == "yes":
+                achieved += weight
+                confidence_values.append(
+                    CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
+                )
+            elif state == "not_found":
+                if inferred:
+                    achieved += weight * INFERENCE_CREDIT
+                    confidence_values.append(CONFIDENCE_SCORE_MAP["medium"])
+                else:
+                    achieved += not_found_weight  # penalty (usually <= 0)
+            # "no": confirmed absent — no credit
+        else:
+            # Friction signal: only a confirmed "yes" applies the negative weight.
+            if state == "yes":
+                achieved += weight  # weight is negative -> subtracts
+                confidence_values.append(
+                    CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
+                )
 
-    # Fit signal score: base + weighted delta, clamped to score bounds
-    fit_signal_score = max(MIN_SCORE, min(MAX_SCORE, BASE_FIT_SCORE + fit_delta))
+    # Fit = captured share of the ideal profile, scaled to 0–100.
+    if max_positive > 0:
+        fit_signal_score = round((achieved / max_positive) * 100)
+    else:
+        fit_signal_score = BASE_FIT_SCORE  # no positive signals defined -> neutral
+    fit_signal_score = max(MIN_SCORE, min(MAX_SCORE, fit_signal_score))
 
-    # Confidence score: average of confidence values for confirmed signals
+    # Confidence score: average of confidence values for confirmed/inferred signals
     if confidence_values:
         confidence_score = round(sum(confidence_values) / len(confidence_values))
     else:
@@ -369,6 +421,10 @@ def extract_signals(record: dict, icp_signals: list[dict],
         signals = _validate_and_clean_signals(
             parsed.get("signals", []), icp_signals
         )
+
+        # Infer not_found signals from confirmed reinforcing signals
+        # (e.g. elective procedures imply cash pay) before scoring/tiering.
+        _apply_reinforcement(signals, icp_signals)
 
         # Score
         scores = _calculate_scores(signals, icp_signals)

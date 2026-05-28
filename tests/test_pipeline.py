@@ -23,7 +23,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 
 from ingestion.outscraper_adapter import _normalize_state, infer_specialty
-from enrichment.signal_extractor import _validate_and_clean_signals, _calculate_scores
+from enrichment.signal_extractor import (
+    _validate_and_clean_signals,
+    _calculate_scores,
+    _apply_reinforcement,
+)
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
 
@@ -244,22 +248,139 @@ class TestSignalNormalization:
 # ---------------------------------------------------------------------------
 
 class TestScoring:
+    """Fit score = captured share of the achievable positive weight (0–100)."""
 
-    def test_not_found_weight_penalizes_unconfirmed_signal(self):
-        icp = [{"signal_id": "S-1", "signal_label": "Cash pay",
-                "prompt_instruction": "?", "positive_weight": 10,
-                "not_found_weight": -15}]
-        signals = [{"signal_id": "S-1", "signal_state": "not_found", "confidence": "low"}]
+    def test_all_desirable_signals_confirmed_scores_full(self):
+        icp = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+                "positive_weight": 20},
+               {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+                "positive_weight": 30}]
+        signals = [{"signal_id": "S-1", "signal_state": "yes", "confidence": "high"},
+                   {"signal_id": "S-2", "signal_state": "yes", "confidence": "high"}]
         scores = _calculate_scores(signals, icp)
-        # base 50 + (-15) = 35
-        assert scores["fit_signal_score"] == 35
+        assert scores["fit_signal_score"] == 100
 
-    def test_not_found_weight_defaults_to_zero(self):
-        icp = [{"signal_id": "S-1", "signal_label": "Cash pay",
-                "prompt_instruction": "?", "positive_weight": 10}]
-        signals = [{"signal_id": "S-1", "signal_state": "not_found", "confidence": "low"}]
+    def test_partial_capture_is_proportional(self):
+        # Capture 20 of an achievable 50 -> 40.
+        icp = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+                "positive_weight": 20},
+               {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+                "positive_weight": 30}]
+        signals = [{"signal_id": "S-1", "signal_state": "yes", "confidence": "high"},
+                   {"signal_id": "S-2", "signal_state": "no", "confidence": "high"}]
         scores = _calculate_scores(signals, icp)
-        assert scores["fit_signal_score"] == 50  # no penalty configured
+        assert scores["fit_signal_score"] == 40
+
+    def test_minor_signals_cannot_outscore_a_heavy_one(self):
+        # One heavy signal (40) confirmed beats three minor ones (5 each) confirmed.
+        heavy_icp = [{"signal_id": "H", "signal_label": "H", "prompt_instruction": "?",
+                      "positive_weight": 40},
+                     {"signal_id": "x", "signal_label": "x", "prompt_instruction": "?",
+                      "positive_weight": 5}]
+        heavy_sig = [{"signal_id": "H", "signal_state": "yes", "confidence": "high"},
+                     {"signal_id": "x", "signal_state": "no", "confidence": "high"}]
+        minor_icp = [{"signal_id": "a", "signal_label": "a", "prompt_instruction": "?",
+                      "positive_weight": 5},
+                     {"signal_id": "b", "signal_label": "b", "prompt_instruction": "?",
+                      "positive_weight": 5},
+                     {"signal_id": "c", "signal_label": "c", "prompt_instruction": "?",
+                      "positive_weight": 5},
+                     {"signal_id": "H", "signal_label": "H", "prompt_instruction": "?",
+                      "positive_weight": 40}]
+        minor_sig = [{"signal_id": "a", "signal_state": "yes", "confidence": "high"},
+                     {"signal_id": "b", "signal_state": "yes", "confidence": "high"},
+                     {"signal_id": "c", "signal_state": "yes", "confidence": "high"},
+                     {"signal_id": "H", "signal_state": "no", "confidence": "high"}]
+        heavy = _calculate_scores(heavy_sig, heavy_icp)["fit_signal_score"]
+        minor = _calculate_scores(minor_sig, minor_icp)["fit_signal_score"]
+        assert heavy > minor
+
+    def test_friction_signal_yes_pulls_score_down(self):
+        icp = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+                "positive_weight": 40},
+               {"signal_id": "S-hosp", "signal_label": "Hospital", "prompt_instruction": "?",
+                "positive_weight": -20}]
+        confirmed_only = [{"signal_id": "S-1", "signal_state": "yes", "confidence": "high"},
+                          {"signal_id": "S-hosp", "signal_state": "no", "confidence": "high"}]
+        with_friction = [{"signal_id": "S-1", "signal_state": "yes", "confidence": "high"},
+                         {"signal_id": "S-hosp", "signal_state": "yes", "confidence": "high"}]
+        clean = _calculate_scores(confirmed_only, icp)["fit_signal_score"]
+        dinged = _calculate_scores(with_friction, icp)["fit_signal_score"]
+        assert clean == 100
+        assert dinged == 50  # (40 - 20) / 40 -> 50
+
+    def test_not_found_weight_penalizes_when_other_signals_carry_weight(self):
+        icp = [{"signal_id": "S-1", "signal_label": "Cash pay", "prompt_instruction": "?",
+                "positive_weight": 10, "not_found_weight": -10},
+               {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+                "positive_weight": 30}]
+        signals = [{"signal_id": "S-1", "signal_state": "not_found", "confidence": "low"},
+                   {"signal_id": "S-2", "signal_state": "yes", "confidence": "high"}]
+        scores = _calculate_scores(signals, icp)
+        # achieved = 30 - 10 = 20 of an achievable 40 -> 50
+        assert scores["fit_signal_score"] == 50
+
+
+class TestReinforcement:
+    """Elective/cosmetic 'yes' should infer (boost) an unconfirmed cash-pay signal."""
+
+    CASH_PAY_ICP = [
+        {"signal_id": "S-cash", "signal_label": "Cash pay visible",
+         "prompt_instruction": "?", "positive_weight": 30,
+         "verification_required": True, "not_found_weight": -10},
+        {"signal_id": "S-elective", "signal_label": "Elective procedures",
+         "prompt_instruction": "?", "positive_weight": 20,
+         "reinforces": "S-cash"},
+    ]
+
+    def _signals(self, cash_state, elective_state):
+        return [
+            {"signal_id": "S-cash", "signal_label": "Cash pay visible",
+             "signal_state": cash_state, "confidence": "low",
+             "verification_required": True, "state_inferred": False},
+            {"signal_id": "S-elective", "signal_label": "Elective procedures",
+             "signal_state": elective_state, "confidence": "high",
+             "verification_required": False, "state_inferred": False},
+        ]
+
+    def test_elective_yes_infers_unconfirmed_cash_pay(self):
+        signals = self._signals("not_found", "yes")
+        _apply_reinforcement(signals, self.CASH_PAY_ICP)
+        cash = next(s for s in signals if s["signal_id"] == "S-cash")
+        assert cash["state_inferred"] is True
+
+    def test_no_inference_when_reinforcing_signal_absent(self):
+        signals = self._signals("not_found", "not_found")
+        _apply_reinforcement(signals, self.CASH_PAY_ICP)
+        cash = next(s for s in signals if s["signal_id"] == "S-cash")
+        assert cash["state_inferred"] is False
+
+    def test_no_inference_when_cash_pay_already_confirmed(self):
+        signals = self._signals("yes", "yes")
+        _apply_reinforcement(signals, self.CASH_PAY_ICP)
+        cash = next(s for s in signals if s["signal_id"] == "S-cash")
+        assert cash["state_inferred"] is False  # already directly confirmed
+
+    def test_inferred_cash_pay_earns_partial_credit(self):
+        inferred = self._signals("not_found", "yes")
+        _apply_reinforcement(inferred, self.CASH_PAY_ICP)
+        penalized = self._signals("not_found", "no")  # elective absent -> penalty
+        inferred_fit = _calculate_scores(inferred, self.CASH_PAY_ICP)["fit_signal_score"]
+        penalized_fit = _calculate_scores(penalized, self.CASH_PAY_ICP)["fit_signal_score"]
+        assert inferred_fit > penalized_fit
+
+    def test_inferred_cash_pay_skips_verification_gate(self):
+        rec = _clear_record(score=90)
+        rec["signals"] = self._signals("not_found", "yes")
+        _apply_reinforcement(rec["signals"], self.CASH_PAY_ICP)
+        # state_inferred now set -> verification gate must not fire
+        assert _assign_tier(rec, 90, 75) == "Bullseye"
+
+    def test_uninferred_cash_pay_triggers_verification_gate(self):
+        rec = _clear_record(score=90)
+        rec["signals"] = self._signals("not_found", "not_found")
+        _apply_reinforcement(rec["signals"], self.CASH_PAY_ICP)
+        assert _assign_tier(rec, 90, 75) == "Needs Verification"
 
 
 # ---------------------------------------------------------------------------

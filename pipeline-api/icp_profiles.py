@@ -47,6 +47,7 @@ def validate_icp_profile(data: dict) -> None:
     signals = data.get("signals")
     if not isinstance(signals, list) or not signals:
         raise ValueError("ICP profile 'signals' must be a non-empty list.")
+    signal_ids = {s.get("signal_id") for s in signals if isinstance(s, dict)}
     for i, signal in enumerate(signals):
         if not isinstance(signal, dict):
             raise ValueError(f"ICP signal #{i + 1} must be an object.")
@@ -73,6 +74,16 @@ def validate_icp_profile(data: dict) -> None:
             raise ValueError(
                 f"ICP signal #{i + 1} 'cap_tier' must be 'Watchlist' or 'Needs Verification'."
             )
+        if "reinforces" in signal:
+            if not isinstance(signal["reinforces"], str) or not signal["reinforces"]:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'reinforces' must be a non-empty signal_id string."
+                )
+            if signal["reinforces"] not in signal_ids:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'reinforces' references unknown signal_id "
+                    f"'{signal['reinforces']}'."
+                )
 
 
 def get_icp_profile(icp_profile_id: str) -> dict:

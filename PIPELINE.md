@@ -318,6 +318,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
       "source_type": "practice_website",
       "confidence": "high",
       "positive_weight": 15,
+      "state_inferred": false,
       "analyst_note": ""
     }
   ],
@@ -351,6 +352,8 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 **signal_state:** `"yes"`, `"no"`, or `"not_found"` only. Never null, true, false, or empty string.
 
 **positive_weight:** Carried over from the ICP signal definition. Positive for signals where a `"yes"` is good; negative where a `"yes"` is bad (e.g. "REI on staff"). Consumers use the sign to color a signal green or red: a `"no"` on a negative-weight signal is a positive indicator.
+
+**state_inferred:** `true` when a `not_found` signal's presence was inferred from a confirmed `reinforces` signal (e.g. cash pay inferred from listed elective procedures). Inferred signals earn partial fit credit and skip the `verification_required` gate. `false` for directly observed signals.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 
@@ -535,6 +538,49 @@ Each signal may also carry these optional fields (all default to off):
   `"yes"`, the record's tier is capped at this ceiling regardless of score. Use
   for near-disqualifying signals (e.g. a confirmed hospital affiliation caps at
   `"Watchlist"`).
+- **`reinforces`** (string `signal_id`): names another signal this one supplies
+  indirect evidence for. When this signal is `"yes"` and the named target is
+  `"not_found"`, the target is marked inferred (`state_inferred`): it earns
+  partial fit credit and its `verification_required` gate does not fire. Use to
+  let an observable signal stand in for one that is rarely printed verbatim
+  (e.g. listed elective/cosmetic procedures imply cash pay).
+
+#### How fit is scored
+
+`fit_signal_score` is the share of the **achievable** positive weight a practice
+actually captures, expressed 0–100, not a running tally. `max_positive` is the
+sum of every positive (desirable) `positive_weight`. A confirmed `"yes"` adds
+its full weight; an inferred signal adds a fraction (`INFERENCE_CREDIT`); a
+`not_found` applies its `not_found_weight` penalty; a confirmed friction signal
+(negative weight, `"yes"`) subtracts. `fit = achieved / max_positive * 100`,
+clamped 0–100. Matching every key signal lands near 100; a long tail of minor
+signals can never out-score the few heavy ones, and a missing high-weight signal
+costs proportionally more than a missing minor one. `bullseye_score` is then the
+weighted blend `0.6 * fit + 0.4 * confidence`.
+
+Example — cash pay gated, inferred from elective procedures:
+
+```json
+{
+  "signal_id": "S-ICP-010",
+  "signal_label": "Cash pay / self-pay visible",
+  "prompt_instruction": "Does the site advertise cash-pay, self-pay, or membership pricing?",
+  "positive_weight": 30,
+  "verification_required": true,
+  "not_found_weight": -10
+},
+{
+  "signal_id": "S-ICP-011",
+  "signal_label": "Elective / cosmetic procedures listed",
+  "prompt_instruction": "Does the practice list elective or cosmetic procedures patients pay for out of pocket?",
+  "positive_weight": 18,
+  "reinforces": "S-ICP-010"
+}
+```
+
+A practice with elective procedures listed but no explicit cash-pay copy gets
+cash pay inferred (partial credit, no verification gate). A practice with
+neither falls to `"Needs Verification"` so a rep confirms before calling.
 
 ---
 

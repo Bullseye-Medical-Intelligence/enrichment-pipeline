@@ -6,21 +6,40 @@
   "signals": [
     {
       "signal_id": "S-ICP-001",
+      "signal_label": "Cash pay / self-pay visible",
+      "prompt_instruction": "Does the site advertise cash-pay, self-pay, membership, or out-of-pocket pricing?",
+      "positive_weight": 30,
+      "verification_required": true,
+      "not_found_weight": -10,
+      "note": "Money signal. When not visible the account goes to Needs Verification, unless inferred from elective procedures."
+    },
+    {
+      "signal_id": "S-ICP-002",
+      "signal_label": "Elective / cosmetic procedures listed",
+      "prompt_instruction": "Does the practice list elective or cosmetic procedures patients typically pay for out of pocket?",
+      "positive_weight": 18,
+      "reinforces": "S-ICP-001",
+      "note": "Listed elective procedures imply cash pay even when the words 'cash pay' never appear."
+    },
+    {
+      "signal_id": "S-ICP-003",
       "signal_label": "Target service line listed",
       "prompt_instruction": "Does this practice publicly list the target service line as a service they offer?",
       "positive_weight": 18
     },
     {
-      "signal_id": "S-ICP-002",
+      "signal_id": "S-ICP-004",
       "signal_label": "Independent private practice",
       "prompt_instruction": "Does this appear to be an independent private practice (not hospital-owned, not part of a health system)?",
       "positive_weight": 20
     },
     {
-      "signal_id": "S-ICP-003",
+      "signal_id": "S-ICP-005",
       "signal_label": "Hospital or health system affiliated",
       "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
-      "positive_weight": -30
+      "positive_weight": -30,
+      "cap_tier": "Watchlist",
+      "note": "Confirmed affiliation means long procurement cycles. Caps the tier at Watchlist regardless of score."
     }
   ]
 }

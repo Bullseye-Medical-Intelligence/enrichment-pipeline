@@ -54,8 +54,13 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
         if cap and cap in TIER_RANK and sig.get("signal_state") == "yes":
             rank = min(rank, TIER_RANK[cap])
 
+    # A required signal that is not confirmed forces verification — unless its
+    # presence was inferred from a reinforcing signal (state_inferred), in which
+    # case it counts as confirmed-by-inference and the gate does not fire.
     needs_verification = any(
-        sig.get("verification_required") and sig.get("signal_state") == "not_found"
+        sig.get("verification_required")
+        and sig.get("signal_state") == "not_found"
+        and not sig.get("state_inferred")
         for sig in signals
     )
     if needs_verification:

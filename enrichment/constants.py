@@ -10,9 +10,15 @@ MIN_SCORE = 0
 MAX_SCORE = 100
 
 # Fit scoring
-BASE_FIT_SCORE = 50                 # neutral starting point before signal weights
+BASE_FIT_SCORE = 50                 # neutral fallback when an ICP defines no positive weight
 CONFIDENCE_SCORE_MAP = {"high": 90, "medium": 65, "low": 40}
 NO_SIGNAL_CONFIDENCE = 30           # confidence when no signal is confirmed
+
+# Fraction of a signal's positive weight credited when its state is *inferred*
+# from a reinforcing signal (e.g. listed elective procedures imply cash pay)
+# rather than directly observed on the site. Less than full credit because
+# inference is indirect evidence.
+INFERENCE_CREDIT = 0.6
 
 # bullseye_score = FIT_WEIGHT * fit_signal_score + CONFIDENCE_WEIGHT * confidence_score
 FIT_WEIGHT = 0.6
