@@ -39,5 +39,5 @@ def write_json(records: list[dict], output_dir: str = "./output",
     )
 
     size_kb = output_path.stat().st_size / 1024
-    print(f"[json_writer] Wrote {len(records)} records → {output_path} ({size_kb:.1f} KB)")
+    print(f"[json_writer] Wrote {len(records)} records -> {output_path} ({size_kb:.1f} KB)")
     return str(output_path.resolve())

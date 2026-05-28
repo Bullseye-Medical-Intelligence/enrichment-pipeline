@@ -9,6 +9,7 @@ carries the signal checklist the pipeline enriches against (pipeline.py --icp).
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -107,6 +108,31 @@ def list_icp_profiles() -> list[dict]:
             "signals": profile["signals"],
         })
     return profiles
+
+
+def save_icp_profile(data: dict) -> None:
+    """
+    Validate and write an ICP profile to ICP_PROFILES_PATH/{icp_id}.json.
+
+    Uses atomic temp-file + os.replace() so a crash mid-write cannot
+    produce a partial file. Raises ValueError on invalid data or duplicate id.
+    """
+    validate_icp_profile(data)
+    icp_id = data["icp_id"]
+    if not is_valid_icp_id(icp_id):
+        raise ValueError(f"Invalid icp_id: {icp_id!r}")
+    base = config.ICP_PROFILES_PATH
+    base.mkdir(parents=True, exist_ok=True)
+    path = base / f"{icp_id}.json"
+    if path.exists():
+        raise ValueError(f"A profile with id '{icp_id}' already exists. Choose a different ID.")
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def read_snapshot(run_directory: Path) -> Optional[dict]:

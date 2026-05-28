@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Review ICP Signals — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Review Generated Signals</h2>
+    <p class="page-subtitle">
+      {{ icp_name }} · {{ specialty }}
+      <span class="text-muted"> — Edit any signal before saving.</span>
+    </p>
+  </div>
+  <div class="header-actions">
+    <a href="/icp-profiles/new" class="btn btn-secondary">← Start Over</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="alert alert-info">
+  <strong>{{ signals | length }} signals generated.</strong>
+  Review and edit each signal below, then click Save Profile.
+  Signal weights above zero indicate positive fit; negative weights indicate poor fit.
+</div>
+
+<form method="post" action="/icp-profiles/save">
+  <input type="hidden" name="icp_id"       value="{{ icp_id }}">
+  <input type="hidden" name="icp_name"     value="{{ icp_name }}">
+  <input type="hidden" name="version"      value="{{ version }}">
+  <input type="hidden" name="signal_count" value="{{ signals | length }}">
+  <input type="hidden" name="product_name" value="{{ product_name }}">
+  <input type="hidden" name="specialty"    value="{{ specialty }}">
+
+  <div class="card">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width:90px">Signal ID</th>
+          <th style="width:200px">Label</th>
+          <th>Prompt Instruction</th>
+          <th style="width:80px">Weight</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sig in signals %}
+        {% set n = loop.index0 %}
+        <tr>
+          <td>
+            <input type="text" name="signal_id_{{ n }}"
+                   value="{{ sig.signal_id | default('S-' ~ '%03d' | format(n + 1)) }}"
+                   style="width:80px" required>
+          </td>
+          <td>
+            <input type="text" name="signal_label_{{ n }}"
+                   value="{{ sig.signal_label | default('') }}"
+                   style="width:100%" required>
+          </td>
+          <td>
+            <textarea name="prompt_instruction_{{ n }}" rows="2"
+                      style="width:100%" required>{{ sig.prompt_instruction | default('') }}</textarea>
+          </td>
+          <td>
+            <input type="number" name="positive_weight_{{ n }}"
+                   value="{{ sig.positive_weight | default(10) }}"
+                   min="-99" max="99" style="width:70px" required>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-submit">Save Profile</button>
+    <a href="/icp-profiles/new" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

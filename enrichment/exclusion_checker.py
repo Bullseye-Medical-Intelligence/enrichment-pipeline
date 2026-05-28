@@ -2,21 +2,9 @@
 exclusion_checker.py
 Applies exclusion rules to enriched records.
 Hard exclusions always fire. Configurable exclusions fire only when listed in run_config.
-
-CHANGES (P1 fixes):
-- FIX 1: apply_exclusions() no longer sets target_tier = "Excluded" for CLEAR records.
-  CLEAR records are now always "Bullseye" (score >= bullseye_min) or "Watchlist"
-  (score < bullseye_min). "Excluded" tier is reserved exclusively for records where
-  exclusion_status = "EXCLUDED". The previous behavior produced contradictory output
-  (exclusion_status: CLEAR, target_tier: Excluded, exclusion_reason: null) which
-  broke the dashboard's QC display.
-
-- FIX 2: wrong_specialty is now a purely deterministic check. It no longer requires
-  "_llm_exclusion_triggers" to contain "wrong_specialty" to fire. If the record's
-  specialty field does not case-insensitively match run_config target_specialty, the
-  exclusion fires immediately. The LLM cannot override or suppress a specialty mismatch.
-  Only applies when both record_specialty and target_specialty are non-empty.
 """
+
+import re
 
 # ---------------------------------------------------------------------------
 # Exclusion rule definitions
@@ -44,6 +32,28 @@ ALL_KNOWN_EXCLUSION_RULES = HARD_EXCLUSION_RULES | CONFIGURABLE_EXCLUSION_RULES
 
 # Max bullseye_score for excluded records
 EXCLUDED_SCORE_CAP = 40
+
+
+def _specialty_words(text: str) -> set[str]:
+    return set(re.findall(r'[a-z0-9]+', text.lower()))
+
+
+def _specialty_matches(record_specialty: str, target_specialty: str) -> bool:
+    """
+    Return True if record_specialty matches any comma-separated token in target_specialty.
+
+    Uses word-boundary tokenization so short tokens like "ENT" cannot accidentally
+    match mid-word in strings like "urgent care" (where "ent" is a substring of "urgent").
+    A target token matches when all its words appear as whole words in the record specialty.
+    """
+    rec_words = _specialty_words(record_specialty)
+    if not rec_words:
+        return False
+    for token in target_specialty.split(","):
+        tok_words = _specialty_words(token.strip())
+        if tok_words and tok_words.issubset(rec_words):
+            return True
+    return False
 
 
 def _check_geography(record: dict, target_geography: list[str]) -> bool:
@@ -93,7 +103,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     # Fire if record specialty and target specialty are both set and don't match.
     record_specialty = (record.get("specialty") or "").strip()
     if target_specialty and record_specialty:
-        if record_specialty.lower() != target_specialty.lower():
+        if not _specialty_matches(record_specialty, target_specialty):
             triggered.append("wrong_specialty")
             rationale_parts.append(
                 f"Practice specialty '{record_specialty}' does not match "
@@ -152,7 +162,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
         if score > EXCLUDED_SCORE_CAP:
             record["bullseye_score"] = EXCLUDED_SCORE_CAP
 
-        print(f"    ⊘ EXCLUDED: {', '.join(triggered)}")
+        print(f"    [X] EXCLUDED: {', '.join(triggered)}")
 
     else:
         # FIX 1: CLEAR records are always "Bullseye" or "Watchlist" — never "Excluded".

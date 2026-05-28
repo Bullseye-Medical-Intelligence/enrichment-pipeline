@@ -45,7 +45,13 @@ Communication:
 ### RULE 1: This API wraps the pipeline. It does not become the pipeline.
 
 The API spawns pipeline.py as a subprocess. It does not contain enrichment
-logic, scoring formulas, signal definitions, or LLM prompt strings.
+logic, scoring formulas, or signal definitions.
+
+**One exception: the ICP Profile Builder** (`GET/POST /icp-profiles/new`,
+`POST /icp-profiles/generate`, `POST /icp-profiles/save` in `ui.py`) calls
+Claude via the `anthropic` SDK to generate draft signal definitions. This is
+strictly scoped to the builder flow. `ANTHROPIC_API_KEY` is loaded from `.env`
+via `config.py`. No other route in this API makes LLM calls.
 
 Bad:
 ```python
@@ -246,8 +252,11 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
 - **No hardcoded specialty.** Project defaults are generic (structural exclusion
   rules, a default score threshold). ICP signal content lives in operator-authored
   profile files, never in source.
-- **No visual ICP builder.** ICP profiles are hand-authored JSON files dropped
-  into `ICP_PROFILES_PATH`. Listing/reading only.
+- **ICP profiles are operator-authored files** dropped into `ICP_PROFILES_PATH`.
+  The one exception is the AI-assisted builder at `/icp-profiles/new`, which calls
+  Claude to generate a draft checklist. Domain experts must review and approve
+  generated signals before saving — the builder is a starting point, not a source
+  of truth. `save_icp_profile()` in `icp_profiles.py` writes new profiles atomically.
 
 ## Client Deliverable Export
 
@@ -256,7 +265,10 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
 - **Built from immutable output + review overlay.** Reads `enriched_targets.json`
   and the `reviews.json` overlay; never mutates either.
 - **Reuses `exports.py`** for the approved/excluded CSVs — no duplicated filter
-  logic. The approved set still omits hard `exclusion_status == "EXCLUDED"`.
+  logic. An analyst `override_tier` on a pipeline-excluded record bypasses the
+  automatic exclusion when the analyst also approves it. Without an explicit
+  override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
+  approved set.
 - **Client-safe only.** The ZIP contains `executive_summary.md`,
   `approved_targets.csv`, `excluded_targets.csv`, `top_target_briefs.md`, and
   `methodology.md`. It never includes `run_log.json`, `reviews.json`, or the raw
@@ -392,6 +404,29 @@ All UI in this repo must match the BEMI Dashboard identity. These rules are perm
 - Direct imports from the pipeline repo (subprocess only, no shared code)
 - Re-implementation of any logic that exists in the pipeline repo
 - Hardcoded client, product, specialty, or campaign names
+
+---
+
+## BEMI React Dashboard — Known Issues (Demo-Only)
+
+The React/Vite dashboard (`bullseye-medical-intelligence/bemi`) is demo-only and
+not integrated with this API. If it is ever promoted to production, fix these
+first:
+
+- `src/utils/classifyTarget.js` — `isApprovedExportEligible()` only checks
+  `qc_status === 'approved' && exclusion_status === 'CLEAR'`. A record an analyst
+  overrides to Excluded (CLEAR pipeline status, override_tier = Excluded) will
+  still appear in the approved export. The effective displayed tier must drive
+  the filter, not the raw pipeline status.
+- `src/utils/qcStorage.js` — QC state is keyed by `target.id` only, not by
+  run/import session. If two imports reuse IDs, old analyst decisions bleed into
+  the new import. Storage key must include a run ID or import fingerprint, or QC
+  must be cleared on import.
+- `src/utils/parseImport.js` / `src/components/ImportModal.jsx` — duplicate IDs
+  are logged as errors but the records still load. Duplicates must be stripped or
+  the import must be rejected outright before entering React state.
+
+Do not invest in these until the React app is promoted to production.
 
 ---
 

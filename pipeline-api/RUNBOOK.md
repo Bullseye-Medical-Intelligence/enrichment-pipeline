@@ -65,10 +65,28 @@ mkdir C:\users\rajiv\desktop\bemi\output\runs
 
 ## 2. Starting the App (do this every time)
 
-Open a PowerShell window, navigate to pipeline-api, and run:
+### Windows — double-click to launch
+
+In the repo root folder you will find `start-bemi.bat`. Double-click it.
+
+A terminal window opens, the server starts, and your browser opens automatically to the login page. Leave the terminal window open while you work. To stop the app, close the window or press Ctrl+C inside it.
+
+**To pin it to your Desktop:** Right-click `start-bemi.bat` → "Create shortcut" → move the shortcut to your Desktop. Rename it "BEMI Pipeline".
+
+### Mac / Linux — run once in Terminal
+
+```bash
+./start-bemi.sh
+```
+
+The server starts and your browser opens automatically. Press Ctrl+C to stop.
+
+### Manual start (any platform)
+
+If the launcher scripts don't work, you can always start manually:
 
 ```
-cd C:\users\rajiv\desktop\bemi\enrichment\pipeline-api
+cd pipeline-api
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -77,8 +95,6 @@ You should see:
 Application startup complete.
 Uvicorn running on http://0.0.0.0:8000
 ```
-
-Leave this window open while you work. To stop the app, press Ctrl+C.
 
 ---
 

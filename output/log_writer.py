@@ -89,7 +89,7 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
 
     atomic_write(output_path, lambda f: json.dump(log, f, indent=2, ensure_ascii=False))
 
-    print(f"[log_writer] Run log → {output_path}")
+    print(f"[log_writer] Run log -> {output_path}")
     print(
         f"[log_writer] Summary: {records_output} output | "
         f"{records_excluded} excluded | "

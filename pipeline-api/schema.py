@@ -59,6 +59,7 @@ class RunSummary(BaseModel):
     project_id: Optional[str] = None
     client_name: Optional[str] = None
     icp_profile_id: Optional[str] = None
+    error_summary: str = ""
 
 
 class RunListResponse(BaseModel):

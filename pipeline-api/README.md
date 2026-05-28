@@ -208,8 +208,10 @@ override the tier — an override requires a reason. Guidance shown on the page:
 - Review the evidence before approving.
 - Overrides require a reason.
 - Excluded records are exported separately.
-- The approved export always omits the pipeline's original hard exclusions
-  (a hard `exclusion_status == "EXCLUDED"` cannot be bypassed by an override).
+- Hard-excluded records appear only in the excluded CSV by default. An explicit
+  `override_tier` on an EXCLUDED record + `qc_status=approved` bypasses the pipeline's
+  hard exclusion and includes the record in the approved export. Without an explicit
+  `override_tier`, the hard exclusion stands regardless of QC status.
 
 Reviews are saved to `reviews.json` (additive metadata); `enriched_targets.json`
 is never modified.

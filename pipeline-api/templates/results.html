@@ -13,7 +13,7 @@
   </div>
   <div class="header-actions">
     {% if status.status == "complete" %}
-    <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
+    <a href="/runs/{{ run_id }}/client-package" class="btn {% if readiness and readiness.state == 'ready' %}btn-submit{% else %}btn-secondary{% endif %}">Download Client Package</a>
     <a href="/runs/{{ run_id }}/export/approved" class="btn btn-secondary">Export Approved</a>
     <a href="/runs/{{ run_id }}/export/excluded" class="btn btn-secondary">Export Excluded</a>
     <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary">Full JSON</a>
@@ -66,18 +66,70 @@
 </div>
 {% endif %}
 
-{% if status.status == "running" %}
-<div class="alert alert-info" id="running-alert">
-  Enrichment is running. This page will refresh automatically.
-  <script>setTimeout(function(){ location.reload(); }, 8000);</script>
+{% if status.status in ("running", "pending") %}
+<div class="run-progress-card">
+  <div class="run-progress-header">
+    <span class="spinner"></span>
+    <strong>Enrichment in progress</strong>
+    <span class="run-progress-elapsed" id="elapsed-display"></span>
+  </div>
+  {% if progress %}
+  <div class="run-progress-step">Step {{ progress.step_num }}/{{ progress.step_total }}: {{ progress.step_name }}</div>
+  <div class="run-progress-bar-wrap">
+    {% if progress.records_total > 0 %}
+    <div class="run-progress-bar" style="width:{{ [(progress.records_done / progress.records_total * 100)|int, 100]|min }}%"></div>
+    {% else %}
+    <div class="run-progress-bar run-progress-indeterminate"></div>
+    {% endif %}
+  </div>
+  {% if progress.records_total > 0 %}
+  <div class="run-progress-detail">{{ progress.records_done }} / {{ progress.records_total }} records</div>
+  {% endif %}
+  {% else %}
+  <div class="run-progress-step">Starting up...</div>
+  <div class="run-progress-bar-wrap"><div class="run-progress-bar run-progress-indeterminate"></div></div>
+  {% endif %}
+  <script>
+    (function(){
+      var created = new Date("{{ status.created_at }}");
+      function tick(){
+        var s = Math.floor((Date.now() - created)/1000);
+        var m = Math.floor(s/60); s = s%60;
+        document.getElementById("elapsed-display").textContent =
+          (m > 0 ? m+"m " : "") + s + "s elapsed";
+      }
+      tick(); setInterval(tick, 1000);
+      setTimeout(function(){ location.reload(); }, 5000);
+    })();
+  </script>
 </div>
 {% elif status.status == "failed" %}
 <div class="alert alert-error">
-  This run failed.
-  {% if status.error_summary %}<br><code>{{ status.error_summary[:300] }}</code>{% endif %}
+  <strong>This run failed.</strong>
+  {% if friendly_error %}<br>{{ friendly_error }}{% endif %}
 </div>
 {% elif status.status == "pending" %}
 <div class="alert alert-info">Run is queued.</div>
+{% endif %}
+
+{% if readiness %}
+{% if readiness.state == "needs_review" %}
+<div class="alert alert-warning">
+  <strong>{{ readiness.pending_count }} record{{ "s" if readiness.pending_count != 1 }} still need review</strong>
+  before this package is ready to send. Scroll down to review them.
+</div>
+{% elif readiness.state == "no_approved" %}
+<div class="alert alert-warning">
+  <strong>No approved targets yet.</strong>
+  Review records below and approve your selections before exporting.
+</div>
+{% elif readiness.state == "ready" %}
+<div class="alert alert-success">
+  <strong>Package ready.</strong>
+  {{ readiness.approved_count }} approved target{{ "s" if readiness.approved_count != 1 }}.
+  Download the client package when ready.
+</div>
+{% endif %}
 {% endif %}
 
 {% if records %}
@@ -85,8 +137,8 @@
 <div class="alert alert-info review-guidance">
   <strong>Before you approve:</strong>
   Review the evidence for each record. Overrides require a reason.
-  Excluded records are exported separately, and the approved export always omits
-  the pipeline's original hard exclusions.
+  Excluded records appear in a separate CSV. To include a pipeline-excluded record
+  in the approved export, set an override tier AND approve it — otherwise the exclusion stands.
 </div>
 
 {# ── Stats bar ────────────────────────────────────────────────────── #}
@@ -234,7 +286,18 @@
 
                 <div class="form-group">
                   <label>Override Tier</label>
-                  <select id="override-{{ rid }}" onchange="toggleReasonField('{{ rid }}')">
+                  {% if record.exclusion_status == "EXCLUDED" %}
+                  <div class="alert alert-warning override-excl-warn"
+                       id="override-warn-{{ rid }}"
+                       style="{{ '' if review.override_tier and review.override_tier.lower() not in ('', 'excluded') else 'display:none' }}">
+                    <strong>Pipeline-excluded record.</strong>
+                    Overriding to a positive tier and approving will include this record in the client package.
+                  </div>
+                  {% endif %}
+                  <select id="override-{{ rid }}"
+                          class="override-tier-select"
+                          data-record-id="{{ rid }}"
+                          onchange="toggleReasonField('{{ rid }}')">
                     <option value="">— No override (use pipeline tier) —</option>
                     <option value="Bullseye" {% if review.override_tier == "Bullseye" %}selected{% endif %}>Bullseye</option>
                     <option value="Strong"   {% if review.override_tier == "Strong"   %}selected{% endif %}>Strong</option>
@@ -294,4 +357,15 @@
   <p>No records found in this run's output.</p>
 </div>
 {% endif %}
+
+<script>
+document.querySelectorAll('.override-tier-select').forEach(function(sel) {
+  sel.addEventListener('change', function() {
+    var warn = document.getElementById('override-warn-' + this.dataset.recordId);
+    if (!warn) return;
+    var v = this.value.toLowerCase();
+    warn.style.display = (v && v !== 'excluded') ? '' : 'none';
+  });
+});
+</script>
 {% endblock %}

@@ -410,10 +410,10 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "_llm_exclusion_rationale": exclusion_rationale,
         })
 
-        print(f"    ✓ Bullseye: {bullseye_score} | Fit: {fit_signal_score} | Confidence: {confidence_score}")
+        print(f"    [OK] Bullseye: {bullseye_score} | Fit: {fit_signal_score} | Confidence: {confidence_score}")
 
     except json.JSONDecodeError as e:
-        print(f"    ✗ JSON parse failure: {e}")
+        print(f"    [FAIL] JSON parse failure: {e}")
         record.update({
             "signals": [],
             "bullseye_score": 0,
@@ -437,7 +437,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
         })
 
     except RuntimeError as e:
-        print(f"    ✗ Claude API failure: {e}")
+        print(f"    [FAIL] Claude API failure: {e}")
         record.update({
             "signals": [],
             "bullseye_score": 0,

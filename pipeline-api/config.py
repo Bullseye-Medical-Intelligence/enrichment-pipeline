@@ -23,6 +23,7 @@ OUTPUT_RUNS_PATH: Path = Path(os.environ.get("OUTPUT_RUNS_PATH", ""))
 # Optional with defaults
 # ---------------------------------------------------------------------------
 
+ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
 PYTHON_EXECUTABLE: str = os.environ.get("PYTHON_EXECUTABLE", "python3")
 MAX_CSV_SIZE_MB: int = int(os.environ.get("MAX_CSV_SIZE_MB", "50"))
 MAX_CSV_ROWS: int = int(os.environ.get("MAX_CSV_ROWS", "10000"))
@@ -96,7 +97,7 @@ DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
 VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})
 
 OUTSCRAPER_REQUIRED_COLUMNS: frozenset[str] = frozenset(
-    {"name", "full_address", "phone", "site", "type"}
+    {"name", "phone", "website", "type"}
 )
 MANUAL_REQUIRED_COLUMNS: frozenset[str] = frozenset({"practice_name"})
 

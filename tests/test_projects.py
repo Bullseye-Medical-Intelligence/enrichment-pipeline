@@ -54,7 +54,7 @@ _VALID_ICP = {
 }
 
 _OUTSCRAPER_CSV = (
-    b"name,full_address,phone,site,type\n"
+    b"name,address,phone,website,type\n"
     b"Acme Clinic,123 Main St,555-1000,https://acme.example,clinic\n"
 )
 

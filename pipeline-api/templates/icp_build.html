@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Build ICP Profile — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Build ICP Profile with AI</h2>
+    <p class="page-subtitle">Describe your product and Claude will generate a draft signal checklist to review and save.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/icp-profiles" class="btn btn-secondary">← Back to Profiles</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card upload-card">
+  <form method="post" action="/icp-profiles/generate" class="upload-form">
+
+    <p class="eyebrow">Profile Identity</p>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="icp_id">Profile ID</label>
+        <input type="text" id="icp_id" name="icp_id" required
+               value="{{ form.icp_id | default('') }}"
+               placeholder="e.g. femaseed-obgyn-v1">
+        <p class="form-hint">Lowercase, hyphens, digits only. Used as the filename.</p>
+      </div>
+      <div class="form-group">
+        <label for="version">Version</label>
+        <input type="text" id="version" name="version"
+               value="{{ form.version | default('1.0') }}"
+               placeholder="1.0">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="icp_name">Profile Name</label>
+      <input type="text" id="icp_name" name="icp_name" required
+             value="{{ form.icp_name | default('') }}"
+             placeholder="e.g. FemaSeed OBGYN ICP">
+    </div>
+
+    <p class="eyebrow">Product Description</p>
+
+    <div class="form-group">
+      <label for="product_name">Product Name</label>
+      <input type="text" id="product_name" name="product_name" required
+             value="{{ form.product_name | default('') }}"
+             placeholder="e.g. FemaSeed">
+    </div>
+
+    <div class="form-group">
+      <label for="specialty">Target Specialty</label>
+      <input type="text" id="specialty" name="specialty" required
+             value="{{ form.specialty | default('') }}"
+             placeholder="e.g. OBGYN, Reproductive Endocrinology">
+    </div>
+
+    <div class="form-group">
+      <label for="description">Product Description</label>
+      <textarea id="description" name="description" rows="3" required
+                placeholder="What does this product do? Who is it for? What problem does it solve?">{{ form.description | default('') }}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="focus_areas">Key Services / Focus Areas</label>
+      <textarea id="focus_areas" name="focus_areas" rows="3"
+                placeholder="Key procedures or services the ideal practice offers. One per line.">{{ form.focus_areas | default('') }}</textarea>
+      <p class="form-hint">Optional. Helps Claude generate more targeted signals.</p>
+    </div>
+
+    <div class="form-group">
+      <label for="exclusion_notes">Practices to Exclude</label>
+      <textarea id="exclusion_notes" name="exclusion_notes" rows="2"
+                placeholder="Types of practices that are NOT a good fit (e.g. hospital-employed, academic centers).">{{ form.exclusion_notes | default('') }}</textarea>
+      <p class="form-hint">Optional. Claude will generate negative-weight signals for these.</p>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-submit">Generate Signals with AI →</button>
+      <a href="/icp-profiles" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
