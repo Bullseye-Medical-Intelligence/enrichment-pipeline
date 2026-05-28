@@ -22,6 +22,43 @@
   </div>
 </div>
 
+{% if project_context %}
+<div class="card project-context">
+  <div class="context-grid">
+    {% if project_context.project_id %}
+    <div class="context-item">
+      <span class="context-label">Project</span>
+      <span class="context-value"><a href="/projects/{{ project_context.project_id }}" class="link-subtle">{{ project_context.project_id }}</a></span>
+    </div>
+    {% endif %}
+    {% if project_context.client_name %}
+    <div class="context-item">
+      <span class="context-label">Client</span>
+      <span class="context-value">{{ project_context.client_name }}</span>
+    </div>
+    {% endif %}
+    {% if project_context.target_specialty %}
+    <div class="context-item">
+      <span class="context-label">Specialty</span>
+      <span class="context-value">{{ project_context.target_specialty }}</span>
+    </div>
+    {% endif %}
+    {% if project_context.target_geography %}
+    <div class="context-item">
+      <span class="context-label">Geography</span>
+      <span class="context-value">{{ project_context.target_geography }}</span>
+    </div>
+    {% endif %}
+    {% if project_context.icp_name %}
+    <div class="context-item">
+      <span class="context-label">ICP Profile</span>
+      <span class="context-value">{{ project_context.icp_name }}{% if project_context.icp_version %} ({{ project_context.icp_version }}){% endif %}</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% if status.status == "running" %}
 <div class="alert alert-info" id="running-alert">
   Enrichment is running. This page will refresh automatically.

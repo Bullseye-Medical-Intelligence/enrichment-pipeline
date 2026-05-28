@@ -12,13 +12,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import icp_profiles
+import projects
 import record_adapter
 import runs
 from config import (
+    ICP_SNAPSHOT_FILENAME,
     MAX_CONCURRENT_RUNS,
     OUTPUT_RUNS_PATH,
     PIPELINE_REPO_PATH,
     PIPELINE_SCRIPT,
+    PROJECT_CONFIG_SNAPSHOT_FILENAME,
     PYTHON_EXECUTABLE,
 )
 
@@ -33,6 +37,8 @@ def spawn_pipeline(
     input_path: Path,
     source_type: str,
     run_dir: Path,
+    config_path: Path,
+    icp_path: Path,
 ) -> subprocess.Popen:
     """
     Launch pipeline.py as a non-blocking subprocess.
@@ -42,6 +48,8 @@ def spawn_pipeline(
         input_path: Absolute path to the saved input.csv.
         source_type: 'outscraper' or 'manual'.
         run_dir: Absolute path to the run output directory.
+        config_path: Absolute path to the project_config snapshot.
+        icp_path: Absolute path to the ICP profile snapshot.
 
     Returns:
         The running Popen object.
@@ -52,6 +60,8 @@ def spawn_pipeline(
         "--input", str(input_path),
         "--source", source_type,
         "--output-dir", str(run_dir),
+        "--config", str(config_path),
+        "--icp", str(icp_path),
     ]
     logger.info("Spawning pipeline for run %s: %s", run_id, " ".join(cmd))
 
@@ -130,7 +140,7 @@ async def orchestrate_run(
     Args:
         file: UploadFile from the HTTP request.
         source_type: 'outscraper' or 'manual'.
-        project_id: Client project identifier.
+        project_id: Client project identifier (must reference an existing project).
         operator: Name of the user triggering the run.
         background_tasks: FastAPI BackgroundTasks instance.
 
@@ -138,7 +148,7 @@ async def orchestrate_run(
         (run_id, row_count)
 
     Raises:
-        ValueError if pre-flight validation fails.
+        ValueError if the project/ICP cannot be resolved or CSV validation fails.
     """
     import validator  # imported here to avoid circular imports at module load
 
@@ -149,6 +159,14 @@ async def orchestrate_run(
             f"Wait for a run to finish before starting another."
         )
 
+    # Resolve the project and its ICP profile before touching the CSV, so a bad
+    # configuration is rejected with a clear message and no run dir is created.
+    project_config = projects.get_project(project_id)
+    if project_config is None:
+        raise ValueError(f"Project '{project_id}' does not exist. Create it first.")
+    projects.validate_config(project_config)
+    icp_profile = icp_profiles.load_profile(project_config["icp_profile_id"])
+
     content, row_count = await validator.validate_csv_upload(file, source_type, project_id)
 
     run_id = runs.generate_run_id()
@@ -156,6 +174,14 @@ async def orchestrate_run(
     run_directory.mkdir(parents=True, exist_ok=True)
 
     (run_directory / "input.csv").write_bytes(content)
+
+    # Snapshot the resolved config and ICP into the run folder. These frozen
+    # copies are what pipeline.py reads, so a later project edit never alters a
+    # past run's inputs.
+    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
+    _write_json(config_snapshot, project_config)
+    _write_json(icp_snapshot, icp_profile)
 
     runs.create_run(
         run_id=run_id,
@@ -166,12 +192,28 @@ async def orchestrate_run(
         records_input=row_count,
     )
 
-    process = spawn_pipeline(run_id, run_directory / "input.csv", source_type, run_directory)
+    process = spawn_pipeline(
+        run_id,
+        run_directory / "input.csv",
+        source_type,
+        run_directory,
+        config_snapshot,
+        icp_snapshot,
+    )
     runs.update_run_status(run_id, status="running")
     background_tasks.add_task(monitor_pipeline, run_id, process)
 
-    logger.info("Run %s started by '%s' (%d rows)", run_id, operator, row_count)
+    logger.info(
+        "Run %s started by '%s' (%d rows, project=%s, icp=%s)",
+        run_id, operator, row_count, project_id, project_config["icp_profile_id"],
+    )
     return run_id, row_count
+
+
+def _write_json(path: Path, data: dict) -> None:
+    """Write a snapshot JSON file into a freshly created run directory."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def _read_completion_counts(run_id: str) -> dict:

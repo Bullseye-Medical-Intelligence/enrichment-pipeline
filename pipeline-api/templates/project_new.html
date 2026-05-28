@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}New Project — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>New Project</h2>
+  <p class="page-subtitle">Define the client config and choose a loaded ICP profile.</p>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% if not icp_profiles %}
+<div class="alert alert-info">
+  No ICP profiles are loaded yet. Add a profile JSON file to the ICP profiles
+  directory, then reload. See <a href="/icp-profiles">ICP Profiles</a>.
+</div>
+{% endif %}
+
+<div class="card upload-card">
+  <form method="post" action="/projects" class="upload-form">
+
+    <div class="form-group">
+      <label for="project_id">Project ID</label>
+      <input type="text" id="project_id" name="project_id" required
+             value="{{ form.project_id | default('') }}"
+             placeholder="e.g. P-001 or client-name-2026">
+      <p class="form-hint">Letters, digits, hyphen or underscore. No spaces. Used as the folder name.</p>
+    </div>
+
+    <div class="form-group">
+      <label for="client_name">Client Name</label>
+      <input type="text" id="client_name" name="client_name" required
+             value="{{ form.client_name | default('') }}"
+             placeholder="e.g. Acme MedDevice Co.">
+    </div>
+
+    <div class="form-group">
+      <label for="target_specialty">Target Specialty</label>
+      <input type="text" id="target_specialty" name="target_specialty" required
+             value="{{ form.target_specialty | default('') }}"
+             placeholder="e.g. OBGYN, Cardiology, Orthopedics">
+    </div>
+
+    <div class="form-group">
+      <label for="target_geography">Target Geography</label>
+      <input type="text" id="target_geography" name="target_geography" required
+             value="{{ form.target_geography | default('') }}"
+             placeholder="Comma-separated, e.g. TX, FL, GA">
+      <p class="form-hint">Comma-separated list of states or regions.</p>
+    </div>
+
+    <div class="form-group">
+      <label for="icp_profile_id">ICP Profile</label>
+      <select id="icp_profile_id" name="icp_profile_id" required {% if not icp_profiles %}disabled{% endif %}>
+        <option value="" disabled {% if not form.icp_profile_id %}selected{% endif %}>— Select an ICP profile —</option>
+        {% for icp in icp_profiles %}
+        <option value="{{ icp.icp_id }}" {% if form.icp_profile_id == icp.icp_id %}selected{% endif %}>
+          {{ icp.name }} ({{ icp.version }}) · {{ icp.signal_count }} signals
+        </option>
+        {% endfor %}
+      </select>
+      <p class="form-hint">The ICP profile determines which signals the pipeline scores against.</p>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-submit" {% if not icp_profiles %}disabled{% endif %}>Create Project</button>
+      <a href="/projects" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -11,8 +11,32 @@
 <div class="alert alert-error">{{ error }}</div>
 {% endif %}
 
+{% if not projects %}
+<div class="alert alert-info">
+  You need a project before you can start a run. The project determines which
+  ICP profile and config the pipeline uses.
+  <a href="/projects/new">Create a project →</a>
+</div>
+{% endif %}
+
 <div class="card upload-card">
   <form method="post" action="/api/ui/runs" enctype="multipart/form-data" class="upload-form">
+
+    <div class="form-group">
+      <label for="project_id">Project</label>
+      <select id="project_id" name="project_id" required {% if not projects %}disabled{% endif %}>
+        <option value="" disabled selected>— Select a project —</option>
+        {% for p in projects %}
+        <option value="{{ p.project_id }}">
+          {{ p.project_id }} — {{ p.client_name }} ({{ p.target_specialty }})
+        </option>
+        {% endfor %}
+      </select>
+      <p class="form-hint">
+        The selected project's config and ICP profile are used for this run.
+        Need a new one? <a href="/projects/new">Create a project</a>.
+      </p>
+    </div>
 
     <div class="form-group">
       <label for="file">Outscraper CSV File</label>
@@ -37,20 +61,13 @@
     </div>
 
     <div class="form-group">
-      <label for="project_id">Project ID</label>
-      <input type="text" id="project_id" name="project_id" required
-             placeholder="e.g. P-001 or client-name-2026">
-      <p class="form-hint">A short identifier for this client or campaign. No spaces.</p>
-    </div>
-
-    <div class="form-group">
       <label for="operator">Your Name</label>
       <input type="text" id="operator" name="operator" required
              value="{{ username }}" placeholder="your name">
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn btn-submit">Upload and Start Enrichment</button>
+      <button type="submit" class="btn btn-submit" {% if not projects %}disabled{% endif %}>Upload and Start Enrichment</button>
       <a href="/" class="btn btn-secondary">Cancel</a>
     </div>
   </form>

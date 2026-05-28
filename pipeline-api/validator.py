@@ -13,7 +13,6 @@ from fastapi import UploadFile
 from config import (
     MAX_CSV_ROWS,
     MAX_CSV_SIZE_BYTES,
-    PIPELINE_REPO_PATH,
     REQUIRED_COLUMNS_BY_SOURCE,
     VALID_SOURCE_TYPES,
 )
@@ -29,16 +28,18 @@ async def validate_csv_upload(
     """
     Run all pre-flight checks on an incoming CSV upload.
 
+    Project/ICP resolution is handled by the runner before this is called.
+    This function validates only the CSV file itself.
+
     Checks (in order):
       1. source_type is valid
       2. project_id is non-empty
-      3. Pipeline config exists for this project
-      4. File size is under MAX_CSV_SIZE_BYTES
-      5. File decodes as UTF-8
-      6. File parses as valid CSV
-      7. CSV has at least one data row
-      8. Row count is under MAX_CSV_ROWS
-      9. Required columns are present for the given source_type
+      3. File size is under MAX_CSV_SIZE_BYTES
+      4. File decodes as UTF-8
+      5. File parses as valid CSV
+      6. CSV has at least one data row
+      7. Row count is under MAX_CSV_ROWS
+      8. Required columns are present for the given source_type
 
     Args:
         file: The uploaded file object.
@@ -53,7 +54,6 @@ async def validate_csv_upload(
     """
     _validate_source_type(source_type)
     _validate_project_id(project_id)
-    _validate_pipeline_config()
 
     content = await file.read()
 
@@ -79,16 +79,6 @@ def _validate_project_id(project_id: str) -> None:
     """Raise ValueError if project_id is empty or whitespace-only."""
     if not project_id or not project_id.strip():
         raise ValueError("project_id is required and cannot be empty")
-
-
-def _validate_pipeline_config() -> None:
-    """Raise ValueError if the pipeline config file is not found."""
-    config_path = PIPELINE_REPO_PATH / "config" / "run_config.json"
-    if not config_path.exists():
-        raise ValueError(
-            f"Pipeline config not found at '{config_path}'. "
-            "Ensure PIPELINE_REPO_PATH is set correctly in .env"
-        )
 
 
 def _validate_file_size(content: bytes) -> None:

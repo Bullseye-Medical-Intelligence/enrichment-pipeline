@@ -488,3 +488,32 @@ ul, ol { padding-left: 1.4em; }
 .form-actions { display: flex; gap: 10px; padding-top: 8px; }
 .step-list { font-size: 13px; color: var(--muted); }
 .step-list li { margin-bottom: 6px; }
+
+/* ── Project context (results header) ─────────────────────────────── */
+.project-context { padding: 16px 20px; }
+.context-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+.context-item { display: flex; flex-direction: column; gap: 3px; }
+.context-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.context-value { font-size: 14px; color: var(--ink); }
+
+/* ── Code block (ICP format help) ─────────────────────────────────── */
+.code-block {
+  background: var(--ink);
+  color: var(--surface);
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}

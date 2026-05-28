@@ -17,6 +17,8 @@
     </div>
     <div class="nav-links">
       {% if username is defined and username %}
+        <a href="/projects" class="nav-link">Projects</a>
+        <a href="/icp-profiles" class="nav-link">ICP Profiles</a>
         <a href="/dashboard" class="nav-link">Runs</a>
         <a href="/upload" class="nav-link">New Run</a>
         <span class="nav-user">{{ username }}</span>

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}ICP Profiles — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>ICP Profiles</h2>
+  <p class="page-subtitle">Loaded signal checklists. Profiles are JSON files dropped into the profiles directory.</p>
+</div>
+
+{% if profiles %}
+<div class="card table-card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>ICP ID</th>
+        <th>Name</th>
+        <th>Version</th>
+        <th>Signals</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for icp in profiles %}
+      <tr>
+        <td>{{ icp.icp_id }}</td>
+        <td>{{ icp.name }}</td>
+        <td>{{ icp.version }}</td>
+        <td>{{ icp.signal_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">
+  <p>No ICP profiles loaded. Add a profile JSON file (named <code>{icp_id}.json</code>) to the ICP profiles directory, then reload this page.</p>
+</div>
+{% endif %}
+
+<div class="card info-card">
+  <h4>ICP profile file format</h4>
+  <p class="form-hint">Each profile is a JSON file with this shape:</p>
+  <pre class="code-block">{
+  "icp_id": "obgyn-independent-v1",
+  "name": "OBGYN Independent Practice",
+  "version": "icp-v1",
+  "signals": [
+    {
+      "signal_id": "S-ICP-001",
+      "signal_label": "Service listed",
+      "prompt_instruction": "Does the practice list this service on its website?",
+      "positive_weight": 15
+    }
+  ]
+}</pre>
+</div>
+{% endblock %}

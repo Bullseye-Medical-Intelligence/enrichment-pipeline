@@ -122,22 +122,30 @@ to open a run directory and understand what happened.
 
 ```
 /BEMI-pipeline-api
-  main.py       ← FastAPI app, route registration, startup
-  auth.py       ← API key validation dependency
-  runner.py     ← subprocess management, pipeline invocation
-  runs.py       ← run state: create/read/update/list via status.json
-  validator.py  ← pre-flight CSV and config validation
-  schema.py     ← Pydantic models for all request/response types
-  config.py     ← environment variable loading, path constants
+  main.py          ← FastAPI app, route registration, startup
+  auth.py          ← API key validation dependency
+  runner.py        ← subprocess management, pipeline invocation
+  runs.py          ← run state: create/read/update/list via status.json
+  projects.py      ← project config storage: create/read/list/validate
+  icp_profiles.py  ← ICP profile listing/loading from disk
+  validator.py     ← pre-flight CSV validation
+  schema.py        ← Pydantic models for all request/response types
+  config.py        ← environment variable loading, path constants
+  ui.py            ← server-rendered HTML routes (session auth)
   requirements.txt
   .env.example
   .gitignore
   README.md
-  CLAUDE.md     ← this file
+  CLAUDE.md        ← this file
 
-/output/runs/   ← shared with pipeline (lives outside this repo)
-  {run_id}/
+/output/                       ← shared with pipeline (lives outside this repo)
+  projects/{project_id}/
+    project_config.json        ← client config + ICP reference (== run config)
+  icp_profiles/{icp_id}.json   ← signal checklist (operator-authored JSON)
+  runs/{run_id}/
     input.csv
+    project_config_snapshot.json   ← frozen --config for this run
+    icp_snapshot.json              ← frozen --icp for this run
     status.json
     run_log.json
     enriched_targets.json
@@ -193,6 +201,11 @@ GET    /login                                    Login form
 POST   /login                                    Validate credentials, set cookie
 GET    /logout                                   Clear session
 GET    /                                         Main menu
+GET    /projects                                 List projects
+GET    /projects/new                             Create-project form
+POST   /projects                                 Create a project
+GET    /projects/{project_id}                    Project detail
+GET    /icp-profiles                             List loaded ICP profiles
 GET    /dashboard                                Run list
 GET    /dashboard/{run_id}                       Results + inline review
 GET    /runs/{run_id}/download/json              Full enriched_targets.json download
@@ -206,6 +219,32 @@ POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 Phase 2 additions (do not build now):
 - `POST /runs/{run_id}/cancel`
 - WebSocket progress streaming
+
+---
+
+## Projects and ICP Profiles
+
+Every run is tied to a project. A project owns a `project_config.json` (which
+doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
+`--icp`). Rules:
+
+- **`projects.py` and `icp_profiles.py` own all project/ICP file logic.** `ui.py`
+  only renders templates and calls these services. `runner.py` only orchestrates.
+- **No ad hoc config paths.** Operators select a project; they never type a
+  config or ICP path. `run_dir`-style guards reject traversal in `project_id`
+  and `icp_id` before any filesystem access.
+- **Runs snapshot their inputs.** `orchestrate_run` writes
+  `project_config_snapshot.json` and `icp_snapshot.json` into the run folder and
+  passes those frozen copies to the pipeline. Editing a project later never
+  alters a past run.
+- **Validate before spawning.** Reject the upload if the project is missing, the
+  config lacks a required field (`config.REQUIRED_PROJECT_FIELDS`), or the ICP
+  profile is missing/malformed/empty (`config.REQUIRED_ICP_FIELDS`).
+- **No hardcoded specialty.** Project defaults are generic (structural exclusion
+  rules, a default score threshold). ICP signal content lives in operator-authored
+  profile files, never in source.
+- **No visual ICP builder.** ICP profiles are hand-authored JSON files dropped
+  into `ICP_PROFILES_PATH`. Listing/reading only.
 
 ---
 

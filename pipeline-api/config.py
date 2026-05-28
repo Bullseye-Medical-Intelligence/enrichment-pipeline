@@ -30,6 +30,14 @@ MAX_CONCURRENT_RUNS: int = int(os.environ.get("MAX_CONCURRENT_RUNS", "3"))
 HOST: str = os.environ.get("HOST", "0.0.0.0")
 PORT: int = int(os.environ.get("PORT", "8000"))
 
+# Project configs and ICP profiles live alongside the runs directory by default.
+# Each can be overridden independently for non-standard layouts.
+_OUTPUT_BASE: Path = OUTPUT_RUNS_PATH.parent
+PROJECTS_PATH: Path = Path(os.environ.get("PROJECTS_PATH", str(_OUTPUT_BASE / "projects")))
+ICP_PROFILES_PATH: Path = Path(
+    os.environ.get("ICP_PROFILES_PATH", str(_OUTPUT_BASE / "icp_profiles"))
+)
+
 # ---------------------------------------------------------------------------
 # Derived constants
 # ---------------------------------------------------------------------------
@@ -39,6 +47,37 @@ MAX_RUNS_RETURNED: int = 50
 PIPELINE_VERSION: str = "v1.0"
 PIPELINE_SCRIPT: str = "pipeline.py"
 STATUS_FILENAME: str = "status.json"
+
+# ---------------------------------------------------------------------------
+# Projects and ICP profiles
+# ---------------------------------------------------------------------------
+
+PROJECT_CONFIG_FILENAME: str = "project_config.json"
+PROJECT_CONFIG_SNAPSHOT_FILENAME: str = "project_config_snapshot.json"
+ICP_SNAPSHOT_FILENAME: str = "icp_snapshot.json"
+
+# Fields an operator-created project_config.json must contain to run a pipeline.
+REQUIRED_PROJECT_FIELDS: tuple[str, ...] = (
+    "project_id",
+    "client_name",
+    "target_specialty",
+    "target_geography",
+    "icp_profile_id",
+)
+
+# Fields an ICP profile JSON file must contain to be usable.
+REQUIRED_ICP_FIELDS: tuple[str, ...] = ("icp_id", "name", "version", "signals")
+
+# Generic defaults applied to a new project. No specialty-specific values here:
+# exclusion rules are practice-structure rules, not condition/specialty rules.
+DEFAULT_BULLSEYE_MIN_SCORE: int = 75
+DEFAULT_EXCLUSION_RULES: tuple[str, ...] = (
+    "wrong_specialty",
+    "outside_geography",
+    "no_web_presence",
+    "hospital_owned",
+    "health_system_affiliated",
+)
 
 VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})
 

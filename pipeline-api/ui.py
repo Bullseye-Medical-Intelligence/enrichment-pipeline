@@ -1,9 +1,9 @@
 """
 ui.py
 Server-rendered HTML routes for the internal operator dashboard.
-All business logic lives in runs.py, runner.py, reviews.py, and validator.py.
-This module handles only: request parsing, template rendering, redirects, and
-simple orchestration calls.
+All business logic lives in the service modules (runs, runner, reviews,
+validator, projects, icp_profiles). This module handles only: request parsing,
+template rendering, redirects, and simple orchestration calls.
 """
 
 import json
@@ -16,6 +16,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
 import exports
+import icp_profiles
+import projects
 import record_adapter
 import reviews
 import runner
@@ -82,13 +84,106 @@ async def menu(request: Request, username: str = Depends(auth.require_session)):
 
 
 # ---------------------------------------------------------------------------
+# Projects
+# ---------------------------------------------------------------------------
+
+@router.get("/projects", response_class=HTMLResponse)
+async def projects_page(request: Request, username: str = Depends(auth.require_session)):
+    """List all configured projects."""
+    return _render("projects.html", username=username, projects=projects.list_projects())
+
+
+@router.get("/projects/new", response_class=HTMLResponse)
+async def new_project_page(request: Request, username: str = Depends(auth.require_session)):
+    """Render the create-project form with the available ICP profiles."""
+    return _render(
+        "project_new.html",
+        username=username,
+        icp_profiles=icp_profiles.list_profiles(),
+        error=None,
+        form={},
+    )
+
+
+@router.post("/projects")
+async def create_project_submit(
+    request: Request,
+    project_id: str = Form(...),
+    client_name: str = Form(...),
+    target_specialty: str = Form(...),
+    target_geography: str = Form(...),
+    icp_profile_id: str = Form(...),
+    username: str = Depends(auth.require_session),
+):
+    """Create a project from the form, then redirect to its detail page."""
+    geography = [g.strip() for g in target_geography.replace("\n", ",").split(",") if g.strip()]
+    try:
+        projects.create_project(
+            project_id=project_id.strip(),
+            client_name=client_name,
+            target_specialty=target_specialty,
+            target_geography=geography,
+            icp_profile_id=icp_profile_id,
+            created_by=username,
+        )
+    except ValueError as e:
+        return _render(
+            "project_new.html",
+            status_code=400,
+            username=username,
+            icp_profiles=icp_profiles.list_profiles(),
+            error=str(e),
+            form={
+                "project_id": project_id,
+                "client_name": client_name,
+                "target_specialty": target_specialty,
+                "target_geography": target_geography,
+                "icp_profile_id": icp_profile_id,
+            },
+        )
+    return RedirectResponse(url=f"/projects/{project_id.strip()}", status_code=303)
+
+
+@router.get("/projects/{project_id}", response_class=HTMLResponse)
+async def project_detail_page(
+    request: Request,
+    project_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Show a single project's configuration."""
+    project = projects.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    return _render("project_detail.html", username=username, project=project)
+
+
+# ---------------------------------------------------------------------------
+# ICP profiles
+# ---------------------------------------------------------------------------
+
+@router.get("/icp-profiles", response_class=HTMLResponse)
+async def icp_profiles_page(request: Request, username: str = Depends(auth.require_session)):
+    """List the ICP profiles available on disk."""
+    return _render(
+        "icp_profiles.html",
+        username=username,
+        profiles=icp_profiles.list_profiles(),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
 
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request, username: str = Depends(auth.require_session)):
-    """Render the CSV upload form."""
-    return _render("upload.html", username=username, error=None)
+    """Render the CSV upload form. The project is chosen from existing projects."""
+    return _render(
+        "upload.html",
+        username=username,
+        error=None,
+        projects=projects.list_projects(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +231,7 @@ async def results_page(
                 })
 
     stats = _calculate_stats(merged_records)
+    project_context = _build_project_context(run_id)
 
     return _render(
         "results.html",
@@ -144,6 +240,7 @@ async def results_page(
         status=status,
         records=merged_records,
         stats=stats,
+        project_context=project_context,
     )
 
 
@@ -218,7 +315,13 @@ async def ui_create_run(
             file, source_type, project_id, operator, background_tasks
         )
     except ValueError as e:
-        return _render("upload.html", status_code=400, username=username, error=str(e))
+        return _render(
+            "upload.html",
+            status_code=400,
+            username=username,
+            error=str(e),
+            projects=projects.list_projects(),
+        )
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
@@ -243,8 +346,34 @@ async def save_review(
 
 
 # ---------------------------------------------------------------------------
-# Helper: presentation-layer stats (not business logic)
+# Helpers: presentation-layer context (not business logic)
 # ---------------------------------------------------------------------------
+
+def _build_project_context(run_id: str) -> dict | None:
+    """Read a run's config + ICP snapshots for the results header.
+
+    Returns None when no snapshot exists (e.g. runs created before projects),
+    so the template degrades gracefully.
+    """
+    run_directory = runs.run_dir(run_id)
+    cfg = projects.read_config_snapshot(run_directory)
+    icp = icp_profiles.read_snapshot(run_directory)
+    if cfg is None and icp is None:
+        return None
+    cfg = cfg or {}
+    icp = icp or {}
+    geography = cfg.get("target_geography")
+    if isinstance(geography, list):
+        geography = ", ".join(geography)
+    return {
+        "project_id": cfg.get("project_id"),
+        "client_name": cfg.get("client_name"),
+        "target_specialty": cfg.get("target_specialty"),
+        "target_geography": geography,
+        "icp_name": icp.get("name"),
+        "icp_version": icp.get("version"),
+    }
+
 
 def _calculate_stats(records: list[dict]) -> dict:
     """Count records by displayed tier and QC status for the results header."""

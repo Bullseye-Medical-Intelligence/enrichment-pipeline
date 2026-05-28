@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ project.project_id }} — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>{{ project.project_id }}</h2>
+    <p class="page-subtitle">{{ project.client_name | default("—") }}</p>
+  </div>
+  <div class="header-actions">
+    <a href="/upload" class="btn btn-submit">Start Run for This Project</a>
+    <a href="/projects" class="btn btn-secondary">← All Projects</a>
+  </div>
+</div>
+
+<div class="card">
+  <table class="score-table">
+    <tr><td>Client Name</td><td><strong>{{ project.client_name | default("—") }}</strong></td></tr>
+    <tr><td>Target Specialty</td><td>{{ project.target_specialty | default("—") }}</td></tr>
+    <tr><td>Target Geography</td>
+      <td>
+        {% if project.target_geography is iterable and project.target_geography is not string %}
+          {{ project.target_geography | join(", ") }}
+        {% else %}{{ project.target_geography | default("—") }}{% endif %}
+      </td>
+    </tr>
+    <tr><td>ICP Profile</td><td>{{ project.icp_profile_id | default("—") }}</td></tr>
+    <tr><td>Bullseye Min Score</td><td>{{ project.bullseye_min_score | default("—") }}</td></tr>
+    <tr><td>Active Exclusion Rules</td>
+      <td>
+        {% if project.active_exclusion_rules %}{{ project.active_exclusion_rules | join(", ") }}
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    <tr><td>Created</td><td class="text-muted">{{ project.created_at | default("—") }}</td></tr>
+    <tr><td>Created By</td><td class="text-muted">{{ project.created_by | default("—") }}</td></tr>
+  </table>
+</div>
+{% endblock %}

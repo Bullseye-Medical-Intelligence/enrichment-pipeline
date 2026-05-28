@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Projects — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Projects</h2>
+    <p class="page-subtitle">Each project pins a client config and an ICP profile for enrichment runs.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/projects/new" class="btn btn-submit">New Project</a>
+  </div>
+</div>
+
+{% if projects %}
+<div class="card table-card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Project ID</th>
+        <th>Client</th>
+        <th>Specialty</th>
+        <th>Geography</th>
+        <th>ICP Profile</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+      <tr>
+        <td><a href="/projects/{{ p.project_id }}" class="link-subtle">{{ p.project_id }}</a></td>
+        <td>{{ p.client_name | default("—") }}</td>
+        <td>{{ p.target_specialty | default("—") }}</td>
+        <td>
+          {% if p.target_geography is iterable and p.target_geography is not string %}
+            {{ p.target_geography | join(", ") }}
+          {% else %}{{ p.target_geography | default("—") }}{% endif %}
+        </td>
+        <td>{{ p.icp_profile_id | default("—") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">
+  <p>No projects yet. <a href="/projects/new">Create your first project →</a></p>
+</div>
+{% endif %}
+{% endblock %}
