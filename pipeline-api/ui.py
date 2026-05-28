@@ -440,6 +440,9 @@ async def results_page(
     progress = runs.read_progress(run_id) if status.status in ("running", "pending") else None
     readiness = _compute_readiness(merged_records) if status.status == "complete" else None
 
+    has_checkpoint = runs.has_step4_checkpoint(run_id)
+    checkpoint_count = runs.step4_checkpoint_count(run_id) if has_checkpoint else 0
+
     return _render(
         "results.html",
         username=username,
@@ -451,7 +454,30 @@ async def results_page(
         progress=progress,
         readiness=readiness,
         friendly_error=_friendly_error(status.error_summary),
+        has_checkpoint=has_checkpoint,
+        checkpoint_count=checkpoint_count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Run actions (resume, etc.)
+# ---------------------------------------------------------------------------
+
+@router.post("/runs/{run_id}/resume")
+async def run_resume(
+    run_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    username: str = Depends(auth.require_session),
+):
+    """Re-spawn a failed run from its Step 4 checkpoint."""
+    try:
+        await runner.resume_run(run_id, background_tasks)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(f"/dashboard/{run_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

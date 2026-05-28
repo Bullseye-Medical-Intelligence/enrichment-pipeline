@@ -17,7 +17,7 @@
 {% endif %}
 
 <div class="card upload-card">
-  <form method="post" action="/icp-profiles/generate" class="upload-form">
+  <form id="icp-build-form" method="post" action="/icp-profiles/generate" class="upload-form">
 
     <p class="eyebrow">Profile Identity</p>
 
@@ -85,5 +85,21 @@
       <a href="/icp-profiles" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
+  <div id="icp-gen-status" style="display:none; margin-top:1em;">
+    <div class="run-progress-bar-wrap">
+      <div class="run-progress-bar run-progress-indeterminate"></div>
+    </div>
+    <p style="margin-top:0.5em; font-size:9pt; color:#666;">
+      Generating signals with Claude AI — this may take 15&ndash;20 seconds&hellip;
+    </p>
+  </div>
 </div>
+<script>
+document.getElementById('icp-build-form').addEventListener('submit', function() {
+  var btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  document.getElementById('icp-gen-status').style.display = '';
+});
+</script>
 {% endblock %}

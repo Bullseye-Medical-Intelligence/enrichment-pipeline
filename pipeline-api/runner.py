@@ -232,6 +232,42 @@ async def orchestrate_run(
     return run_id, row_count
 
 
+async def resume_run(run_id: str, background_tasks) -> int:
+    """Re-spawn the pipeline for a failed run, resuming from its Step 4 checkpoint.
+
+    Returns the number of records already in the checkpoint.
+    Raises FileNotFoundError if the run doesn't exist.
+    Raises ValueError if the run is not failed or has no checkpoint.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise FileNotFoundError(f"Run '{run_id}' not found")
+    if status.status != "failed":
+        raise ValueError(
+            f"Run '{run_id}' cannot be resumed — status is {status.status!r}, expected 'failed'"
+        )
+    if not runs.has_step4_checkpoint(run_id):
+        raise ValueError(
+            f"Run '{run_id}' has no Step 4 checkpoint. "
+            "The run may have failed before signal extraction began — restart instead."
+        )
+
+    rd = runs.run_dir(run_id)
+    process = spawn_pipeline(
+        run_id=run_id,
+        input_path=rd / "input.csv",
+        source_type=status.source_type,
+        run_dir=rd,
+        config_path=rd / PROJECT_CONFIG_SNAPSHOT_FILENAME,
+        icp_path=rd / ICP_SNAPSHOT_FILENAME,
+    )
+    runs.update_run_status(run_id, status="running", error_summary=None, completed_at=None)
+    background_tasks.add_task(monitor_pipeline, run_id, process)
+    checkpoint_count = runs.step4_checkpoint_count(run_id)
+    logger.info("Resumed run %s from Step 4 checkpoint (%d records)", run_id, checkpoint_count)
+    return checkpoint_count
+
+
 def _write_json(path: Path, data: dict) -> None:
     """Write a snapshot JSON file into a freshly created run directory."""
     with open(path, "w", encoding="utf-8") as f:

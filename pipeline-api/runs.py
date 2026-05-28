@@ -197,6 +197,22 @@ def generate_run_id() -> str:
     return f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
 
 
+def has_step4_checkpoint(run_id: str) -> bool:
+    """Return True if the run has a partial Step 4 checkpoint that can be resumed."""
+    return (run_dir(run_id) / "step4_checkpoint.ndjson").exists()
+
+
+def step4_checkpoint_count(run_id: str) -> int:
+    """Return the number of records already written to the Step 4 checkpoint."""
+    path = run_dir(run_id) / "step4_checkpoint.ndjson"
+    if not path.exists():
+        return 0
+    try:
+        return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    except OSError:
+        return 0
+
+
 def read_progress(run_id: str) -> Optional[dict]:
     """Read progress.json from a run directory, or None if absent/unreadable."""
     try:

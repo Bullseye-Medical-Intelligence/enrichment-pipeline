@@ -108,6 +108,15 @@
   <strong>This run failed.</strong>
   {% if friendly_error %}<br>{{ friendly_error }}{% endif %}
 </div>
+{% if has_checkpoint %}
+<div class="alert alert-warning" style="margin-top:0.5em;">
+  <strong>Checkpoint available</strong> &mdash; {{ checkpoint_count }} record{{ "s" if checkpoint_count != 1 }} already processed.
+  Only unfinished records will be re-enriched.
+  <form method="post" action="/runs/{{ status.run_id }}/resume" style="display:inline; margin-left:0.8em;">
+    <button type="submit" class="btn btn-submit" style="padding:4px 14px; font-size:0.85em;">&#8629; Resume Run</button>
+  </form>
+</div>
+{% endif %}
 {% elif status.status == "pending" %}
 <div class="alert alert-info">Run is queued.</div>
 {% endif %}

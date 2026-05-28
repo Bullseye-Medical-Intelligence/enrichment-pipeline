@@ -96,6 +96,36 @@ def _deduplicate_records(records: list[dict]) -> tuple[list[dict], int]:
     return deduped, dupes
 
 
+def _write_step4_checkpoint(output_dir: str, record: dict) -> None:
+    """Append a completed Step 4 record to the NDJSON checkpoint file (best-effort)."""
+    path = Path(output_dir) / "step4_checkpoint.ndjson"
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # Non-fatal: worst case is re-processing this record on resume
+
+
+def _load_step4_checkpoint(output_dir: str) -> dict:
+    """Return {record_id: record_dict} for all records already in the checkpoint.
+
+    Handles a corrupted final line (process killed mid-write) by skipping bad JSON.
+    """
+    path = Path(output_dir) / "step4_checkpoint.ndjson"
+    if not path.exists():
+        return {}
+    completed: dict = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+            rid = rec.get("id") or rec.get("record_id")
+            if rid:
+                completed[rid] = rec
+        except json.JSONDecodeError:
+            pass  # Corrupted last line — that record will be re-processed
+    return completed
+
+
 def _write_progress(output_dir: str, step_num: int, step_name: str,
                      records_done: int = 0, records_total: int = 0) -> None:
     """Write current step to progress.json so the UI can poll it."""
@@ -290,7 +320,17 @@ def run_pipeline(input_file: str, source_type: str,
     print(f"STEP 4: SIGNAL EXTRACTION (Claude)")
     print(f"{'-'*40}")
 
+    checkpoint = _load_step4_checkpoint(output_dir)
+    if checkpoint:
+        print(f"  Resuming from checkpoint: {len(checkpoint)} records already processed.")
+
     for i, record in enumerate(records):
+        record_id = record.get("id") or record.get("record_id", "")
+        if record_id and record_id in checkpoint:
+            records[i] = checkpoint[record_id]
+            print(f"\n  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')} — checkpoint")
+            continue
+
         _write_progress(output_dir, 4, "Signal extraction (Claude)", i, len(records))
         print(f"\n  [{i+1}/{len(records)}] {record.get('practice_name', 'Unknown')}")
         context_text = record.get("_context_text", "")
@@ -329,6 +369,9 @@ def run_pipeline(input_file: str, source_type: str,
                 "error": error_msg,
                 "resolution": "Record marked failed, enrichment_status=failed",
             })
+
+        records[i] = record
+        _write_step4_checkpoint(output_dir, record)
 
         # Rate limit: small delay between LLM calls
         time.sleep(0.5)
