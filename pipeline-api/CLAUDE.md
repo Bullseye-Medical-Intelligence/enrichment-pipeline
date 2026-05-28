@@ -269,11 +269,14 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   automatic exclusion when the analyst also approves it. Without an explicit
   override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
   approved set.
-- **Client-safe only.** The ZIP contains `executive_summary.md`,
-  `approved_targets.csv`, `excluded_targets.csv`, `top_target_briefs.md`, and
-  `methodology.md`. It never includes `run_log.json`, `reviews.json`, or the raw
-  `enriched_targets.json`.
-- **No PDF dependency.** Markdown + CSV in a stdlib `zipfile`. No external libs.
+- **Client-safe only.** The ZIP contains `Executive_Target_Report.pdf`,
+  `bullseye_accounts.csv`, `warm_accounts.csv`, `excluded_targets.csv`, and
+  `run_metadata.json`. It never includes `run_log.json`, `reviews.json`, or the
+  raw `enriched_targets.json`.
+- **PDF generation.** `reports/pdf_report.py` renders `reports/templates/executive_target_report.html`
+  via WeasyPrint. Requires `weasyprint>=60.0`. On failure, a minimal stub PDF is
+  returned so the ZIP is never corrupt. Bullseye accounts get one page each;
+  Warm accounts appear in CSV only.
 
 ---
 
