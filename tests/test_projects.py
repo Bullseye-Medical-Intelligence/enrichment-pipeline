@@ -248,7 +248,8 @@ def _icp_with_signal(**signal_extra):
 
 def test_icp_validation_accepts_optional_tiering_fields():
     icp_profiles.validate_icp_profile(_icp_with_signal(
-        not_found_weight=-15, verification_required=True, cap_tier="Watchlist"
+        not_found_weight=-15, verification_required=True, cap_tier="Watchlist",
+        no_weight=-15, required_for_bullseye=True,
     ))
 
 
@@ -257,9 +258,19 @@ def test_icp_validation_rejects_non_numeric_not_found_weight():
         icp_profiles.validate_icp_profile(_icp_with_signal(not_found_weight="lots"))
 
 
+def test_icp_validation_rejects_non_numeric_no_weight():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(no_weight="lots"))
+
+
 def test_icp_validation_rejects_non_bool_verification_required():
     with pytest.raises(ValueError):
         icp_profiles.validate_icp_profile(_icp_with_signal(verification_required="yes"))
+
+
+def test_icp_validation_rejects_non_bool_required_for_bullseye():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(required_for_bullseye="yes"))
 
 
 def test_icp_validation_rejects_bad_cap_tier():

@@ -9,9 +9,10 @@
       "signal_label": "Cash pay / self-pay visible",
       "prompt_instruction": "Does the site advertise cash-pay, self-pay, membership, or out-of-pocket pricing?",
       "positive_weight": 30,
-      "verification_required": true,
+      "required_for_bullseye": true,
       "not_found_weight": -10,
-      "note": "Money signal. When not visible the account goes to Needs Verification, unless inferred from elective procedures."
+      "no_weight": -15,
+      "note": "Must-have money signal. Confirmed absent ('no') caps the tier at Watchlist and applies no_weight; not visible ('not_found') caps at Needs Verification, unless inferred from elective procedures."
     },
     {
       "signal_id": "S-ICP-002",

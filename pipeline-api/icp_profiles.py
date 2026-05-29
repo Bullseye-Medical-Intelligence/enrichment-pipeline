@@ -64,11 +64,22 @@ def validate_icp_profile(data: dict) -> None:
             or isinstance(signal["not_found_weight"], bool)
         ):
             raise ValueError(f"ICP signal #{i + 1} 'not_found_weight' must be numeric.")
+        if "no_weight" in signal and (
+            not isinstance(signal["no_weight"], (int, float))
+            or isinstance(signal["no_weight"], bool)
+        ):
+            raise ValueError(f"ICP signal #{i + 1} 'no_weight' must be numeric.")
         if "verification_required" in signal and not isinstance(
             signal["verification_required"], bool
         ):
             raise ValueError(
                 f"ICP signal #{i + 1} 'verification_required' must be true or false."
+            )
+        if "required_for_bullseye" in signal and not isinstance(
+            signal["required_for_bullseye"], bool
+        ):
+            raise ValueError(
+                f"ICP signal #{i + 1} 'required_for_bullseye' must be true or false."
             )
         if "cap_tier" in signal and signal["cap_tier"] not in ("Watchlist", "Needs Verification"):
             raise ValueError(

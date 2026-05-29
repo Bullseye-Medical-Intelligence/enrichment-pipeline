@@ -11,7 +11,7 @@
     "outside_geography",
     "no_web_presence"
   ],
-  "bullseye_min_score": 75,
+  "bullseye_min_score": 90,
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
   "request_retries": 3,

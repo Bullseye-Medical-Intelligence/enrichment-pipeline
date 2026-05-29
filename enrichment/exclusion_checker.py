@@ -43,8 +43,8 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     """Assign a CLEAR record's tier from its score, signal caps, and verification flags.
 
     Starts from the score-based tier, lets any "yes" signal with a cap_tier pull
-    the ceiling down, then caps a would-be Bullseye at "Needs Verification" when a
-    verification_required signal is unconfirmed (not_found).
+    the ceiling down, then applies the must-have gate (required_for_bullseye) and
+    the softer verification gate (verification_required).
     """
     rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Watchlist"]
     signals = record.get("signals") or []
@@ -54,9 +54,22 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
         if cap and cap in TIER_RANK and sig.get("signal_state") == "yes":
             rank = min(rank, TIER_RANK[cap])
 
-    # A required signal that is not confirmed forces verification — unless its
-    # presence was inferred from a reinforcing signal (state_inferred), in which
-    # case it counts as confirmed-by-inference and the gate does not fire.
+    # Must-have gate: a required_for_bullseye signal must be confirmed present
+    # (or inferred) for Bullseye. Confirmed absent ("no") caps at Watchlist; an
+    # unverified ("not_found") caps at Needs Verification. Inferred presence
+    # (state_inferred) counts as confirmed and does not cap.
+    for sig in signals:
+        if not sig.get("required_for_bullseye") or sig.get("state_inferred"):
+            continue
+        state = sig.get("signal_state")
+        if state == "no":
+            rank = min(rank, TIER_RANK["Watchlist"])
+        elif state == "not_found":
+            rank = min(rank, TIER_RANK["Needs Verification"])
+
+    # A verification_required signal that is not confirmed forces verification —
+    # unless its presence was inferred from a reinforcing signal (state_inferred),
+    # in which case it counts as confirmed-by-inference and the gate does not fire.
     needs_verification = any(
         sig.get("verification_required")
         and sig.get("signal_state") == "not_found"

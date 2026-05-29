@@ -320,6 +320,30 @@ class TestScoring:
         # achieved = 30 - 10 = 20 of an achievable 40 -> 50
         assert scores["fit_signal_score"] == 50
 
+    def test_no_weight_penalizes_confirmed_absent_signal(self):
+        # Cash pay confirmed "no" with no_weight -15: achieved = 30 - 15 = 15 of 40 -> 38.
+        icp = [{"signal_id": "S-cash", "signal_label": "Cash pay", "prompt_instruction": "?",
+                "positive_weight": 10, "no_weight": -15},
+               {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+                "positive_weight": 30}]
+        signals = [{"signal_id": "S-cash", "signal_state": "no", "confidence": "high"},
+                   {"signal_id": "S-2", "signal_state": "yes", "confidence": "high"}]
+        scores = _calculate_scores(signals, icp)
+        # achieved = 30 - 15 = 15 of an achievable 40 -> 38
+        assert scores["fit_signal_score"] == 38
+
+    def test_no_weight_defaults_to_zero_when_unset(self):
+        # Without no_weight, a confirmed "no" only loses the missed credit (no penalty).
+        icp = [{"signal_id": "S-cash", "signal_label": "Cash pay", "prompt_instruction": "?",
+                "positive_weight": 10},
+               {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+                "positive_weight": 30}]
+        signals = [{"signal_id": "S-cash", "signal_state": "no", "confidence": "high"},
+                   {"signal_id": "S-2", "signal_state": "yes", "confidence": "high"}]
+        scores = _calculate_scores(signals, icp)
+        # achieved = 30 of an achievable 40 -> 75 (no extra penalty)
+        assert scores["fit_signal_score"] == 75
+
 
 class TestReinforcement:
     """Elective/cosmetic 'yes' should infer (boost) an unconfirmed cash-pay signal."""
@@ -430,6 +454,31 @@ class TestTierAssignment:
         signals = [{"signal_id": "S-1", "signal_state": "not_found",
                     "verification_required": True, "cap_tier": ""}]
         assert _assign_tier(self._record_with_signals(signals), 50, 75) == "Watchlist"
+
+    def test_must_have_confirmed_no_caps_at_watchlist(self):
+        """A required_for_bullseye signal confirmed 'no' caps at Watchlist even at top score."""
+        signals = [{"signal_id": "S-cash", "signal_state": "no",
+                    "required_for_bullseye": True, "cap_tier": ""}]
+        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Watchlist"
+
+    def test_must_have_not_found_caps_at_needs_verification(self):
+        """A required_for_bullseye signal that is not_found caps at Needs Verification."""
+        signals = [{"signal_id": "S-cash", "signal_state": "not_found",
+                    "required_for_bullseye": True, "cap_tier": ""}]
+        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Needs Verification"
+
+    def test_must_have_confirmed_yes_allows_bullseye(self):
+        """A required_for_bullseye signal confirmed 'yes' does not cap."""
+        signals = [{"signal_id": "S-cash", "signal_state": "yes",
+                    "required_for_bullseye": True, "cap_tier": ""}]
+        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Bullseye"
+
+    def test_must_have_inferred_bypasses_gate(self):
+        """An inferred required_for_bullseye signal counts as confirmed and allows Bullseye."""
+        signals = [{"signal_id": "S-cash", "signal_state": "not_found",
+                    "required_for_bullseye": True, "cap_tier": "",
+                    "state_inferred": True}]
+        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Bullseye"
 
     def test_apply_exclusions_sets_needs_verification_tier(self):
         """End to end: a CLEAR record with an unconfirmed required signal is tiered NV."""

@@ -557,9 +557,18 @@ Each signal may also carry these optional fields (all default to off):
 - **`not_found_weight`** (number, default `0`): score delta applied when the
   signal is `not_found`. Use a negative value when an unconfirmed signal should
   lower the score (e.g. cash-pay visibility you expect but could not find).
+- **`no_weight`** (number, default `0`): score delta applied when a positive-weight
+  signal is confirmed `"no"`. Use a negative value so a confirmed-absent must-have
+  costs points directly, not just lost credit (e.g. cash pay confirmed absent).
 - **`verification_required`** (bool, default `false`): when this signal is
   `not_found`, a would-be Bullseye is capped at `"Needs Verification"` so an
   analyst confirms it before the account ships.
+- **`required_for_bullseye`** (bool, default `false`): must-have gate. When the
+  signal is **not** confirmed `"yes"` and **not** inferred, the tier is capped: a
+  confirmed `"no"` caps at `"Watchlist"`, a `not_found` caps at `"Needs
+  Verification"`. This is how "Bullseye means all must-have signals are confirmed
+  present" is enforced. Supersedes `verification_required` (it also covers the
+  `not_found` case), so a must-have signal needs only this flag.
 - **`cap_tier`** (`"Watchlist"` or `"Needs Verification"`): when the signal is
   `"yes"`, the record's tier is capped at this ceiling regardless of score. Use
   for near-disqualifying signals (e.g. a confirmed hospital affiliation caps at
@@ -577,8 +586,9 @@ Each signal may also carry these optional fields (all default to off):
 actually captures, expressed 0–100, not a running tally. `max_positive` is the
 sum of every positive (desirable) `positive_weight`. A confirmed `"yes"` adds
 its full weight; an inferred signal adds a fraction (`INFERENCE_CREDIT`); a
-`not_found` applies its `not_found_weight` penalty; a confirmed friction signal
-(negative weight, `"yes"`) subtracts. `fit = achieved / max_positive * 100`,
+`not_found` applies its `not_found_weight` penalty; a confirmed `"no"` applies its
+`no_weight` penalty; a confirmed friction signal (negative weight, `"yes"`)
+subtracts. `fit = achieved / max_positive * 100`,
 clamped 0–100. Matching every key signal lands near 100; a long tail of minor
 signals can never out-score the few heavy ones, and a missing high-weight signal
 costs proportionally more than a missing minor one. `bullseye_score` is then the
@@ -592,8 +602,9 @@ Example — cash pay gated, inferred from elective procedures:
   "signal_label": "Cash pay / self-pay visible",
   "prompt_instruction": "Does the site advertise cash-pay, self-pay, or membership pricing?",
   "positive_weight": 30,
-  "verification_required": true,
-  "not_found_weight": -10
+  "required_for_bullseye": true,
+  "not_found_weight": -10,
+  "no_weight": -15
 },
 {
   "signal_id": "S-ICP-011",
@@ -605,8 +616,10 @@ Example — cash pay gated, inferred from elective procedures:
 ```
 
 A practice with elective procedures listed but no explicit cash-pay copy gets
-cash pay inferred (partial credit, no verification gate). A practice with
-neither falls to `"Needs Verification"` so a rep confirms before calling.
+cash pay inferred (partial credit, no gate — eligible for Bullseye). A practice
+where cash pay is `not_found` falls to `"Needs Verification"`. A practice where
+cash pay is confirmed `"no"` takes the `no_weight` penalty and is capped at
+`"Watchlist"` — a must-have it definitively lacks keeps it off Bullseye.
 
 ---
 

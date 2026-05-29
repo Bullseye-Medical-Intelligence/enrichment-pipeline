@@ -89,6 +89,8 @@ matching more signals does not mean a higher score.
   - An **inferred** signal (`state_inferred`, see reinforcement) adds
     `INFERENCE_CREDIT` of its weight (partial credit for indirect evidence).
   - A `"not_found"` desirable signal applies its `not_found_weight` penalty (usually ≤ 0).
+  - A confirmed-absent (`"no"`) desirable signal applies its `no_weight` penalty
+    (usually ≤ 0, default 0) — a missing must-have costs points, not just lost credit.
   - A confirmed **friction** signal (negative weight, `"yes"`) subtracts its weight.
   - `fit = round(achieved / max_positive * 100)`, clamped 0–100. (Falls back to
     `BASE_FIT_SCORE` only when an ICP defines no positive weight.)
@@ -121,7 +123,9 @@ Defined per signal in `config/icp_checklist.json` / ICP profiles. Required:
 |-------|------|--------|
 | `positive_weight` | number | Desirability weight. Negative = friction (a `"yes"` is bad). |
 | `not_found_weight` | number | Score delta when the signal is `not_found` (use negative to penalize an expected-but-absent signal). |
+| `no_weight` | number | Score delta when a positive-weight signal is confirmed `"no"` (use negative to penalize a confirmed-absent must-have). Default 0. |
 | `verification_required` | bool | When `not_found` (and not inferred), caps a would-be Bullseye at `"Needs Verification"`. |
+| `required_for_bullseye` | bool | Must-have gate. When the signal is **not** confirmed `"yes"` and **not** inferred: a confirmed `"no"` caps the tier at `"Watchlist"`; a `not_found` caps at `"Needs Verification"`. Supersedes `verification_required` (also covers the `not_found` case), so a must-have signal needs only this flag. |
 | `cap_tier` | `"Watchlist"` \| `"Needs Verification"` | When the signal is `"yes"`, caps the tier at this ceiling regardless of score (e.g. confirmed hospital affiliation → `"Watchlist"`). |
 | `reinforces` | string `signal_id` | When this signal is `"yes"` and the named target is `not_found`, the target is marked `state_inferred`. Must reference a signal_id in the same profile. |
 
@@ -150,9 +154,12 @@ TIER_RANK = {"Excluded": 0, "Watchlist": 1, "Needs Verification": 2, "Bullseye":
 
 1. Start at `Bullseye` if `score >= bullseye_min`, else `Watchlist`.
 2. Any `"yes"` signal with a `cap_tier` pulls the ceiling down (`min`).
-3. A `verification_required` signal that is `not_found` **and not** `state_inferred`
+3. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
+   caps the tier: confirmed `"no"` → `Watchlist`, `not_found` → `Needs Verification`.
+   This is how "Bullseye = all must-haves confirmed present" is enforced.
+4. A `verification_required` signal that is `not_found` **and not** `state_inferred`
    caps a would-be Bullseye at `Needs Verification`.
-4. `cap_tier` beats verification; verification never lifts a low-score Watchlist.
+5. Caps only ever pull down (`min`); nothing lifts a low-score Watchlist.
 
 `"Excluded"` is never assigned here — it comes only from an exclusion rule, and
 the invariant `target_tier == "Excluded" iff exclusion_status == "EXCLUDED"` is

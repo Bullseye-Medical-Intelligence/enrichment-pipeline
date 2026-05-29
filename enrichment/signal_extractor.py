@@ -232,6 +232,7 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "confidence": conf,
             "positive_weight": icp_by_id[signal_id].get("positive_weight", 0),
             "verification_required": bool(icp_by_id[signal_id].get("verification_required", False)),
+            "required_for_bullseye": bool(icp_by_id[signal_id].get("required_for_bullseye", False)),
             "cap_tier": icp_by_id[signal_id].get("cap_tier", ""),
             "state_inferred": False,
             "analyst_note": "",
@@ -254,6 +255,7 @@ def _validate_and_clean_signals(raw_signals: list[dict],
                 "confidence": "low",
                 "positive_weight": icp_sig.get("positive_weight", 0),
                 "verification_required": bool(icp_sig.get("verification_required", False)),
+                "required_for_bullseye": bool(icp_sig.get("required_for_bullseye", False)),
                 "cap_tier": icp_sig.get("cap_tier", ""),
                 "state_inferred": False,
                 "analyst_note": "",
@@ -305,6 +307,8 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
       INFERENCE_CREDIT of its weight — partial credit for indirect evidence.
     - An unconfirmed ("not_found") desirable signal applies its not_found_weight
       penalty (usually 0 or negative).
+    - A confirmed-absent ("no") desirable signal applies its no_weight penalty
+      (usually 0 or negative) — a missing must-have costs points, not just credit.
     - A confirmed friction signal (negative weight, "yes") subtracts its weight.
     - confidence_score is the mean confidence across confirmed/inferred signals.
     - bullseye_score is the weighted blend of fit and confidence.
@@ -319,6 +323,7 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
         sid = icp_signal["signal_id"]
         weight = icp_signal.get("positive_weight", 0)
         not_found_weight = icp_signal.get("not_found_weight", 0)
+        no_weight = icp_signal.get("no_weight", 0)
         matched = signal_map.get(sid)
         state = matched["signal_state"] if matched else "not_found"
         inferred = bool(matched and matched.get("state_inferred"))
@@ -336,7 +341,8 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
                     confidence_values.append(CONFIDENCE_SCORE_MAP["medium"])
                 else:
                     achieved += not_found_weight  # penalty (usually <= 0)
-            # "no": confirmed absent — no credit
+            elif state == "no":
+                achieved += no_weight  # confirmed absent — penalty (usually <= 0), default 0
         else:
             # Friction signal: only a confirmed "yes" applies the negative weight.
             if state == "yes":
