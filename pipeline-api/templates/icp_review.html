@@ -19,19 +19,28 @@
 <div class="alert alert-error">{{ error }}</div>
 {% endif %}
 
+{% if crawl_notes %}
+<div class="alert alert-info" style="margin-bottom:12px;">
+  {% for note in crawl_notes %}<span>{{ note }}</span>{% if not loop.last %} &nbsp;·&nbsp; {% endif %}{% endfor %}
+</div>
+{% endif %}
+
 <form method="post" action="/icp-profiles/save">
   {# --- pass-through hidden fields --- #}
-  <input type="hidden" name="icp_id"       value="{{ icp_id }}">
-  <input type="hidden" name="icp_name"     value="{{ icp_name }}">
-  <input type="hidden" name="version"      value="{{ version }}">
-  <input type="hidden" name="signal_count" value="{{ signals | length }}">
-  <input type="hidden" name="company_name" value="{{ company_name | default('') }}">
-  <input type="hidden" name="product_name" value="{{ product_name }}">
-  <input type="hidden" name="product_type" value="{{ product_type | default('') }}">
-  <input type="hidden" name="specialty"    value="{{ specialty }}">
+  <input type="hidden" name="icp_id"            value="{{ icp_id }}">
+  <input type="hidden" name="icp_name"          value="{{ icp_name }}">
+  <input type="hidden" name="version"           value="{{ version }}">
+  <input type="hidden" name="signal_count"      value="{{ signals | length }}">
+  <input type="hidden" name="company_name"      value="{{ company_name | default('') }}">
+  <input type="hidden" name="company_url"       value="{{ company_url | default('') }}">
+  <input type="hidden" name="product_name"      value="{{ product_name }}">
+  <input type="hidden" name="product_type"      value="{{ product_type | default('') }}">
+  <input type="hidden" name="product_url"       value="{{ product_url | default('') }}">
+  <input type="hidden" name="specialty"         value="{{ specialty }}">
+  <input type="hidden" name="demo_accounts_json" value="{{ demo_accounts | default([]) | tojson | e }}">
 
   {# ------------------------------------------------------------------ #}
-  {# SECTION 1 — ICP description                                        #}
+  {# SECTION 1 — ICP summary description                                #}
   {# ------------------------------------------------------------------ #}
   <div class="card" style="margin-bottom: 16px;">
     <p class="eyebrow">ICP Summary</p>
@@ -84,7 +93,40 @@
   </div>
 
   {# ------------------------------------------------------------------ #}
-  {# SECTION 3 — Signal checklist                                       #}
+  {# SECTION 3 — Demo accounts preview                                  #}
+  {# ------------------------------------------------------------------ #}
+  {% set demo = demo_accounts | default([]) %}
+  {% if demo %}
+  <div class="card" style="margin-bottom: 16px;">
+    <p class="eyebrow">Prospect Demo Accounts</p>
+    <p class="form-hint" style="margin-bottom:14px;">
+      AI-generated synthetic examples only — not real practices. Illustrates how the scoring
+      methodology would classify each tier. These are saved with the profile and shown in the
+      Demo Brief.
+    </p>
+    <div class="demo-accounts-grid">
+      {% for acct in demo %}
+      {% set tier_class = 'tier-bullseye' if acct.tier == 'Bullseye' else ('tier-watchlist' if acct.tier == 'Watchlist' else 'tier-excluded') %}
+      <div class="demo-acct-card {{ tier_class }}">
+        <div class="demo-acct-header">
+          <span class="badge badge-{{ acct.tier | lower | replace(' ', '-') }}">{{ acct.tier }}</span>
+          <span class="demo-score">~{{ acct.score_estimate | default('—') }}</span>
+        </div>
+        <p class="demo-acct-name">{{ acct.practice_name | default('—') }}</p>
+        <p class="demo-acct-loc">{{ acct.location | default('') }}</p>
+        <p class="demo-acct-type">{{ acct.practice_type | default('') }}</p>
+        <p class="demo-acct-label">Signals Present</p>
+        <p class="demo-acct-body">{{ acct.signal_summary | default('') }}</p>
+        <p class="demo-acct-label">Why {{ acct.tier }}</p>
+        <p class="demo-acct-body">{{ acct.tier_reasoning | default('') }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {# SECTION 4 — Signal checklist                                       #}
   {# ------------------------------------------------------------------ #}
   <div class="alert alert-info">
     <strong>{{ signals | length }} signals generated.</strong>

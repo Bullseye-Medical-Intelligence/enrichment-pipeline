@@ -9,12 +9,14 @@ template rendering, redirects, and simple orchestration calls.
 import json
 import logging
 import re
+import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 
 import anthropic
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
@@ -268,8 +270,10 @@ async def icp_generate(
     request: Request,
     username: str = Depends(auth.require_session),
     company_name: str = Form(""),
+    company_url: str = Form(""),
     product_name: str = Form(...),
     product_type: str = Form(""),
+    product_url: str = Form(""),
     description: str = Form(...),
     specialty: str = Form(...),
     focus_areas: str = Form(""),
@@ -278,10 +282,11 @@ async def icp_generate(
     icp_name: str = Form(...),
     version: str = Form("1.0"),
 ):
-    """Call Claude to generate ICP hypothesis and signals from the product description."""
+    """Call Claude to generate ICP hypothesis, demo accounts, and signals from product context."""
     form = {
-        "company_name": company_name, "product_name": product_name,
-        "product_type": product_type, "description": description,
+        "company_name": company_name, "company_url": company_url,
+        "product_name": product_name, "product_type": product_type,
+        "product_url": product_url, "description": description,
         "specialty": specialty, "focus_areas": focus_areas,
         "exclusion_notes": exclusion_notes, "icp_id": icp_id,
         "icp_name": icp_name, "version": version,
@@ -291,11 +296,12 @@ async def icp_generate(
             "ANTHROPIC_API_KEY is not configured. Add it to .env and restart the server."
         ), form=form)
     try:
-        hypothesis, signals, icp_description = _generate_icp_draft(
+        hypothesis, signals, icp_description, demo_accounts, crawl_notes = _generate_icp_draft(
             company_name=company_name, product_name=product_name,
             product_type=product_type, description=description,
             specialty=specialty, focus_areas=focus_areas,
             exclusion_notes=exclusion_notes,
+            company_url=company_url, product_url=product_url,
         )
     except Exception as exc:
         logger.warning("ICP draft generation failed: %s", exc)
@@ -309,12 +315,16 @@ async def icp_generate(
         signals=signals,
         hypothesis=hypothesis,
         icp_description=icp_description,
+        demo_accounts=demo_accounts,
+        crawl_notes=crawl_notes,
         icp_id=icp_id,
         icp_name=icp_name,
         version=version,
         company_name=company_name,
+        company_url=company_url,
         product_name=product_name,
         product_type=product_type,
+        product_url=product_url,
         specialty=specialty,
     )
 
@@ -328,10 +338,13 @@ async def icp_save(
     version: str = Form("1.0"),
     signal_count: int = Form(...),
     company_name: str = Form(""),
+    company_url: str = Form(""),
     product_name: str = Form(""),
     product_type: str = Form(""),
+    product_url: str = Form(""),
     specialty: str = Form(""),
     icp_description: str = Form(""),
+    demo_accounts_json: str = Form(""),
 ):
     """Validate and persist the edited ICP profile to disk."""
     form_data = await request.form()
@@ -358,12 +371,20 @@ async def icp_save(
         "fast_close_indicators": (form_data.get("hyp_fast_close_indicators") or "").strip(),
         "common_objections": (form_data.get("hyp_common_objections") or "").strip(),
     }
+    try:
+        demo_accounts = json.loads(demo_accounts_json) if demo_accounts_json.strip() else []
+        if not isinstance(demo_accounts, list):
+            demo_accounts = []
+    except (ValueError, TypeError):
+        demo_accounts = []
     profile = {
         "icp_id": icp_id.strip(),
         "name": icp_name.strip(),
         "version": version.strip() or "1.0",
         "description": icp_description.strip(),
         "hypothesis": hypothesis,
+        "demo_accounts": demo_accounts,
+        "source_urls": {"company_url": company_url.strip(), "product_url": product_url.strip()},
         "signals": signals,
     }
     try:
@@ -376,12 +397,16 @@ async def icp_save(
             signals=signals,
             hypothesis=hypothesis,
             icp_description=icp_description,
+            demo_accounts=demo_accounts,
+            crawl_notes=[],
             icp_id=icp_id,
             icp_name=icp_name,
             version=version,
             company_name=company_name,
+            company_url=company_url,
             product_name=product_name,
             product_type=product_type,
+            product_url=product_url,
             specialty=specialty,
         )
     return RedirectResponse("/icp-profiles", status_code=303)
@@ -394,6 +419,37 @@ async def icp_profiles_page(request: Request, username: str = Depends(auth.requi
         "icp_profiles.html",
         username=username,
         profiles=icp_profiles.list_icp_profiles(),
+    )
+
+
+@router.get("/icp-profiles/{icp_id}/demo", response_class=HTMLResponse)
+async def icp_demo_brief_page(
+    request: Request, icp_id: str, username: str = Depends(auth.require_session)
+):
+    """Render the prospect-facing demo brief for a saved ICP profile."""
+    try:
+        profile = icp_profiles.get_icp_profile(icp_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _render("icp_demo_brief.html", username=username, profile=profile, pdf_mode=False)
+
+
+@router.get("/icp-profiles/{icp_id}/demo.pdf")
+async def icp_demo_brief_pdf(
+    request: Request, icp_id: str, username: str = Depends(auth.require_session)
+):
+    """Return a WeasyPrint PDF of the demo brief for a saved ICP profile."""
+    try:
+        profile = icp_profiles.get_icp_profile(icp_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    pdf_bytes = _build_demo_brief_pdf(profile)
+    safe_id = re.sub(r"[^A-Za-z0-9_-]", "", icp_id)
+    filename = f"bemi-demo-brief-{safe_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -913,6 +969,57 @@ def _compute_readiness(merged_records: list) -> dict:
     return {"state": "ready", "pending_count": 0, "approved_count": approved}
 
 
+class _TagStripper(HTMLParser):
+    """Strip HTML tags and return readable text, skipping chrome elements."""
+
+    _SKIP_TAGS = frozenset({"script", "style", "nav", "footer", "head", "noscript", "svg"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip = False
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in self._SKIP_TAGS:
+            self._skip = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP_TAGS:
+            self._skip = False
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip:
+            text = data.strip()
+            if text:
+                self._parts.append(text)
+
+    def get_text(self) -> str:
+        """Return all extracted text joined by spaces."""
+        return " ".join(self._parts)
+
+
+def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
+    """Fetch a URL and return stripped plain text, truncated to max_chars.
+
+    Uses stdlib only (urllib + html.parser). Returns empty string on any error.
+    """
+    if not url:
+        return ""
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0 (compatible; BEMI-ICP-Builder/1.0)"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+            raw_bytes = resp.read(300_000)
+        raw_html = raw_bytes.decode("utf-8", errors="replace")
+        parser = _TagStripper()
+        parser.feed(raw_html)
+        return parser.get_text()[:max_chars]
+    except Exception as exc:
+        logger.debug("URL fetch failed for %s: %s", url, exc)
+        return ""
+
+
 _ICP_DRAFT_PROMPT = """You are a senior medical device sales strategist building an Ideal Customer Profile (ICP) \
 for a B2B medical sales tool.
 
@@ -924,7 +1031,13 @@ Target Specialty: {specialty}
 Key Services / Focus Areas: {focus_areas}
 Known Exclusion Criteria: {exclusion_notes}
 
-Return a single JSON object with these three keys:
+Company Website Content (from {company_url}):
+{company_page_text}
+
+Product Page Content (from {product_url}):
+{product_page_text}
+
+Return a single JSON object with exactly four top-level keys:
 
 "description"
   A 2-3 sentence plain-English summary of who the ideal customer is and why they are a strong \
@@ -941,6 +1054,18 @@ be specific to this product and specialty (2-3 sentences).
   - "common_objections": The 2-3 most likely objections from this specialty and a one-sentence \
 response to each.
 
+"demo_accounts"
+  An array of exactly 3 synthetic (realistic but fabricated) example practices that illustrate \
+how the scoring would work. Produce one per tier in this order:
+  Each object must have these keys:
+  - tier: one of "Bullseye", "Watchlist", "Excluded"
+  - practice_name: realistic-sounding practice name
+  - location: "City, ST"
+  - practice_type: 1 sentence describing the practice (size, ownership, specialty focus)
+  - score_estimate: integer 0-100 representing estimated fit score
+  - signal_summary: 2-3 sentences describing what signals this practice would show on its website
+  - tier_reasoning: 1-2 sentences explaining exactly why it lands at this tier
+
 "signals"
   An array of 6-10 signal objects. Each must have exactly these keys:
   - signal_id: unique string like "S-001"
@@ -955,12 +1080,27 @@ Return ONLY a valid JSON object. No prose, no markdown, no code fences."""
 def _generate_icp_draft(
     company_name: str, product_name: str, product_type: str,
     description: str, specialty: str, focus_areas: str, exclusion_notes: str,
-) -> tuple[dict, list[dict], str]:
-    """Call Claude to generate an ICP hypothesis, signals, and description.
+    company_url: str = "", product_url: str = "",
+) -> tuple[dict, list[dict], str, list[dict], list[str]]:
+    """Call Claude to generate an ICP hypothesis, signals, demo accounts, and description.
 
-    Returns (hypothesis dict, signals list, description string).
+    Returns (hypothesis, signals, description, demo_accounts, crawl_notes).
     Raises ValueError on API error or unparseable response.
     """
+    crawl_notes: list[str] = []
+    company_page_text = _fetch_page_text(company_url)
+    if company_url:
+        if company_page_text:
+            crawl_notes.append(f"Crawled company page ({len(company_page_text):,} chars).")
+        else:
+            crawl_notes.append("Company URL could not be fetched — proceeding without it.")
+    product_page_text = _fetch_page_text(product_url)
+    if product_url:
+        if product_page_text:
+            crawl_notes.append(f"Crawled product page ({len(product_page_text):,} chars).")
+        else:
+            crawl_notes.append("Product URL could not be fetched — proceeding without it.")
+
     prompt = _ICP_DRAFT_PROMPT.format(
         company_name=company_name or "Not specified",
         product_name=product_name,
@@ -969,13 +1109,17 @@ def _generate_icp_draft(
         specialty=specialty,
         focus_areas=focus_areas or "Not specified",
         exclusion_notes=exclusion_notes or "None specified",
+        company_url=company_url or "not provided",
+        company_page_text=company_page_text or "Not available",
+        product_url=product_url or "not provided",
+        product_page_text=product_page_text or "Not available",
     )
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     try:
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=3000,
-            timeout=90,
+            max_tokens=4000,
+            timeout=120,
             messages=[{"role": "user", "content": prompt}],
         )
     except Exception as exc:
@@ -995,7 +1139,24 @@ def _generate_icp_draft(
         raise ValueError("Model response missing 'signals' array.")
     hypothesis = draft.get("hypothesis") or {}
     icp_description = str(draft.get("description") or "").strip()
-    return hypothesis, signals, icp_description
+    demo_accounts = draft.get("demo_accounts") or []
+    if not isinstance(demo_accounts, list):
+        demo_accounts = []
+    return hypothesis, signals, icp_description, demo_accounts, crawl_notes
+
+
+def _build_demo_brief_pdf(profile: dict) -> bytes:
+    """Render the PDF-specific demo brief template and convert via WeasyPrint.
+
+    Falls back to a minimal stub on failure so the download never 500s.
+    """
+    import weasyprint
+    try:
+        rendered = _jinja_env.get_template("icp_demo_brief_pdf.html").render(profile=profile)
+        return weasyprint.HTML(string=rendered).write_pdf()
+    except Exception as exc:
+        logger.error("Demo brief PDF generation failed: %s", exc)
+        return b"%PDF-1.4\n%%EOF\n"
 
 
 def _calculate_stats(records: list[dict]) -> dict:

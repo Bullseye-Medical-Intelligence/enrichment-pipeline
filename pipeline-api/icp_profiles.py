@@ -142,6 +142,9 @@ def list_icp_profiles() -> list[dict]:
             "name": profile["name"],
             "version": profile["version"],
             "description": profile.get("description", ""),
+            "hypothesis": profile.get("hypothesis"),
+            "demo_accounts": profile.get("demo_accounts", []),
+            "source_urls": profile.get("source_urls", {}),
             "signal_count": len(profile["signals"]),
             "signals": profile["signals"],
         })

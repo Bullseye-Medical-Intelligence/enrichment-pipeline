@@ -68,6 +68,25 @@
       </div>
     </div>
 
+    <p class="eyebrow">Source URLs</p>
+    <p class="form-hint" style="margin-bottom:10px;">
+      Providing URLs lets Claude read your actual product and company pages to ground the hypothesis in real content.
+    </p>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="company_url">Company Website URL</label>
+        <input type="url" id="company_url" name="company_url"
+               value="{{ form.company_url | default('') }}"
+               placeholder="https://femasys.com">
+      </div>
+      <div class="form-group">
+        <label for="product_url">Product Page URL</label>
+        <input type="url" id="product_url" name="product_url"
+               value="{{ form.product_url | default('') }}"
+               placeholder="https://femasys.com/femaseed">
+      </div>
+    </div>
+
     <div class="form-group">
       <label for="product_name">Product Name</label>
       <input type="text" id="product_name" name="product_name" required
@@ -112,7 +131,7 @@
       <div class="run-progress-bar run-progress-indeterminate"></div>
     </div>
     <p style="margin-top:0.5em; font-size:9pt; color:#666;">
-      Generating commercial fit hypothesis and signals with Claude AI &mdash; this may take 20&ndash;30 seconds&hellip;
+      Crawling URLs and generating hypothesis, demo accounts, and signals with Claude AI &mdash; this may take 30&ndash;45 seconds&hellip;
     </p>
   </div>
 </div>
