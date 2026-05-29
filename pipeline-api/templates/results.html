@@ -217,6 +217,9 @@
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
         <td>
           <strong>{{ record.practice_name | default("—") }}</strong>
+          {% if record.source_confidence in ("limited", "failed") %}
+          <br><span class="text-muted small">⚠ Limited data</span>
+          {% endif %}
           {% if record.website_url %}<br><a class="text-muted small" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
         <td>{{ record.specialty | default("—") }}</td>
@@ -267,6 +270,12 @@
                       <span class="signal-state-badge state-{{ display_state }}">{{ sig.signal_state | upper | replace("_", " ") }}</span>
                       {% endif %}
                       <span class="signal-conf text-muted">{{ sig.confidence | title }}</span>
+                      {% if sig.signal_state == "not_found" and sig.not_found_reason %}
+                      <span class="signal-conf text-muted">{% if sig.not_found_reason == "no_context" %}site not crawled{% elif sig.not_found_reason == "evidence_gate" %}no sourced evidence{% endif %}</span>
+                      {% endif %}
+                      {% if sig.state_inferred %}
+                      <span class="signal-conf text-muted" title="Inferred from signal {{ sig.inferred_from }}">Inferred</span>
+                      {% endif %}
                     </div>
                     {% if sig.evidence_text %}
                     <p class="signal-evidence">{{ sig.evidence_text }}</p>

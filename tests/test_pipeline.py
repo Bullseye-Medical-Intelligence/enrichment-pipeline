@@ -836,7 +836,12 @@ class TestCallBrief:
         assert "Hospital affiliated" in brief["disqualifier_risk"][0]
 
     def test_generated_prep_lines_passed_through(self):
-        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {
+        # Prep lines require at least one confirmed "yes" signal with evidence —
+        # the integrity gate clears them when top_evidence is empty.
+        signals = [
+            self._sig("S-svc", "yes", "Service line listed", 30, evidence="Lists the service."),
+        ]
+        brief = _build_call_brief(signals, {"fit_signal_score": 80}, {}, {
             "opening_line": "Hi", "likely_objection": "Busy", "discovery_question": "How?",
         })
         assert brief["opening_line"] == "Hi"
@@ -998,3 +1003,134 @@ class TestSourceConfidenceTierCap:
         rec = _clear_record(score=95)
         rec["signals"] = []
         assert _assign_tier(rec, 95, 75) == "Bullseye"
+
+
+# ---------------------------------------------------------------------------
+# Call brief integrity gate, not_found_reason, inferred_from attribution
+# ---------------------------------------------------------------------------
+
+class TestCallBriefIntegrity:
+    """Opening lines and sales angles are cleared when no confirmed signals exist."""
+
+    _ICP = [{"signal_id": "S-1", "signal_label": "Service listed", "prompt_instruction": "?",
+             "positive_weight": 20}]
+
+    def _confirmed_sig(self):
+        return {"signal_id": "S-1", "signal_label": "Service listed", "signal_state": "yes",
+                "confidence": "high", "evidence_text": "Lists the service.", "source_url": "https://x.com",
+                "positive_weight": 20, "verification_required": False, "cap_tier": "",
+                "state_inferred": False}
+
+    def test_opening_line_cleared_when_no_confirmed_signals(self):
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {"opening_line": "I saw X."})
+        assert brief["opening_line"] == ""
+
+    def test_likely_objection_cleared_when_no_confirmed_signals(self):
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {"likely_objection": "Already set."})
+        assert brief["likely_objection"] == ""
+
+    def test_discovery_question_cleared_when_no_confirmed_signals(self):
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {"discovery_question": "How?"})
+        assert brief["discovery_question"] == ""
+
+    def test_hours_of_operation_preserved_when_no_confirmed_signals(self):
+        # hours_of_operation is factual (office hours), kept regardless of signal state.
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {"hours_of_operation": "Mon-Fri 9-5"})
+        assert brief["hours_of_operation"] == "Mon-Fri 9-5"
+
+    def test_prep_lines_preserved_when_confirmed_signal_exists(self):
+        signals = [self._confirmed_sig()]
+        brief = _build_call_brief(signals, {"fit_signal_score": 80}, {}, {
+            "opening_line": "I saw your service listed.",
+            "likely_objection": "Already set.",
+        })
+        assert brief["opening_line"] == "I saw your service listed."
+        assert brief["likely_objection"] == "Already set."
+
+    def test_why_contact_populated_independently_of_gate(self):
+        # why_contact is grounded from validated signals, not LLM — always set.
+        brief = _build_call_brief([], {"fit_signal_score": 30}, {"specialty": "OBGYN"}, {})
+        assert "OBGYN" in brief["why_contact"]
+        assert "30" in brief["why_contact"]
+
+
+class TestNotFoundReason:
+    """not_found_reason distinguishes why a signal could not be confirmed."""
+
+    _ICP = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+             "positive_weight": 20}]
+
+    def test_empty_context_signals_have_no_context_reason(self):
+        out = _build_empty_signals(self._ICP)
+        assert out[0]["not_found_reason"] == "no_context"
+
+    def test_evidence_gate_downgrade_sets_evidence_gate_reason(self):
+        raw = [{"signal_id": "S-1", "signal_state": "yes",
+                "evidence_text": "", "source_url": "", "confidence": "high"}]
+        out = _validate_and_clean_signals(raw, self._ICP)
+        assert out[0]["signal_state"] == "not_found"
+        assert out[0]["not_found_reason"] == "evidence_gate"
+
+    def test_evidence_gate_fires_on_missing_url_too(self):
+        raw = [{"signal_id": "S-1", "signal_state": "yes",
+                "evidence_text": "some evidence", "source_url": "", "confidence": "high"}]
+        out = _validate_and_clean_signals(raw, self._ICP)
+        assert out[0]["not_found_reason"] == "evidence_gate"
+
+    def test_normal_llm_not_found_has_empty_reason(self):
+        raw = [{"signal_id": "S-1", "signal_state": "not_found",
+                "evidence_text": "", "source_url": "", "confidence": "low"}]
+        out = _validate_and_clean_signals(raw, self._ICP)
+        assert out[0]["not_found_reason"] == ""
+
+    def test_confirmed_yes_has_empty_reason(self):
+        raw = [{"signal_id": "S-1", "signal_state": "yes",
+                "evidence_text": "confirmed text", "source_url": "https://x.com", "confidence": "high"}]
+        out = _validate_and_clean_signals(raw, self._ICP)
+        assert out[0]["not_found_reason"] == ""
+
+    def test_default_missing_signal_has_empty_reason(self):
+        # A signal the LLM omitted entirely gets a default not_found entry.
+        out = _validate_and_clean_signals([], self._ICP)
+        assert out[0]["not_found_reason"] == ""
+
+
+class TestInferredFrom:
+    """_apply_reinforcement records which signal triggered inference."""
+
+    _ICP = [
+        {"signal_id": "S-source", "signal_label": "Elective procedures",
+         "prompt_instruction": "?", "positive_weight": 18, "reinforces": "S-target"},
+        {"signal_id": "S-target", "signal_label": "Cash pay visible",
+         "prompt_instruction": "?", "positive_weight": 30},
+    ]
+
+    def _signals(self, source_state, target_state):
+        return [
+            {"signal_id": "S-source", "signal_label": "Elective procedures",
+             "signal_state": source_state, "state_inferred": False, "inferred_from": ""},
+            {"signal_id": "S-target", "signal_label": "Cash pay visible",
+             "signal_state": target_state, "state_inferred": False, "inferred_from": ""},
+        ]
+
+    def test_reinforcement_sets_inferred_from(self):
+        signals = self._signals("yes", "not_found")
+        _apply_reinforcement(signals, self._ICP)
+        target = next(s for s in signals if s["signal_id"] == "S-target")
+        assert target["inferred_from"] == "S-source"
+
+    def test_no_reinforcement_leaves_inferred_from_empty(self):
+        signals = self._signals("not_found", "not_found")
+        _apply_reinforcement(signals, self._ICP)
+        target = next(s for s in signals if s["signal_id"] == "S-target")
+        assert target["inferred_from"] == ""
+
+    def test_source_signal_keeps_empty_inferred_from(self):
+        signals = self._signals("yes", "not_found")
+        _apply_reinforcement(signals, self._ICP)
+        source = next(s for s in signals if s["signal_id"] == "S-source")
+        assert source["inferred_from"] == ""
+
+    def test_empty_signals_helper_sets_empty_inferred_from(self):
+        out = _build_empty_signals(self._ICP)
+        assert all(s["inferred_from"] == "" for s in out)

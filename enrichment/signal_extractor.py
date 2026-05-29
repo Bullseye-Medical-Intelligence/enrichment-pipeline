@@ -232,6 +232,8 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "required_for_bullseye": bool(icp_by_id[signal_id].get("required_for_bullseye", False)),
             "cap_tier": icp_by_id[signal_id].get("cap_tier", ""),
             "state_inferred": False,
+            "inferred_from": "",
+            "not_found_reason": "",
             "analyst_note": "",
         }
 
@@ -243,6 +245,7 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             has_evidence = bool(sig.get("evidence_text", "").strip())
             has_source = bool(sig.get("source_url", "").strip())
             if not has_evidence or not has_source:
+                sig["not_found_reason"] = "evidence_gate"
                 sig["signal_state"] = "not_found"
                 sig["confidence"] = "low"
 
@@ -266,6 +269,8 @@ def _validate_and_clean_signals(raw_signals: list[dict],
                 "required_for_bullseye": bool(icp_sig.get("required_for_bullseye", False)),
                 "cap_tier": icp_sig.get("cap_tier", ""),
                 "state_inferred": False,
+                "inferred_from": "",
+                "not_found_reason": "",
                 "analyst_note": "",
             })
 
@@ -292,6 +297,8 @@ def _build_empty_signals(icp_signals: list[dict]) -> list[dict]:
             "required_for_bullseye": bool(icp_sig.get("required_for_bullseye", False)),
             "cap_tier": icp_sig.get("cap_tier", ""),
             "state_inferred": False,
+            "inferred_from": "",
+            "not_found_reason": "no_context",
             "analyst_note": "",
         }
         for icp_sig in icp_signals
@@ -319,6 +326,7 @@ def _apply_reinforcement(signals: list[dict], icp_signals: list[dict]) -> None:
                 and source["signal_state"] == "yes"
                 and target["signal_state"] == "not_found"):
             target["state_inferred"] = True
+            target["inferred_from"] = icp_sig["signal_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +473,14 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
         for s in confirmed_positive if s.get("evidence_text")
     ][:TOP_EVIDENCE_COUNT]
 
+    # Integrity gate: if no signals survived as confirmed "yes", the LLM-generated
+    # claim-based prep lines (opening_line, objection, discovery question) reference
+    # nothing verifiable and must be cleared so a rep cannot open with a fabricated
+    # claim. hours_of_operation is factual (office hours stated on the site) and
+    # kept regardless of signal state.
+    if not top_evidence:
+        generated = {"hours_of_operation": generated.get("hours_of_operation", "")}
+
     # missing_to_verify: unconfirmed required signals not covered by inference
     # (mirrors the verification gate in exclusion_checker._assign_tier).
     missing_to_verify = [
@@ -610,6 +626,12 @@ def extract_signals(record: dict, icp_signals: list[dict],
         if not isinstance(generated_brief, dict):
             generated_brief = {}
         call_brief = _build_call_brief(signals, scores, record, generated_brief)
+
+        # Gate sales_angle: only serve bullets when confirmed evidence exists.
+        # When top_evidence is empty, the integrity gate already cleared the
+        # opening_line — sales_angle bullets would have the same grounding problem.
+        if not call_brief.get("top_evidence"):
+            sales_angle = []
 
         # Source confidence
         if context_text:

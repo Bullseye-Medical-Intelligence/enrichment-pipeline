@@ -319,6 +319,8 @@ The output schema is the contract between the pipeline and the dashboard. It mus
       "confidence": "high",
       "positive_weight": 15,
       "state_inferred": false,
+      "inferred_from": "",
+      "not_found_reason": "",
       "analyst_note": ""
     }
   ],
@@ -367,6 +369,10 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 **positive_weight:** Carried over from the ICP signal definition. Positive for signals where a `"yes"` is good; negative where a `"yes"` is bad (e.g. "REI on staff"). Consumers use the sign to color a signal green or red: a `"no"` on a negative-weight signal is a positive indicator.
 
 **state_inferred:** `true` when a `not_found` signal's presence was inferred from a confirmed `reinforces` signal (e.g. cash pay inferred from listed elective procedures). Inferred signals earn partial fit credit and skip the `verification_required` gate. `false` for directly observed signals.
+
+**inferred_from:** The `signal_id` of the reinforcing signal that triggered inference, when `state_inferred` is `true`. Empty string `""` for all other signals.
+
+**not_found_reason:** Explains why a `not_found` signal could not be confirmed. Values: `""` (LLM returned `not_found` normally after a successful crawl — the service may genuinely be absent), `"no_context"` (site had insufficient text to evaluate; no LLM call was made), `"evidence_gate"` (LLM returned `"yes"` but evidence_text or source_url was missing; downgraded by the sourcing enforcement pass). Always `""` for `"yes"` and `"no"` signals.
 
 **call_brief:** A rep preparation object, always present. Grounded fields are
 derived from the signals (no LLM): `top_evidence` (highest-weight confirmed

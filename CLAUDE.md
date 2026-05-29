@@ -140,10 +140,21 @@ target earns partial fit credit and **skips its verification gate** — a clearl
 cash-pay practice is not parked on the watchlist over missing copy.
 `_apply_reinforcement` runs after signal validation, before scoring.
 
-### Derived signal field (output)
+### Derived signal fields (output)
 - **`state_inferred`** (bool): set `true` by reinforcement when a `not_found`
   signal's presence was inferred. `false` for directly observed signals. Written
   to every signal object in the output.
+- **`inferred_from`** (string): the `signal_id` of the reinforcing signal that
+  triggered inference, when `state_inferred` is `true`. Empty string for all other
+  signals. Surfaced in the UI as a tooltip on inferred signals so reps know the
+  source of indirect evidence.
+- **`not_found_reason`** (string): explains why a `not_found` signal could not be
+  confirmed. `""` = LLM returned `not_found` after a successful crawl (may be
+  genuinely absent); `"no_context"` = site had insufficient text, no LLM call
+  made; `"evidence_gate"` = LLM claimed "yes" but evidence_text or source_url was
+  missing, downgraded by the sourcing enforcement pass. Always `""` for `"yes"`
+  and `"no"` signals. Shown in the UI under the NOT FOUND state badge so reps can
+  distinguish "we looked and didn't find it" from "we couldn't look".
 
 ---
 
