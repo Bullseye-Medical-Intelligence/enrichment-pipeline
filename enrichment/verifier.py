@@ -185,7 +185,7 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
         if verification_result == "agree" and verifier_scores_bullseye:
             # Models agree - enrichment_status unchanged (remains "complete")
             note = f"[GPT verification: AGREE. {overall_notes}]".strip()
-            print(f"    [OK] Verification: AGREE")
+            print("    [OK] Verification: AGREE")
         else:
             # Disagreement - flag for human review
             record["enrichment_status"] = "needs_review"
@@ -200,7 +200,7 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
                 f"Disagreements: {disagreement_detail}. "
                 f"Notes: {overall_notes}]"
             ).strip()
-            print(f"    [FAIL] Verification: DISAGREE - flagged needs_review")
+            print("    [FAIL] Verification: DISAGREE - flagged needs_review")
 
         # Append to internal_notes
         existing = record.get("internal_notes") or ""

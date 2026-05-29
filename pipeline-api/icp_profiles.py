@@ -123,8 +123,9 @@ def list_icp_profiles() -> list[dict]:
     """
     Return metadata for every loadable ICP profile, sorted by icp_id.
 
-    Each entry: {icp_id, name, version, description, signal_count}. Malformed
-    files are skipped so one bad file does not hide the rest.
+    Each entry: {icp_id, name, version, description, hypothesis, demo_accounts,
+    source_urls, signal_count, signals}. Malformed files are skipped so one bad
+    file does not hide the rest.
     """
     base = config.ICP_PROFILES_PATH
     if not base.exists():

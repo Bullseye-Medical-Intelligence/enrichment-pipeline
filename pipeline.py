@@ -202,7 +202,7 @@ def run_pipeline(input_file: str, source_type: str,
     start_time = time.time()
 
     print(f"\n{'='*60}")
-    print(f"BULLSEYE ENRICHMENT PIPELINE")
+    print("BULLSEYE ENRICHMENT PIPELINE")
     print(f"Run ID:  {run_id}")
     print(f"Input:   {input_file}")
     print(f"Source:  {source_type}")
@@ -239,7 +239,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 1, "Ingesting records")
     print(f"\n{'-'*40}")
-    print(f"STEP 1: INGEST")
+    print("STEP 1: INGEST")
     print(f"{'-'*40}")
 
     if source_type == "outscraper":
@@ -279,7 +279,7 @@ def run_pipeline(input_file: str, source_type: str,
 
     if dry_run:
         print(f"\n{'-'*40}")
-        print(f"DRY RUN MODE - Skipping Steps 2-8 (no LLM calls, no HTTP requests)")
+        print("DRY RUN MODE - Skipping Steps 2-8 (no LLM calls, no HTTP requests)")
         print(f"{'-'*40}")
         print(f"\n  Would process {len(records)} records.")
         for r in records[:5]:
@@ -295,7 +295,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 2, "URL validation", 0, len(records))
     print(f"\n{'-'*40}")
-    print(f"STEP 2: URL VALIDATION")
+    print("STEP 2: URL VALIDATION")
     print(f"{'-'*40}")
 
     records = batch_validate_urls(records, timeout=timeout, retries=retries,
@@ -309,7 +309,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 3, "Web extraction", 0, len(records))
     print(f"\n{'-'*40}")
-    print(f"STEP 3: WEB EXTRACTION")
+    print("STEP 3: WEB EXTRACTION")
     print(f"{'-'*40}")
 
     records = batch_extract(records, timeout=timeout, retries=retries,
@@ -324,7 +324,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 4, "Signal extraction (Claude)", 0, len(records))
     print(f"\n{'-'*40}")
-    print(f"STEP 4: SIGNAL EXTRACTION (Claude)")
+    print("STEP 4: SIGNAL EXTRACTION (Claude)")
     print(f"{'-'*40}")
 
     checkpoint = _load_step4_checkpoint(output_dir)
@@ -422,7 +422,7 @@ def run_pipeline(input_file: str, source_type: str,
     if bullseye_records:
         _write_progress(output_dir, 5, "Bullseye verification (GPT)", 0, len(bullseye_records))
         print(f"\n{'-'*40}")
-        print(f"STEP 5: BULLSEYE VERIFICATION (GPT)")
+        print("STEP 5: BULLSEYE VERIFICATION (GPT)")
         print(f"{'-'*40}")
         print(f"  {len(bullseye_records)} records qualify for verification")
 
@@ -459,7 +459,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 6, "Exclusion check", 0, len(records))
     print(f"\n{'-'*40}")
-    print(f"STEP 6: EXCLUSION CHECK")
+    print("STEP 6: EXCLUSION CHECK")
     print(f"{'-'*40}")
 
     for record in records:
@@ -485,7 +485,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 7, "Scoring validation", 0, len(records))
     print(f"\n{'-'*40}")
-    print(f"STEP 7: SCORING VALIDATION")
+    print("STEP 7: SCORING VALIDATION")
     print(f"{'-'*40}")
 
     for record in records:
@@ -509,7 +509,7 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 8, "Writing output files", 0, len(records))
     print(f"\n{'-'*40}")
-    print(f"STEP 8: OUTPUT GENERATION")
+    print("STEP 8: OUTPUT GENERATION")
     print(f"{'-'*40}")
 
     json_path = write_json(output_records, output_dir=output_dir, run_id=run_id)
@@ -539,7 +539,7 @@ def run_pipeline(input_file: str, source_type: str,
     print(f"  Errors:        {len(all_errors)}")
     print(f"  Warnings:      {len(all_warnings)}")
     print(f"  Elapsed:       {elapsed:.1f}s")
-    print(f"\n  Outputs:")
+    print("\n  Outputs:")
     print(f"    {json_path}")
     print(f"    {csv_path}")
     print(f"    {log_path}")

@@ -8,6 +8,8 @@ Enforces the invariant that target_tier == "Excluded" iff
 exclusion_status == "EXCLUDED", repairing any contradiction.
 """
 
+from datetime import date
+
 from enrichment.constants import (
     CALL_BRIEF_LIST_FIELDS,
     CALL_BRIEF_STRING_FIELDS,
@@ -17,6 +19,8 @@ from enrichment.constants import (
     MIN_SCORE,
     empty_call_brief,
 )
+
+DEFAULT_FIT_CONFIDENCE_STATUS = "LOW FIT / LOW EVIDENCE"
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
 VALID_EXCLUSION_STATUSES = {"CLEAR", "EXCLUDED"}
@@ -180,10 +184,9 @@ def validate_and_finalize(record: dict) -> dict:
 
     # fit_confidence_status: default if missing
     if not record.get("fit_confidence_status"):
-        record["fit_confidence_status"] = "LOW FIT / LOW EVIDENCE"
+        record["fit_confidence_status"] = DEFAULT_FIT_CONFIDENCE_STATUS
 
     # date_enriched: should be set by signal_extractor, but just in case
-    from datetime import date
     if not record.get("date_enriched"):
         record["date_enriched"] = date.today().isoformat()
 

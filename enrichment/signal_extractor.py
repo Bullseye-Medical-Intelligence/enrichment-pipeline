@@ -42,6 +42,7 @@ load_dotenv()
 
 PROMPT_VERSION = "signal_extraction_v2"
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_v2.txt"
+_PROMPT_TEMPLATE: str = PROMPT_PATH.read_text(encoding="utf-8")
 
 # Number of confirmed signals surfaced in the call brief's evidence list.
 TOP_EVIDENCE_COUNT = 3
@@ -74,12 +75,6 @@ def _get_model() -> str:
 # Prompt building
 # ---------------------------------------------------------------------------
 
-def _load_prompt_template() -> str:
-    """Load the signal extraction prompt template from file."""
-    with open(PROMPT_PATH, "r", encoding="utf-8") as f:
-        return f.read()
-
-
 def _build_signal_checklist(signals: list[dict]) -> str:
     """Format ICP signal definitions for insertion into the prompt."""
     lines = []
@@ -99,7 +94,7 @@ def _build_prompt(record: dict, context_text: str, icp_signals: list[dict]) -> s
     Uses explicit str.replace() instead of .format() so that JSON examples
     in the prompt template (which contain { and }) are left untouched.
     """
-    template = _load_prompt_template()
+    template = _PROMPT_TEMPLATE
     checklist_text = _build_signal_checklist(icp_signals)
 
     replacements = {
