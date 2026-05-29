@@ -7,6 +7,15 @@ working guide for how the pipeline behaves and the rules a session must hold.
 
 ---
 
+## Communication Style
+
+Responses must be brief business and product-focused summaries. Do not break down
+code unless explicitly asked. Discuss everything from a business solution and
+product development standpoint. Be efficient with tokens and elaborate only when
+the user explicitly asks for more detail.
+
+---
+
 ## What This Repo Is
 
 The **enrichment pipeline**: a Python CLI (`pipeline.py`) that turns a raw
