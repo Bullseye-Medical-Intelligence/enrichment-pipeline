@@ -23,12 +23,32 @@
       </p>
     </div>
   </div>
-  {% if icp.description %}<p class="form-hint">{{ icp.description }}</p>{% endif %}
+  {% if icp.description %}<p style="margin-bottom:10px; font-size:13px; color:#444;">{{ icp.description }}</p>{% endif %}
+  {% if icp.hypothesis %}
+  {% set hyp = icp.hypothesis %}
+  <details class="advanced-fields" style="margin-bottom:10px;">
+    <summary style="font-size:12px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--accent);">Commercial Fit Hypothesis</summary>
+    <div class="hyp-preview-grid">
+      {% if hyp.ideal_practice_profile %}
+      <div><span class="hyp-preview-label">Ideal Practice</span><p>{{ hyp.ideal_practice_profile }}</p></div>
+      {% endif %}
+      {% if hyp.commercial_fit_reasoning %}
+      <div><span class="hyp-preview-label">Why It Closes Fast</span><p>{{ hyp.commercial_fit_reasoning }}</p></div>
+      {% endif %}
+      {% if hyp.fast_close_indicators %}
+      <div><span class="hyp-preview-label">Fast-Close Indicators</span><p>{{ hyp.fast_close_indicators }}</p></div>
+      {% endif %}
+      {% if hyp.common_objections %}
+      <div><span class="hyp-preview-label">Common Objections</span><p>{{ hyp.common_objections }}</p></div>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
   <details class="advanced-fields">
     <summary>View signal list ({{ icp.signal_count }})</summary>
     <table class="data-table">
       <thead>
-        <tr><th>Signal ID</th><th>Label</th><th>Weight</th></tr>
+        <tr><th>Signal ID</th><th>Label</th><th>Weight</th><th>Must-Have</th></tr>
       </thead>
       <tbody>
         {% for sig in icp.signals %}
@@ -36,6 +56,7 @@
           <td><code>{{ sig.signal_id }}</code></td>
           <td>{{ sig.signal_label }}</td>
           <td>{{ sig.positive_weight }}</td>
+          <td>{% if sig.required_for_bullseye %}<span class="badge badge-bullseye" style="font-size:9px;">YES</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

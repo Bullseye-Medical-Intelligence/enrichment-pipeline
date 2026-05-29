@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <h2>Build ICP Profile with AI</h2>
-    <p class="page-subtitle">Describe your product and Claude will generate a draft signal checklist to review and save.</p>
+    <p class="page-subtitle">Describe your product and Claude will generate a commercial fit hypothesis and signal checklist to review and save.</p>
   </div>
   <div class="header-actions">
     <a href="/icp-profiles" class="btn btn-secondary">← Back to Profiles</a>
@@ -44,7 +44,29 @@
              placeholder="e.g. FemaSeed OBGYN ICP">
     </div>
 
-    <p class="eyebrow">Product Description</p>
+    <p class="eyebrow">Product &amp; Company</p>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="company_name">Company Name</label>
+        <input type="text" id="company_name" name="company_name"
+               value="{{ form.company_name | default('') }}"
+               placeholder="e.g. Femasys">
+        <p class="form-hint">Optional. Helps Claude tailor the commercial hypothesis.</p>
+      </div>
+      <div class="form-group">
+        <label for="product_type">Product Type</label>
+        <select id="product_type" name="product_type">
+          <option value="" {% if not form.product_type %}selected{% endif %}>-- Select --</option>
+          <option value="Medical Device" {% if form.product_type == 'Medical Device' %}selected{% endif %}>Medical Device</option>
+          <option value="SaaS / Software" {% if form.product_type == 'SaaS / Software' %}selected{% endif %}>SaaS / Software</option>
+          <option value="Pharmaceutical" {% if form.product_type == 'Pharmaceutical' %}selected{% endif %}>Pharmaceutical</option>
+          <option value="Service / Consulting" {% if form.product_type == 'Service / Consulting' %}selected{% endif %}>Service / Consulting</option>
+          <option value="Capital Equipment" {% if form.product_type == 'Capital Equipment' %}selected{% endif %}>Capital Equipment</option>
+          <option value="Consumables / Supplies" {% if form.product_type == 'Consumables / Supplies' %}selected{% endif %}>Consumables / Supplies</option>
+        </select>
+      </div>
+    </div>
 
     <div class="form-group">
       <label for="product_name">Product Name</label>
@@ -63,7 +85,7 @@
     <div class="form-group">
       <label for="description">Product Description</label>
       <textarea id="description" name="description" rows="3" required
-                placeholder="What does this product do? Who is it for? What problem does it solve?">{{ form.description | default('') }}</textarea>
+                placeholder="What does this product do? Who is it for? What problem does it solve? What is the typical deal size and sales cycle?">{{ form.description | default('') }}</textarea>
     </div>
 
     <div class="form-group">
@@ -76,12 +98,12 @@
     <div class="form-group">
       <label for="exclusion_notes">Practices to Exclude</label>
       <textarea id="exclusion_notes" name="exclusion_notes" rows="2"
-                placeholder="Types of practices that are NOT a good fit (e.g. hospital-employed, academic centers).">{{ form.exclusion_notes | default('') }}</textarea>
+                placeholder="Types of practices that are NOT a good fit (e.g. hospital-employed, academic centers, insurance-only).">{{ form.exclusion_notes | default('') }}</textarea>
       <p class="form-hint">Optional. Claude will generate negative-weight signals for these.</p>
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn btn-submit">Generate Signals with AI →</button>
+      <button type="submit" class="btn btn-submit">Generate Hypothesis &amp; Signals →</button>
       <a href="/icp-profiles" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
@@ -90,7 +112,7 @@
       <div class="run-progress-bar run-progress-indeterminate"></div>
     </div>
     <p style="margin-top:0.5em; font-size:9pt; color:#666;">
-      Generating signals with Claude AI — this may take 15&ndash;20 seconds&hellip;
+      Generating commercial fit hypothesis and signals with Claude AI &mdash; this may take 20&ndash;30 seconds&hellip;
     </p>
   </div>
 </div>

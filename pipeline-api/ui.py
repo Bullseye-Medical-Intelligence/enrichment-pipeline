@@ -267,7 +267,9 @@ async def icp_build_page(request: Request, username: str = Depends(auth.require_
 async def icp_generate(
     request: Request,
     username: str = Depends(auth.require_session),
+    company_name: str = Form(""),
     product_name: str = Form(...),
+    product_type: str = Form(""),
     description: str = Form(...),
     specialty: str = Form(...),
     focus_areas: str = Form(""),
@@ -276,9 +278,10 @@ async def icp_generate(
     icp_name: str = Form(...),
     version: str = Form("1.0"),
 ):
-    """Call Claude to generate ICP signals from the product description."""
+    """Call Claude to generate ICP hypothesis and signals from the product description."""
     form = {
-        "product_name": product_name, "description": description,
+        "company_name": company_name, "product_name": product_name,
+        "product_type": product_type, "description": description,
         "specialty": specialty, "focus_areas": focus_areas,
         "exclusion_notes": exclusion_notes, "icp_id": icp_id,
         "icp_name": icp_name, "version": version,
@@ -288,13 +291,14 @@ async def icp_generate(
             "ANTHROPIC_API_KEY is not configured. Add it to .env and restart the server."
         ), form=form)
     try:
-        signals = _generate_signals(
-            product_name=product_name, description=description,
+        hypothesis, signals, icp_description = _generate_icp_draft(
+            company_name=company_name, product_name=product_name,
+            product_type=product_type, description=description,
             specialty=specialty, focus_areas=focus_areas,
             exclusion_notes=exclusion_notes,
         )
     except Exception as exc:
-        logger.warning("ICP signal generation failed: %s", exc)
+        logger.warning("ICP draft generation failed: %s", exc)
         return _render("icp_build.html", username=username, error=(
             "Signal generation failed. Try again, or adjust your description."
         ), form=form)
@@ -303,10 +307,14 @@ async def icp_generate(
         username=username,
         error=None,
         signals=signals,
+        hypothesis=hypothesis,
+        icp_description=icp_description,
         icp_id=icp_id,
         icp_name=icp_name,
         version=version,
+        company_name=company_name,
         product_name=product_name,
+        product_type=product_type,
         specialty=specialty,
     )
 
@@ -319,23 +327,43 @@ async def icp_save(
     icp_name: str = Form(...),
     version: str = Form("1.0"),
     signal_count: int = Form(...),
+    company_name: str = Form(""),
     product_name: str = Form(""),
+    product_type: str = Form(""),
     specialty: str = Form(""),
+    icp_description: str = Form(""),
 ):
     """Validate and persist the edited ICP profile to disk."""
     form_data = await request.form()
     signals = []
     for i in range(signal_count):
-        signals.append({
+        sig: dict = {
             "signal_id": (form_data.get(f"signal_id_{i}") or "").strip(),
             "signal_label": (form_data.get(f"signal_label_{i}") or "").strip(),
             "prompt_instruction": (form_data.get(f"prompt_instruction_{i}") or "").strip(),
             "positive_weight": int(form_data.get(f"positive_weight_{i}") or 0),
-        })
+        }
+        if form_data.get(f"required_for_bullseye_{i}") == "on":
+            sig["required_for_bullseye"] = True
+        raw_no_weight = (form_data.get(f"no_weight_{i}") or "").strip()
+        if raw_no_weight:
+            try:
+                sig["no_weight"] = int(raw_no_weight)
+            except ValueError:
+                pass
+        signals.append(sig)
+    hypothesis = {
+        "ideal_practice_profile": (form_data.get("hyp_ideal_practice_profile") or "").strip(),
+        "commercial_fit_reasoning": (form_data.get("hyp_commercial_fit_reasoning") or "").strip(),
+        "fast_close_indicators": (form_data.get("hyp_fast_close_indicators") or "").strip(),
+        "common_objections": (form_data.get("hyp_common_objections") or "").strip(),
+    }
     profile = {
         "icp_id": icp_id.strip(),
         "name": icp_name.strip(),
         "version": version.strip() or "1.0",
+        "description": icp_description.strip(),
+        "hypothesis": hypothesis,
         "signals": signals,
     }
     try:
@@ -346,10 +374,14 @@ async def icp_save(
             username=username,
             error=str(exc),
             signals=signals,
+            hypothesis=hypothesis,
+            icp_description=icp_description,
             icp_id=icp_id,
             icp_name=icp_name,
             version=version,
+            company_name=company_name,
             product_name=product_name,
+            product_type=product_type,
             specialty=specialty,
         )
     return RedirectResponse("/icp-profiles", status_code=303)
@@ -881,59 +913,89 @@ def _compute_readiness(merged_records: list) -> dict:
     return {"state": "ready", "pending_count": 0, "approved_count": approved}
 
 
-_ICP_SIGNAL_PROMPT = """You are helping build an Ideal Customer Profile (ICP) for a medical sales tool.
+_ICP_DRAFT_PROMPT = """You are a senior medical device sales strategist building an Ideal Customer Profile (ICP) \
+for a B2B medical sales tool.
 
+Company: {company_name}
 Product: {product_name}
+Product Type: {product_type}
 Description: {description}
 Target Specialty: {specialty}
 Key Services / Focus Areas: {focus_areas}
 Known Exclusion Criteria: {exclusion_notes}
 
-Generate 6-10 ICP signals to identify the best-fit medical practices.
-Each signal MUST be a JSON object with exactly these keys:
-  signal_id           — unique string like "S-001"
-  signal_label        — concise 3-8 word label
-  prompt_instruction  — one clear question: does the practice demonstrate this on their website?
-  positive_weight     — integer; positive = fit evidence, negative = poor fit (range: -30 to 20)
+Return a single JSON object with these three keys:
 
-Return ONLY a valid JSON array. No prose, no markdown, no code fences."""
+"description"
+  A 2-3 sentence plain-English summary of who the ideal customer is and why they are a strong \
+commercial fit for this product.
+
+"hypothesis"
+  An object with exactly four string keys:
+  - "ideal_practice_profile": Describe the ideal practice in 2-3 sentences — ownership model, \
+patient mix, size, and key services offered.
+  - "commercial_fit_reasoning": Why practices matching this profile close fast — payment model, \
+budget authority, procedure fit, and urgency drivers (1-2 sentences).
+  - "fast_close_indicators": Concrete, website-observable signals that predict a quick deal — \
+be specific to this product and specialty (2-3 sentences).
+  - "common_objections": The 2-3 most likely objections from this specialty and a one-sentence \
+response to each.
+
+"signals"
+  An array of 6-10 signal objects. Each must have exactly these keys:
+  - signal_id: unique string like "S-001"
+  - signal_label: concise 3-8 word label
+  - prompt_instruction: one clear question answerable from the practice website
+  - positive_weight: integer; positive = fit evidence, negative = poor fit or disqualifier \
+(range: -30 to 30)
+
+Return ONLY a valid JSON object. No prose, no markdown, no code fences."""
 
 
-def _generate_signals(
-    product_name: str, description: str, specialty: str,
-    focus_areas: str, exclusion_notes: str,
-) -> list[dict]:
-    """Call Claude to generate ICP signal definitions.
+def _generate_icp_draft(
+    company_name: str, product_name: str, product_type: str,
+    description: str, specialty: str, focus_areas: str, exclusion_notes: str,
+) -> tuple[dict, list[dict], str]:
+    """Call Claude to generate an ICP hypothesis, signals, and description.
 
-    Raises ValueError on API error or unparseable JSON response.
+    Returns (hypothesis dict, signals list, description string).
+    Raises ValueError on API error or unparseable response.
     """
-    prompt = _ICP_SIGNAL_PROMPT.format(
-        product_name=product_name, description=description,
-        specialty=specialty, focus_areas=focus_areas or "Not specified",
+    prompt = _ICP_DRAFT_PROMPT.format(
+        company_name=company_name or "Not specified",
+        product_name=product_name,
+        product_type=product_type or "Not specified",
+        description=description,
+        specialty=specialty,
+        focus_areas=focus_areas or "Not specified",
         exclusion_notes=exclusion_notes or "None specified",
     )
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     try:
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2048,
-            timeout=60,
+            max_tokens=3000,
+            timeout=90,
             messages=[{"role": "user", "content": prompt}],
         )
     except Exception as exc:
         raise ValueError(f"Claude API error: {exc}") from exc
     raw = message.content[0].text.strip()
-    # Strip markdown fences if the model included them despite instructions
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
     try:
-        signals = json.loads(raw)
+        draft = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Model returned non-JSON: {exc}") from exc
+    if not isinstance(draft, dict):
+        raise ValueError("Model returned an array instead of a JSON object.")
+    signals = draft.get("signals", [])
     if not isinstance(signals, list):
-        raise ValueError("Model returned an object instead of a JSON array.")
-    return signals
+        raise ValueError("Model response missing 'signals' array.")
+    hypothesis = draft.get("hypothesis") or {}
+    icp_description = str(draft.get("description") or "").strip()
+    return hypothesis, signals, icp_description
 
 
 def _calculate_stats(records: list[dict]) -> dict:

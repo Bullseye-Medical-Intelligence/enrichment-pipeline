@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Review ICP Signals — BEMI Pipeline{% endblock %}
+{% block title %}Review ICP Draft — BEMI Pipeline{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h2>Review Generated Signals</h2>
+    <h2>Review ICP Draft</h2>
     <p class="page-subtitle">
       {{ icp_name }} · {{ specialty }}
-      <span class="text-muted"> — Edit any signal before saving.</span>
+      <span class="text-muted"> — Edit the hypothesis and signals, then save.</span>
     </p>
   </div>
   <div class="header-actions">
@@ -19,28 +19,89 @@
 <div class="alert alert-error">{{ error }}</div>
 {% endif %}
 
-<div class="alert alert-info">
-  <strong>{{ signals | length }} signals generated.</strong>
-  Review and edit each signal below, then click Save Profile.
-  Signal weights above zero indicate positive fit; negative weights indicate poor fit.
-</div>
-
 <form method="post" action="/icp-profiles/save">
+  {# --- pass-through hidden fields --- #}
   <input type="hidden" name="icp_id"       value="{{ icp_id }}">
   <input type="hidden" name="icp_name"     value="{{ icp_name }}">
   <input type="hidden" name="version"      value="{{ version }}">
   <input type="hidden" name="signal_count" value="{{ signals | length }}">
+  <input type="hidden" name="company_name" value="{{ company_name | default('') }}">
   <input type="hidden" name="product_name" value="{{ product_name }}">
+  <input type="hidden" name="product_type" value="{{ product_type | default('') }}">
   <input type="hidden" name="specialty"    value="{{ specialty }}">
 
+  {# ------------------------------------------------------------------ #}
+  {# SECTION 1 — ICP description                                        #}
+  {# ------------------------------------------------------------------ #}
+  <div class="card" style="margin-bottom: 16px;">
+    <p class="eyebrow">ICP Summary</p>
+    <div class="form-group" style="margin-bottom:0;">
+      <textarea name="icp_description" rows="2" style="width:100%; font-size:13px;"
+                placeholder="One-paragraph description of this ICP (auto-generated, editable).">{{ icp_description | default('') }}</textarea>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------------ #}
+  {# SECTION 2 — Commercial fit hypothesis                              #}
+  {# ------------------------------------------------------------------ #}
+  {% set hyp = hypothesis | default({}) %}
+  <div class="card" style="margin-bottom: 16px;">
+    <p class="eyebrow">Commercial Fit Hypothesis</p>
+    <p class="form-hint" style="margin-bottom:14px;">
+      Claude's analysis of why this practice type is a strong commercial fit.
+      Review and refine before saving — this becomes the rep briefing context.
+    </p>
+
+    <div class="hyp-grid">
+      <div class="form-group">
+        <label class="hyp-label">Ideal Practice Profile</label>
+        <textarea name="hyp_ideal_practice_profile" rows="3"
+                  placeholder="What does the ideal practice look like? Ownership model, patient mix, size, services."
+                  >{{ hyp.ideal_practice_profile | default('') }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="hyp-label">Commercial Fit Reasoning</label>
+        <textarea name="hyp_commercial_fit_reasoning" rows="3"
+                  placeholder="Why do these practices close fast? Payment model, budget authority, urgency drivers."
+                  >{{ hyp.commercial_fit_reasoning | default('') }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="hyp-label">Fast-Close Indicators</label>
+        <textarea name="hyp_fast_close_indicators" rows="3"
+                  placeholder="Concrete, website-observable signals that predict a quick deal."
+                  >{{ hyp.fast_close_indicators | default('') }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="hyp-label">Common Objections</label>
+        <textarea name="hyp_common_objections" rows="3"
+                  placeholder="Likely pushback from this specialty and how to address it."
+                  >{{ hyp.common_objections | default('') }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------------ #}
+  {# SECTION 3 — Signal checklist                                       #}
+  {# ------------------------------------------------------------------ #}
+  <div class="alert alert-info">
+    <strong>{{ signals | length }} signals generated.</strong>
+    Review and edit each signal. Check <strong>Must-Have</strong> on signals a practice must confirm to be Bullseye-eligible.
+    Signal weights above zero indicate positive fit; negative weights indicate poor fit.
+  </div>
+
   <div class="card">
-    <table class="data-table">
+    <table class="data-table icp-signal-table">
       <thead>
         <tr>
-          <th style="width:90px">Signal ID</th>
-          <th style="width:200px">Label</th>
+          <th style="width:80px">ID</th>
+          <th style="width:190px">Label</th>
           <th>Prompt Instruction</th>
-          <th style="width:80px">Weight</th>
+          <th style="width:68px; text-align:center;">Weight</th>
+          <th style="width:72px; text-align:center;">No Penalty</th>
+          <th style="width:72px; text-align:center;">Must-Have</th>
         </tr>
       </thead>
       <tbody>
@@ -49,8 +110,8 @@
         <tr>
           <td>
             <input type="text" name="signal_id_{{ n }}"
-                   value="{{ sig.signal_id | default('S-' ~ '%03d' | format(n + 1)) }}"
-                   style="width:80px" required>
+                   value="{{ sig.signal_id | default('S-%03d' | format(n + 1)) }}"
+                   style="width:68px" required>
           </td>
           <td>
             <input type="text" name="signal_label_{{ n }}"
@@ -61,15 +122,31 @@
             <textarea name="prompt_instruction_{{ n }}" rows="2"
                       style="width:100%" required>{{ sig.prompt_instruction | default('') }}</textarea>
           </td>
-          <td>
+          <td style="text-align:center;">
             <input type="number" name="positive_weight_{{ n }}"
                    value="{{ sig.positive_weight | default(10) }}"
-                   min="-99" max="99" style="width:70px" required>
+                   min="-99" max="99" style="width:58px" required>
+          </td>
+          <td style="text-align:center;">
+            <input type="number" name="no_weight_{{ n }}"
+                   value="{{ sig.no_weight | default('') }}"
+                   min="-99" max="0" style="width:58px"
+                   placeholder="0"
+                   title="Point penalty when confirmed absent (0 or negative). Leave blank for no penalty.">
+          </td>
+          <td style="text-align:center;">
+            <input type="checkbox" name="required_for_bullseye_{{ n }}"
+                   {% if sig.required_for_bullseye %}checked{% endif %}
+                   title="Required for Bullseye: confirmed absent caps tier at Watchlist; not found caps at Needs Verification.">
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    <p class="form-hint" style="margin-top:8px;">
+      <strong>No Penalty:</strong> point deduction when a positive-weight signal is confirmed absent (e.g. -15).
+      <strong>Must-Have:</strong> confirmed absent locks tier to Watchlist; unconfirmed locks to Needs Verification.
+    </p>
   </div>
 
   <div class="form-actions">
