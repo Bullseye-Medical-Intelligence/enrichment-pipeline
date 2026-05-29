@@ -334,6 +334,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
     "opening_line": "I saw your team lists infertility workups, so I wanted to reach out about how peers are streamlining that path.",
     "likely_objection": "They may feel their current vendor relationship already covers this.",
     "discovery_question": "How are you handling device sourcing for your in-office procedures today?",
+    "hours_of_operation": "Mon-Fri 8am-5pm",
     "top_evidence": [
       {"point": "Infertility workup listed", "evidence": "Services page lists infertility evaluation.", "source_url": "https://example.com/services"}
     ],
@@ -372,11 +373,13 @@ derived from the signals (no LLM): `top_evidence` (highest-weight confirmed
 signals with their evidence + source_url), `missing_to_verify` (unconfirmed
 `verification_required` signals not covered by inference), `disqualifier_risk`
 (confirmed friction or `cap_tier` signals), and `why_contact` (one-liner from the
-top confirmed signals + fit). Generated prep lines come from the LLM:
-`opening_line`, `likely_objection`, `discovery_question`. All fields default to
-empty (string or list) when extraction fails. This is enrichment output —
-downstream serves it unchanged; "Contact Priority" in the UI is a display relabel
-of `target_tier`, not a stored field.
+top confirmed signals + fit). Generated/extracted fields come from the LLM
+(reading the website text): `opening_line`, `likely_objection`,
+`discovery_question`, and `hours_of_operation` (office hours if stated on the
+site, else empty string). All fields default to empty (string or list) when
+extraction fails. This is enrichment output — downstream serves it unchanged;
+"Contact Priority" in the UI is a display relabel of `target_tier`, not a stored
+field.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 

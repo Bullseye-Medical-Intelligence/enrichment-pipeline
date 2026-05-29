@@ -129,6 +129,45 @@ function _currentQC(recordId) {
   return 'pending';
 }
 
+/* ── Phone detail modal ─────────────────────────────────────── */
+function showPhoneModal(el, event) {
+  event.stopPropagation(); /* prevent row expand */
+  var phone = el.dataset.phone || '';
+  var hours = el.dataset.hours || '';
+  if (!phone) return;
+
+  var existing = document.getElementById('phone-modal-overlay');
+  if (existing) existing.remove();
+
+  var digits = phone.replace(/\D/g, '');
+  var telHref = (digits.length === 11 && digits[0] === '1') ? digits : digits;
+
+  var hoursHtml = hours
+    ? '<p style="margin:10px 0 0"><span class="eyebrow">Hours</span><br><span style="font-size:14px">' + _escHtml(hours) + '</span></p>'
+    : '<p style="color:#888;font-size:13px;margin:10px 0 0">Hours not listed on website.</p>';
+
+  var overlay = document.createElement('div');
+  overlay.id = 'phone-modal-overlay';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML =
+    '<div class="modal" style="max-width:320px" onclick="event.stopPropagation()">' +
+    '<p style="margin:0 0 2px"><span class="eyebrow">Phone</span></p>' +
+    '<h3 style="margin:0 0 8px">' + _escHtml(phone) + '</h3>' +
+    '<a href="tel:+' + _escHtml(telHref) + '" class="btn btn-secondary btn-sm">Call</a>' +
+    hoursHtml +
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'phone-modal-overlay\').remove()">Close</button></div>' +
+    '</div>';
+
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function _escHtml(s) {
+  var d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(s)));
+  return d.innerHTML;
+}
+
 /* ── Upload pre-flight preview modal ────────────────────────── */
 document.addEventListener('DOMContentLoaded', _initUploadPreview);
 

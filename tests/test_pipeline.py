@@ -717,6 +717,14 @@ class TestValidateAndFinalizeInvariant:
         assert brief["top_evidence"] == []          # wrong type coerced to list
         assert brief["why_contact"] == ""           # missing string filled
         assert brief["missing_to_verify"] == []
+        assert brief["hours_of_operation"] == ""    # missing string filled
+
+    def test_call_brief_hours_of_operation_preserved(self):
+        """hours_of_operation is preserved when already a string."""
+        record = self._base_record()
+        record["call_brief"] = {"hours_of_operation": "Mon-Fri 8am-5pm"}
+        result = validate_and_finalize(record)
+        assert result["call_brief"]["hours_of_operation"] == "Mon-Fri 8am-5pm"
 
 
 # ---------------------------------------------------------------------------
@@ -790,3 +798,13 @@ class TestCallBrief:
         brief = _build_call_brief(signals, {"fit_signal_score": 88}, {"specialty": "OBGYN"}, {})
         assert "Service line listed" in brief["why_contact"]
         assert "88" in brief["why_contact"]
+
+    def test_hours_of_operation_passed_through_from_generated(self):
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {
+            "hours_of_operation": "Mon-Fri 8am-5pm",
+        })
+        assert brief["hours_of_operation"] == "Mon-Fri 8am-5pm"
+
+    def test_hours_of_operation_defaults_to_empty_string(self):
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {})
+        assert brief["hours_of_operation"] == ""

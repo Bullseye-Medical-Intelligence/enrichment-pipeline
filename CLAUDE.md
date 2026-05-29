@@ -103,7 +103,8 @@ matching more signals does not mean a higher score.
 Every record carries a `call_brief` object. Grounded fields are **derived from the
 signals** (no extra LLM call): `top_evidence`, `missing_to_verify` (mirrors the
 verification gate), `disqualifier_risk`, and `why_contact`. Three prep lines come
-from the LLM: `opening_line`, `likely_objection`, `discovery_question`. The empty
+from the LLM: `opening_line`, `likely_objection`, `discovery_question`, and
+`hours_of_operation` (office hours stated on the website, or empty string). The empty
 shape lives in `constants.py::empty_call_brief`; `scorer.py` defaults it so the
 field is always present. **Contact Priority** in the UI is a display relabel of
 `target_tier` (`record_adapter.contact_priority`), never a stored field.

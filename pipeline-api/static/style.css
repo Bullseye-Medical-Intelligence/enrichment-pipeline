@@ -251,11 +251,12 @@ ul, ol { padding-left: 1.4em; }
 .view-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
 
 /* ── Contact Queue table ──────────────────────────────────────────── */
-.queue-table td { vertical-align: top; font-size: 13px; }
-.queue-why    { max-width: 230px; color: var(--ink); }
-.queue-opener { max-width: 260px; color: var(--slate); font-style: italic; }
+.queue-table td { vertical-align: top; font-size: 13px; padding: 8px 10px; }
 .risk-flag    { color: var(--red); font-size: 12px; }
 .risk-flag.risk-verify { color: #92400e; }
+.phone-cell   { cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.phone-cell:hover { opacity: 0.8; }
+.eyebrow      { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
 .brief-label  {
   display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--accent); margin-right: 6px;

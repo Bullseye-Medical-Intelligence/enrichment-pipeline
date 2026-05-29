@@ -41,6 +41,7 @@ After evaluating signals, generate:
    - opening_line: one sentence a rep could open a call with, grounded in a specific service or fact observed on the site.
    - likely_objection: one sentence naming the most likely objection this practice would raise.
    - discovery_question: one open question that would advance the conversation.
+   - hours_of_operation: brief string of office hours if stated on the site (e.g. "Mon-Fri 8am-5pm"), or empty string if not found.
 3. exclusion_check: Identify if any of these exclusion triggers apply: hospital_owned, health_system_affiliated, rei_on_staff, wrong_specialty, outside_geography, practice_closed, academic_medical_center, no_web_presence, competitor_conflict, no_relevant_service_line
 
 Respond ONLY with valid JSON in exactly this format — no commentary before or after:
@@ -64,7 +65,8 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
   "call_brief": {
     "opening_line": "I saw your team lists in-office IUD insertion, so I wanted to reach out about how peers are streamlining that workflow.",
     "likely_objection": "They may already feel set with their current supplier and see no reason to switch.",
-    "discovery_question": "How are you currently handling device sourcing and inventory for your in-office procedures?"
+    "discovery_question": "How are you currently handling device sourcing and inventory for your in-office procedures?",
+    "hours_of_operation": "Mon-Fri 8am-5pm"
   },
   "exclusion_triggers": [],
   "exclusion_rationale": ""
@@ -74,7 +76,7 @@ CRITICAL RULES:
 - signal_state must be EXACTLY "yes", "no", or "not_found" — never null, true, false, 1, 0, or any other value
 - If context_text is empty or minimal, use "not_found" for all signals and set confidence to "low"
 - Do not invent or assume information not present in the website text
-- call_brief fields must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption
+- call_brief opening_line, likely_objection, discovery_question must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption; hours_of_operation is a short factual string or empty string
 - exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "rei_on_staff", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]
 - If no exclusions apply, exclusion_triggers must be an empty list []
 - Return valid JSON only — no markdown, no code blocks, no explanation

@@ -207,6 +207,8 @@
       {% set rid = record.record_id | default("") %}
       {% set review = record.review %}
       {% set displayed = record.displayed_tier | default("") %}
+      {% set _city = record.address_city or "" %}
+      {% set _state = record.address_state or "" %}
       <tr class="record-row"
           data-tier="{{ displayed | lower | replace(' ', '-') }}"
           data-qc="{{ review.qc_status }}"
@@ -218,7 +220,7 @@
           {% if record.website_url %}<br><a class="text-muted small" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
         <td>{{ record.specialty | default("—") }}</td>
-        <td>{{ record.address_city | default("") }}{% if record.address_state %}, {{ record.address_state }}{% endif %}</td>
+        <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
           <span class="badge badge-tier-{{ displayed | lower | replace(' ', '-') }}">
             {{ displayed or "—" }}
@@ -240,7 +242,7 @@
           <div class="detail-panel">
             {% if record.phone or record.website_url %}
             <div class="detail-contact-header">
-              {% if record.phone %}<span class="detail-phone">📞 {{ record.phone }}</span>{% endif %}
+              {% if record.phone %}{% set _rbrief = record.call_brief | default({}) %}<span class="phone-cell detail-phone" data-phone="{{ record.phone | e }}" data-hours="{{ _rbrief.hours_of_operation | default('') | e }}" onclick="showPhoneModal(this, event)">📞 {{ record.phone }}</span>{% endif %}
               {% if record.website_url %}<a class="detail-website" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">🌐 {{ record.website_url }}</a>{% endif %}
             </div>
             {% endif %}

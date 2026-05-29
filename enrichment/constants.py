@@ -34,7 +34,7 @@ HIGH_CONFIDENCE_THRESHOLD = 65
 
 # Rep call brief: the canonical key set, defined once so the signal extractor
 # (which builds it) and the scorer (which defaults it) never drift.
-CALL_BRIEF_STRING_FIELDS = ("why_contact", "opening_line", "likely_objection", "discovery_question")
+CALL_BRIEF_STRING_FIELDS = ("why_contact", "opening_line", "likely_objection", "discovery_question", "hours_of_operation")
 CALL_BRIEF_LIST_FIELDS = ("top_evidence", "missing_to_verify", "disqualifier_risk")
 
 

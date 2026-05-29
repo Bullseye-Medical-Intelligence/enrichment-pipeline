@@ -58,8 +58,6 @@
         <th>Contact Priority</th>
         <th>Practice</th>
         <th>Location</th>
-        <th>Why Contact</th>
-        <th>Opener</th>
         <th>Evidence</th>
         <th>Confidence</th>
         <th>Risk</th>
@@ -73,13 +71,13 @@
       {% set brief = record.call_brief | default({}) %}
       {% set priority = record.contact_priority | default("Develop") %}
       {% set pslug = priority | lower | replace(' & ', ' ') | replace(' ', '-') %}
+      {% set _city = record.address_city or "" %}
+      {% set _state = record.address_state or "" %}
       <tr class="record-row" onclick="toggleDetail('{{ rid }}')" style="cursor:pointer">
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
         <td><span class="badge badge-priority-{{ pslug }}">{{ priority }}</span></td>
         <td><strong>{{ record.practice_name | default("—") }}</strong></td>
-        <td>{{ record.address_city | default("") }}{% if record.address_state %}, {{ record.address_state }}{% endif %}</td>
-        <td class="queue-why">{{ brief.why_contact | default("—") }}</td>
-        <td class="queue-opener">{{ brief.opening_line or "—" }}</td>
+        <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>{% if brief.top_evidence %}{{ brief.top_evidence[0].point }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>{{ record.confidence_score | default("—") }}</td>
         <td>
@@ -87,17 +85,17 @@
           {% elif brief.missing_to_verify %}<span class="risk-flag risk-verify">Verify: {{ brief.missing_to_verify[0] }}</span>
           {% else %}<span class="text-muted">—</span>{% endif %}
         </td>
-        <td>{% if record.phone %}{{ record.phone }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% if record.phone %}<span class="phone-cell" data-phone="{{ record.phone | e }}" data-hours="{{ brief.hours_of_operation | default('') | e }}" onclick="showPhoneModal(this, event)">{{ record.phone }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>{% if record.website_url %}<a href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">Site</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
       </tr>
 
       {# ── Rep prep detail (hidden by default) ─────────────────────── #}
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
-        <td colspan="11">
+        <td colspan="9">
           <div class="detail-panel">
             {% if record.phone or record.website_url %}
             <div class="detail-contact-header">
-              {% if record.phone %}<span class="detail-phone">📞 {{ record.phone }}</span>{% endif %}
+              {% if record.phone %}<span class="phone-cell detail-phone" data-phone="{{ record.phone | e }}" data-hours="{{ brief.hours_of_operation | default('') | e }}" onclick="showPhoneModal(this, event)">📞 {{ record.phone }}</span>{% endif %}
               {% if record.website_url %}<a class="detail-website" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">🌐 {{ record.website_url }}</a>{% endif %}
             </div>
             {% endif %}
@@ -106,9 +104,11 @@
               {# Call brief #}
               <div class="detail-section">
                 <h4>Rep Call Brief</h4>
+                {% if brief.why_contact %}<p><span class="brief-label">Why contact</span> {{ brief.why_contact }}</p>{% endif %}
                 {% if brief.opening_line %}<p><span class="brief-label">Opener</span> {{ brief.opening_line }}</p>{% endif %}
                 {% if brief.likely_objection %}<p><span class="brief-label">Likely objection</span> {{ brief.likely_objection }}</p>{% endif %}
                 {% if brief.discovery_question %}<p><span class="brief-label">Discovery question</span> {{ brief.discovery_question }}</p>{% endif %}
+                {% if brief.hours_of_operation %}<p><span class="brief-label">Hours</span> {{ brief.hours_of_operation }}</p>{% endif %}
 
                 {% if brief.top_evidence %}
                 <h4>Top Evidence</h4>
