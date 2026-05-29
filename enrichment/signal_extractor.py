@@ -29,8 +29,10 @@ from enrichment.constants import (
     HIGH_FIT_THRESHOLD,
     INFERENCE_CREDIT,
     MAX_SCORE,
+    MIN_CONTEXT_CHARS,
     MIN_SCORE,
     NO_SIGNAL_CONFIDENCE,
+    SIGNAL_CONFIDENCE_CREDIT,
     empty_call_brief,
 )
 
@@ -233,6 +235,17 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "analyst_note": "",
         }
 
+    # Enforce sourcing requirement: a "yes" must have both evidence text and a
+    # source URL traceable to the crawled pages. Without these anchors the claim
+    # is unverifiable — downgrade to not_found so it does not inflate the score.
+    for sig in validated_map.values():
+        if sig["signal_state"] == "yes":
+            has_evidence = bool(sig.get("evidence_text", "").strip())
+            has_source = bool(sig.get("source_url", "").strip())
+            if not has_evidence or not has_source:
+                sig["signal_state"] = "not_found"
+                sig["confidence"] = "low"
+
     # Build final list in icp_signals order, inserting defaults for any omitted signal
     normalized = []
     for icp_sig in icp_signals:
@@ -257,6 +270,32 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             })
 
     return normalized
+
+
+def _build_empty_signals(icp_signals: list[dict]) -> list[dict]:
+    """Return one not_found/low-confidence signal per ICP signal.
+
+    Used when there is no meaningful website text — avoids sending an empty
+    context to the LLM which would produce hallucinated signal states.
+    """
+    return [
+        {
+            "signal_id": icp_sig["signal_id"],
+            "signal_label": icp_sig["signal_label"],
+            "signal_state": "not_found",
+            "evidence_text": "",
+            "source_url": "",
+            "source_type": "practice_website",
+            "confidence": "low",
+            "positive_weight": icp_sig.get("positive_weight", 0),
+            "verification_required": bool(icp_sig.get("verification_required", False)),
+            "required_for_bullseye": bool(icp_sig.get("required_for_bullseye", False)),
+            "cap_tier": icp_sig.get("cap_tier", ""),
+            "state_inferred": False,
+            "analyst_note": "",
+        }
+        for icp_sig in icp_signals
+    ]
 
 
 def _apply_reinforcement(signals: list[dict], icp_signals: list[dict]) -> None:
@@ -326,7 +365,10 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
         if weight >= 0:
             max_positive += weight
             if state == "yes":
-                achieved += weight
+                credit = SIGNAL_CONFIDENCE_CREDIT.get(
+                    matched.get("confidence", "low"), SIGNAL_CONFIDENCE_CREDIT["low"]
+                )
+                achieved += weight * credit
                 confidence_values.append(
                     CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
                 )
@@ -339,9 +381,13 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
             elif state == "no":
                 achieved += no_weight  # confirmed absent — penalty (usually <= 0), default 0
         else:
-            # Friction signal: only a confirmed "yes" applies the negative weight.
+            # Friction signal: only a confirmed "yes" applies the negative weight,
+            # scaled by confidence so a low-confidence friction claim has less impact.
             if state == "yes":
-                achieved += weight  # weight is negative -> subtracts
+                credit = SIGNAL_CONFIDENCE_CREDIT.get(
+                    matched.get("confidence", "low"), SIGNAL_CONFIDENCE_CREDIT["low"]
+                )
+                achieved += weight * credit  # weight is negative -> subtracts
                 confidence_values.append(
                     CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
                 )
@@ -484,11 +530,45 @@ def extract_signals(record: dict, icp_signals: list[dict],
     Returns:
         Enriched record dict.
     """
-    client = _get_client()
     model = _get_model()
     raw_response = None
 
     try:
+        # Short-circuit: skip the LLM call when there is no meaningful website
+        # text. Sending an empty context to Claude produces hallucinated signals;
+        # returning all-not_found is more accurate and cheaper.
+        if len(context_text or "") < MIN_CONTEXT_CHARS:
+            signals = _build_empty_signals(icp_signals)
+            _apply_reinforcement(signals, icp_signals)
+            scores = _calculate_scores(signals, icp_signals)
+            record.update({
+                "signals": signals,
+                "bullseye_score": scores["bullseye_score"],
+                "fit_signal_score": scores["fit_signal_score"],
+                "confidence_score": scores["confidence_score"],
+                "fit_confidence_status": _determine_fit_confidence_status(
+                    scores["bullseye_score"], scores["confidence_score"]
+                ),
+                "sales_angle": [],
+                "call_brief": empty_call_brief(),
+                "source_confidence": "limited",
+                "date_enriched": date.today().isoformat(),
+                "enrichment_run_id": run_id,
+                "llm_model_used": "",
+                "llm_prompt_version": PROMPT_VERSION,
+                "enrichment_status": "partial",
+                "qc_status": "pending",
+                "analyst_override_classification": None,
+                "override_reason": None,
+                "internal_notes": "",
+                "client_facing_rationale": None,
+                "_llm_exclusion_triggers": [],
+                "_llm_exclusion_rationale": "",
+            })
+            print("    [SKIP] No website text — all signals set to not_found (no LLM call)")
+            return record
+
+        client = _get_client()
         prompt = _build_prompt(record, context_text, icp_signals)
         print(f"    Calling Claude ({model}) for signal extraction...")
 

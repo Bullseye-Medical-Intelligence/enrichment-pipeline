@@ -66,7 +66,7 @@ Every score bound, weight, threshold, and blend factor lives in
 1. **Ingest** — load CSV, normalize to canonical schema, dedup, drop rows missing `practice_name`.
 2. **URL validate** — reachability check (`extraction/url_validator.py`), `io_concurrency` workers.
 3. **Web extract** — crawl homepage + relevant subpages (`extraction/web_extractor.py`), `io_concurrency` workers.
-4. **Signal extract (Claude)** — per-record LLM signal extraction + scoring (`enrichment/signal_extractor.py`), `llm_concurrency` workers, checkpointed.
+4. **Signal extract (Claude)** — per-record LLM signal extraction + scoring (`enrichment/signal_extractor.py`), `llm_concurrency` workers, checkpointed. Records with fewer than `MIN_CONTEXT_CHARS` of website text skip the LLM call; all signals are set to `not_found` and `enrichment_status = "partial"` to prevent hallucinations from thin context.
 5. **Verification (GPT)** — Bullseye-tier records only (`enrichment/verifier.py`).
 6. **Exclusion check** — hard + configurable rules, tier assignment (`enrichment/exclusion_checker.py`).
 7. **Scoring validation** — clamp, validate, enforce invariants (`enrichment/scorer.py`).
@@ -85,13 +85,17 @@ matching more signals does not mean a higher score.
 - **`fit_signal_score`** = the share of the *achievable* positive weight a
   practice actually captures, scaled 0–100.
   - `max_positive` = sum of every positive (desirable) `positive_weight` — the ideal.
-  - A confirmed `"yes"` desirable signal adds its full weight.
+  - A confirmed `"yes"` desirable signal adds `weight × SIGNAL_CONFIDENCE_CREDIT[confidence]`
+    to `achieved`. Credits: `high` = 1.0, `medium` = 0.75, `low` = 0.5. A low-confidence
+    "yes" (weak evidence) contributes less than a verbatim-quoted "yes", so an LLM that
+    guesses at low confidence cannot manufacture a Bullseye score.
   - An **inferred** signal (`state_inferred`, see reinforcement) adds
     `INFERENCE_CREDIT` of its weight (partial credit for indirect evidence).
   - A `"not_found"` desirable signal applies its `not_found_weight` penalty (usually ≤ 0).
   - A confirmed-absent (`"no"`) desirable signal applies its `no_weight` penalty
     (usually ≤ 0, default 0) — a missing must-have costs points, not just lost credit.
-  - A confirmed **friction** signal (negative weight, `"yes"`) subtracts its weight.
+  - A confirmed **friction** signal (negative weight, `"yes"`) subtracts
+    `|weight| × SIGNAL_CONFIDENCE_CREDIT[confidence]`.
   - `fit = round(achieved / max_positive * 100)`, clamped 0–100. (Falls back to
     `BASE_FIT_SCORE` only when an ICP defines no positive weight.)
   - Consequence: heavy signals dominate; a long tail of minor signals can never
@@ -154,12 +158,15 @@ TIER_RANK = {"Excluded": 0, "Watchlist": 1, "Needs Verification": 2, "Bullseye":
 
 1. Start at `Bullseye` if `score >= bullseye_min`, else `Watchlist`.
 2. Any `"yes"` signal with a `cap_tier` pulls the ceiling down (`min`).
-3. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
+3. **Source confidence gate**: `source_confidence = "limited"` or `"failed"` caps at
+   `Watchlist` — a record with insufficient crawl data cannot be trusted as Bullseye
+   regardless of score.
+4. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
    caps the tier: confirmed `"no"` → `Watchlist`, `not_found` → `Needs Verification`.
    This is how "Bullseye = all must-haves confirmed present" is enforced.
-4. A `verification_required` signal that is `not_found` **and not** `state_inferred`
+5. A `verification_required` signal that is `not_found` **and not** `state_inferred`
    caps a would-be Bullseye at `Needs Verification`.
-5. Caps only ever pull down (`min`); nothing lifts a low-score Watchlist.
+6. Caps only ever pull down (`min`); nothing lifts a low-score Watchlist.
 
 `"Excluded"` is never assigned here — it comes only from an exclusion rule, and
 the invariant `target_tier == "Excluded" iff exclusion_status == "EXCLUDED"` is

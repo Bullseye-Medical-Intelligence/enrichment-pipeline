@@ -20,6 +20,19 @@ NO_SIGNAL_CONFIDENCE = 30           # confidence when no signal is confirmed
 # inference is indirect evidence.
 INFERENCE_CREDIT = 0.6
 
+# Fit credit multiplier for a confirmed "yes" signal, scaled by how strongly
+# the evidence is grounded in the actual website text.
+# "high" = verbatim or near-verbatim quote; "medium" = clearly implied passage;
+# "low" = weak / indirect — a low-confidence yes contributes less to fit so
+# an LLM that guesses at low confidence cannot manufacture a Bullseye score.
+SIGNAL_CONFIDENCE_CREDIT = {"high": 1.0, "medium": 0.75, "low": 0.5}
+
+# Minimum number of characters of extracted website text required before the
+# pipeline makes an LLM signal-extraction call. Records with fewer characters
+# of context receive all-not_found signals without any Claude call, preventing
+# hallucinations from thin or absent web content.
+MIN_CONTEXT_CHARS = 150
+
 # bullseye_score = FIT_WEIGHT * fit_signal_score + CONFIDENCE_WEIGHT * confidence_score
 FIT_WEIGHT = 0.6
 CONFIDENCE_WEIGHT = 0.4

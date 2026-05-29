@@ -26,6 +26,7 @@ from enrichment.signal_extractor import (
     _calculate_scores,
     _apply_reinforcement,
     _build_call_brief,
+    _build_empty_signals,
 )
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
@@ -857,3 +858,143 @@ class TestCallBrief:
     def test_hours_of_operation_defaults_to_empty_string(self):
         brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {})
         assert brief["hours_of_operation"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Hallucination reduction — evidence gate, confidence weighting,
+# empty-context gate, source confidence tier cap
+# ---------------------------------------------------------------------------
+
+class TestEvidenceGate:
+    """'yes' signals without evidence_text or source_url are downgraded to not_found."""
+
+    _ICP = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+             "positive_weight": 20}]
+
+    def _raw(self, state, evidence="found it", url="https://example.com/p"):
+        return [{"signal_id": "S-1", "signal_state": state,
+                 "evidence_text": evidence, "source_url": url, "confidence": "high"}]
+
+    def test_yes_with_evidence_and_url_passes(self):
+        out = _validate_and_clean_signals(self._raw("yes"), self._ICP)
+        assert out[0]["signal_state"] == "yes"
+
+    def test_yes_without_evidence_text_downgraded(self):
+        out = _validate_and_clean_signals(self._raw("yes", evidence=""), self._ICP)
+        assert out[0]["signal_state"] == "not_found"
+        assert out[0]["confidence"] == "low"
+
+    def test_yes_without_source_url_downgraded(self):
+        out = _validate_and_clean_signals(self._raw("yes", url=""), self._ICP)
+        assert out[0]["signal_state"] == "not_found"
+        assert out[0]["confidence"] == "low"
+
+    def test_yes_with_whitespace_only_evidence_downgraded(self):
+        out = _validate_and_clean_signals(self._raw("yes", evidence="   "), self._ICP)
+        assert out[0]["signal_state"] == "not_found"
+
+    def test_not_found_without_evidence_unchanged(self):
+        out = _validate_and_clean_signals(self._raw("not_found", evidence="", url=""), self._ICP)
+        assert out[0]["signal_state"] == "not_found"
+
+    def test_no_without_evidence_unchanged(self):
+        out = _validate_and_clean_signals(self._raw("no", evidence="", url=""), self._ICP)
+        assert out[0]["signal_state"] == "no"
+
+
+class TestConfidenceWeightedScoring:
+    """Fit credit scales with evidence confidence — low-confidence 'yes' scores less."""
+
+    _ICP = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+             "positive_weight": 20}]
+
+    def _sig(self, confidence):
+        return [{"signal_id": "S-1", "signal_state": "yes", "confidence": confidence}]
+
+    def test_high_confidence_yes_scores_full(self):
+        scores = _calculate_scores(self._sig("high"), self._ICP)
+        assert scores["fit_signal_score"] == 100
+
+    def test_medium_confidence_yes_scores_less_than_high(self):
+        high = _calculate_scores(self._sig("high"), self._ICP)["fit_signal_score"]
+        med  = _calculate_scores(self._sig("medium"), self._ICP)["fit_signal_score"]
+        assert med < high
+
+    def test_low_confidence_yes_scores_less_than_medium(self):
+        med = _calculate_scores(self._sig("medium"), self._ICP)["fit_signal_score"]
+        low = _calculate_scores(self._sig("low"), self._ICP)["fit_signal_score"]
+        assert low < med
+
+    def test_low_confidence_yes_earns_50_percent_credit(self):
+        # weight=20, credit=0.5 → achieved=10 of max=20 → fit=50
+        scores = _calculate_scores(self._sig("low"), self._ICP)
+        assert scores["fit_signal_score"] == 50
+
+    def test_medium_confidence_yes_earns_75_percent_credit(self):
+        # weight=20, credit=0.75 → achieved=15 of max=20 → fit=75
+        scores = _calculate_scores(self._sig("medium"), self._ICP)
+        assert scores["fit_signal_score"] == 75
+
+
+class TestEmptySignalsHelper:
+    """_build_empty_signals returns correctly shaped all-not_found signals."""
+
+    _ICP = [
+        {"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+         "positive_weight": 20, "required_for_bullseye": True},
+        {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+         "positive_weight": 10},
+    ]
+
+    def test_returns_one_signal_per_icp_entry(self):
+        out = _build_empty_signals(self._ICP)
+        assert len(out) == 2
+
+    def test_all_signals_are_not_found(self):
+        out = _build_empty_signals(self._ICP)
+        assert all(s["signal_state"] == "not_found" for s in out)
+
+    def test_all_signals_are_low_confidence(self):
+        out = _build_empty_signals(self._ICP)
+        assert all(s["confidence"] == "low" for s in out)
+
+    def test_icp_fields_carried_through(self):
+        out = _build_empty_signals(self._ICP)
+        s1 = next(s for s in out if s["signal_id"] == "S-1")
+        assert s1["positive_weight"] == 20
+        assert s1["required_for_bullseye"] is True
+
+    def test_state_inferred_is_false(self):
+        out = _build_empty_signals(self._ICP)
+        assert all(s["state_inferred"] is False for s in out)
+
+
+class TestSourceConfidenceTierCap:
+    """Records with limited/failed source confidence cannot reach Bullseye."""
+
+    _ICP = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+             "positive_weight": 20}]
+
+    def _record(self, source_confidence):
+        rec = _clear_record(score=95)
+        rec["source_confidence"] = source_confidence
+        rec["signals"] = []
+        return rec
+
+    def test_limited_confidence_caps_at_watchlist(self):
+        assert _assign_tier(self._record("limited"), 95, 75) == "Watchlist"
+
+    def test_failed_confidence_caps_at_watchlist(self):
+        assert _assign_tier(self._record("failed"), 95, 75) == "Watchlist"
+
+    def test_complete_confidence_allows_bullseye(self):
+        assert _assign_tier(self._record("complete"), 95, 75) == "Bullseye"
+
+    def test_partial_confidence_allows_bullseye(self):
+        assert _assign_tier(self._record("partial"), 95, 75) == "Bullseye"
+
+    def test_missing_source_confidence_allows_bullseye(self):
+        # Records without source_confidence set are not capped.
+        rec = _clear_record(score=95)
+        rec["signals"] = []
+        assert _assign_tier(rec, 95, 75) == "Bullseye"

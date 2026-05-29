@@ -54,6 +54,12 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
         if cap and cap in TIER_RANK and sig.get("signal_state") == "yes":
             rank = min(rank, TIER_RANK[cap])
 
+    # Source confidence gate: a record whose website could not be reliably
+    # crawled is not eligible for Bullseye — the signals may be absent or
+    # incomplete, making a top-tier classification untrustworthy.
+    if record.get("source_confidence") in ("limited", "failed"):
+        rank = min(rank, TIER_RANK["Watchlist"])
+
     # Must-have gate: a required_for_bullseye signal must be confirmed present
     # (or inferred) for Bullseye. Confirmed absent ("no") caps at Watchlist; an
     # unverified ("not_found") caps at Needs Verification. Inferred presence

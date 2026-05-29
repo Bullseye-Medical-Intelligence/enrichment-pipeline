@@ -31,9 +31,9 @@ INSTRUCTIONS:
 
 For each signal, determine:
 - signal_state: "yes" (signal is present/confirmed), "no" (signal is clearly absent), or "not_found" (insufficient evidence to determine)
-- evidence_text: 1-2 sentences of specific evidence from the website text. Quote or closely paraphrase the source text when possible.
-- source_url: The specific URL where evidence was found, or empty string if not found
-- confidence: "high" (clear, direct evidence), "medium" (inferred or indirect), or "low" (very weak signal)
+- evidence_text: A direct quote or close paraphrase from the WEBSITE TEXT section above. Must be traceable to a specific sentence in the provided text. If you cannot point to exact text, the signal is "not_found".
+- source_url: The [Source: URL] from the WEBSITE TEXT section where the evidence appears. Required for every "yes" signal. If you cannot identify the source URL, use "not_found".
+- confidence: "high" = direct explicit text, word-for-word or near-verbatim; "medium" = clearly implied by a specific passage in the text; "low" = weak or indirect hint — use "not_found" instead when unsure
 
 After evaluating signals, generate:
 1. sales_angle: 3-5 bullet points a sales rep could use when opening a conversation with this practice. Be specific to what you found. Each point should be a complete sentence.
@@ -74,7 +74,10 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
 
 CRITICAL RULES:
 - signal_state must be EXACTLY "yes", "no", or "not_found" — never null, true, false, 1, 0, or any other value
-- If context_text is empty or minimal, use "not_found" for all signals and set confidence to "low"
+- NEVER GUESS. Every "yes" must be traceable to specific text in the WEBSITE TEXT section above. If the text does not say it, the answer is "not_found".
+- Specialty does not imply services. An OBGYN practice does not "probably" offer IUD insertion — only mark "yes" if the website explicitly lists it.
+- A "yes" signal MUST have a non-empty evidence_text (direct quote or close paraphrase from the text above) AND a non-empty source_url (the [Source: URL] where the evidence appears). If either is missing, use "not_found".
+- When in doubt between "yes" and "not_found", use "not_found". False negatives are recoverable; false positives waste a rep's time.
 - Do not invent or assume information not present in the website text
 - call_brief opening_line, likely_objection, discovery_question must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption; hours_of_operation is a short factual string or empty string
 - exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "rei_on_staff", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]
