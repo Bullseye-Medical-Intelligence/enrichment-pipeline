@@ -130,6 +130,8 @@ def _prepare_record(rec: dict, review: dict) -> dict:
     if isinstance(sales_angles, str):
         sales_angles = [sales_angles]
 
+    brief = rec.get("call_brief") or {}
+
     score = rec.get("bullseye_score")
     confidence = rec.get("confidence_score")
     displayed_tier = review.get("override_tier") or rec.get("target_tier", "—")
@@ -145,6 +147,8 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         "score_pct": min(int(score), 100) if score is not None else 0,
         "confidence": confidence,
         "tier": displayed_tier,
+        "why_contact": brief.get("why_contact") or "",
+        "opening_line": brief.get("opening_line") or "",
         "signal_labels": signal_labels,
         "signals_with_evidence": signals_with_evidence,
         "sales_angles": sales_angles,

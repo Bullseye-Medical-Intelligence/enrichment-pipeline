@@ -17,6 +17,10 @@ import reviews
 
 logger = logging.getLogger(__name__)
 
+# Rep-facing column derived from the pipeline's call_brief (a nested object, so
+# it is not picked up by the scalar-field column scan).
+_BRIEF_COLUMNS = ["why_contact"]
+
 # Review-overlay columns appended to every export row
 _REVIEW_COLUMNS = [
     "displayed_tier",
@@ -111,7 +115,7 @@ def _build_csv(
     # Derive column order from first record (scalar fields only) then append review overlay
     first = records[0]
     record_columns = [k for k, v in first.items() if not isinstance(v, (dict, list))]
-    all_columns = record_columns + _REVIEW_COLUMNS
+    all_columns = record_columns + _BRIEF_COLUMNS + _REVIEW_COLUMNS
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=all_columns, extrasaction="ignore")
@@ -125,6 +129,7 @@ def _build_csv(
             continue
 
         row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in rec.items()}
+        row["why_contact"] = (rec.get("call_brief") or {}).get("why_contact", "")
         row.update({
             "displayed_tier": record_adapter.displayed_tier(rec, review),
             "qc_status": review.get("qc_status", "pending"),

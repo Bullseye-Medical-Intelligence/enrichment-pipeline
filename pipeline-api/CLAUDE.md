@@ -216,6 +216,7 @@ GET    /projects/{project_id}                    Project detail
 GET    /icp-profiles                             List loaded ICP profiles
 GET    /dashboard                                Run list
 GET    /dashboard/{run_id}                       Results + inline review
+GET    /dashboard/{run_id}/queue                 Contact Queue (rep call sheet, sorted by priority)
 GET    /runs/{run_id}/download/json              Full enriched_targets.json download
 GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
@@ -357,6 +358,7 @@ The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
 - **Override requires reason**: `override_tier` set → `override_reason` required. Enforced in `reviews.py`.
 - **Server is source of truth**: `reviewed_at` always set server-side. JS never sets timestamps.
 - **Final displayed tier**: `override_tier` if set, else pipeline `target_tier`. Always show both.
+- **Contact Priority is a relabel**: the Contact Queue shows a rep-facing label mapped from the displayed tier (`record_adapter.contact_priority`). It is presentation only, never a stored field, and the pipeline's `call_brief` is served unchanged.
 
 ---
 

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Contact Queue: {{ run_id }} — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Contact Queue</h2>
+    <p class="page-subtitle">
+      {{ run_id }} &nbsp;·&nbsp; {{ records | length }} account{{ "s" if records | length != 1 }} to work
+    </p>
+  </div>
+  <div class="header-actions">
+    {% if show_all %}
+    <a href="/dashboard/{{ run_id }}/queue" class="btn btn-secondary">Hide Do Not Pursue</a>
+    {% else %}
+    <a href="/dashboard/{{ run_id }}/queue?show_all=true" class="btn btn-secondary">Show All</a>
+    {% endif %}
+    <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
+  </div>
+</div>
+
+<div class="view-tabs">
+  <a class="view-tab" href="/dashboard/{{ run_id }}">Review</a>
+  <span class="view-tab active">Contact Queue</span>
+</div>
+
+{% if project_context and project_context.client_name %}
+<div class="card project-context">
+  <div class="context-grid">
+    {% if project_context.client_name %}
+    <div class="context-item"><span class="context-label">Client</span><span class="context-value">{{ project_context.client_name }}</span></div>
+    {% endif %}
+    {% if project_context.target_specialty %}
+    <div class="context-item"><span class="context-label">Specialty</span><span class="context-value">{{ project_context.target_specialty }}</span></div>
+    {% endif %}
+    {% if project_context.target_geography %}
+    <div class="context-item"><span class="context-label">Geography</span><span class="context-value">{{ project_context.target_geography }}</span></div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if not records %}
+<div class="alert alert-info">
+  {% if status.status != "complete" %}
+  This run is not complete yet. The Contact Queue appears once enrichment finishes.
+  {% else %}
+  No accounts to contact. Everything was scored Do Not Pursue — use Show All to review them.
+  {% endif %}
+</div>
+{% else %}
+
+<div class="card table-card">
+  <table class="data-table queue-table" id="queue-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Contact Priority</th>
+        <th>Practice</th>
+        <th>Location</th>
+        <th>Why Contact</th>
+        <th>Opener</th>
+        <th>Evidence</th>
+        <th>Confidence</th>
+        <th>Risk</th>
+        <th>Phone</th>
+        <th>Website</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in records %}
+      {% set rid = record.record_id | default("") %}
+      {% set brief = record.call_brief | default({}) %}
+      {% set priority = record.contact_priority | default("Develop") %}
+      {% set pslug = priority | lower | replace(' & ', ' ') | replace(' ', '-') %}
+      <tr class="record-row" onclick="toggleDetail('{{ rid }}')" style="cursor:pointer">
+        <td class="expand-icon" id="icon-{{ rid }}">▶</td>
+        <td><span class="badge badge-priority-{{ pslug }}">{{ priority }}</span></td>
+        <td><strong>{{ record.practice_name | default("—") }}</strong></td>
+        <td>{{ record.address_city | default("") }}{% if record.address_state %}, {{ record.address_state }}{% endif %}</td>
+        <td class="queue-why">{{ brief.why_contact | default("—") }}</td>
+        <td class="queue-opener">{{ brief.opening_line or "—" }}</td>
+        <td>{% if brief.top_evidence %}{{ brief.top_evidence[0].point }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{{ record.confidence_score | default("—") }}</td>
+        <td>
+          {% if brief.disqualifier_risk %}<span class="risk-flag">{{ brief.disqualifier_risk[0] }}</span>
+          {% elif brief.missing_to_verify %}<span class="risk-flag risk-verify">Verify: {{ brief.missing_to_verify[0] }}</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>{% if record.phone %}{{ record.phone }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% if record.website_url %}<a href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">Site</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+      </tr>
+
+      {# ── Rep prep detail (hidden by default) ─────────────────────── #}
+      <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
+        <td colspan="11">
+          <div class="detail-panel">
+            {% if record.phone or record.website_url %}
+            <div class="detail-contact-header">
+              {% if record.phone %}<span class="detail-phone">📞 {{ record.phone }}</span>{% endif %}
+              {% if record.website_url %}<a class="detail-website" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">🌐 {{ record.website_url }}</a>{% endif %}
+            </div>
+            {% endif %}
+            <div class="detail-cols">
+
+              {# Call brief #}
+              <div class="detail-section">
+                <h4>Rep Call Brief</h4>
+                {% if brief.opening_line %}<p><span class="brief-label">Opener</span> {{ brief.opening_line }}</p>{% endif %}
+                {% if brief.likely_objection %}<p><span class="brief-label">Likely objection</span> {{ brief.likely_objection }}</p>{% endif %}
+                {% if brief.discovery_question %}<p><span class="brief-label">Discovery question</span> {{ brief.discovery_question }}</p>{% endif %}
+
+                {% if brief.top_evidence %}
+                <h4>Top Evidence</h4>
+                <ul class="sales-list">
+                  {% for ev in brief.top_evidence %}
+                  <li>{{ ev.point }}{% if ev.evidence %} — {{ ev.evidence }}{% endif %}
+                    {% if ev.source_url %}<a class="text-muted small" href="{{ ev.source_url }}" target="_blank" rel="noopener noreferrer">source</a>{% endif %}
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if brief.disqualifier_risk %}
+                <h4>Disqualifier Risk</h4>
+                <ul class="sales-list">{% for r in brief.disqualifier_risk %}<li>{{ r }}</li>{% endfor %}</ul>
+                {% endif %}
+
+                {% if brief.missing_to_verify %}
+                <h4>Verify Before Pitching</h4>
+                <ul class="sales-list">{% for m in brief.missing_to_verify %}<li>{{ m }}</li>{% endfor %}</ul>
+                {% endif %}
+              </div>
+
+              {# Sales angles + scores #}
+              <div class="detail-section">
+                {% if record.sales_angle %}
+                <h4>Sales Angles</h4>
+                <ul class="sales-list">{% for angle in record.sales_angle %}<li>{{ angle }}</li>{% endfor %}</ul>
+                {% endif %}
+
+                <h4>Scores</h4>
+                <table class="score-table">
+                  <tr><td>Bullseye</td><td><strong>{{ record.bullseye_score | default("—") }}</strong></td></tr>
+                  <tr><td>Fit</td><td>{{ record.fit_signal_score | default("—") }}</td></tr>
+                  <tr><td>Confidence</td><td>{{ record.confidence_score | default("—") }}</td></tr>
+                  <tr><td>Status</td><td>{{ record.fit_confidence_status | default("—") | title }}</td></tr>
+                </table>
+              </div>
+
+              {# Signals #}
+              <div class="detail-section">
+                <h4>Signals</h4>
+                {% if record.signals %}
+                <div class="signals-list">
+                  {% for sig in record.signals %}
+                  {% set sig_weight = sig.positive_weight | default(0) | int %}
+                  {% set is_good = (sig.signal_state == "yes" and sig_weight > 0) or (sig.signal_state == "no" and sig_weight < 0) %}
+                  {% set is_bad  = (sig.signal_state == "yes" and sig_weight < 0) or (sig.signal_state == "no" and sig_weight > 0) %}
+                  {% set display_state = "not_found" if sig.signal_state == "not_found" else ("yes" if is_good else ("no" if is_bad else sig.signal_state)) %}
+                  <div class="signal-item signal-{{ display_state }}">
+                    <div class="signal-header">
+                      <span class="signal-label">{{ sig.signal_label }}</span>
+                      {% if sig.source_url %}
+                      <a class="signal-state-badge state-{{ display_state }}" href="{{ sig.source_url }}" target="_blank" rel="noopener noreferrer">{{ sig.signal_state | upper | replace("_", " ") }}</a>
+                      {% else %}
+                      <span class="signal-state-badge state-{{ display_state }}">{{ sig.signal_state | upper | replace("_", " ") }}</span>
+                      {% endif %}
+                    </div>
+                    {% if sig.evidence_text %}<p class="signal-evidence">{{ sig.evidence_text }}</p>{% endif %}
+                  </div>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No signals extracted.</p>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

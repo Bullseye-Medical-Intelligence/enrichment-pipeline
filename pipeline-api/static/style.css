@@ -234,6 +234,33 @@ ul, ol { padding-left: 1.4em; }
 .badge-qc-approved     { background: var(--green-bg);  color: var(--green); }
 .badge-qc-rejected     { background: var(--red-bg);    color: var(--red); }
 
+/* Contact Priority badges (rep-facing relabel of the tier ladder) */
+.badge-priority-priority-outreach { background: var(--accent);   color: var(--white); }
+.badge-priority-verify-engage     { background: var(--amber-bg); color: #92400e; }
+.badge-priority-develop           { background: var(--purple-bg); color: var(--purple); }
+.badge-priority-monitor           { background: var(--slate-bg);  color: var(--slate); }
+.badge-priority-do-not-pursue     { background: rgba(10,10,10,0.08); color: var(--muted); }
+
+/* ── View tabs (Review <-> Contact Queue) ─────────────────────────── */
+.view-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.view-tab {
+  padding: 8px 18px; font-size: 13px; font-weight: 600; color: var(--slate);
+  border-bottom: 2px solid transparent; cursor: pointer;
+}
+.view-tab:hover { color: var(--accent); text-decoration: none; }
+.view-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+/* ── Contact Queue table ──────────────────────────────────────────── */
+.queue-table td { vertical-align: top; font-size: 13px; }
+.queue-why    { max-width: 230px; color: var(--ink); }
+.queue-opener { max-width: 260px; color: var(--slate); font-style: italic; }
+.risk-flag    { color: var(--red); font-size: 12px; }
+.risk-flag.risk-verify { color: #92400e; }
+.brief-label  {
+  display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent); margin-right: 6px;
+}
+
 /* ── Tables ───────────────────────────────────────────────────────── */
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th {

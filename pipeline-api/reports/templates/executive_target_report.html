@@ -754,6 +754,13 @@ p { margin: 0; }
     </div>
     {% endif %}
 
+    {% if rec.opening_line %}
+    <p class="section-label">Suggested Opener</p>
+    <div class="sales-hook-box">
+      <p class="sales-hook-text">{{ rec.opening_line }}</p>
+    </div>
+    {% endif %}
+
   </div>
 
   <!-- Evidence section spans full width below sidebar -->

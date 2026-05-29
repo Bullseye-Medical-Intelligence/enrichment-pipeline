@@ -9,10 +9,13 @@ exclusion_status == "EXCLUDED", repairing any contradiction.
 """
 
 from enrichment.constants import (
+    CALL_BRIEF_LIST_FIELDS,
+    CALL_BRIEF_STRING_FIELDS,
     DEFAULT_BULLSEYE_MIN_SCORE,
     EXCLUDED_SCORE_CAP,
     MAX_SCORE,
     MIN_SCORE,
+    empty_call_brief,
 )
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
@@ -160,6 +163,20 @@ def validate_and_finalize(record: dict) -> dict:
     # sales_angle: empty list if missing
     if not isinstance(record.get("sales_angle"), list):
         record["sales_angle"] = []
+
+    # call_brief: always present and fully shaped (string fields and list fields).
+    brief = record.get("call_brief")
+    if not isinstance(brief, dict):
+        brief = empty_call_brief()
+    else:
+        defaults = empty_call_brief()
+        for field in CALL_BRIEF_STRING_FIELDS:
+            if not isinstance(brief.get(field), str):
+                brief[field] = defaults[field]
+        for field in CALL_BRIEF_LIST_FIELDS:
+            if not isinstance(brief.get(field), list):
+                brief[field] = defaults[field]
+    record["call_brief"] = brief
 
     # fit_confidence_status: default if missing
     if not record.get("fit_confidence_status"):

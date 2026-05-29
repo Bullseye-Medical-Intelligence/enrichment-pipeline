@@ -23,6 +23,13 @@
   </div>
 </div>
 
+{% if status.status == "complete" %}
+<div class="view-tabs">
+  <span class="view-tab active">Review</span>
+  <a class="view-tab" href="/dashboard/{{ run_id }}/queue">Contact Queue</a>
+</div>
+{% endif %}
+
 {% if project_context %}
 <div class="card project-context">
   <div class="context-grid">

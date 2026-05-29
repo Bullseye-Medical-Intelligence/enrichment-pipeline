@@ -20,14 +20,14 @@ import os
 # Ensure project root is on the path regardless of where pytest is invoked
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
-
 from ingestion.outscraper_adapter import _normalize_state, infer_specialty
 from enrichment.signal_extractor import (
     _validate_and_clean_signals,
     _calculate_scores,
     _apply_reinforcement,
+    _build_call_brief,
 )
+from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
 
@@ -699,3 +699,94 @@ class TestValidateAndFinalizeInvariant:
         record["bullseye_score"] = 85
         result = validate_and_finalize(record)
         assert result["bullseye_score"] <= 40
+
+    def test_call_brief_defaulted_when_missing(self):
+        """A record without call_brief gets a fully shaped empty one."""
+        record = self._base_record()
+        record.pop("call_brief", None)
+        result = validate_and_finalize(record)
+        assert result["call_brief"] == empty_call_brief()
+
+    def test_call_brief_partial_is_completed(self):
+        """A partial call_brief keeps valid fields and fills the rest."""
+        record = self._base_record()
+        record["call_brief"] = {"opening_line": "Hi there", "top_evidence": "bad-type"}
+        result = validate_and_finalize(record)
+        brief = result["call_brief"]
+        assert brief["opening_line"] == "Hi there"
+        assert brief["top_evidence"] == []          # wrong type coerced to list
+        assert brief["why_contact"] == ""           # missing string filled
+        assert brief["missing_to_verify"] == []
+
+
+# ---------------------------------------------------------------------------
+# Rep call brief assembly
+# ---------------------------------------------------------------------------
+
+class TestCallBrief:
+
+    ICP = [
+        {"signal_id": "S-svc", "signal_label": "Service line listed",
+         "prompt_instruction": "?", "positive_weight": 30},
+        {"signal_id": "S-minor", "signal_label": "Minor service",
+         "prompt_instruction": "?", "positive_weight": 10},
+        {"signal_id": "S-cash", "signal_label": "Cash pay visible",
+         "prompt_instruction": "?", "positive_weight": 25, "verification_required": True},
+        {"signal_id": "S-hosp", "signal_label": "Hospital affiliated",
+         "prompt_instruction": "?", "positive_weight": -30, "cap_tier": "Watchlist"},
+    ]
+
+    def _sig(self, sid, state, label, weight, conf="high", evidence="",
+             verification_required=False, cap_tier="", inferred=False):
+        return {"signal_id": sid, "signal_label": label, "signal_state": state,
+                "confidence": conf, "evidence_text": evidence, "source_url": "",
+                "positive_weight": weight, "verification_required": verification_required,
+                "cap_tier": cap_tier, "state_inferred": inferred}
+
+    def test_top_evidence_orders_by_weight_and_needs_evidence_text(self):
+        signals = [
+            self._sig("S-svc", "yes", "Service line listed", 30, evidence="Lists the service."),
+            self._sig("S-minor", "yes", "Minor service", 10, evidence="Minor mention."),
+            self._sig("S-cash", "yes", "Cash pay visible", 25, verification_required=True),  # no evidence_text
+            self._sig("S-hosp", "no", "Hospital affiliated", -30),
+        ]
+        brief = _build_call_brief(signals, {"fit_signal_score": 80}, {"specialty": "OBGYN"}, {})
+        points = [e["point"] for e in brief["top_evidence"]]
+        assert points == ["Service line listed", "Minor service"]  # cash dropped (no evidence)
+
+    def test_missing_to_verify_uses_verification_gate(self):
+        signals = [
+            self._sig("S-cash", "not_found", "Cash pay visible", 25, verification_required=True),
+        ]
+        brief = _build_call_brief(signals, {"fit_signal_score": 40}, {}, {})
+        assert brief["missing_to_verify"] == ["Cash pay visible"]
+
+    def test_inferred_signal_not_flagged_to_verify(self):
+        signals = [
+            self._sig("S-cash", "not_found", "Cash pay visible", 25,
+                      verification_required=True, inferred=True),
+        ]
+        brief = _build_call_brief(signals, {"fit_signal_score": 70}, {}, {})
+        assert brief["missing_to_verify"] == []
+
+    def test_disqualifier_risk_from_friction_and_cap(self):
+        signals = [
+            self._sig("S-hosp", "yes", "Hospital affiliated", -30, cap_tier="Watchlist"),
+        ]
+        brief = _build_call_brief(signals, {"fit_signal_score": 20}, {}, {})
+        assert len(brief["disqualifier_risk"]) == 1
+        assert "Hospital affiliated" in brief["disqualifier_risk"][0]
+
+    def test_generated_prep_lines_passed_through(self):
+        brief = _build_call_brief([], {"fit_signal_score": 0}, {}, {
+            "opening_line": "Hi", "likely_objection": "Busy", "discovery_question": "How?",
+        })
+        assert brief["opening_line"] == "Hi"
+        assert brief["likely_objection"] == "Busy"
+        assert brief["discovery_question"] == "How?"
+
+    def test_why_contact_references_top_signals_and_fit(self):
+        signals = [self._sig("S-svc", "yes", "Service line listed", 30, evidence="x")]
+        brief = _build_call_brief(signals, {"fit_signal_score": 88}, {"specialty": "OBGYN"}, {})
+        assert "Service line listed" in brief["why_contact"]
+        assert "88" in brief["why_contact"]

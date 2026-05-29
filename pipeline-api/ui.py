@@ -407,6 +407,34 @@ async def runs_page(request: Request, username: str = Depends(auth.require_sessi
 # Results / review dashboard
 # ---------------------------------------------------------------------------
 
+def _load_merged_records(run_id: str, status) -> list[dict]:
+    """Load a complete run's records merged with their review overlay.
+
+    Each record gains record_id, review, and displayed_tier. Returns an empty
+    list when the run is not complete or has no results file.
+    """
+    if status.status != "complete":
+        return []
+    run_directory = runs.run_dir(run_id)
+    results_path = run_directory / "enriched_targets.json"
+    if not results_path.exists():
+        return []
+    with open(results_path, "r", encoding="utf-8") as f:
+        raw_records = record_adapter.normalize_records_payload(json.load(f))
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    merged = []
+    for record in raw_records:
+        record_id = record_adapter.get_record_id(record)
+        review = all_reviews.get(record_id, reviews.default_review())
+        merged.append({
+            **record,
+            "record_id": record_id,
+            "review": review,
+            "displayed_tier": record_adapter.displayed_tier(record, review),
+        })
+    return merged
+
+
 @router.get("/dashboard/{run_id}", response_class=HTMLResponse)
 async def results_page(
     request: Request,
@@ -418,23 +446,7 @@ async def results_page(
     if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
 
-    merged_records = []
-    if status.status == "complete":
-        run_directory = runs.run_dir(run_id)
-        results_path = run_directory / "enriched_targets.json"
-        if results_path.exists():
-            with open(results_path, "r", encoding="utf-8") as f:
-                raw_records = record_adapter.normalize_records_payload(json.load(f))
-            all_reviews = reviews.get_reviews(run_id, run_directory)
-            for record in raw_records:
-                record_id = record_adapter.get_record_id(record)
-                review = all_reviews.get(record_id, reviews.default_review())
-                merged_records.append({
-                    **record,
-                    "record_id": record_id,
-                    "review": review,
-                    "displayed_tier": record_adapter.displayed_tier(record, review),
-                })
+    merged_records = _load_merged_records(run_id, status)
 
     stats = _calculate_stats(merged_records)
     project_context = _build_project_context(run_id)
@@ -457,6 +469,54 @@ async def results_page(
         friendly_error=_friendly_error(status.error_summary),
         has_checkpoint=has_checkpoint,
         checkpoint_count=checkpoint_count,
+    )
+
+
+@router.get("/dashboard/{run_id}/queue", response_class=HTMLResponse)
+async def contact_queue_page(
+    request: Request,
+    run_id: str,
+    show_all: bool = False,
+    username: str = Depends(auth.require_session),
+):
+    """Render the rep-facing Contact Queue: a call sheet sorted by priority.
+
+    Pure presentation of the existing records — relabels the tier as Contact
+    Priority and sorts by (priority, confidence, score). "Do Not Pursue" records
+    are hidden unless show_all is set.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    merged_records = _load_merged_records(run_id, status)
+    for record in merged_records:
+        review = record["review"]
+        record["contact_priority"] = record_adapter.contact_priority(record, review)
+        record["contact_priority_rank"] = record_adapter.contact_priority_rank(record, review)
+
+    if not show_all:
+        merged_records = [r for r in merged_records if r["contact_priority"] != "Do Not Pursue"]
+
+    merged_records.sort(
+        key=lambda r: (
+            r["contact_priority_rank"],
+            r.get("confidence_score", 0),
+            r.get("bullseye_score", 0),
+        ),
+        reverse=True,
+    )
+
+    project_context = _build_project_context(run_id)
+
+    return _render(
+        "contact_queue.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        records=merged_records,
+        project_context=project_context,
+        show_all=show_all,
     )
 
 

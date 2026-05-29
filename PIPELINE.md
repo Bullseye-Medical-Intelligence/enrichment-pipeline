@@ -329,6 +329,18 @@ The output schema is the contract between the pipeline and the dashboard. It mus
     "Non-mandate state. Open with seed-to-cycle."
   ],
 
+  "call_brief": {
+    "why_contact": "OBGYN practice: Infertility workup listed + Independent private practice (fit 88).",
+    "opening_line": "I saw your team lists infertility workups, so I wanted to reach out about how peers are streamlining that path.",
+    "likely_objection": "They may feel their current vendor relationship already covers this.",
+    "discovery_question": "How are you handling device sourcing for your in-office procedures today?",
+    "top_evidence": [
+      {"point": "Infertility workup listed", "evidence": "Services page lists infertility evaluation.", "source_url": "https://example.com/services"}
+    ],
+    "missing_to_verify": ["Cash pay / self-pay visible"],
+    "disqualifier_risk": []
+  },
+
   "date_enriched": "2026-05-27",
   "source_confidence": "complete",
 
@@ -336,7 +348,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "source_pipeline_version": "v1.0",
   "raw_input_source": "outscraper_export_2026-05-27.csv",
   "llm_model_used": "claude-sonnet-4-6",
-  "llm_prompt_version": "signal_extraction_v1",
+  "llm_prompt_version": "signal_extraction_v2",
   "enrichment_status": "complete",
 
   "qc_status": "pending",
@@ -354,6 +366,17 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 **positive_weight:** Carried over from the ICP signal definition. Positive for signals where a `"yes"` is good; negative where a `"yes"` is bad (e.g. "REI on staff"). Consumers use the sign to color a signal green or red: a `"no"` on a negative-weight signal is a positive indicator.
 
 **state_inferred:** `true` when a `not_found` signal's presence was inferred from a confirmed `reinforces` signal (e.g. cash pay inferred from listed elective procedures). Inferred signals earn partial fit credit and skip the `verification_required` gate. `false` for directly observed signals.
+
+**call_brief:** A rep preparation object, always present. Grounded fields are
+derived from the signals (no LLM): `top_evidence` (highest-weight confirmed
+signals with their evidence + source_url), `missing_to_verify` (unconfirmed
+`verification_required` signals not covered by inference), `disqualifier_risk`
+(confirmed friction or `cap_tier` signals), and `why_contact` (one-liner from the
+top confirmed signals + fit). Generated prep lines come from the LLM:
+`opening_line`, `likely_objection`, `discovery_question`. All fields default to
+empty (string or list) when extraction fails. This is enrichment output —
+downstream serves it unchanged; "Contact Priority" in the UI is a display relabel
+of `target_tier`, not a stored field.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 
@@ -403,7 +426,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
   "records_skipped": 1,
   "llm_primary_model": "claude-sonnet-4-6",
   "llm_verification_model": "gpt-4.1",
-  "prompt_version": "signal_extraction_v1",
+  "prompt_version": "signal_extraction_v2",
   "errors": [
     {
       "record_id": "T-023",
@@ -436,7 +459,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
     exclusion_checker.py    ← Applies exclusion rules from run config
     scorer.py               ← Scoring logic (bullseye_score, fit_signal_score, etc.)
   /prompts
-    signal_extraction_v1.txt
+    signal_extraction_v2.txt
     sales_angle_v1.txt
     exclusion_check_v1.txt
     verification_v1.txt

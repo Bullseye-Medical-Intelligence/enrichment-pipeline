@@ -99,6 +99,15 @@ matching more signals does not mean a higher score.
   signals, else `NO_SIGNAL_CONFIDENCE`.
 - **`bullseye_score`** = `FIT_WEIGHT * fit + CONFIDENCE_WEIGHT * confidence`, clamped.
 
+### Rep call brief (`signal_extractor.py::_build_call_brief`)
+Every record carries a `call_brief` object. Grounded fields are **derived from the
+signals** (no extra LLM call): `top_evidence`, `missing_to_verify` (mirrors the
+verification gate), `disqualifier_risk`, and `why_contact`. Three prep lines come
+from the LLM: `opening_line`, `likely_objection`, `discovery_question`. The empty
+shape lives in `constants.py::empty_call_brief`; `scorer.py` defaults it so the
+field is always present. **Contact Priority** in the UI is a display relabel of
+`target_tier` (`record_adapter.contact_priority`), never a stored field.
+
 ---
 
 ## ICP Signal Fields

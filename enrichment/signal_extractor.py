@@ -31,6 +31,7 @@ from enrichment.constants import (
     MAX_SCORE,
     MIN_SCORE,
     NO_SIGNAL_CONFIDENCE,
+    empty_call_brief,
 )
 
 load_dotenv()
@@ -39,8 +40,11 @@ load_dotenv()
 # Constants
 # ---------------------------------------------------------------------------
 
-PROMPT_VERSION = "signal_extraction_v1"
-PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_v1.txt"
+PROMPT_VERSION = "signal_extraction_v2"
+PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_v2.txt"
+
+# Number of confirmed signals surfaced in the call brief's evidence list.
+TOP_EVIDENCE_COUNT = 3
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
 VALID_CONFIDENCES = {"high", "medium", "low"}
@@ -384,6 +388,78 @@ def _determine_fit_confidence_status(bullseye_score: int,
         return "LOW FIT / LOW EVIDENCE"
 
 
+# ---------------------------------------------------------------------------
+# Rep call brief
+# ---------------------------------------------------------------------------
+
+def _build_call_brief(signals: list[dict], scores: dict, record: dict,
+                       generated: dict) -> dict:
+    """
+    Assemble a rep call brief from already-validated signals and scores.
+
+    Grounded fields (top_evidence, missing_to_verify, disqualifier_risk,
+    why_contact) are derived from the signals; the three prep lines
+    (opening_line, likely_objection, discovery_question) come from the LLM and
+    are passed in via `generated`. No new scoring or LLM call happens here.
+    """
+    confirmed_positive = [
+        s for s in signals
+        if s.get("signal_state") == "yes" and s.get("positive_weight", 0) > 0
+    ]
+    confirmed_positive.sort(key=lambda s: s.get("positive_weight", 0), reverse=True)
+
+    # top_evidence: highest-weight confirmed signals that carry evidence text.
+    top_evidence = [
+        {
+            "point": s.get("signal_label", ""),
+            "evidence": s.get("evidence_text", ""),
+            "source_url": s.get("source_url", ""),
+        }
+        for s in confirmed_positive if s.get("evidence_text")
+    ][:TOP_EVIDENCE_COUNT]
+
+    # missing_to_verify: unconfirmed required signals not covered by inference
+    # (mirrors the verification gate in exclusion_checker._assign_tier).
+    missing_to_verify = [
+        s.get("signal_label", "")
+        for s in signals
+        if s.get("verification_required")
+        and s.get("signal_state") == "not_found"
+        and not s.get("state_inferred")
+    ]
+
+    # disqualifier_risk: confirmed friction signals + any confirmed cap_tier signal.
+    disqualifier_risk = []
+    for s in signals:
+        if s.get("signal_state") != "yes":
+            continue
+        label = s.get("signal_label", "")
+        if s.get("positive_weight", 0) < 0:
+            disqualifier_risk.append(f"{label} (friction signal present)")
+        elif s.get("cap_tier"):
+            disqualifier_risk.append(f"{label} (caps tier at {s['cap_tier']})")
+
+    # why_contact: grounded one-liner from the top confirmed signals + fit.
+    specialty = (record.get("specialty") or "").strip()
+    lead = " + ".join(s.get("signal_label", "") for s in confirmed_positive[:2])
+    fit = scores.get("fit_signal_score", 0)
+    if lead:
+        why_contact = f"{specialty + ' ' if specialty else ''}practice: {lead} (fit {fit}).".strip()
+    else:
+        why_contact = f"{specialty + ' ' if specialty else ''}practice, no confirmed positive signals yet (fit {fit}).".strip()
+
+    brief = empty_call_brief()
+    brief.update({
+        "why_contact": why_contact,
+        "opening_line": str(generated.get("opening_line") or "").strip(),
+        "likely_objection": str(generated.get("likely_objection") or "").strip(),
+        "discovery_question": str(generated.get("discovery_question") or "").strip(),
+        "top_evidence": top_evidence,
+        "missing_to_verify": missing_to_verify,
+        "disqualifier_risk": disqualifier_risk,
+    })
+    return brief
+
 
 # ---------------------------------------------------------------------------
 # Main extraction function
@@ -447,6 +523,12 @@ def extract_signals(record: dict, icp_signals: list[dict],
         exclusion_triggers = parsed.get("exclusion_triggers", [])
         exclusion_rationale = parsed.get("exclusion_rationale", "")
 
+        # Rep call brief: grounded fields derived from signals, prep lines from LLM
+        generated_brief = parsed.get("call_brief") or {}
+        if not isinstance(generated_brief, dict):
+            generated_brief = {}
+        call_brief = _build_call_brief(signals, scores, record, generated_brief)
+
         # Source confidence
         if context_text:
             source_confidence = record.get("source_confidence") or "partial"
@@ -461,6 +543,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "confidence_score": confidence_score,
             "fit_confidence_status": fit_confidence_status,
             "sales_angle": sales_angle,
+            "call_brief": call_brief,
             "source_confidence": source_confidence,
             "date_enriched": date.today().isoformat(),
             "enrichment_run_id": run_id,
@@ -488,6 +571,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "confidence_score": 0,
             "fit_confidence_status": "LOW FIT / LOW EVIDENCE",
             "sales_angle": [],
+            "call_brief": empty_call_brief(),
             "source_confidence": record.get("source_confidence") or "failed",
             "date_enriched": date.today().isoformat(),
             "enrichment_run_id": run_id,
@@ -512,6 +596,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "confidence_score": 0,
             "fit_confidence_status": "LOW FIT / LOW EVIDENCE",
             "sales_angle": [],
+            "call_brief": empty_call_brief(),
             "source_confidence": record.get("source_confidence") or "failed",
             "date_enriched": date.today().isoformat(),
             "enrichment_run_id": run_id,
