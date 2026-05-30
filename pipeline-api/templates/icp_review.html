@@ -197,10 +197,31 @@
   </div>
 
   <div class="form-actions">
-    <button type="submit" formaction="/icp-profiles/approve" class="btn btn-submit">Approve Signals &amp; Generate Demo Brief</button>
+    <button type="submit" formaction="/icp-profiles/approve"
+            class="btn {% if demo %}btn-done{% else %}btn-submit{% endif %}"
+            id="btn-approve">
+      {% if demo %}Demo Brief Generated{% else %}Approve Signals &amp; Generate Demo Brief{% endif %}
+    </button>
     <button type="submit" formaction="/icp-profiles/regenerate" class="btn btn-secondary">Regenerate Signals</button>
-    <button type="submit" formaction="/icp-profiles/save" class="btn btn-secondary">Save Profile</button>
+    <button type="submit" formaction="/icp-profiles/save"
+            class="btn {% if demo %}btn-submit{% else %}btn-secondary{% endif %}">Save Profile</button>
     <a href="/icp-profiles/new" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
+
+<style>
+  .btn-done { background: #9ca3af; color: #fff; border-color: #9ca3af; opacity: 0.85; }
+  .btn-done:hover { background: #6b7280; border-color: #6b7280; }
+</style>
+
+<script>
+document.querySelector('form').addEventListener('submit', function (e) {
+  var approveBtn = document.getElementById('btn-approve');
+  if (e.submitter === approveBtn) {
+    approveBtn.disabled = true;
+    approveBtn.textContent = 'Generating…';
+    document.querySelectorAll('.form-actions button').forEach(function (b) { b.disabled = true; });
+  }
+});
+</script>
 {% endblock %}
