@@ -133,13 +133,16 @@ Records with `source_confidence: limited` or `failed` require operator review be
 ### The Call Brief
 
 Every record carries a `call_brief` object with:
-- `opening_line` — one sentence grounded in a confirmed signal
-- `likely_objection` — most likely pushback
-- `discovery_question` — one question to advance the conversation
-- `top_evidence` — list of confirmed signals with their source URLs
-- `why_contact` — summary rationale
+- `opening_line` — one sentence grounded in a confirmed signal (LLM-generated)
+- `likely_objection` — most likely pushback (LLM-generated)
+- `discovery_question` — one question to advance the conversation (LLM-generated)
+- `hours_of_operation` — office hours stated on the site, or empty string (LLM-generated)
+- `top_evidence` — list of confirmed signals with their source URLs (derived from signals)
+- `missing_to_verify` — unconfirmed required signals not covered by inference (derived)
+- `disqualifier_risk` — confirmed friction signals and cap_tier signals (derived)
+- `why_contact` — summary rationale grounded in confirmed signal labels (derived)
 
-**Integrity gate:** when no signals survive as confirmed "yes", all LLM-generated prep lines are cleared to empty strings. A rep never sees a fabricated opener when the data doesn't support one.
+**Integrity gate:** when no signals survive as confirmed "yes", the three claim-based LLM prep lines (`opening_line`, `likely_objection`, `discovery_question`) are cleared to empty strings. `hours_of_operation` is factual (office hours stated on the site) and is preserved regardless of signal state. A rep never sees a fabricated opener when the data doesn't support one.
 
 ---
 
