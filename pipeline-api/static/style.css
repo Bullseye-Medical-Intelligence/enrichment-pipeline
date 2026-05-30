@@ -124,6 +124,7 @@ ul, ol { padding-left: 1.4em; }
   margin-bottom: 14px;
 }
 .table-card { padding: 0; overflow: hidden; }
+.table-scroll { overflow-x: auto; }
 .empty-state { text-align: center; color: var(--muted); padding: 48px 20px; }
 .empty-state a { color: var(--accent); }
 .info-card {
@@ -183,6 +184,7 @@ ul, ol { padding-left: 1.4em; }
   margin: 4px 0 14px;
 }
 .modal-actions { display: flex; gap: 10px; margin-top: 22px; }
+.modal-preview  { max-width: 600px; }
 .preview-count { font-size: 14px; margin-bottom: 10px; }
 .preview-count strong {
   font-family: 'Instrument Serif', Georgia, serif;

@@ -74,11 +74,18 @@
       <select id="icp_profile_id" name="icp_profile_id" required {% if not icp_profiles %}disabled{% endif %}>
         <option value="" disabled {% if not form.icp_profile_id %}selected{% endif %}>— Select an ICP profile —</option>
         {% for icp in icp_profiles %}
-        <option value="{{ icp.icp_id }}" {% if form.icp_profile_id == icp.icp_id %}selected{% endif %}>
+        <option value="{{ icp.icp_id }}"
+                data-specialty="{{ icp.default_specialty | default('') }}"
+                data-geography="{{ icp.default_geography | default([]) | join(', ') }}"
+                data-exclusion-rules="{{ icp.default_exclusion_rules | default([]) | join(', ') }}"
+                {% if form.icp_profile_id == icp.icp_id %}selected{% endif %}>
           {{ icp.name }} ({{ icp.version }}) · {{ icp.signal_count }} signals
         </option>
         {% endfor %}
       </select>
+      <p class="form-hint" id="icp-autofill-hint" style="display:none; color: var(--accent);">
+        Specialty, geography, and exclusion rules auto-filled from ICP defaults.
+      </p>
       <p class="form-hint">The ICP profile determines which signals the pipeline scores against.</p>
     </div>
 
@@ -143,4 +150,27 @@
     </div>
   </form>
 </div>
+<script>
+(function () {
+  var sel = document.getElementById('icp_profile_id');
+  if (!sel) return;
+  sel.addEventListener('change', function () {
+    var opt = sel.options[sel.selectedIndex];
+    var specialty = opt.dataset.specialty || '';
+    var geography = opt.dataset.geography || '';
+    var exclusionRules = opt.dataset.exclusionRules || '';
+    var filled = false;
+    var specInput = document.getElementById('target_specialty');
+    var geoInput  = document.getElementById('target_geography');
+    var exclInput = document.getElementById('active_exclusion_rules');
+    if (specInput && specialty)      { specInput.value  = specialty;      filled = true; }
+    if (geoInput)                    { geoInput.value   = geography;      if (geography) filled = true; }
+    if (exclInput && exclusionRules) { exclInput.value  = exclusionRules; filled = true; }
+    document.getElementById('icp-autofill-hint').style.display = filled ? '' : 'none';
+  });
+  {% if form.icp_profile_id %}
+  sel.dispatchEvent(new Event('change'));
+  {% endif %}
+})();
+</script>
 {% endblock %}
