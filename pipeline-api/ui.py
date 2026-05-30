@@ -13,8 +13,6 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 
-import anthropic
-
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -30,7 +28,10 @@ import reviews
 import runner
 import runs
 import validator
+from crawl_compressor import compress_crawl
+from narrative_generator import generate_narrative
 from schema import ReviewEdit
+from signal_generator import generate_signals
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +283,7 @@ async def icp_generate(
     icp_name: str = Form(...),
     version: str = Form("1.0"),
 ):
-    """Call Claude to generate ICP hypothesis, demo accounts, and signals from product context."""
+    """Stage 1 + Stage 2: crawl and compress product context, then generate signals from anchor template."""
     form = {
         "company_name": company_name, "company_url": company_url,
         "product_name": product_name, "product_type": product_type,
@@ -295,14 +296,29 @@ async def icp_generate(
         return _render("icp_build.html", username=username, error=(
             "ANTHROPIC_API_KEY is not configured. Add it to .env and restart the server."
         ), form=form)
-    try:
-        hypothesis, signals, icp_description, demo_accounts, crawl_notes = _generate_icp_draft(
-            company_name=company_name, product_name=product_name,
-            product_type=product_type, description=description,
-            specialty=specialty, focus_areas=focus_areas,
-            exclusion_notes=exclusion_notes,
-            company_url=company_url, product_url=product_url,
+    crawl_notes: list[str] = []
+    company_page_text = _fetch_page_text(company_url)
+    if company_url:
+        crawl_notes.append(
+            f"Crawled company page ({len(company_page_text):,} chars)."
+            if company_page_text else "Company URL could not be fetched — proceeding without it."
         )
+    product_page_text = _fetch_page_text(product_url)
+    if product_url:
+        crawl_notes.append(
+            f"Crawled product page ({len(product_page_text):,} chars)."
+            if product_page_text else "Product URL could not be fetched — proceeding without it."
+        )
+    try:
+        brief = compress_crawl(
+            company_name=company_name,
+            product_name=product_name,
+            specialty=specialty,
+            description=description,
+            company_page_text=company_page_text,
+            product_page_text=product_page_text,
+        )
+        signal_set = generate_signals(brief=brief, specialty=specialty)
     except Exception as exc:
         logger.warning("ICP draft generation failed: %s", exc)
         return _render("icp_build.html", username=username, error=(
@@ -312,11 +328,12 @@ async def icp_generate(
         "icp_review.html",
         username=username,
         error=None,
-        signals=signals,
-        hypothesis=hypothesis,
-        icp_description=icp_description,
-        demo_accounts=demo_accounts,
+        signals=signal_set.signals,
+        hypothesis={},
+        icp_description="",
+        demo_accounts=[],
         crawl_notes=crawl_notes,
+        product_brief_json=brief.model_dump_json(),
         icp_id=icp_id,
         icp_name=icp_name,
         version=version,
@@ -326,6 +343,120 @@ async def icp_generate(
         product_type=product_type,
         product_url=product_url,
         specialty=specialty,
+    )
+
+
+@router.post("/icp-profiles/regenerate", response_class=HTMLResponse)
+async def icp_regenerate_signals(
+    request: Request,
+    username: str = Depends(auth.require_session),
+    product_brief_json: str = Form(...),
+    specialty: str = Form(...),
+    icp_id: str = Form(...),
+    icp_name: str = Form(...),
+    version: str = Form("1.0"),
+    company_name: str = Form(""),
+    company_url: str = Form(""),
+    product_name: str = Form(""),
+    product_type: str = Form(""),
+    product_url: str = Form(""),
+    demo_accounts_json: str = Form(""),
+):
+    """Stage 2 only: re-run signal generation from the cached brief. No crawl."""
+    form_data = await request.form()
+    try:
+        from crawl_compressor import ProductBrief
+        brief = ProductBrief.model_validate_json(product_brief_json)
+        signal_set = generate_signals(brief=brief, specialty=specialty)
+    except Exception as exc:
+        logger.warning("Signal regeneration failed: %s", exc)
+        return _render(
+            "icp_review.html",
+            username=username,
+            error="Signal regeneration failed. Try again.",
+            signals=[],
+            hypothesis=_parse_hypothesis_from_form(form_data),
+            icp_description=(form_data.get("icp_description") or "").strip(),
+            demo_accounts=_parse_demo_accounts(demo_accounts_json),
+            crawl_notes=[],
+            product_brief_json=product_brief_json,
+            icp_id=icp_id, icp_name=icp_name, version=version,
+            company_name=company_name, company_url=company_url,
+            product_name=product_name, product_type=product_type,
+            product_url=product_url, specialty=specialty,
+        )
+    return _render(
+        "icp_review.html",
+        username=username,
+        error=None,
+        signals=signal_set.signals,
+        hypothesis=_parse_hypothesis_from_form(form_data),
+        icp_description=(form_data.get("icp_description") or "").strip(),
+        demo_accounts=_parse_demo_accounts(demo_accounts_json),
+        crawl_notes=["Signals regenerated from cached product brief. No re-crawl."],
+        product_brief_json=product_brief_json,
+        icp_id=icp_id, icp_name=icp_name, version=version,
+        company_name=company_name, company_url=company_url,
+        product_name=product_name, product_type=product_type,
+        product_url=product_url, specialty=specialty,
+    )
+
+
+@router.post("/icp-profiles/approve", response_class=HTMLResponse)
+async def icp_approve(
+    request: Request,
+    username: str = Depends(auth.require_session),
+    product_brief_json: str = Form(...),
+    specialty: str = Form(...),
+    signal_count: int = Form(...),
+    icp_id: str = Form(...),
+    icp_name: str = Form(...),
+    version: str = Form("1.0"),
+    company_name: str = Form(""),
+    company_url: str = Form(""),
+    product_name: str = Form(""),
+    product_type: str = Form(""),
+    product_url: str = Form(""),
+    icp_description: str = Form(""),
+):
+    """Stage 3: generate narrative and demo accounts from the approved signal set."""
+    form_data = await request.form()
+    approved_signals = _parse_signals_from_form(form_data, signal_count)
+    try:
+        from crawl_compressor import ProductBrief
+        brief = ProductBrief.model_validate_json(product_brief_json)
+        narrative = generate_narrative(brief=brief, approved_signals=approved_signals)
+    except Exception as exc:
+        logger.warning("Narrative generation failed: %s", exc)
+        return _render(
+            "icp_review.html",
+            username=username,
+            error="Demo brief generation failed. Try again.",
+            signals=approved_signals,
+            hypothesis=_parse_hypothesis_from_form(form_data),
+            icp_description=icp_description.strip(),
+            demo_accounts=[],
+            crawl_notes=[],
+            product_brief_json=product_brief_json,
+            icp_id=icp_id, icp_name=icp_name, version=version,
+            company_name=company_name, company_url=company_url,
+            product_name=product_name, product_type=product_type,
+            product_url=product_url, specialty=specialty,
+        )
+    return _render(
+        "icp_review.html",
+        username=username,
+        error=None,
+        signals=approved_signals,
+        hypothesis=narrative.hypothesis,
+        icp_description=narrative.description,
+        demo_accounts=narrative.demo_accounts,
+        crawl_notes=["Demo brief generated from approved signals."],
+        product_brief_json=product_brief_json,
+        icp_id=icp_id, icp_name=icp_name, version=version,
+        company_name=company_name, company_url=company_url,
+        product_name=product_name, product_type=product_type,
+        product_url=product_url, specialty=specialty,
     )
 
 
@@ -345,38 +476,19 @@ async def icp_save(
     specialty: str = Form(""),
     icp_description: str = Form(""),
     demo_accounts_json: str = Form(""),
+    product_brief_json: str = Form(""),
 ):
     """Validate and persist the edited ICP profile to disk."""
     form_data = await request.form()
-    signals = []
-    for i in range(signal_count):
-        sig: dict = {
-            "signal_id": (form_data.get(f"signal_id_{i}") or "").strip(),
-            "signal_label": (form_data.get(f"signal_label_{i}") or "").strip(),
-            "prompt_instruction": (form_data.get(f"prompt_instruction_{i}") or "").strip(),
-            "positive_weight": int(form_data.get(f"positive_weight_{i}") or 0),
-        }
-        if form_data.get(f"required_for_bullseye_{i}") == "on":
-            sig["required_for_bullseye"] = True
-        raw_no_weight = (form_data.get(f"no_weight_{i}") or "").strip()
-        if raw_no_weight:
-            try:
-                sig["no_weight"] = int(raw_no_weight)
-            except ValueError:
-                pass
-        signals.append(sig)
-    hypothesis = {
-        "ideal_practice_profile": (form_data.get("hyp_ideal_practice_profile") or "").strip(),
-        "commercial_fit_reasoning": (form_data.get("hyp_commercial_fit_reasoning") or "").strip(),
-        "fast_close_indicators": (form_data.get("hyp_fast_close_indicators") or "").strip(),
-        "common_objections": (form_data.get("hyp_common_objections") or "").strip(),
-    }
+    signals = _parse_signals_from_form(form_data, signal_count)
+    hypothesis = _parse_hypothesis_from_form(form_data)
+    demo_accounts = _parse_demo_accounts(demo_accounts_json)
     try:
-        demo_accounts = json.loads(demo_accounts_json) if demo_accounts_json.strip() else []
-        if not isinstance(demo_accounts, list):
-            demo_accounts = []
+        product_brief = json.loads(product_brief_json) if product_brief_json.strip() else {}
+        if not isinstance(product_brief, dict):
+            product_brief = {}
     except (ValueError, TypeError):
-        demo_accounts = []
+        product_brief = {}
     profile = {
         "icp_id": icp_id.strip(),
         "name": icp_name.strip(),
@@ -384,6 +496,7 @@ async def icp_save(
         "description": icp_description.strip(),
         "hypothesis": hypothesis,
         "demo_accounts": demo_accounts,
+        "product_brief": product_brief,
         "source_urls": {"company_url": company_url.strip(), "product_url": product_url.strip()},
         "signals": signals,
     }
@@ -399,6 +512,7 @@ async def icp_save(
             icp_description=icp_description,
             demo_accounts=demo_accounts,
             crawl_notes=[],
+            product_brief_json=product_brief_json,
             icp_id=icp_id,
             icp_name=icp_name,
             version=version,
@@ -998,6 +1112,47 @@ class _TagStripper(HTMLParser):
         return " ".join(self._parts)
 
 
+def _parse_signals_from_form(form_data: dict, signal_count: int) -> list[dict]:
+    """Extract and normalize signal rows from a review form submission."""
+    signals = []
+    for i in range(signal_count):
+        sig: dict = {
+            "signal_id": (form_data.get(f"signal_id_{i}") or "").strip(),
+            "signal_label": (form_data.get(f"signal_label_{i}") or "").strip(),
+            "prompt_instruction": (form_data.get(f"prompt_instruction_{i}") or "").strip(),
+            "positive_weight": int(form_data.get(f"positive_weight_{i}") or 0),
+        }
+        if form_data.get(f"required_for_bullseye_{i}") == "on":
+            sig["required_for_bullseye"] = True
+        raw_no_weight = (form_data.get(f"no_weight_{i}") or "").strip()
+        if raw_no_weight:
+            try:
+                sig["no_weight"] = int(raw_no_weight)
+            except ValueError:
+                pass
+        signals.append(sig)
+    return signals
+
+
+def _parse_hypothesis_from_form(form_data: dict) -> dict:
+    """Extract hypothesis fields from a review form submission."""
+    return {
+        "ideal_practice_profile": (form_data.get("hyp_ideal_practice_profile") or "").strip(),
+        "commercial_fit_reasoning": (form_data.get("hyp_commercial_fit_reasoning") or "").strip(),
+        "fast_close_indicators": (form_data.get("hyp_fast_close_indicators") or "").strip(),
+        "common_objections": (form_data.get("hyp_common_objections") or "").strip(),
+    }
+
+
+def _parse_demo_accounts(demo_accounts_json: str) -> list:
+    """Parse demo_accounts_json from a form field, returning an empty list on failure."""
+    try:
+        accounts = json.loads(demo_accounts_json) if (demo_accounts_json or "").strip() else []
+        return accounts if isinstance(accounts, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
 def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
     """Fetch a URL and return stripped plain text, truncated to max_chars.
 
@@ -1018,131 +1173,6 @@ def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
     except Exception as exc:
         logger.debug("URL fetch failed for %s: %s", url, exc)
         return ""
-
-
-_ICP_DRAFT_PROMPT = """You are a senior medical device sales strategist building an Ideal Customer Profile (ICP) \
-for a B2B medical sales tool.
-
-Company: {company_name}
-Product: {product_name}
-Product Type: {product_type}
-Description: {description}
-Target Specialty: {specialty}
-Key Services / Focus Areas: {focus_areas}
-Known Exclusion Criteria: {exclusion_notes}
-
-Company Website Content (from {company_url}):
-{company_page_text}
-
-Product Page Content (from {product_url}):
-{product_page_text}
-
-Return a single JSON object with exactly four top-level keys:
-
-"description"
-  A 2-3 sentence plain-English summary of who the ideal customer is and why they are a strong \
-commercial fit for this product.
-
-"hypothesis"
-  An object with exactly four string keys:
-  - "ideal_practice_profile": Describe the ideal practice in 2-3 sentences — ownership model, \
-patient mix, size, and key services offered.
-  - "commercial_fit_reasoning": Why practices matching this profile close fast — payment model, \
-budget authority, procedure fit, and urgency drivers (1-2 sentences).
-  - "fast_close_indicators": Concrete, website-observable signals that predict a quick deal — \
-be specific to this product and specialty (2-3 sentences).
-  - "common_objections": The 2-3 most likely objections from this specialty and a one-sentence \
-response to each.
-
-"demo_accounts"
-  An array of exactly 3 synthetic (realistic but fabricated) example practices that illustrate \
-how the scoring would work. Produce one per tier in this order:
-  Each object must have these keys:
-  - tier: one of "Bullseye", "Watchlist", "Excluded"
-  - practice_name: realistic-sounding practice name
-  - location: "City, ST"
-  - practice_type: 1 sentence describing the practice (size, ownership, specialty focus)
-  - score_estimate: integer 0-100 representing estimated fit score
-  - signal_summary: 2-3 sentences describing what signals this practice would show on its website
-  - tier_reasoning: 1-2 sentences explaining exactly why it lands at this tier
-
-"signals"
-  An array of 6-10 signal objects. Each must have exactly these keys:
-  - signal_id: unique string like "S-001"
-  - signal_label: concise 3-8 word label
-  - prompt_instruction: one clear question answerable from the practice website
-  - positive_weight: integer; positive = fit evidence, negative = poor fit or disqualifier \
-(range: -30 to 30)
-
-Return ONLY a valid JSON object. No prose, no markdown, no code fences."""
-
-
-def _generate_icp_draft(
-    company_name: str, product_name: str, product_type: str,
-    description: str, specialty: str, focus_areas: str, exclusion_notes: str,
-    company_url: str = "", product_url: str = "",
-) -> tuple[dict, list[dict], str, list[dict], list[str]]:
-    """Call Claude to generate an ICP hypothesis, signals, demo accounts, and description.
-
-    Returns (hypothesis, signals, description, demo_accounts, crawl_notes).
-    Raises ValueError on API error or unparseable response.
-    """
-    crawl_notes: list[str] = []
-    company_page_text = _fetch_page_text(company_url)
-    if company_url:
-        if company_page_text:
-            crawl_notes.append(f"Crawled company page ({len(company_page_text):,} chars).")
-        else:
-            crawl_notes.append("Company URL could not be fetched — proceeding without it.")
-    product_page_text = _fetch_page_text(product_url)
-    if product_url:
-        if product_page_text:
-            crawl_notes.append(f"Crawled product page ({len(product_page_text):,} chars).")
-        else:
-            crawl_notes.append("Product URL could not be fetched — proceeding without it.")
-
-    prompt = _ICP_DRAFT_PROMPT.format(
-        company_name=company_name or "Not specified",
-        product_name=product_name,
-        product_type=product_type or "Not specified",
-        description=description,
-        specialty=specialty,
-        focus_areas=focus_areas or "Not specified",
-        exclusion_notes=exclusion_notes or "None specified",
-        company_url=company_url or "not provided",
-        company_page_text=company_page_text or "Not available",
-        product_url=product_url or "not provided",
-        product_page_text=product_page_text or "Not available",
-    )
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    try:
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=4000,
-            timeout=120,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    except Exception as exc:
-        raise ValueError(f"Claude API error: {exc}") from exc
-    raw = message.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```[a-z]*\n?", "", raw)
-        raw = re.sub(r"\n?```$", "", raw)
-    try:
-        draft = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Model returned non-JSON: {exc}") from exc
-    if not isinstance(draft, dict):
-        raise ValueError("Model returned an array instead of a JSON object.")
-    signals = draft.get("signals", [])
-    if not isinstance(signals, list):
-        raise ValueError("Model response missing 'signals' array.")
-    hypothesis = draft.get("hypothesis") or {}
-    icp_description = str(draft.get("description") or "").strip()
-    demo_accounts = draft.get("demo_accounts") or []
-    if not isinstance(demo_accounts, list):
-        demo_accounts = []
-    return hypothesis, signals, icp_description, demo_accounts, crawl_notes
 
 
 def _build_demo_brief_pdf(profile: dict) -> bytes:

@@ -1,0 +1,130 @@
+{
+  "specialty": "obgyn_fertility",
+  "specialty_label": "OB/GYN & Fertility",
+  "version": "v1",
+  "description": "Anchor signal set for fertility-adjacent medical devices targeting independent OBGYN and general fertility practices that offer IUI as a primary treatment pathway. Practices with active IVF programs or IVF-specialist staff are friction accounts — they protect IVF revenue and are unlikely to prioritize IUI optimization.",
+  "signals": [
+    {
+      "signal_id": "S-ICP-001",
+      "signal_label": "IUI Offered",
+      "prompt_instruction": "Does the practice website explicitly list intrauterine insemination (IUI) as a service they perform?",
+      "positive_weight": 25,
+      "no_weight": -20,
+      "not_found_weight": -5,
+      "required_for_bullseye": true,
+      "source_type": "scraped",
+      "notes": "Core procedure match. Confirmed absent is near-disqualifying."
+    },
+    {
+      "signal_id": "S-ICP-002",
+      "signal_label": "In-Office Ultrasound",
+      "prompt_instruction": "Does the website indicate that ultrasound is performed in-office (e.g., transvaginal ultrasound, follicle monitoring, sonohysterography)?",
+      "positive_weight": 15,
+      "no_weight": -10,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "scraped",
+      "notes": "Clinical workflow prerequisite. Confirmed absent is significant friction."
+    },
+    {
+      "signal_id": "S-ICP-003",
+      "signal_label": "REI on Staff",
+      "prompt_instruction": "Does the practice list a Reproductive Endocrinologist and Infertility (REI) specialist among its physicians?",
+      "positive_weight": -10,
+      "no_weight": 0,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "scraped",
+      "notes": "Friction signal for IUI-optimization products. REIs are IVF-trained and IVF-revenue motivated. Their presence signals IVF-first prioritization over IUI workflow improvement."
+    },
+    {
+      "signal_id": "S-ICP-004",
+      "signal_label": "Infertility as Named Service",
+      "prompt_instruction": "Is infertility treatment listed as a named service, specialty, or department (not merely mentioned in passing)?",
+      "positive_weight": 15,
+      "no_weight": -5,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "scraped"
+    },
+    {
+      "signal_id": "S-ICP-005",
+      "signal_label": "Male-Factor Treatment Listed",
+      "prompt_instruction": "Does the website mention male-factor infertility, semen analysis, or male reproductive services?",
+      "positive_weight": 10,
+      "no_weight": 0,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "scraped",
+      "notes": "Couples-focused practice — broader indication fit."
+    },
+    {
+      "signal_id": "S-ICP-006",
+      "signal_label": "Independent Practice",
+      "prompt_instruction": "Is the practice independently owned — not part of a hospital system, academic medical center, or large health network?",
+      "positive_weight": 20,
+      "no_weight": -15,
+      "not_found_weight": -3,
+      "required_for_bullseye": true,
+      "source_type": "scraped",
+      "notes": "Independent practices have direct budget authority. Hospital affiliation triggers procurement committees and extends deal cycles."
+    },
+    {
+      "signal_id": "S-ICP-007",
+      "signal_label": "Hospital Affiliation",
+      "prompt_instruction": "Does the website indicate affiliation with a hospital, academic medical center, or large health system?",
+      "positive_weight": -20,
+      "no_weight": 0,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "cap_tier": "Watchlist",
+      "source_type": "scraped",
+      "notes": "Friction signal. Confirmed affiliation caps at Watchlist — hospital procurement kills deal velocity."
+    },
+    {
+      "signal_id": "S-ICP-008",
+      "signal_label": "IVF On-Site",
+      "prompt_instruction": "Does the website list in vitro fertilization (IVF) as an on-site service performed at this location?",
+      "positive_weight": -15,
+      "no_weight": 0,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "cap_tier": "Watchlist",
+      "source_type": "scraped",
+      "notes": "Friction signal for IUI-optimization products. An active IVF program means the practice protects IVF revenue per cycle. These practices route patients toward IVF, not toward improving IUI outcomes. Caps at Watchlist."
+    },
+    {
+      "signal_id": "S-ICP-009",
+      "signal_label": "Cost-Effective or Cash-Pay Language",
+      "prompt_instruction": "Does the website use language indicating cash pay, self-pay pricing, affordability, or cost-conscious fertility options?",
+      "positive_weight": 10,
+      "no_weight": 0,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "scraped",
+      "notes": "Patient mix signal — receptive to cost-saving clinical tools."
+    },
+    {
+      "signal_id": "S-ICP-010",
+      "signal_label": "Saline Sonography Listed",
+      "prompt_instruction": "Does the website list saline infusion sonography (SIS/SHG) or sonohysterography as a service?",
+      "positive_weight": 10,
+      "no_weight": -5,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "scraped",
+      "notes": "Adjacent in-office procedure — confirms the practice runs in-office diagnostics."
+    },
+    {
+      "signal_id": "S-ICP-011",
+      "signal_label": "Non-Mandate State",
+      "prompt_instruction": null,
+      "positive_weight": 15,
+      "no_weight": -15,
+      "not_found_weight": 0,
+      "required_for_bullseye": false,
+      "source_type": "static_lookup",
+      "notes": "Applied downstream from a static state-law lookup. NOT scraped from the practice website. Practices in states with infertility insurance mandates face formulary and reimbursement scrutiny that adds procurement friction. Non-mandate states have fewer barriers to a direct purchase decision."
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+You are a senior medical device sales strategist adjusting a signal checklist for a specific product.
+
+PRODUCT BRIEF
+-------------
+Product: {product_name}
+What it is: {what_it_is}
+Clinical workflow fit: {clinical_workflow_fit}
+Commercial positioning: {commercial_positioning}
+Target practice traits: {target_practice_traits}
+
+ANCHOR SIGNAL TEMPLATE
+----------------------
+The signals below are the standard starting set for the {specialty_label} specialty. Your job is to ADJUST them for this specific product — tune weights, sharpen prompt instructions, add a signal only if this product clearly demands one not already covered, remove a signal only if it is genuinely irrelevant to this product. Do not generate signals from scratch.
+
+{anchor_signals_json}
+
+RULES
+-----
+1. Return all signals from the anchor template unless a signal is completely irrelevant to this product (explain in notes if you remove one).
+2. You may add at most 2 new signals if this product has a clear fit indicator not in the anchor.
+3. Every signal must have no_weight set to a non-zero integer if the signal is a core fit requirement (confirmed absent should cost points). Setting no_weight to 0 for a positive-weight required signal is a generation failure.
+4. Every signal must have required_for_bullseye set — true only for signals where confirmed absence means the practice is definitively not a fast-close target.
+5. Do not change source_type. Static lookup signals are applied downstream; do not write a prompt_instruction for them (keep null).
+6. Tune positive_weight, no_weight, and prompt_instruction to reflect this specific product's clinical and commercial fit requirements.
+7. Preserve signal_id values from the anchor. New signals get IDs continuing the sequence.
+
+Return a JSON array of signal objects. Each object must have exactly these keys:
+  signal_id, signal_label, prompt_instruction, positive_weight, no_weight,
+  not_found_weight, required_for_bullseye, source_type
+
+Include cap_tier only on signals where a confirmed "yes" should hard-cap the tier (e.g., hospital affiliation).
+Include notes only when the reasoning is non-obvious.
+
+Return ONLY a valid JSON array. No prose, no markdown, no code fences.

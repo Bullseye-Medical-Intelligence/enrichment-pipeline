@@ -27,17 +27,18 @@
 
 <form method="post" action="/icp-profiles/save">
   {# --- pass-through hidden fields --- #}
-  <input type="hidden" name="icp_id"            value="{{ icp_id }}">
-  <input type="hidden" name="icp_name"          value="{{ icp_name }}">
-  <input type="hidden" name="version"           value="{{ version }}">
-  <input type="hidden" name="signal_count"      value="{{ signals | length }}">
-  <input type="hidden" name="company_name"      value="{{ company_name | default('') }}">
-  <input type="hidden" name="company_url"       value="{{ company_url | default('') }}">
-  <input type="hidden" name="product_name"      value="{{ product_name }}">
-  <input type="hidden" name="product_type"      value="{{ product_type | default('') }}">
-  <input type="hidden" name="product_url"       value="{{ product_url | default('') }}">
-  <input type="hidden" name="specialty"         value="{{ specialty }}">
+  <input type="hidden" name="icp_id"             value="{{ icp_id }}">
+  <input type="hidden" name="icp_name"           value="{{ icp_name }}">
+  <input type="hidden" name="version"            value="{{ version }}">
+  <input type="hidden" name="signal_count"       value="{{ signals | length }}">
+  <input type="hidden" name="company_name"       value="{{ company_name | default('') }}">
+  <input type="hidden" name="company_url"        value="{{ company_url | default('') }}">
+  <input type="hidden" name="product_name"       value="{{ product_name }}">
+  <input type="hidden" name="product_type"       value="{{ product_type | default('') }}">
+  <input type="hidden" name="product_url"        value="{{ product_url | default('') }}">
+  <input type="hidden" name="specialty"          value="{{ specialty }}">
   <input type="hidden" name="demo_accounts_json" value="{{ demo_accounts | default([]) | tojson | e }}">
+  <input type="hidden" name="product_brief_json" value="{{ product_brief_json | default('') | e }}">
 
   {# ------------------------------------------------------------------ #}
   {# SECTION 1 — ICP summary description                                #}
@@ -96,13 +97,12 @@
   {# SECTION 3 — Demo accounts preview                                  #}
   {# ------------------------------------------------------------------ #}
   {% set demo = demo_accounts | default([]) %}
-  {% if demo %}
   <div class="card" style="margin-bottom: 16px;">
     <p class="eyebrow">Prospect Demo Accounts</p>
+    {% if demo %}
     <p class="form-hint" style="margin-bottom:14px;">
-      AI-generated synthetic examples only — not real practices. Illustrates how the scoring
-      methodology would classify each tier. These are saved with the profile and shown in the
-      Demo Brief.
+      AI-generated synthetic examples based on the approved signal set. Not real practices.
+      Saved with the profile and shown in the Demo Brief.
     </p>
     <div class="demo-accounts-grid">
       {% for acct in demo %}
@@ -122,8 +122,13 @@
       </div>
       {% endfor %}
     </div>
+    {% else %}
+    <p class="form-hint">
+      Demo accounts are generated after you approve the signal set. Review and adjust signals below,
+      then click <strong>Approve Signals &amp; Generate Demo Brief</strong>.
+    </p>
+    {% endif %}
   </div>
-  {% endif %}
 
   {# ------------------------------------------------------------------ #}
   {# SECTION 4 — Signal checklist                                       #}
@@ -192,7 +197,9 @@
   </div>
 
   <div class="form-actions">
-    <button type="submit" class="btn btn-submit">Save Profile</button>
+    <button type="submit" formaction="/icp-profiles/approve" class="btn btn-submit">Approve Signals &amp; Generate Demo Brief</button>
+    <button type="submit" formaction="/icp-profiles/regenerate" class="btn btn-secondary">Regenerate Signals</button>
+    <button type="submit" formaction="/icp-profiles/save" class="btn btn-secondary">Save Profile</button>
     <a href="/icp-profiles/new" class="btn btn-secondary">Cancel</a>
   </div>
 </form>

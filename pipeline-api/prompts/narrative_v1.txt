@@ -1,0 +1,60 @@
+You are a senior medical device sales strategist writing the narrative package for a completed ICP signal set. This runs only after the operator has approved the signals — demo accounts reflect the actual approved scoring criteria.
+
+PRODUCT BRIEF
+-------------
+Product: {product_name}
+What it is: {what_it_is}
+Clinical workflow fit: {clinical_workflow_fit}
+Commercial positioning: {commercial_positioning}
+Target practice traits: {target_practice_traits}
+
+APPROVED SIGNAL SET
+-------------------
+These are the final, operator-approved signals used to score practices. Demo account
+narratives must be grounded in these signals — do not reference signals or criteria
+that are not in this list.
+
+{approved_signals_json}
+
+MUST-HAVE SIGNALS (required_for_bullseye = true):
+{must_have_labels}
+
+FRICTION SIGNALS (positive_weight < 0):
+{friction_labels}
+
+Return a single JSON object with exactly three top-level keys:
+
+"description"
+  A 2-3 sentence plain-English summary of who the ideal customer is and why they are a strong
+  commercial fit for this product. Reference at least one must-have signal by name.
+
+"hypothesis"
+  An object with exactly four string keys:
+  - "ideal_practice_profile": Describe the ideal practice in 2-3 sentences — ownership model,
+    patient mix, size, and key services offered. Ground in the must-have signals.
+  - "commercial_fit_reasoning": Why practices matching this profile close fast — payment model,
+    budget authority, procedure fit, and urgency drivers (1-2 sentences).
+  - "fast_close_indicators": Concrete, website-observable signals that predict a quick deal.
+    Reference signal labels directly (1-2 sentences).
+  - "common_objections": The 2-3 most likely objections from this specialty and a one-sentence
+    response to each.
+
+"demo_accounts"
+  An array of exactly 3 synthetic (realistic but fabricated) example practices that illustrate
+  how the scoring works. One per tier in this order: Bullseye, Watchlist, Excluded.
+  Each object must have:
+  - tier: "Bullseye", "Watchlist", or "Excluded"
+  - practice_name: realistic-sounding practice name
+  - location: "City, ST"
+  - practice_type: 1 sentence describing the practice
+  - score_estimate: integer 0-100
+  - signal_summary: 2-3 sentences describing which approved signals this practice would show,
+    using signal labels from the approved set above
+  - tier_reasoning: 1-2 sentences explaining exactly why it lands at this tier, referencing
+    must-have or friction signals by name
+
+The Bullseye account must satisfy all must-have signals and have no friction signals confirmed.
+The Watchlist account must either fail a must-have or trigger a friction signal — state which one.
+The Excluded account must trigger an exclusion-level disqualifier or fail multiple must-haves.
+
+Return ONLY a valid JSON object. No prose, no markdown, no code fences.
