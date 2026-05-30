@@ -148,6 +148,9 @@ def list_icp_profiles() -> list[dict]:
             "source_urls": profile.get("source_urls", {}),
             "signal_count": len(profile["signals"]),
             "signals": profile["signals"],
+            "default_specialty": profile.get("default_specialty", ""),
+            "default_geography": profile.get("default_geography", []),
+            "default_exclusion_rules": profile.get("default_exclusion_rules", []),
         })
     return profiles
 

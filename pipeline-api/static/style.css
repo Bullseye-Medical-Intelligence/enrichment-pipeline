@@ -124,6 +124,7 @@ ul, ol { padding-left: 1.4em; }
   margin-bottom: 14px;
 }
 .table-card { padding: 0; overflow: hidden; }
+.table-scroll { overflow-x: auto; }
 .empty-state { text-align: center; color: var(--muted); padding: 48px 20px; }
 .empty-state a { color: var(--accent); }
 .info-card {
