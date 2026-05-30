@@ -73,6 +73,7 @@ Every score bound, weight, threshold, and blend factor lives in
 ## The 8 Steps (`pipeline.py`)
 
 1. **Ingest** — load CSV, normalize to canonical schema, dedup, drop rows missing `practice_name`.
+   **Structural pre-filter** — immediately after ingest, `check_structural_exclusions` drops records that are wrong specialty or outside geography before any crawl or LLM spend. Pre-excluded records skip Steps 2–6 and rejoin at Step 6 as Excluded, preserving them in output without wasting API budget on them.
 2. **URL validate** — reachability check (`extraction/url_validator.py`), `io_concurrency` workers.
 3. **Web extract** — crawl homepage + relevant subpages (`extraction/web_extractor.py`), `io_concurrency` workers.
 4. **Signal extract (Claude)** — per-record LLM signal extraction + scoring (`enrichment/signal_extractor.py`), `llm_concurrency` workers, checkpointed. Records with fewer than `MIN_CONTEXT_CHARS` of website text skip the LLM call; all signals are set to `not_found` and `enrichment_status = "partial"` to prevent hallucinations from thin context.
@@ -117,12 +118,23 @@ matching more signals does not mean a higher score.
 ### Rep call brief (`signal_extractor.py::_build_call_brief`)
 Every record carries a `call_brief` object. Grounded fields are **derived from the
 signals** (no extra LLM call): `top_evidence`, `missing_to_verify` (mirrors the
-verification gate), `disqualifier_risk`, and `why_contact`. Three prep lines come
-from the LLM: `opening_line`, `likely_objection`, `discovery_question`, and
-`hours_of_operation` (office hours stated on the website, or empty string). The empty
-shape lives in `constants.py::empty_call_brief`; `scorer.py` defaults it so the
-field is always present. **Contact Priority** in the UI is a display relabel of
-`target_tier` (`record_adapter.contact_priority`), never a stored field.
+verification gate), `disqualifier_risk`, and `why_contact`. Four fields come from
+the LLM: `opening_line`, `likely_objection`, `discovery_question`, and
+`hours_of_operation` (office hours stated on the website, or empty string).
+
+**Integrity gate:** when `top_evidence` is empty (no signals survived as confirmed
+"yes"), all four LLM prep lines are cleared to `""`. The top-level `sales_angle`
+field (rep-facing bullet points, also LLM-generated) is similarly cleared to `[]`.
+This prevents a rep from seeing a fabricated opener or sales angle when the data
+doesn't actually support any confirmed signals.
+
+`sales_angle` is a top-level field on the enriched record, not inside `call_brief`.
+Both `sales_angle` and the prep lines are gated together — either both have grounded
+evidence or both are empty.
+
+The empty shape lives in `constants.py::empty_call_brief`; `scorer.py` defaults it
+so the field is always present. **Contact Priority** in the UI is a display relabel
+of `target_tier` (`record_adapter.contact_priority`), never a stored field.
 
 ---
 
