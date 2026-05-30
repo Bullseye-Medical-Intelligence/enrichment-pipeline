@@ -197,7 +197,8 @@ def _build_pdf(
         # making the failure obvious to whoever opens the deliverable.
         return _error_pdf(
             f"Report generation failed for run {run_id}. "
-            f"Please contact the operations team. Error type: {type(exc).__name__}."
+            f"{type(exc).__name__}: {str(exc)[:180]}. "
+            f"Please contact the operations team."
         )
 
 
@@ -226,9 +227,13 @@ def _build_bullseye_html(
         )
     except Exception as exc:
         logger.exception("HTML report generation failed for run %s", run_id)
+        import html as _html
         return (
-            f"<html><body><p>Report generation failed: {type(exc).__name__}. "
-            f"Please contact the operations team.</p></body></html>"
+            f"<html><body>"
+            f"<p><strong>Report generation failed:</strong> "
+            f"{_html.escape(type(exc).__name__)}: {_html.escape(str(exc))}</p>"
+            f"<p>Please contact the operations team.</p>"
+            f"</body></html>"
         ).encode("utf-8")
 
 

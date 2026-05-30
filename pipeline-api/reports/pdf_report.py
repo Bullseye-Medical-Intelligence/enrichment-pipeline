@@ -276,6 +276,6 @@ def _logo_data_uri(variant: str) -> str:
         svg_bytes = path.read_bytes()
         b64 = base64.b64encode(svg_bytes).decode("ascii")
         return f"data:image/svg+xml;base64,{b64}"
-    except FileNotFoundError:
-        logger.warning("Logo not found: %s", path)
+    except OSError:
+        logger.warning("Logo not accessible: %s", path)
         return ""
