@@ -28,7 +28,8 @@ jobs:
 
       - name: Dry-run smoke test
         run: |
+          printf 'name,city,state\nTest Clinic,Austin,TX\n' > "${RUNNER_TEMP}/sample.csv"
           python pipeline.py \
-            --input data/sample.csv \
+            --input "${RUNNER_TEMP}/sample.csv" \
             --source outscraper \
             --dry-run

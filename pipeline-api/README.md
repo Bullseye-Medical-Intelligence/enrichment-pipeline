@@ -28,7 +28,9 @@ source .venv/bin/activate          # macOS/Linux
 .venv\Scripts\activate             # Windows
 
 # 3. Install dependencies
+# Install BOTH sets: the API's own deps AND the enrichment pipeline's deps.
 pip install -r requirements.txt
+pip install -r ../requirements.txt
 
 # 4. Copy and fill in environment variables
 cp .env.example .env
