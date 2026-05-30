@@ -24,6 +24,7 @@ from enrichment.constants import (
     BASE_FIT_SCORE,
     CONFIDENCE_SCORE_MAP,
     CONFIDENCE_WEIGHT,
+    DEFAULT_BULLSEYE_MIN_SCORE,
     FIT_WEIGHT,
     HIGH_CONFIDENCE_THRESHOLD,
     HIGH_FIT_THRESHOLD,
@@ -428,20 +429,26 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     }
 
 
-def _determine_fit_confidence_status(bullseye_score: int,
+def _determine_fit_confidence_status(fit_signal_score: int,
                                       confidence_score: int) -> str:
     """
-    Determine fit_confidence_status from scores.
+    Determine fit_confidence_status from the two independent scoring dimensions.
     Returns one of the four canonical quadrant labels.
-    """
-    high_fit = bullseye_score >= HIGH_FIT_THRESHOLD
-    high_confidence = confidence_score >= HIGH_CONFIDENCE_THRESHOLD
 
-    if high_fit and high_confidence:
+    Both axes are read independently — never from the blended bullseye_score.
+    HIGH_FIT_THRESHOLD (70) applies to fit_signal_score (procedure match).
+    HIGH_CONFIDENCE_THRESHOLD (65) applies to confidence_score (evidence quality).
+    Reading from the blend would collapse HIGH FIT / LOW EVIDENCE into LOW FIT
+    for exactly the records this quadrant is designed to surface.
+    """
+    high_fit = fit_signal_score >= HIGH_FIT_THRESHOLD
+    high_evidence = confidence_score >= HIGH_CONFIDENCE_THRESHOLD
+
+    if high_fit and high_evidence:
         return "HIGH FIT / HIGH EVIDENCE"
-    elif high_fit and not high_confidence:
+    elif high_fit and not high_evidence:
         return "HIGH FIT / LOW EVIDENCE"
-    elif not high_fit and high_confidence:
+    elif not high_fit and high_evidence:
         return "LOW FIT / HIGH EVIDENCE"
     else:
         return "LOW FIT / LOW EVIDENCE"
@@ -535,7 +542,7 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
 
 def extract_signals(record: dict, icp_signals: list[dict],
                      context_text: str, run_id: str,
-                     bullseye_min_score: int = 75) -> dict:
+                     bullseye_min_score: int = DEFAULT_BULLSEYE_MIN_SCORE) -> dict:
     """
     Run signal extraction for a single record via Claude.
     Populates all enrichment fields on the record and returns it.
@@ -567,7 +574,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
                 "fit_signal_score": scores["fit_signal_score"],
                 "confidence_score": scores["confidence_score"],
                 "fit_confidence_status": _determine_fit_confidence_status(
-                    scores["bullseye_score"], scores["confidence_score"]
+                    scores["fit_signal_score"], scores["confidence_score"]
                 ),
                 "sales_angle": [],
                 "call_brief": empty_call_brief(),
@@ -611,7 +618,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
         confidence_score = scores["confidence_score"]
 
         fit_confidence_status = _determine_fit_confidence_status(
-            bullseye_score, confidence_score
+            fit_signal_score, confidence_score
         )
 
         # Sales angle
