@@ -122,6 +122,44 @@ def _check_geography(record: dict, target_geography: list[str]) -> bool:
     return state not in geo_upper
 
 
+def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[str], list[str]]:
+    """Return (triggered, rationale_parts) for deterministic, signal-independent exclusions.
+
+    Covers wrong_specialty and outside_geography — both decided purely from data
+    available at ingest (specialty, state). Because they need no crawl or LLM
+    output, they can run as a pre-filter before enrichment to avoid spending
+    crawl + LLM budget on records that will be excluded anyway. apply_exclusions
+    also calls this so the rules have a single home.
+    """
+    target_geography = run_config.get("target_geography", [])
+    target_specialty = (run_config.get("target_specialty") or "").strip()
+    triggered: list[str] = []
+    rationale_parts: list[str] = []
+
+    # wrong_specialty is deterministic — no LLM agreement required.
+    # Fire only when the record specialty is known and does not match the target.
+    # "Unknown" means detection failed, not a confirmed mismatch, so it is not a
+    # hard exclusion on its own — let scoring and signals decide instead.
+    record_specialty = (record.get("specialty") or "").strip()
+    if target_specialty and record_specialty and record_specialty.lower() != "unknown":
+        if not _specialty_matches(record_specialty, target_specialty):
+            triggered.append("wrong_specialty")
+            rationale_parts.append(
+                f"Practice specialty '{record_specialty}' does not match "
+                f"target specialty '{target_specialty}'."
+            )
+
+    if target_geography and _check_geography(record, target_geography):
+        triggered.append("outside_geography")
+        state = record.get("address_state", "unknown")
+        rationale_parts.append(
+            f"Practice is in {state}, outside target geography "
+            f"({', '.join(target_geography)})."
+        )
+
+    return triggered, rationale_parts
+
+
 def apply_exclusions(record: dict, run_config: dict) -> dict:
     """
     Apply all active exclusion rules to a record.
@@ -139,13 +177,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
         Updated record.
     """
     active_rules = set(run_config.get("active_exclusion_rules", []))
-    target_geography = run_config.get("target_geography", [])
-    target_specialty = (run_config.get("target_specialty") or "").strip()
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
-
-    # Collect all triggered exclusions
-    triggered = []
-    rationale_parts = []
 
     # LLM-detected triggers from signal extraction step
     llm_triggers = set(record.get("_llm_exclusion_triggers") or [])
@@ -153,27 +185,9 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
 
     # --- Hard exclusions ---
 
-    # wrong_specialty is deterministic — no LLM agreement required.
-    # Fire only when the record specialty is known and does not match the target.
-    # "Unknown" means detection failed, not a confirmed mismatch, so it is not a
-    # hard exclusion on its own — let scoring and signals decide instead.
-    record_specialty = (record.get("specialty") or "").strip()
-    if target_specialty and record_specialty and record_specialty.lower() != "unknown":
-        if not _specialty_matches(record_specialty, target_specialty):
-            triggered.append("wrong_specialty")
-            rationale_parts.append(
-                f"Practice specialty '{record_specialty}' does not match "
-                f"target specialty '{target_specialty}'."
-            )
-
-    # Geography check (pipeline-level)
-    if target_geography and _check_geography(record, target_geography):
-        triggered.append("outside_geography")
-        state = record.get("address_state", "unknown")
-        rationale_parts.append(
-            f"Practice is in {state}, outside target geography "
-            f"({', '.join(target_geography)})."
-        )
+    # Deterministic structural exclusions (wrong_specialty, outside_geography).
+    # Shared with the pipeline's pre-enrichment pre-filter so the logic lives once.
+    triggered, rationale_parts = check_structural_exclusions(record, run_config)
 
     # LLM-detected hard exclusions (excluding wrong_specialty, which we handle above)
     hard_from_llm = llm_triggers & HARD_EXCLUSION_RULES - {"wrong_specialty", "outside_geography"}

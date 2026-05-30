@@ -248,6 +248,10 @@ def _validate_and_clean_signals(raw_signals: list[dict],
                 sig["not_found_reason"] = "evidence_gate"
                 sig["signal_state"] = "not_found"
                 sig["confidence"] = "low"
+                # Clear the partial/unverifiable claim so stale evidence cannot
+                # render in the UI or client PDF for a signal now marked not_found.
+                sig["evidence_text"] = ""
+                sig["source_url"] = ""
 
     # Build final list in icp_signals order, inserting defaults for any omitted signal
     normalized = []

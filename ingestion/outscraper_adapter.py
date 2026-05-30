@@ -167,7 +167,9 @@ def load_outscraper_csv(filepath: str) -> list[dict]:
 
     with open(filepath, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        rows = list(reader)
+        # Normalize header case so case-variant columns (e.g. "Name", "Site")
+        # map the same way pre-flight validation reads them (it lowercases too).
+        rows = [{(k.strip().lower() if k else k): v for k, v in row.items()} for row in reader]
 
     for row_num, row in enumerate(rows, start=2):  # row 1 is header
         try:

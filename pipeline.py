@@ -46,7 +46,7 @@ from extraction.web_extractor import batch_extract
 from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE
 from enrichment.signal_extractor import extract_signals
 from enrichment.verifier import verify_bullseye_record
-from enrichment.exclusion_checker import apply_exclusions
+from enrichment.exclusion_checker import apply_exclusions, check_structural_exclusions
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from output.json_writer import write_json
 from output.csv_writer import write_csv
@@ -291,6 +291,22 @@ def run_pipeline(input_file: str, source_type: str,
         return {"run_id": run_id, "records_processed": len(records), "dry_run": True}
 
     # -------------------------------------------------------------------------
+    # STRUCTURAL PRE-FILTER (cost routing): records that deterministic
+    # specialty/geography rules will exclude skip crawl + LLM entirely. They
+    # rejoin the set at Step 6, where apply_exclusions formally marks them.
+    # Signal-dependent exclusions still run later, unchanged.
+    # -------------------------------------------------------------------------
+    pre_excluded = []
+    eligible = []
+    for record in records:
+        triggered, _ = check_structural_exclusions(record, run_config)
+        (pre_excluded if triggered else eligible).append(record)
+    if pre_excluded:
+        print(f"\n  Pre-filter: {len(pre_excluded)} records skip enrichment "
+              f"(wrong specialty / outside geography); {len(eligible)} eligible")
+    records = eligible
+
+    # -------------------------------------------------------------------------
     # STEP 2: URL VALIDATION
     # -------------------------------------------------------------------------
     _write_progress(output_dir, 2, "URL validation", 0, len(records))
@@ -457,6 +473,9 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 6: EXCLUSION CHECK
     # -------------------------------------------------------------------------
+    # Rejoin records held out by the structural pre-filter so they are formally
+    # excluded, tiered, and written to output alongside the enriched set.
+    records = records + pre_excluded
     _write_progress(output_dir, 6, "Exclusion check", 0, len(records))
     print(f"\n{'-'*40}")
     print("STEP 6: EXCLUSION CHECK")

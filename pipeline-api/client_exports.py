@@ -122,6 +122,46 @@ def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
 # PDF + metadata builders
 # ---------------------------------------------------------------------------
 
+def _error_pdf(message: str) -> bytes:
+    """Build a minimal but valid one-page PDF that visibly states an error.
+
+    Used when the executive report fails to render. A visible error page keeps
+    the client ZIP non-corrupt (the documented guarantee) while making the
+    failure obvious, instead of a blank document that looks like a successful
+    export. Uses raw PDF bytes so it works even when WeasyPrint is the cause of
+    the failure.
+    """
+    safe = message.replace("\\", "").replace("(", "[").replace(")", "]")
+    content = (
+        f"BT /F1 16 Tf 72 720 Td (Executive Target Report) Tj ET\n"
+        f"BT /F1 11 Tf 72 690 Td ({safe}) Tj ET"
+    ).encode("latin-1", "replace")
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += str(i).encode() + b" 0 obj\n" + obj + b"\nendobj\n"
+
+    xref_pos = len(pdf)
+    pdf += b"xref\n0 " + str(len(objects) + 1).encode() + b"\n"
+    pdf += b"0000000000 65535 f \n"
+    for off in offsets:
+        pdf += ("%010d 00000 n \n" % off).encode()
+    pdf += (b"trailer\n<< /Size " + str(len(objects) + 1).encode() +
+            b" /Root 1 0 R >>\nstartxref\n" + str(xref_pos).encode() + b"\n%%EOF\n")
+    return bytes(pdf)
+
+
 def _build_pdf(
     run_id: str,
     status,
@@ -145,10 +185,14 @@ def _build_pdf(
             screened=screened,
             excluded_count=excluded_count,
         )
-    except Exception:
-        logger.exception("PDF generation failed for run %s; returning empty PDF placeholder", run_id)
-        # Return a minimal valid PDF so the ZIP is never corrupt
-        return b"%PDF-1.4\n%%EOF\n"
+    except Exception as exc:
+        logger.exception("PDF generation failed for run %s; returning error-page PDF", run_id)
+        # Visible error page, not a blank stub — keeps the ZIP non-corrupt while
+        # making the failure obvious to whoever opens the deliverable.
+        return _error_pdf(
+            f"Report generation failed for run {run_id}. "
+            f"Please contact the operations team. Error type: {type(exc).__name__}."
+        )
 
 
 def _run_metadata(
