@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bullseye Target Report — {{ client_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0a0a0a;
+  color: #f7f6f4;
+  font-family: 'DM Sans', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 40px 32px 60px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 32px;
+  border-bottom: 1px solid rgba(247,246,244,0.12);
+  margin-bottom: 40px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 28px; height: 28px;
+  background: #c84b2f;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #fff; font-weight: 700;
+}
+.brand-name {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 18px;
+  color: #f7f6f4;
+  letter-spacing: 0.04em;
+}
+.report-meta { text-align: right; }
+.report-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c84b2f;
+  margin-bottom: 4px;
+}
+.report-subtitle { font-size: 12px; color: rgba(247,246,244,0.5); }
+
+/* ── Run summary strip ──────────────────────────────────── */
+.run-summary {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 40px;
+  padding: 18px 24px;
+  background: rgba(247,246,244,0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(247,246,244,0.08);
+}
+.summary-item { display: flex; flex-direction: column; gap: 2px; }
+.summary-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.4);
+}
+.summary-value { font-size: 15px; font-weight: 500; }
+
+/* ── Account card ───────────────────────────────────────── */
+.account-card {
+  display: flex;
+  gap: 0;
+  background: #161616;
+  border-radius: 14px;
+  border: 1px solid rgba(247,246,244,0.1);
+  margin-bottom: 28px;
+  overflow: hidden;
+}
+.card-left {
+  flex: 1;
+  padding: 32px 36px;
+  border-right: 1px solid rgba(247,246,244,0.08);
+}
+.card-right {
+  width: 280px;
+  flex-shrink: 0;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Card eyebrow ───────────────────────────────────────── */
+.card-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c84b2f;
+  background: rgba(200,75,47,0.12);
+  border: 1px solid rgba(200,75,47,0.3);
+  border-radius: 100px;
+  padding: 4px 12px;
+  margin-bottom: 18px;
+}
+.card-eyebrow::before { content: "●"; font-size: 7px; }
+
+/* ── Provider name & subtitle ───────────────────────────── */
+.provider-name {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 32px;
+  line-height: 1.15;
+  color: #f7f6f4;
+  margin-bottom: 8px;
+}
+.provider-subtitle {
+  font-size: 13px;
+  color: rgba(247,246,244,0.5);
+  margin-bottom: 24px;
+}
+.provider-subtitle span { color: rgba(247,246,244,0.25); margin: 0 5px; }
+
+.card-divider {
+  border: none;
+  border-top: 1px solid rgba(247,246,244,0.1);
+  margin: 0 0 24px;
+}
+
+/* ── Signals section ────────────────────────────────────── */
+.signals-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.4);
+  margin-bottom: 12px;
+}
+.signals-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+.signal-pill {
+  font-size: 12px;
+  font-weight: 500;
+  color: #f7f6f4;
+  background: rgba(247,246,244,0.06);
+  border: 1px solid rgba(247,246,244,0.15);
+  border-radius: 100px;
+  padding: 5px 14px;
+}
+.signal-pill.inferred {
+  color: rgba(247,246,244,0.6);
+  border-style: dashed;
+}
+.no-signals {
+  font-size: 13px;
+  color: rgba(247,246,244,0.3);
+  font-style: italic;
+  margin-bottom: 28px;
+}
+
+/* ── Rep sales hook ─────────────────────────────────────── */
+.rep-hook {
+  background: rgba(200,75,47,0.1);
+  border: 1px solid rgba(200,75,47,0.2);
+  border-radius: 8px;
+  padding: 18px 22px;
+}
+.rep-hook-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c84b2f;
+  margin-bottom: 10px;
+}
+.rep-hook-text {
+  font-size: 13px;
+  font-style: italic;
+  color: rgba(247,246,244,0.85);
+  line-height: 1.6;
+}
+.rep-hook-angles {
+  list-style: none;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rep-hook-angles li {
+  font-size: 12px;
+  color: rgba(247,246,244,0.75);
+  padding-left: 14px;
+  position: relative;
+}
+.rep-hook-angles li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: #c84b2f;
+}
+
+/* ── Score side ─────────────────────────────────────────── */
+.score-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.4);
+  margin-bottom: 4px;
+}
+.score-number {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 72px;
+  line-height: 1;
+  color: #f7f6f4;
+  margin-bottom: 6px;
+}
+.score-tier {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c84b2f;
+  margin-bottom: 28px;
+}
+
+.score-divider {
+  border: none;
+  border-top: 1px solid rgba(247,246,244,0.08);
+  margin-bottom: 20px;
+}
+
+/* ── Dimension bars ─────────────────────────────────────── */
+.dimensions { display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.dimension { }
+.dimension-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+.dimension-name { font-size: 12px; color: rgba(247,246,244,0.7); }
+.dimension-value { font-size: 11px; font-weight: 600; color: rgba(247,246,244,0.9); }
+.bar-track {
+  height: 3px;
+  background: rgba(247,246,244,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: #c84b2f;
+}
+.bar-fill.green { background: #4caf6e; }
+
+/* ── Sources ────────────────────────────────────────────── */
+.sources-text {
+  font-size: 10px;
+  color: rgba(247,246,244,0.25);
+  line-height: 1.5;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 80px 40px;
+  color: rgba(247,246,244,0.35);
+  font-size: 15px;
+}
+
+/* ── Footer ─────────────────────────────────────────────── */
+.report-footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(247,246,244,0.1);
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(247,246,244,0.25);
+}
+</style>
+</head>
+<body>
+
+{# ── Jinja2 macros ────────────────────────────────────────── #}
+{% macro score_label(v) %}
+  {%- if v is none or v == '' -%}—
+  {%- elif v >= 80 -%}Very Strong
+  {%- elif v >= 60 -%}Strong
+  {%- elif v >= 40 -%}Moderate
+  {%- elif v >= 20 -%}Low
+  {%- else -%}Very Low
+  {%- endif -%}
+{% endmacro %}
+
+{% macro tier_display(tier) %}
+  {%- if tier | lower == 'bullseye' -%}High Priority Target
+  {%- elif tier | lower == 'strong' -%}Strong Target
+  {%- elif tier | lower == 'warm' -%}Warm Target
+  {%- else -%}{{ tier }}
+  {%- endif -%}
+{% endmacro %}
+
+{# ── Header ───────────────────────────────────────────────── #}
+<header class="report-header">
+  <div class="brand">
+    <div class="brand-mark">B</div>
+    <span class="brand-name">BEMI</span>
+  </div>
+  <div class="report-meta">
+    <div class="report-title">Bullseye Target Report</div>
+    <div class="report-subtitle">
+      {{ client_name }}{% if product_name and product_name != '—' %} &nbsp;·&nbsp; {{ product_name }}{% endif %}
+      &nbsp;·&nbsp; {{ generated_date }}
+    </div>
+  </div>
+</header>
+
+{# ── Run summary strip ────────────────────────────────────── #}
+<div class="run-summary">
+  <div class="summary-item">
+    <span class="summary-label">Specialty</span>
+    <span class="summary-value">{{ target_specialty }}</span>
+  </div>
+  {% if geography and geography != '—' %}
+  <div class="summary-item">
+    <span class="summary-label">Geography</span>
+    <span class="summary-value">{{ geography }}</span>
+  </div>
+  {% endif %}
+  <div class="summary-item">
+    <span class="summary-label">Practices Screened</span>
+    <span class="summary-value">{{ screened }}</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">Bullseye Accounts</span>
+    <span class="summary-value">{{ bullseye_records | length }}</span>
+  </div>
+  {% if icp_name and icp_name != '—' %}
+  <div class="summary-item">
+    <span class="summary-label">ICP Profile</span>
+    <span class="summary-value">{{ icp_name }}{% if icp_version and icp_version != '—' %} v{{ icp_version }}{% endif %}</span>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Account cards ────────────────────────────────────────── #}
+{% if bullseye_records %}
+{% for rec in bullseye_records %}
+<div class="account-card">
+
+  {# Left: identity + signals + hook #}
+  <div class="card-left">
+    <div class="card-eyebrow">Evidence-Backed &nbsp;·&nbsp; Every Recommendation Tied to Visible Signals</div>
+
+    <div class="provider-name">{{ rec.name }}</div>
+    <div class="provider-subtitle">
+      {{ rec.specialty }}
+      {% if rec.location and rec.location != '—' %}
+        <span>·</span> {{ rec.location }}
+      {% endif %}
+      {% if rec.website %}
+        <span>·</span> <a href="{{ rec.website }}" style="color:rgba(247,246,244,0.5); text-decoration:none;">{{ rec.website | replace('https://','') | replace('http://','') }}</a>
+      {% endif %}
+    </div>
+
+    <hr class="card-divider">
+
+    <div class="signals-label">Observable Signals</div>
+    {% if rec.confirmed_signals %}
+    <div class="signals-pills">
+      {% for sig in rec.confirmed_signals %}
+      <span class="signal-pill{% if sig.inferred %} inferred{% endif %}">{{ sig.label }}</span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-signals">No directly confirmed signals — review underlying evidence before calling.</p>
+    {% endif %}
+
+    {% if rec.why_contact or rec.sales_angles %}
+    <div class="rep-hook">
+      <div class="rep-hook-label">Rep Sales Hook</div>
+      {% if rec.why_contact %}
+      <div class="rep-hook-text">"{{ rec.why_contact }}"</div>
+      {% endif %}
+      {% if rec.sales_angles %}
+      <ul class="rep-hook-angles">
+        {% for angle in rec.sales_angles %}
+        <li>{{ angle }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Right: score + bars #}
+  <div class="card-right">
+    <div class="score-label">Bullseye Score</div>
+    <div class="score-number">{{ rec.score if rec.score is not none else '—' }}</div>
+    <div class="score-tier">{{ tier_display(rec.tier) }}</div>
+
+    <hr class="score-divider">
+
+    <div class="dimensions">
+
+      {% if rec.fit_score is not none %}
+      <div class="dimension">
+        <div class="dimension-header">
+          <span class="dimension-name">Practice Fit</span>
+          <span class="dimension-value">{{ score_label(rec.fit_score) }}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:{{ rec.fit_score | int }}%"></div></div>
+      </div>
+      {% endif %}
+
+      {% if rec.confidence is not none %}
+      <div class="dimension">
+        <div class="dimension-header">
+          <span class="dimension-name">Evidence Quality</span>
+          <span class="dimension-value">{{ score_label(rec.confidence) }}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:{{ rec.confidence | int }}%"></div></div>
+      </div>
+      {% endif %}
+
+      {% if rec.signal_coverage is not none %}
+      <div class="dimension">
+        <div class="dimension-header">
+          <span class="dimension-name">Signal Coverage</span>
+          <span class="dimension-value">{{ rec.signal_coverage }}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:{{ rec.signal_coverage }}%"></div></div>
+      </div>
+      {% endif %}
+
+      <div class="dimension">
+        <div class="dimension-header">
+          <span class="dimension-name">Exclusion Risk</span>
+          <span class="dimension-value">{{ rec.exclusion_risk }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill green" style="width:{{ rec.exclusion_risk_pct }}%"></div>
+        </div>
+      </div>
+
+    </div>{# /dimensions #}
+
+    {% if rec.analyst_note %}
+    <div style="margin-top:20px; padding:12px 14px; background:rgba(247,246,244,0.04); border-radius:6px; border:1px solid rgba(247,246,244,0.08);">
+      <div style="font-size:9px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:rgba(247,246,244,0.35); margin-bottom:5px;">Analyst Note</div>
+      <div style="font-size:12px; color:rgba(247,246,244,0.7);">{{ rec.analyst_note }}</div>
+    </div>
+    {% endif %}
+
+    <div class="sources-text">
+      Sources: Practice website · Google Business · Public directories · Patient reviews.
+      Confidence ratings reflect the number and quality of independent public signals per account.
+    </div>
+  </div>
+
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty-state">
+  No Bullseye-tier accounts in this run. Review and approve records in the dashboard to populate this report.
+</div>
+{% endif %}
+
+{# ── Footer ───────────────────────────────────────────────── #}
+<footer class="report-footer">
+  <span>Confidential — For Client Use Only</span>
+  <span>{{ methodology_short }}</span>
+</footer>
+
+</body>
+</html>

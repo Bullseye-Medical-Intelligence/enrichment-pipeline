@@ -97,6 +97,60 @@ def build_executive_report(
     return pdf_bytes
 
 
+def build_bullseye_cards_html(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    approved_records: list[dict],
+    all_reviews: dict,
+    screened: int,
+    excluded_count: int,
+) -> bytes:
+    """Render the Bullseye Target Report as a self-contained HTML file.
+
+    Returns UTF-8 encoded bytes suitable for direct inclusion in the client ZIP.
+    The HTML file is standalone — it embeds all CSS and uses Google Fonts via CDN.
+    approved_records should already be filtered and sorted by score desc.
+    """
+    bullseye = [
+        r for r in approved_records
+        if record_adapter.effective_tier(r, all_reviews).lower() == "bullseye"
+    ]
+
+    geography = status.target_geography or project.get("target_geography") or []
+    if isinstance(geography, list):
+        geography = ", ".join(geography)
+
+    ctx = {
+        "run_id": run_id,
+        "client_name": status.client_name or project.get("client_name") or "—",
+        "product_name": status.product_name or project.get("product_name") or "—",
+        "target_specialty": status.target_specialty or project.get("target_specialty") or "—",
+        "geography": geography or "—",
+        "icp_name": status.icp_profile_name or icp.get("name") or "—",
+        "icp_version": status.icp_profile_version or icp.get("version") or "—",
+        "generated_date": datetime.now(timezone.utc).strftime("%B %d, %Y"),
+        "screened": screened,
+        "bullseye_records": [
+            _prepare_record(r, all_reviews.get(record_adapter.get_record_id(r), {}))
+            for r in bullseye
+        ],
+        "methodology_short": (
+            "Based on publicly available signals only. "
+            "No PHI or patient data used."
+        ),
+    }
+
+    template = _jinja_env.get_template("bullseye_cards.html")
+    html_str = template.render(**ctx)
+    logger.info(
+        "Generated Bullseye HTML report for run %s: %d accounts, %d bytes",
+        run_id, len(bullseye), len(html_str),
+    )
+    return html_str.encode("utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -111,12 +165,19 @@ def _prepare_record(rec: dict, review: dict) -> dict:
     phone_digits = "".join(c for c in phone_raw if c.isdigit() or c in "+()")
     phone_formatted = _format_phone(phone_raw)
 
+    signals = rec.get("signals") or []
     signals_with_evidence = []
     signal_labels = []
-    for sig in (rec.get("signals") or []):
+    confirmed_signals = []
+
+    for sig in signals:
         label = sig.get("signal_label") or sig.get("label") or ""
+        state_val = sig.get("signal_state", "")
+        inferred = bool(sig.get("state_inferred", False))
+
         if label:
             signal_labels.append(label)
+
         evidence = (sig.get("evidence_text") or "").strip()
         source = sig.get("source_url") or ""
         if evidence:
@@ -125,6 +186,42 @@ def _prepare_record(rec: dict, review: dict) -> dict:
                 "evidence": evidence,
                 "source_url": source,
             })
+
+        if (state_val == "yes" or inferred) and label:
+            confirmed_signals.append({"label": label, "inferred": inferred})
+
+    # Signal coverage: % of confirmed/inferred out of total evaluated signals
+    total_signals = len(signals)
+    yes_count = sum(
+        1 for s in signals
+        if s.get("signal_state") == "yes" or s.get("state_inferred")
+    )
+    signal_coverage = int(yes_count / total_signals * 100) if total_signals > 0 else 0
+
+    # Fit score (pipeline field, 0-100)
+    fit_score_raw = rec.get("fit_signal_score")
+    fit_score = min(int(fit_score_raw), 100) if fit_score_raw is not None else None
+
+    # Exclusion risk: count friction/missing-required red flags
+    risk_count = 0
+    for sig in signals:
+        state_val = sig.get("signal_state", "")
+        weight = sig.get("positive_weight", 0)
+        # positive_weight may be a bool on older records (pre-fix bug); treat as 0
+        if isinstance(weight, bool):
+            weight = 0
+        required = sig.get("required_for_bullseye", False)
+        if isinstance(weight, (int, float)) and weight < 0 and state_val == "yes":
+            risk_count += 1  # confirmed friction signal
+        elif required and state_val == "no":
+            risk_count += 1  # confirmed-absent must-have
+
+    if risk_count == 0:
+        exclusion_risk, exclusion_risk_pct = "Low", 92
+    elif risk_count == 1:
+        exclusion_risk, exclusion_risk_pct = "Moderate", 55
+    else:
+        exclusion_risk, exclusion_risk_pct = "Elevated", 20
 
     sales_angles = rec.get("sales_angle") or []
     if isinstance(sales_angles, str):
@@ -151,7 +248,12 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         "opening_line": brief.get("opening_line") or "",
         "signal_labels": signal_labels,
         "signals_with_evidence": signals_with_evidence,
+        "confirmed_signals": confirmed_signals,
         "sales_angles": sales_angles,
+        "fit_score": fit_score,
+        "signal_coverage": signal_coverage,
+        "exclusion_risk": exclusion_risk,
+        "exclusion_risk_pct": exclusion_risk_pct,
         "analyst_note": review.get("analyst_note") or "",
         "override_reason": review.get("override_reason") or "",
         "reviewed_by": review.get("reviewed_by") or "",

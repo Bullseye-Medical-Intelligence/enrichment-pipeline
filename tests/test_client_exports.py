@@ -29,6 +29,7 @@ from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
     "Executive_Target_Report.pdf",
+    "Bullseye_Target_Report.html",
     "bullseye_accounts.csv",
     "warm_accounts.csv",
     "excluded_targets.csv",

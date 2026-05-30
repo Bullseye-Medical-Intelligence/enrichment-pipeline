@@ -72,6 +72,11 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
         approved, all_reviews,
         len(records), excluded_count,
     )
+    html_bytes = _build_bullseye_html(
+        run_id, status, project, icp,
+        approved, all_reviews,
+        len(records), excluded_count,
+    )
 
     metadata = _run_metadata(
         run_id, status, project, icp,
@@ -80,6 +85,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
 
     files = {
         "Executive_Target_Report.pdf": pdf_bytes,
+        "Bullseye_Target_Report.html": html_bytes,
         "bullseye_accounts.csv": bullseye_csv,
         "warm_accounts.csv": warm_csv,
         "excluded_targets.csv": excluded_csv,
@@ -193,6 +199,37 @@ def _build_pdf(
             f"Report generation failed for run {run_id}. "
             f"Please contact the operations team. Error type: {type(exc).__name__}."
         )
+
+
+def _build_bullseye_html(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    approved: list[dict],
+    all_reviews: dict,
+    screened: int,
+    excluded_count: int,
+) -> bytes:
+    """Render the Bullseye cards HTML report; return UTF-8 bytes."""
+    try:
+        from reports import pdf_report
+        return pdf_report.build_bullseye_cards_html(
+            run_id=run_id,
+            status=status,
+            project=project,
+            icp=icp,
+            approved_records=approved,
+            all_reviews=all_reviews,
+            screened=screened,
+            excluded_count=excluded_count,
+        )
+    except Exception as exc:
+        logger.exception("HTML report generation failed for run %s", run_id)
+        return (
+            f"<html><body><p>Report generation failed: {type(exc).__name__}. "
+            f"Please contact the operations team.</p></body></html>"
+        ).encode("utf-8")
 
 
 def _run_metadata(
