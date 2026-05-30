@@ -97,7 +97,7 @@
 </div>
 
 <div id="preview-overlay" class="modal-overlay" style="display:none">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+  <div class="modal modal-preview" role="dialog" aria-modal="true" aria-labelledby="preview-title">
     <p class="eyebrow">Confirm Import</p>
     <h3 id="preview-title">Ready to import</h3>
     <div id="preview-body"></div>
@@ -107,6 +107,109 @@
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  var form     = document.getElementById('upload-form');
+  var overlay  = document.getElementById('preview-overlay');
+  var body     = document.getElementById('preview-body');
+  var confirm  = document.getElementById('preview-confirm');
+  var cancel   = document.getElementById('preview-cancel');
+  var submitBtn = form ? form.querySelector('button[type=submit]') : null;
+
+  if (!form || !overlay) return;
+
+  function closeModal() {
+    overlay.style.display = 'none';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Start Enrichment'; }
+  }
+
+  cancel.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+  confirm.addEventListener('click', function () {
+    confirm.disabled = true;
+    confirm.textContent = 'Starting…';
+    form.removeEventListener('submit', interceptSubmit);
+    form.submit();
+  });
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function renderDupRow(d) {
+    var badge = d.type === 'exact'
+      ? '<span style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;">EXACT</span>'
+      : '<span style="background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;">SIMILAR</span>';
+    var detail = d.type === 'exact'
+      ? 'duplicates row ' + d.first_row
+      : 'similar to <em>' + esc(d.similar_to) + '</em> (row ' + d.first_row + ')';
+    var loc = d.state ? ' (' + esc(d.state) + ')' : '';
+    return '<li style="margin-bottom:6px;font-size:12px;">'
+      + badge + ' Row ' + d.row + ': <strong>' + esc(d.name) + '</strong>' + loc
+      + ' — ' + detail
+      + (d.url ? '<br><span style="color:#6b7280;font-size:11px;">' + esc(d.url) + '</span>' : '')
+      + '</li>';
+  }
+
+  function buildModalContent(data) {
+    var html = '<p class="preview-count"><strong>' + data.importable + '</strong> records ready to import';
+    if (data.dropped_count) html += ', <strong>' + data.dropped_count + '</strong> dropped (no name)';
+    html += '.</p>';
+
+    var hasDups = data.duplicates && data.duplicates.length;
+    var hasSimilar = data.similar && data.similar.length;
+
+    if (hasDups || hasSimilar) {
+      html += '<ul class="preview-warnings">';
+      data.warnings.forEach(function (w) { html += '<li>' + esc(w) + '</li>'; });
+      html += '</ul>';
+
+      var items = (data.duplicates || []).concat(data.similar || []);
+      if (items.length) {
+        html += '<div style="max-height:220px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;margin-top:10px;">';
+        html += '<ul style="list-style:none;margin:0;padding:0;">';
+        items.forEach(function (d) { html += renderDupRow(d); });
+        html += '</ul></div>';
+        if (!hasDups) {
+          html += '<p style="margin-top:8px;font-size:12px;color:#6b7280;">Similar names are not removed — they are flagged for your review only.</p>';
+        } else {
+          html += '<p style="margin-top:8px;font-size:12px;color:#6b7280;">Exact duplicates are de-duplicated automatically. Similar names are kept; verify they are different clinics.</p>';
+        }
+      }
+    } else {
+      html += '<p style="font-size:13px;color:#6b7280;">No duplicates detected. Ready to start.</p>';
+    }
+    return html;
+  }
+
+  function interceptSubmit(e) {
+    e.preventDefault();
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Checking…'; }
+
+    var fd = new FormData(form);
+    fetch('/api/ui/runs/preview', { method: 'POST', body: fd })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (j) { throw new Error(j.detail || 'Validation failed'); });
+        return r.json();
+      })
+      .then(function (data) {
+        document.getElementById('preview-title').textContent =
+          data.importable + ' record' + (data.importable === 1 ? '' : 's') + ' ready to import';
+        body.innerHTML = buildModalContent(data);
+        overlay.style.display = 'flex';
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Start Enrichment'; }
+      })
+      .catch(function (err) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Start Enrichment'; }
+        alert('Preview failed: ' + err.message);
+      });
+  }
+
+  form.addEventListener('submit', interceptSubmit);
+})();
+</script>
 
 <div class="card info-card">
   <h4>What happens after you upload</h4>

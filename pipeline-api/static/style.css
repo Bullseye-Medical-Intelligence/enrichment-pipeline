@@ -184,6 +184,7 @@ ul, ol { padding-left: 1.4em; }
   margin: 4px 0 14px;
 }
 .modal-actions { display: flex; gap: 10px; margin-top: 22px; }
+.modal-preview  { max-width: 600px; }
 .preview-count { font-size: 14px; margin-bottom: 10px; }
 .preview-count strong {
   font-family: 'Instrument Serif', Georgia, serif;

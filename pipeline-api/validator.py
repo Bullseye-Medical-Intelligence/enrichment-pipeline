@@ -5,6 +5,7 @@ directory is created or subprocess is spawned.
 """
 
 import csv
+import difflib
 import io
 import logging
 
@@ -179,30 +180,80 @@ def _first_value(row: dict, keys: tuple[str, ...]) -> str:
     return ""
 
 
+_FUZZY_SIMILAR_THRESHOLD = 0.82
+_FUZZY_MAX_ROWS = 500   # skip fuzzy pass on very large files to stay fast
+
+
 def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> dict:
-    """Summarize a parsed CSV: importable count, likely duplicates, warnings."""
+    """Summarize a parsed CSV: importable count, duplicates, and similar-name pairs."""
     name_cols = ("name", "practice_name")
     url_cols = ("site", "website", "website_url")
     state_cols = ("state", "address_state")
 
-    seen: set[str] = set()
-    duplicate_count = 0
+    seen_urls: dict[str, int] = {}          # url -> first_row number (1-based, header=1)
+    seen_name_state: dict[str, int] = {}    # "name_lower|state" -> first_row
+    names_by_state: dict[str, list[tuple[int, str, str]]] = {}  # state -> [(row, name, name_lower)]
+
+    duplicate_records: list[dict] = []
     dropped_count = 0
 
-    for raw in rows:
-        # Headers vary in case across exports; match the adapters' lowercase access.
+    for i, raw in enumerate(rows, start=2):   # row 1 is the CSV header
         row = {k.lower(): v for k, v in raw.items() if k}
         name = _first_value(row, name_cols)
         if not name:
             dropped_count += 1
             continue
         url = _first_value(row, url_cols).lower().rstrip("/")
-        state = _first_value(row, state_cols).lower()
-        key = url or f"{name.lower()}|{state}"
-        if key in seen:
-            duplicate_count += 1
+        state = _first_value(row, state_cols)
+        state_display = state.upper() if state else ""
+        name_key = f"{name.lower()}|{state.lower()}"
+
+        first_row = None
+        if url and url in seen_urls:
+            first_row = seen_urls[url]
+        elif name_key in seen_name_state:
+            first_row = seen_name_state[name_key]
+
+        if first_row is not None:
+            duplicate_records.append({
+                "name": name,
+                "url": url,
+                "state": state_display,
+                "row": i,
+                "first_row": first_row,
+                "type": "exact",
+                "similar_to": "",
+            })
         else:
-            seen.add(key)
+            if url:
+                seen_urls[url] = i
+            seen_name_state[name_key] = i
+            bucket = names_by_state.setdefault(state.lower(), [])
+            bucket.append((i, name, name.lower()))
+
+    # Fuzzy similar-name pass — O(n²) per state bucket, skipped on large files.
+    similar_records: list[dict] = []
+    if len(rows) <= _FUZZY_MAX_ROWS:
+        for state_key, bucket in names_by_state.items():
+            state_display = state_key.upper() if state_key else ""
+            for j in range(len(bucket)):
+                row_j, name_j, lower_j = bucket[j]
+                for k in range(j + 1, len(bucket)):
+                    row_k, name_k, lower_k = bucket[k]
+                    ratio = difflib.SequenceMatcher(None, lower_j, lower_k).ratio()
+                    if _FUZZY_SIMILAR_THRESHOLD <= ratio < 1.0:
+                        similar_records.append({
+                            "name": name_k,
+                            "url": "",
+                            "state": state_display,
+                            "row": row_k,
+                            "first_row": row_j,
+                            "type": "similar",
+                            "similar_to": name_j,
+                        })
+
+    duplicate_count = len(duplicate_records)
+    similar_count = len(similar_records)
 
     warnings: list[str] = []
     if dropped_count:
@@ -211,8 +262,14 @@ def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> 
         )
     if duplicate_count:
         warnings.append(
-            f"{duplicate_count} row(s) look like duplicates "
-            "(same website, or same practice name and state)."
+            f"{duplicate_count} exact duplicate(s) detected "
+            "(same website or same practice name + state). "
+            "The pipeline will de-duplicate them automatically."
+        )
+    if similar_count:
+        warnings.append(
+            f"{similar_count} row(s) have similar names to another row in the same state — "
+            "verify these are not the same clinic before importing."
         )
     if source_type == "outscraper" and "type" not in set(fieldnames):
         warnings.append(
@@ -224,6 +281,9 @@ def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> 
         "row_count": len(rows),
         "importable": len(rows) - dropped_count,
         "duplicate_count": duplicate_count,
+        "similar_count": similar_count,
         "dropped_count": dropped_count,
         "warnings": warnings,
+        "duplicates": duplicate_records,
+        "similar": similar_records,
     }
