@@ -81,6 +81,13 @@ function saveReview(runId, recordId) {
   var qcStatus = (reviewEl && reviewEl.dataset.qcStatus) ||
                  _currentQC(recordId) || 'pending';
 
+  /* Setting a positive override tier implies the operator wants this record included.
+     Auto-promote to approved so they don't have to click the button separately. */
+  if (override && override.toLowerCase() !== 'excluded' && qcStatus === 'pending') {
+    qcStatus = 'approved';
+    setQC(recordId, 'approved');
+  }
+
   var payload = {
     analyst_note:    note,
     override_tier:   override || null,

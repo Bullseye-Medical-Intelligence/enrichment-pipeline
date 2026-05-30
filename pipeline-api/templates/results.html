@@ -13,7 +13,15 @@
   </div>
   <div class="header-actions">
     {% if status.status == "complete" %}
-    <a href="/runs/{{ run_id }}/client-package" class="btn {% if readiness and readiness.state == 'ready' %}btn-submit{% else %}btn-secondary{% endif %}">Download Client Package</a>
+    {% if readiness and readiness.state == 'ready' %}
+    <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
+    {% else %}
+    <span class="btn btn-secondary"
+          style="opacity:0.5; cursor:not-allowed; pointer-events:none;"
+          title="{% if readiness and readiness.pending_count %}{{ readiness.pending_count }} record{{ 's' if readiness.pending_count != 1 else '' }} still pending review{% else %}Complete labeling before downloading{% endif %}">
+      Download Client Package
+    </span>
+    {% endif %}
     <a href="/runs/{{ run_id }}/export/approved" class="btn btn-secondary">Export Approved</a>
     <a href="/runs/{{ run_id }}/export/excluded" class="btn btn-secondary">Export Excluded</a>
     <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary">Full JSON</a>

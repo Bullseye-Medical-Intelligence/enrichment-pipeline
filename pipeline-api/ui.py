@@ -803,7 +803,7 @@ async def export_excluded(run_id: str, username: str = Depends(auth.require_sess
 
 @router.get("/runs/{run_id}/client-package")
 async def client_package(run_id: str, username: str = Depends(auth.require_session)):
-    """Download a client deliverable ZIP for a completed run."""
+    """Download a client deliverable ZIP for a completed, fully-reviewed run."""
     status = runs.get_run(run_id)
     if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
@@ -812,7 +812,17 @@ async def client_package(run_id: str, username: str = Depends(auth.require_sessi
             status_code=425,
             detail=f"Run '{run_id}' has not completed (current status: {status.status}).",
         )
-    buf = client_exports.build_client_package(run_id, runs.run_dir(run_id), status)
+    run_directory = runs.run_dir(run_id)
+    pending = _pending_review_count(run_id, run_directory)
+    if pending > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{pending} record{'s' if pending != 1 else ''} still pending review. "
+                "Complete labeling before downloading the client package."
+            ),
+        )
+    buf = client_exports.build_client_package(run_id, run_directory, status)
     return StreamingResponse(
         buf,
         media_type="application/zip",
@@ -1059,6 +1069,20 @@ def _friendly_error(raw: str | None) -> str | None:
         if pattern in lower:
             return message
     return raw[:300]
+
+
+def _pending_review_count(run_id: str, run_directory: Path) -> int:
+    """Count records in a completed run that still have qc_status='pending'."""
+    results_path = run_directory / "enriched_targets.json"
+    if not results_path.exists():
+        return 0
+    with open(results_path, "r", encoding="utf-8") as f:
+        all_records = record_adapter.normalize_records_payload(json.load(f))
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    return sum(
+        1 for r in all_records
+        if all_reviews.get(record_adapter.get_record_id(r), {}).get("qc_status", "pending") == "pending"
+    )
 
 
 def _compute_readiness(merged_records: list) -> dict:
