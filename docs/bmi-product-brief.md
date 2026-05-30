@@ -42,6 +42,8 @@ A cartridge is the ICP layer that loads into the chassis. Exactly three things c
 
 Everything else — the schema, the scoring model, the exclusion-first evaluation order, the output format, the API, the pipeline — is engine. Reused unchanged.
 
+**Engine integrity rule:** Each cartridge must live in its own config folder and must not modify engine code. If a client-specific need requires code changes, treat it as an engine enhancement and document why it applies across future cartridges. This prevents client work from corrupting the reusable engine.
+
 ---
 
 ## THE TWO ENGINES
@@ -54,6 +56,8 @@ Processes 10,000+ record legacy lists. Zero chain-of-thought, no markdown, schem
 
 ### Free Brief Sourcing Path
 Given only a company name and website, the pipeline crawls the client's site, generates a product hypothesis, sources practices live from public directories, and populates the 3-target dossier. **No client list required.** The first Angel Aligner run against the Dallas metro was a Free Brief sourcing run.
+
+This is a controlled sample-generation workflow, not a full market map. The goal is to produce a credible sales conversation asset, not to exhaustively source a territory.
 
 ---
 
@@ -113,7 +117,7 @@ Caps only ever pull down. Nothing lifts a Watchlist record to Bullseye without r
 
 ### Hard Exclusion Gates
 
-Run **before any LLM tokens are spent**. A single gate hit: caps score at 40, labels EXCLUDED, routes to disqualification log. Gates must be **structural** — the account either cannot buy or cannot be scored. Brand loyalty is not a gate; it lives in fit scoring.
+Deterministic structural exclusion gates run before LLM spend whenever they can be decided from normalized input, such as wrong specialty or outside geography. Signal-dependent exclusions run after extraction but before final tiering. In all cases, exclusion logic is applied before client-facing prioritization. A single gate hit: caps score at 40, labels EXCLUDED, routes to disqualification log. Gates must be **structural** — the account either cannot buy or cannot be scored. Brand loyalty is not a gate; it lives in fit scoring.
 
 ### Source Confidence
 
@@ -162,7 +166,7 @@ Defined per signal in the cartridge's ICP checklist. Required fields: `signal_id
 3. **Exclusion-first:** hard gates run before any LLM tokens. No exceptions.
 4. **Gates must be structural:** brand loyalty is not a gate. It lives in fit scoring.
 5. **Asymmetric wedge:** `fit_signal` and `confidence` are independent dimensions, stored separately, never averaged. HIGH FIT / LOW EVIDENCE must survive to output.
-6. **Source URLs only:** never cached content, never screenshots, never inference from absence.
+6. **Store source URLs, short evidence snippets, and extraction metadata only.** Do not store screenshots, raw HTML, full-page cached content, login-gated content, or patient-level data. Never infer from absence.
 7. **Public sources only:** practice websites, Google Business, Healthgrades, NPI registry, directories. Never login-gated, patient portals, EMRs, paywalled, or claims/patient-level data.
 8. **Matching anchors in priority order:** website URL → clinic phone → zip code. NPI is often missing — do not rely on it for dedup.
 9. **Secrets in `.env` only:** API keys never in source, never in config files.
