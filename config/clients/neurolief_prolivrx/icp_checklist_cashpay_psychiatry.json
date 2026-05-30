@@ -74,10 +74,11 @@
       "signal_id": "S-NLF-008",
       "signal_label": "Hospital-employed or health-system-owned",
       "prompt_instruction": "Does the website indicate the practice is employed by, owned by, or operating as part of a hospital, health system, or large IDN?",
-      "positive_weight": -25,
+      "positive_weight": 0,
       "no_weight": 0,
+      "cap_tier": "Watchlist",
       "required_for_bullseye": false,
-      "note": "FRICTION signal. Institutional buying complexity and no cash-pay autonomy. Treated here as a heavy scored negative because cap_tier is not in the verified-live field set. If a future audit confirms cap_tier is live, convert this to cap_tier: 'Watchlist' instead of a negative weight."
+      "note": "STRUCTURAL DISQUALIFIER. Institutional buying complexity and no cash-pay autonomy. cap_tier: Watchlist hard-ceilings any confirmed hospital-employed practice regardless of other signal scores — institutional affiliation is not a matter of degree."
     },
     {
       "signal_id": "S-NLF-009",
