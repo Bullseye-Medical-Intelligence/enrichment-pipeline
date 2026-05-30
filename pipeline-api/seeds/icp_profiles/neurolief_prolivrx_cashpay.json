@@ -1,0 +1,93 @@
+{
+  "icp_id": "neurolief_prolivrx_cashpay",
+  "name": "Neurolief — Cash-Pay Interventional Psychiatry",
+  "version": "neurolief-prolivrx-cashpay-v1",
+  "client": "Neurolief",
+  "product": "Proliv Rx",
+  "description": "Independent, physician-owned psychiatry / interventional-psychiatry practices that already offer TMS (confirming a treatment-resistant-depression patient pipeline) AND operate a demonstrable cash-pay or out-of-network service line. Proliv Rx is a new (Jan 2026 PMA) at-home neuromodulation device with no established commercial coverage, so it is effectively cash-pay. The ideal target has both the TRD population that TMS generates and the proven ability to bill patients directly without an insurer. Concierge / membership models are a bonus cash-pay-adjacent signal.",
+  "scoring_notes": "TMS presence is the qualifier. Cash-pay capability is the wedge no competitor scores. Concierge/membership is the bonus. state_mandate_status does NOT apply to this cartridge (Proliv Rx is cash-pay nationwide).",
+  "signals": [
+    {
+      "signal_id": "S-NLF-001",
+      "signal_label": "TMS services offered",
+      "prompt_instruction": "Does the practice website explicitly list transcranial magnetic stimulation (TMS) as a service or treatment offered on-site (e.g. NeuroStar, BrainsWay, SAINT, or generic 'TMS therapy')?",
+      "positive_weight": 20,
+      "no_weight": -15,
+      "required_for_bullseye": true,
+      "note": "QUALIFIER. Confirms the practice already works the TRD population and is comfortable with neuromodulation. Must-have for Bullseye tier."
+    },
+    {
+      "signal_id": "S-NLF-002",
+      "signal_label": "Cash-pay or out-of-network service line",
+      "prompt_instruction": "Does the website explicitly indicate a cash-pay, self-pay, or out-of-network capability — for example published self-pay prices, 'out-of-network', 'we provide superbills or invoices for reimbursement', or a service that is never insurance-covered such as IV ketamine?",
+      "positive_weight": 25,
+      "no_weight": -20,
+      "required_for_bullseye": true,
+      "note": "THE WEDGE. Proves the practice can collect directly from patients without an insurer, which is required for a non-covered device. Strict textual anchoring: present word-for-word (cash price, out-of-network statement, IV ketamine offering) or not_found. Do not infer cash-pay from soft cues."
+    },
+    {
+      "signal_id": "S-NLF-003",
+      "signal_label": "Concierge or membership model",
+      "prompt_instruction": "Does the website describe a concierge practice, membership, retainer, or annual/monthly subscription model for psychiatric or medical services?",
+      "positive_weight": 15,
+      "no_weight": 0,
+      "required_for_bullseye": false,
+      "note": "BONUS cash-pay-adjacent signal. Concierge / membership proves direct-to-patient billing muscle at the highest level. Confirmed absent carries no penalty."
+    },
+    {
+      "signal_id": "S-NLF-004",
+      "signal_label": "Interventional / TRD positioning",
+      "prompt_instruction": "Does the website use treatment-resistant-depression or interventional-psychiatry language, or list esketamine/Spravato or ketamine for depression?",
+      "positive_weight": 18,
+      "no_weight": 0,
+      "required_for_bullseye": false,
+      "note": "Confirms the practice actively markets to the failed-medication population Proliv Rx is indicated for (adults who did not adequately respond to at least one antidepressant)."
+    },
+    {
+      "signal_id": "S-NLF-005",
+      "signal_label": "Independent / physician-owned practice",
+      "prompt_instruction": "Does the website indicate the practice is independently owned or physician-owned, rather than employed by or operating as part of a hospital or health system?",
+      "positive_weight": 15,
+      "no_weight": 0,
+      "required_for_bullseye": false,
+      "note": "Independence means direct budget authority and faster adoption."
+    },
+    {
+      "signal_id": "S-NLF-006",
+      "signal_label": "Multi-modal neuromodulation breadth",
+      "prompt_instruction": "Does the practice offer more than one neuromodulation or interventional modality (for example TMS plus ketamine, plus Spravato, or ECT referral)?",
+      "positive_weight": 10,
+      "no_weight": 0,
+      "required_for_bullseye": false,
+      "note": "Breadth signals clinical comfort with neuromodulation, making an at-home adjunct like Proliv Rx a natural addition rather than a leap."
+    },
+    {
+      "signal_id": "S-NLF-007",
+      "signal_label": "PA or NP prescriber present",
+      "prompt_instruction": "Does the website list a physician assistant (PA) or nurse practitioner (NP) as a provider at the practice?",
+      "positive_weight": 8,
+      "no_weight": 0,
+      "required_for_bullseye": false,
+      "note": "The Proliv Rx prescriber form accepts MD, DO, PA, and NP. Mid-level prescribers expand prescribing capacity."
+    },
+    {
+      "signal_id": "S-NLF-008",
+      "signal_label": "Hospital-employed or health-system-owned",
+      "prompt_instruction": "Does the website indicate the practice is employed by, owned by, or operating as part of a hospital, health system, or large IDN?",
+      "positive_weight": 0,
+      "no_weight": 0,
+      "cap_tier": "Watchlist",
+      "required_for_bullseye": false,
+      "note": "STRUCTURAL DISQUALIFIER. cap_tier: Watchlist hard-ceilings any confirmed hospital-employed practice regardless of other signal scores."
+    },
+    {
+      "signal_id": "S-NLF-009",
+      "signal_label": "Insurance-only billing model",
+      "prompt_instruction": "Does the website indicate the practice bills exclusively through insurance with no self-pay, cash, or out-of-network option mentioned anywhere?",
+      "positive_weight": 0,
+      "no_weight": -20,
+      "required_for_bullseye": false,
+      "note": "If every service routes through insurance, a non-covered device does not fit the billing model. Penalty applies only on a confirmed 'no cash-pay' reading, not on absence of evidence."
+    }
+  ]
+}
