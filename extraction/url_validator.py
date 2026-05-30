@@ -61,7 +61,20 @@ def validate_url(url: str, timeout: int = 15, retries: int = 3) -> UrlValidation
     if not parsed.scheme or not parsed.netloc:
         return UrlValidationResult(url, False, error=f"Malformed URL: {url}")
 
-    return _attempt_validation(url, timeout=timeout, retries=retries)
+    result = _attempt_validation(url, timeout=timeout, retries=retries)
+
+    # Many smaller practice sites have broken HTTPS but respond on plain HTTP.
+    # If the https:// attempt failed with a connection or SSL error, retry once
+    # on http:// before giving up.
+    if not result.is_valid and url.startswith("https://"):
+        error_lower = result.error.lower()
+        if "ssl" in error_lower or "connection" in error_lower:
+            http_url = "http://" + url[len("https://"):]
+            http_result = _attempt_validation(http_url, timeout=timeout, retries=1)
+            if http_result.is_valid:
+                return http_result
+
+    return result
 
 
 def _attempt_validation(url: str, timeout: int, retries: int) -> UrlValidationResult:
@@ -80,8 +93,8 @@ def _attempt_validation(url: str, timeout: int, retries: int) -> UrlValidationRe
                 timeout=timeout,
                 allow_redirects=True,
             )
-            # Some servers reject HEAD; fall back to GET
-            if response.status_code == 405:
+            # Some servers reject HEAD with 403/405/406; fall back to GET
+            if response.status_code in (403, 405, 406):
                 response = requests.get(
                     url,
                     headers=DEFAULT_HEADERS,

@@ -50,20 +50,20 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
   "signals": [
     {
       "signal_id": "S-ICP-001",
-      "signal_label": "IUD insertion listed",
+      "signal_label": "listed_procedure_confirmed",
       "signal_state": "yes",
-      "evidence_text": "Their services page lists 'IUD insertion and removal' under contraception.",
+      "evidence_text": "Their services page explicitly lists [procedure] under available treatments.",
       "source_url": "https://example.com/services",
       "confidence": "high"
     }
   ],
   "sales_angle": [
-    "Actively markets IUD insertion — front and center on their services page.",
-    "No REI on staff based on their provider listing.",
+    "Actively markets the target procedure — explicitly listed on their services page.",
+    "Provider listing shows no conflicting specialties or disqualifying affiliations.",
     "Independent private practice, not affiliated with a hospital system."
   ],
   "call_brief": {
-    "opening_line": "I saw your team lists in-office IUD insertion, so I wanted to reach out about how peers are streamlining that workflow.",
+    "opening_line": "I noticed your team offers [confirmed service], so I wanted to connect about how peers are streamlining that workflow.",
     "likely_objection": "They may already feel set with their current supplier and see no reason to switch.",
     "discovery_question": "How are you currently handling device sourcing and inventory for your in-office procedures?",
     "hours_of_operation": "Mon-Fri 8am-5pm"
@@ -75,9 +75,10 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
 CRITICAL RULES:
 - signal_state must be EXACTLY "yes", "no", or "not_found" — never null, true, false, 1, 0, or any other value
 - NEVER GUESS. Every "yes" must be traceable to specific text in the WEBSITE TEXT section above. If the text does not say it, the answer is "not_found".
-- Specialty does not imply services. An OBGYN practice does not "probably" offer IUD insertion — only mark "yes" if the website explicitly lists it.
+- Specialty does not imply service capability. Only mark "yes" if the website text explicitly names the service.
 - A "yes" signal MUST have a non-empty evidence_text (direct quote or close paraphrase from the text above) AND a non-empty source_url (the [Source: URL] where the evidence appears). If either is missing, use "not_found".
 - When in doubt between "yes" and "not_found", use "not_found". False negatives are recoverable; false positives waste a rep's time.
+- Use "no" ONLY when the website contains an explicit contradiction or statement of absence (e.g. "we do not offer X", "not available here"). Absence of a service from a page is "not_found", not "no".
 - Do not invent or assume information not present in the website text
 - call_brief opening_line, likely_objection, discovery_question must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption; hours_of_operation is a short factual string or empty string
 - exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "rei_on_staff", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]

@@ -241,11 +241,20 @@ let scoring and signals decide instead. The `type` column is optional on import.
 
 ## Configuration
 
-- **`config/run_config.json`** (committed, no secrets): client name, target
-  specialty/geography, `active_exclusion_rules`, `bullseye_min_score`, crawl
-  limits, `io_concurrency`, `llm_concurrency`, `subpage_keywords`.
-- **`config/icp_checklist.json`** (committed, no secrets): the signal checklist —
-  see ICP Signal Fields above.
+- **`config/run_config.json`** — generic placeholder template. Copy to
+  `config/clients/<client_slug>/run_config.json` and fill in client-specific
+  values before running. Running with the default config without customisation
+  will produce placeholder output.
+- **`config/icp_checklist.json`** — generic placeholder template (two skeleton
+  signals). Copy to `config/clients/<client_slug>/icp_checklist.json` and replace
+  with the client's real ICP signals.
+- **`config/clients/obgyn_femasys/`** — reference implementation for the first
+  engagement (Femasys / OBGYN). Pass these with `--config` and `--icp`:
+  ```
+  python pipeline.py --input data/input.csv --source outscraper \
+    --config config/clients/obgyn_femasys/run_config.json \
+    --icp    config/clients/obgyn_femasys/icp_checklist.json
+  ```
 - **`.env`** (never committed): API keys, `CLAUDE_MODEL`,
   `LLM_REQUEST_TIMEOUT_SECONDS`, `SESSION_SECRET_KEY`.
 

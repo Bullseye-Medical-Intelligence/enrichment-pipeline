@@ -12,7 +12,7 @@ public websites, and outputs `enriched_targets.json` for dashboard import.
 The pipeline takes a list of medical practices from an Outscraper CSV or manual CSV,
 visits each practice's public website, sends the text to Claude (Anthropic API) for
 signal analysis, and produces a scored, structured output file. Records that score
-high enough (≥ 75 by default) are additionally verified by a second LLM (OpenAI GPT)
+high enough (≥ 90 by default) are additionally verified by a second LLM (OpenAI GPT)
 as a quality gate. The output file is imported into the review dashboard for human QC.
 
 ---
@@ -59,24 +59,40 @@ Save the file. Never share or commit `.env` — it is already in `.gitignore`.
 
 ## 3. Running the Pipeline
 
-**Basic run (full enrichment):**
+**Basic run (full enrichment) — OBGYN / Femasys engagement:**
 ```
-python pipeline.py --input data/your_export.csv --source outscraper
+python pipeline.py --input data/your_export.csv --source outscraper \
+  --config config/clients/obgyn_femasys/run_config.json \
+  --icp    config/clients/obgyn_femasys/icp_checklist.json
+```
+
+**For a new engagement**, copy the client folder and customise:
+```
+cp -r config/clients/obgyn_femasys config/clients/<your_slug>
+# Edit config/clients/<your_slug>/run_config.json and icp_checklist.json
 ```
 
 **Test with 5 records first (recommended before a full batch):**
 ```
-python pipeline.py --input data/your_export.csv --source outscraper --limit 5
+python pipeline.py --input data/your_export.csv --source outscraper \
+  --config config/clients/<your_slug>/run_config.json \
+  --icp    config/clients/<your_slug>/icp_checklist.json \
+  --limit 5
 ```
 
 **Dry run (parse and normalize only — no API calls, no HTTP requests):**
 ```
-python pipeline.py --input data/your_export.csv --source outscraper --dry-run
+python pipeline.py --input data/your_export.csv --source outscraper \
+  --config config/clients/<your_slug>/run_config.json \
+  --icp    config/clients/<your_slug>/icp_checklist.json \
+  --dry-run
 ```
 
 **Manual CSV (already in Bullseye canonical format):**
 ```
-python pipeline.py --input data/manual_list.csv --source manual
+python pipeline.py --input data/manual_list.csv --source manual \
+  --config config/clients/<your_slug>/run_config.json \
+  --icp    config/clients/<your_slug>/icp_checklist.json
 ```
 
 **All available flags:**
@@ -140,7 +156,11 @@ produces unexpected results.
 
 ## 6. Key Configuration
 
-### `config/run_config.json` — change this per engagement
+Client configs live under `config/clients/<slug>/`. Do not edit the root
+`config/run_config.json` or `config/icp_checklist.json` — those are generic
+templates. Always pass `--config` and `--icp` explicitly.
+
+### `config/clients/<slug>/run_config.json` — change this per engagement
 
 | Field | What to change |
 |---|---|
@@ -148,16 +168,18 @@ produces unexpected results.
 | `target_specialty` | Specialty to match (e.g. `"OBGYN"`) |
 | `target_geography` | List of 2-letter state codes (e.g. `["TX", "FL", "GA"]`) |
 | `active_exclusion_rules` | Which exclusion rules fire for this engagement |
-| `bullseye_min_score` | Minimum score for Bullseye tier (default: 75) |
+| `bullseye_min_score` | Minimum score for Bullseye tier (default: 90) |
 
-### `config/icp_checklist.json` — change this per engagement
+### `config/clients/<slug>/icp_checklist.json` — change this per engagement
 
 Defines the signals Claude evaluates for each practice. Each signal has:
 - `signal_id` — unique ID (e.g. `S-ICP-001`)
 - `signal_label` — human-readable name
 - `prompt_instruction` — the question Claude answers for this signal
 - `positive_weight` — how much this signal adds to (or subtracts from) the fit score.
-  Negative weight = negative signal (e.g. REI on staff reduces fit score).
+  Negative weight = negative signal (e.g. hospital affiliation reduces fit score).
+
+See `config/clients/obgyn_femasys/` for a complete reference implementation.
 
 ---
 

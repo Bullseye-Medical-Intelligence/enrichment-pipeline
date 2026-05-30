@@ -712,11 +712,11 @@ class TestValidateAndFinalizeInvariant:
         assert "Invariant violation" in result["internal_notes"]
 
     def test_clear_excluded_tier_repaired_to_bullseye(self):
-        """CLEAR + Excluded tier → repaired to Bullseye (score 80 >= 75)."""
+        """CLEAR + Excluded tier → repaired to Bullseye (score 95 >= 90)."""
         record = self._base_record()
         record["exclusion_status"] = "CLEAR"
         record["target_tier"] = "Excluded"
-        record["bullseye_score"] = 80
+        record["bullseye_score"] = 95
         result = validate_and_finalize(record)
         assert result["target_tier"] == "Bullseye"
 

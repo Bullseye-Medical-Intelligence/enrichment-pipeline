@@ -1,56 +1,21 @@
 {
+  "_comment": "Generic template — copy to config/clients/<client_slug>/icp_checklist.json and replace these placeholder signals with real ICP signals for the engagement. Run with: --icp config/clients/<client_slug>/icp_checklist.json",
   "version": "icp-v1",
   "signals": [
     {
-      "signal_id": "S-ICP-001",
-      "signal_label": "IUD insertion listed",
-      "prompt_instruction": "Does this practice explicitly list IUD insertion as a service on their website?",
-      "positive_weight": 15
+      "signal_id": "S-EXAMPLE-001",
+      "signal_label": "<Primary positive signal>",
+      "prompt_instruction": "<Question Claude answers to confirm this signal — e.g. 'Does this practice explicitly list [key service] on their website?'>",
+      "positive_weight": 20,
+      "required_for_bullseye": true,
+      "note": "Replace with your primary must-have signal. Set required_for_bullseye: true for signals whose absence should cap the tier."
     },
     {
-      "signal_id": "S-ICP-002",
-      "signal_label": "REI on staff",
-      "prompt_instruction": "Is there a reproductive endocrinologist (REI) listed as a provider on staff at this practice?",
-      "positive_weight": -20,
-      "note": "Negative signal — presence reduces fit score"
-    },
-    {
-      "signal_id": "S-ICP-003",
-      "signal_label": "Infertility workup listed",
-      "prompt_instruction": "Does this practice list infertility evaluation or workup as a service they offer?",
-      "positive_weight": 18
-    },
-    {
-      "signal_id": "S-ICP-004",
-      "signal_label": "In-house IVF program",
-      "prompt_instruction": "Does this practice operate its own in-house IVF or ART (assisted reproductive technology) program?",
-      "positive_weight": -15,
-      "note": "Negative signal — in-house IVF reduces fit"
-    },
-    {
-      "signal_id": "S-ICP-005",
-      "signal_label": "Contraception counseling listed",
-      "prompt_instruction": "Does this practice list contraception counseling or family planning as a service?",
-      "positive_weight": 10
-    },
-    {
-      "signal_id": "S-ICP-006",
-      "signal_label": "Hormone therapy / PCOS listed",
-      "prompt_instruction": "Does this practice list hormone therapy, PCOS management, or hormone-related services?",
-      "positive_weight": 12
-    },
-    {
-      "signal_id": "S-ICP-007",
-      "signal_label": "Independent private practice",
-      "prompt_instruction": "Does this appear to be an independent private practice (not hospital-owned, not part of a health system)?",
-      "positive_weight": 20
-    },
-    {
-      "signal_id": "S-ICP-008",
-      "signal_label": "Hospital or health system affiliated",
-      "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
-      "positive_weight": -30,
-      "note": "Hard negative — triggers hospital_owned or health_system_affiliated exclusion"
+      "signal_id": "S-EXAMPLE-002",
+      "signal_label": "<Primary friction signal>",
+      "prompt_instruction": "<Question Claude answers to detect a disqualifying condition — e.g. 'Is this practice affiliated with a hospital or health system?'>",
+      "positive_weight": -25,
+      "note": "Negative weight. Replace with your primary friction/exclusion signal. Triggers exclusion rule when signal_state is yes."
     }
   ]
 }

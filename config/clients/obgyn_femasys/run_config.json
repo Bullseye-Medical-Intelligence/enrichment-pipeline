@@ -1,12 +1,12 @@
 {
-  "_comment": "Generic template — copy to config/clients/<client_slug>/run_config.json and fill in client-specific values. Run with: python pipeline.py --config config/clients/<client_slug>/run_config.json --icp config/clients/<client_slug>/icp_checklist.json",
-  "project_id": "P-XXX",
-  "client_name": "<YOUR CLIENT NAME>",
-  "target_specialty": "<YOUR TARGET SPECIALTY>",
-  "target_geography": [],
+  "project_id": "P-001",
+  "client_name": "Femasys",
+  "target_specialty": "OBGYN",
+  "target_geography": ["TX", "FL", "GA"],
   "active_exclusion_rules": [
     "hospital_owned",
     "health_system_affiliated",
+    "rei_on_staff",
     "wrong_specialty",
     "outside_geography",
     "no_web_presence"
@@ -20,6 +20,8 @@
   "subpage_keywords": [
     "service", "procedure", "treatment", "care",
     "provider", "physician", "doctor", "staff", "team", "about",
+    "speciali", "gynecol", "obstet", "women", "reproduct",
+    "contraception", "iud", "infertil", "hormones", "pcos",
     "contact"
   ]
 }

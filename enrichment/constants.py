@@ -38,7 +38,7 @@ FIT_WEIGHT = 0.6
 CONFIDENCE_WEIGHT = 0.4
 
 # Tier thresholds
-DEFAULT_BULLSEYE_MIN_SCORE = 75     # fallback when run_config omits bullseye_min_score
+DEFAULT_BULLSEYE_MIN_SCORE = 90     # fallback when run_config omits bullseye_min_score
 EXCLUDED_SCORE_CAP = 40             # max bullseye_score retained on excluded records
 
 # fit_confidence_status quadrant thresholds
