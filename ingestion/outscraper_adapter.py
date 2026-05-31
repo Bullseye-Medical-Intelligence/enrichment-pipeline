@@ -231,6 +231,12 @@ def load_outscraper_csv(filepath: str) -> list[dict]:
         f"[outscraper_adapter] Loaded {len(records)} records — "
         f"{len(records) - no_url_count} with URL, {no_url_count} without URL"
     )
+    if no_url_count:
+        sample = [r for r in records if not r.get("website_url")][:5]
+        print(f"[outscraper_adapter] Sample records with no URL (first {len(sample)}):")
+        for r in sample:
+            raw_website = rows[r["_row_num"] - 2].get("website", "") if r["_row_num"] - 2 < len(rows) else "?"
+            print(f"  Row {r['_row_num']}: '{r['practice_name']}' — raw website cell: {raw_website!r}")
     return records
 
 

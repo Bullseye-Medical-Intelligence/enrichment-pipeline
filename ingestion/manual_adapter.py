@@ -97,7 +97,7 @@ def _map_row(row: dict, row_num: int) -> dict:
     address_state = (row.get("address_state") or "").strip()
     address_city = (row.get("address_city") or "").strip()
     address_zip = (row.get("address_zip") or "").strip()
-    website_url = _normalize_url(row.get("website_url") or "")
+    website_url = _normalize_url(row.get("website_url") or row.get("website") or row.get("site") or row.get("url") or "")
     provider_names_raw = (row.get("provider_names") or "").strip()
 
     # Use existing ID if provided, otherwise generate one
