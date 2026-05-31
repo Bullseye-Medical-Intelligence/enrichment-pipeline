@@ -76,9 +76,9 @@
       "prompt_instruction": "Does the website indicate the practice is employed by, owned by, or operating as part of a hospital, health system, or large IDN?",
       "positive_weight": 0,
       "no_weight": 0,
-      "cap_tier": "Watchlist",
+      "cap_tier": "Contender",
       "required_for_bullseye": false,
-      "note": "STRUCTURAL DISQUALIFIER. Institutional buying complexity and no cash-pay autonomy. cap_tier: Watchlist hard-ceilings any confirmed hospital-employed practice regardless of other signal scores — institutional affiliation is not a matter of degree."
+      "note": "STRUCTURAL DISQUALIFIER. Institutional buying complexity and no cash-pay autonomy. cap_tier: Contender hard-ceilings any confirmed hospital-employed practice regardless of other signal scores — institutional affiliation is not a matter of degree."
     },
     {
       "signal_id": "S-NLF-009",

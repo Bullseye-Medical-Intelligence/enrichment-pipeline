@@ -1,9 +1,9 @@
 """
 Tests for record_adapter presentation helpers.
 
-Deterministic — no filesystem, no network. Focus on the Contact Priority
-relabel, which maps the displayed tier (override if set, else pipeline tier) to
-a rep-facing label and sort rank.
+Deterministic — no filesystem, no network. Contact Priority IS the displayed
+tier (override if set, else pipeline tier); the four-tier ladder already names
+the action, so there is no separate relabel. Rank orders the queue.
 """
 
 import os
@@ -20,41 +20,51 @@ os.environ.setdefault("UI_PASSWORD", "secret-pw")
 os.environ.setdefault("PIPELINE_REPO_PATH", str(Path(__file__).resolve().parent.parent))
 
 import record_adapter  # noqa: E402
+from schema import VALID_OVERRIDE_TIERS  # noqa: E402
 
 
-def test_bullseye_maps_to_priority_outreach():
+def test_override_tiers_match_four_tier_ladder():
+    """Analyst override options use the four-tier ladder; Warm/Strong/Cold are gone."""
+    assert VALID_OVERRIDE_TIERS == frozenset(
+        {"Bullseye", "Needs Verification", "Contender", "Excluded"}
+    )
+
+
+def test_bullseye_priority_is_tier():
     rec = {"target_tier": "Bullseye"}
-    assert record_adapter.contact_priority(rec, {}) == "Priority Outreach"
+    assert record_adapter.contact_priority(rec, {}) == "Bullseye"
 
 
-def test_needs_verification_maps_to_verify_engage():
+def test_needs_verification_priority_is_tier():
     rec = {"target_tier": "Needs Verification"}
-    assert record_adapter.contact_priority(rec, {}) == "Verify & Engage"
+    assert record_adapter.contact_priority(rec, {}) == "Needs Verification"
 
 
-def test_watchlist_maps_to_develop():
-    rec = {"target_tier": "Watchlist"}
-    assert record_adapter.contact_priority(rec, {}) == "Develop"
+def test_contender_priority_is_tier():
+    rec = {"target_tier": "Contender"}
+    assert record_adapter.contact_priority(rec, {}) == "Contender"
 
 
-def test_excluded_maps_to_do_not_pursue():
+def test_excluded_priority_is_tier():
     rec = {"target_tier": "Excluded"}
-    assert record_adapter.contact_priority(rec, {}) == "Do Not Pursue"
+    assert record_adapter.contact_priority(rec, {}) == "Excluded"
 
 
 def test_override_drives_priority():
-    rec = {"target_tier": "Watchlist"}
+    rec = {"target_tier": "Contender"}
     review = {"override_tier": "Bullseye"}
-    assert record_adapter.contact_priority(rec, review) == "Priority Outreach"
+    assert record_adapter.contact_priority(rec, review) == "Bullseye"
 
 
-def test_rank_orders_priority_above_develop():
+def test_rank_orders_bullseye_above_contender_above_excluded():
     bullseye = record_adapter.contact_priority_rank({"target_tier": "Bullseye"}, {})
-    develop = record_adapter.contact_priority_rank({"target_tier": "Watchlist"}, {})
+    contender = record_adapter.contact_priority_rank({"target_tier": "Contender"}, {})
     excluded = record_adapter.contact_priority_rank({"target_tier": "Excluded"}, {})
-    assert bullseye > develop > excluded
+    assert bullseye > contender > excluded
 
 
-def test_unknown_tier_falls_back_to_develop():
+def test_unknown_tier_label_is_verbatim_rank_falls_back():
     rec = {"target_tier": "SomethingNew"}
-    assert record_adapter.contact_priority(rec, {}) == "Develop"
+    assert record_adapter.contact_priority(rec, {}) == "SomethingNew"
+    # Unknown tiers sort at the Contender rank, never above a known tier.
+    assert record_adapter.contact_priority_rank(rec, {}) == 1

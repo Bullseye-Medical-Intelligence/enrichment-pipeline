@@ -122,7 +122,7 @@ def test_override_with_reason_persists(tmp_path):
 
 def test_review_does_not_touch_enriched_targets(tmp_path):
     target = tmp_path / "enriched_targets.json"
-    original = json.dumps({"records": [{"record_id": "T-1", "target_tier": "Warm"}]})
+    original = json.dumps({"records": [{"record_id": "T-1", "target_tier": "Contender"}]})
     target.write_text(original)
 
     edit = ReviewEdit(qc_status="approved")
@@ -150,7 +150,7 @@ def test_approved_export_includes_overridden_excluded(tmp_path):
     records = [
         {"record_id": "T-1", "target_tier": "Bullseye", "exclusion_status": "CLEAR"},
         {"record_id": "T-2", "target_tier": "Excluded", "exclusion_status": "EXCLUDED"},
-        {"record_id": "T-3", "target_tier": "Watchlist", "exclusion_status": "CLEAR"},
+        {"record_id": "T-3", "target_tier": "Contender", "exclusion_status": "CLEAR"},
     ]
     reviews_map = {
         "T-1": {"override_tier": None, "override_reason": None, "qc_status": "approved",
@@ -277,7 +277,7 @@ def test_friendly_error_fallback_truncates():
 def test_compute_readiness_needs_review():
     records = [
         {"review": {"qc_status": "pending"}, "displayed_tier": "Bullseye"},
-        {"review": {"qc_status": "approved"}, "displayed_tier": "Warm"},
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Contender"},
     ]
     r = _compute_readiness(records)
     assert r["state"] == "needs_review"
@@ -288,7 +288,7 @@ def test_compute_readiness_needs_review():
 def test_compute_readiness_ready():
     records = [
         {"review": {"qc_status": "approved"}, "displayed_tier": "Bullseye"},
-        {"review": {"qc_status": "approved"}, "displayed_tier": "Warm"},
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Contender"},
     ]
     r = _compute_readiness(records)
     assert r["state"] == "ready"

@@ -47,9 +47,9 @@ def build_executive_report(
         r for r in approved_records
         if record_adapter.effective_tier(r, all_reviews).lower() == "bullseye"
     ]
-    warm = [
+    contender = [
         r for r in approved_records
-        if record_adapter.effective_tier(r, all_reviews).lower() in ("strong", "warm")
+        if record_adapter.effective_tier(r, all_reviews).lower() == "contender"
     ]
 
     geography = status.target_geography or project.get("target_geography") or []
@@ -67,7 +67,7 @@ def build_executive_report(
         "generated_date": datetime.now(timezone.utc).strftime("%B %d, %Y"),
         "screened": screened,
         "bullseye_count": len(bullseye),
-        "warm_count": len(warm),
+        "contender_count": len(contender),
         "excluded_count": excluded_count,
         "bullseye_records": [
             _prepare_record(r, all_reviews.get(record_adapter.get_record_id(r), {}))
@@ -91,8 +91,8 @@ def build_executive_report(
 
     pdf_bytes = HTML(string=html_str, base_url=str(_STATIC_DIR)).write_pdf()
     logger.info(
-        "Generated PDF for run %s: %d bullseye, %d warm, %d bytes",
-        run_id, len(bullseye), len(warm), len(pdf_bytes),
+        "Generated PDF for run %s: %d bullseye, %d contender, %d bytes",
+        run_id, len(bullseye), len(contender), len(pdf_bytes),
     )
     return pdf_bytes
 
@@ -230,7 +230,8 @@ def _prepare_record(rec: dict, review: dict) -> dict:
     brief = rec.get("call_brief") or {}
 
     score = rec.get("bullseye_score")
-    confidence = rec.get("confidence_score")
+    # Client-facing: show the qualitative confidence band, never the number.
+    confidence_band = rec.get("confidence_band") or "—"
     displayed_tier = review.get("override_tier") or rec.get("target_tier", "—")
 
     return {
@@ -242,7 +243,7 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         "website": rec.get("website_url") or rec.get("website") or "",
         "score": score,
         "score_pct": min(int(score), 100) if score is not None else 0,
-        "confidence": confidence,
+        "confidence_band": confidence_band,
         "tier": displayed_tier,
         "why_contact": brief.get("why_contact") or "",
         "opening_line": brief.get("opening_line") or "",

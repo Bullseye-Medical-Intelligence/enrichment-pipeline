@@ -692,9 +692,9 @@ def run_pipeline(input_file: str, source_type: str,
 
     # Count tiers
     bullseye_final = sum(1 for r in records if r.get("target_tier") == "Bullseye")
-    watchlist_final = sum(1 for r in records if r.get("target_tier") == "Watchlist")
+    contender_final = sum(1 for r in records if r.get("target_tier") == "Contender")
     excluded_final = sum(1 for r in records if r.get("target_tier") == "Excluded")
-    print(f"  Tiers: {bullseye_final} Bullseye | {watchlist_final} Watchlist | {excluded_final} Excluded")
+    print(f"  Tiers: {bullseye_final} Bullseye | {contender_final} Contender | {excluded_final} Excluded")
 
     # Strip internal fields before output
     output_records = [strip_internal_fields(r) for r in records]
@@ -733,7 +733,7 @@ def run_pipeline(input_file: str, source_type: str,
     print(f"  Input:         {records_input_total} records")
     print(f"  Output:        {len(output_records)} records")
     print(f"  Bullseye:      {bullseye_final}")
-    print(f"  Watchlist:     {watchlist_final}")
+    print(f"  Contender:     {contender_final}")
     print(f"  Excluded:      {excluded_final}")
     print(f"  Errors:        {len(all_errors)}")
     print(f"  Warnings:      {len(all_warnings)}")
@@ -749,7 +749,7 @@ def run_pipeline(input_file: str, source_type: str,
         "records_input": records_input_total,
         "records_output": len(output_records),
         "bullseye": bullseye_final,
-        "watchlist": watchlist_final,
+        "contender": contender_final,
         "excluded": excluded_final,
         "errors": len(all_errors),
         "elapsed_seconds": round(elapsed, 1),

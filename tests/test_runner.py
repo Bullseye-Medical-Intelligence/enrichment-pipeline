@@ -157,7 +157,7 @@ def _scratch_with(run_dir: Path, record: dict) -> Path:
 def test_merge_updates_record_and_counts(run_store):
     run_id = "RUN-20260528-110000-aaaa"
     run_dir = _complete_run(run_store, run_id, [
-        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
          "bullseye_score": 40, "exclusion_status": "CLEAR"},
         {"id": "T-B", "practice_name": "B", "target_tier": "Bullseye",
          "bullseye_score": 90, "exclusion_status": "CLEAR"},
@@ -177,13 +177,13 @@ def test_merge_updates_record_and_counts(run_store):
     status = runs.get_run(run_id)
     assert status.status == "complete"
     assert status.bullseye_count == 2
-    assert status.watchlist_count == 0
+    assert status.contender_count == 0
 
 
 def test_merge_stamps_review_note(run_store):
     run_id = "RUN-20260528-110001-bbbb"
     run_dir = _complete_run(run_store, run_id, [
-        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
          "bullseye_score": 40, "exclusion_status": "CLEAR"}])
     (run_dir / "reviews.json").write_text(json.dumps({
         "T-A": {"analyst_note": "prior note", "override_tier": "Strong",
@@ -206,7 +206,7 @@ def test_merge_stamps_review_note(run_store):
 def test_merge_id_not_found_leaves_source_untouched(run_store):
     run_id = "RUN-20260528-110002-cccc"
     run_dir = _complete_run(run_store, run_id, [
-        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
          "bullseye_score": 40, "exclusion_status": "CLEAR"}])
     before = (run_dir / "enriched_targets.json").read_text()
     scratch = _scratch_with(run_dir, {
@@ -221,7 +221,7 @@ def test_merge_id_not_found_leaves_source_untouched(run_store):
 def test_merge_invalid_scratch_leaves_source_untouched(run_store):
     run_id = "RUN-20260528-110003-dddd"
     run_dir = _complete_run(run_store, run_id, [
-        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
          "bullseye_score": 40, "exclusion_status": "CLEAR"}])
     before = (run_dir / "enriched_targets.json").read_text()
     scratch = run_dir / ".recrawl_bad"
@@ -249,7 +249,7 @@ def test_manual_content_writes_one_scratch_file_and_flag_per_page(run_store, mon
     run_id = "RUN-20260528-120000-aaaa"
     _complete_run_with_snapshots(run_store, run_id, {
         "id": "T-A", "practice_name": "A", "website_url": "https://a.com",
-        "target_tier": "Watchlist", "bullseye_score": 0, "exclusion_status": "CLEAR"})
+        "target_tier": "Contender", "bullseye_score": 0, "exclusion_status": "CLEAR"})
 
     captured = {}
 
@@ -285,7 +285,7 @@ def test_manual_content_rejects_all_empty(run_store):
     run_id = "RUN-20260528-120001-bbbb"
     _complete_run_with_snapshots(run_store, run_id, {
         "id": "T-A", "practice_name": "A", "website_url": "https://a.com",
-        "target_tier": "Watchlist", "bullseye_score": 0, "exclusion_status": "CLEAR"})
+        "target_tier": "Contender", "bullseye_score": 0, "exclusion_status": "CLEAR"})
 
     with pytest.raises(ValueError):
         asyncio.run(runner.orchestrate_manual_content_recrawl(
@@ -296,13 +296,13 @@ def test_manual_content_rejects_all_empty(run_store):
 def test_recompute_counts_from_records():
     recs = [
         {"target_tier": "Bullseye", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
-        {"target_tier": "Watchlist", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+        {"target_tier": "Contender", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
         {"target_tier": "Excluded", "exclusion_status": "EXCLUDED", "enrichment_status": "complete"},
         {"target_tier": "Needs Verification", "exclusion_status": "CLEAR", "enrichment_status": "failed"},
     ]
     counts = runner._recompute_counts_from_records(recs)
     assert counts["bullseye_count"] == 1
-    assert counts["watchlist_count"] == 1
+    assert counts["contender_count"] == 1
     assert counts["needs_verification_count"] == 1
     assert counts["excluded_count"] == 1
     assert counts["error_count"] == 1

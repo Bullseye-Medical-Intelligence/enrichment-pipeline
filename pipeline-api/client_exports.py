@@ -5,7 +5,7 @@ Client deliverable package generation for a completed run.
 Builds an in-memory ZIP containing:
   Executive_Target_Report.pdf   — branded PDF (WeasyPrint)
   bullseye_accounts.csv         — Bullseye-tier approved records
-  warm_accounts.csv             — Strong/Warm-tier approved records
+  contender_accounts.csv        — Contender-tier approved records
   excluded_targets.csv          — all excluded records
   run_metadata.json             — machine-readable run summary
 
@@ -64,7 +64,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     # Reuse the records/reviews already loaded above — the CSV builders accept
     # them so the same files are not re-read three more times.
     bullseye_csv = exports.build_bullseye_csv(run_id, run_directory, records, all_reviews).getvalue()
-    warm_csv = exports.build_warm_csv(run_id, run_directory, records, all_reviews).getvalue()
+    contender_csv = exports.build_contender_csv(run_id, run_directory, records, all_reviews).getvalue()
     excluded_csv = exports.build_excluded_csv(run_id, run_directory, records, all_reviews).getvalue()
 
     pdf_bytes = _build_pdf(
@@ -87,7 +87,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
         "Executive_Target_Report.pdf": pdf_bytes,
         "Bullseye_Target_Report.html": html_bytes,
         "bullseye_accounts.csv": bullseye_csv,
-        "warm_accounts.csv": warm_csv,
+        "contender_accounts.csv": contender_csv,
         "excluded_targets.csv": excluded_csv,
         "run_metadata.json": json.dumps(metadata, indent=2).encode("utf-8"),
     }

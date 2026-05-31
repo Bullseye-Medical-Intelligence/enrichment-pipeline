@@ -77,9 +77,9 @@
       "no_weight": 0,
       "not_found_weight": 0,
       "required_for_bullseye": false,
-      "cap_tier": "Watchlist",
+      "cap_tier": "Contender",
       "source_type": "scraped",
-      "notes": "Friction signal. Confirmed affiliation caps at Watchlist — hospital procurement kills deal velocity."
+      "notes": "Friction signal. Confirmed affiliation caps at Contender — hospital procurement kills deal velocity."
     },
     {
       "signal_id": "S-ICP-008",
@@ -89,9 +89,9 @@
       "no_weight": 0,
       "not_found_weight": 0,
       "required_for_bullseye": false,
-      "cap_tier": "Watchlist",
+      "cap_tier": "Contender",
       "source_type": "scraped",
-      "notes": "Friction signal for IUI-optimization products. An active IVF program means the practice protects IVF revenue per cycle. These practices route patients toward IVF, not toward improving IUI outcomes. Caps at Watchlist."
+      "notes": "Friction signal for IUI-optimization products. An active IVF program means the practice protects IVF revenue per cycle. These practices route patients toward IVF, not toward improving IUI outcomes. Caps at Contender."
     },
     {
       "signal_id": "S-ICP-009",

@@ -248,7 +248,7 @@ def _icp_with_signal(**signal_extra):
 
 def test_icp_validation_accepts_optional_tiering_fields():
     icp_profiles.validate_icp_profile(_icp_with_signal(
-        not_found_weight=-15, verification_required=True, cap_tier="Watchlist",
+        not_found_weight=-15, verification_required=True, cap_tier="Contender",
         no_weight=-15, required_for_bullseye=True, exclude_if_yes=True,
     ))
 

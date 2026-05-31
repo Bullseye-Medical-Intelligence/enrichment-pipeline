@@ -273,13 +273,14 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
   approved set.
 - **Client-safe only.** The ZIP contains `Executive_Target_Report.pdf`,
-  `bullseye_accounts.csv`, `warm_accounts.csv`, `excluded_targets.csv`, and
+  `bullseye_accounts.csv`, `contender_accounts.csv`, `excluded_targets.csv`, and
   `run_metadata.json`. It never includes `run_log.json`, `reviews.json`, or the
-  raw `enriched_targets.json`.
+  raw `enriched_targets.json`. Client-facing CSVs and the report show tier +
+  confidence band only — numeric scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
 - **PDF generation.** `reports/pdf_report.py` renders `reports/templates/executive_target_report.html`
   via WeasyPrint. Requires `weasyprint>=60.0`. On failure, a minimal stub PDF is
   returned so the ZIP is never corrupt. Bullseye accounts get one page each;
-  Warm accounts appear in CSV only.
+  Contender accounts appear in CSV only.
 
 ---
 
@@ -327,7 +328,7 @@ host. Task queue / database / Redis remain out of scope until that ceiling is cr
   "records_output": 47,
   "bullseye_count": 12,
   "needs_verification_count": 3,
-  "watchlist_count": 28,
+  "contender_count": 28,
   "excluded_count": 7,
   "error_count": 3,
   "pipeline_version": "v1.0",

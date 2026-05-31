@@ -183,7 +183,7 @@
 <div class="alert alert-success">
   <strong>Package ready.</strong>
   {{ readiness.approved_count }} approved target{{ "s" if readiness.approved_count != 1 }}.
-  Download includes a branded PDF report for Bullseye accounts, plus CSVs for Bullseye and Warm accounts.
+  Download includes a branded PDF report for Bullseye accounts, plus CSVs for Bullseye and Contender accounts.
 </div>
 {% endif %}
 {% endif %}
@@ -211,10 +211,7 @@
   <div class="stat-item"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
   <div class="stat-item stat-bullseye"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
   <div class="stat-item stat-needs-verification"><span class="stat-num">{{ stats.needs_verification }}</span><span class="stat-label">Needs Verification</span></div>
-  <div class="stat-item stat-strong"><span class="stat-num">{{ stats.strong }}</span><span class="stat-label">Strong</span></div>
-  <div class="stat-item stat-warm"><span class="stat-num">{{ stats.warm }}</span><span class="stat-label">Warm</span></div>
-  <div class="stat-item stat-cold"><span class="stat-num">{{ stats.cold }}</span><span class="stat-label">Cold</span></div>
-  <div class="stat-item stat-watchlist"><span class="stat-num">{{ stats.watchlist }}</span><span class="stat-label">Watchlist</span></div>
+  <div class="stat-item stat-contender"><span class="stat-num">{{ stats.contender }}</span><span class="stat-label">Contender</span></div>
   <div class="stat-item stat-excluded"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
   <div class="stat-item stat-pending"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
 </div>
@@ -227,10 +224,7 @@
   <button class="filter-btn active" onclick="filterRecords('all', this)">All</button>
   <button class="filter-btn" onclick="filterRecords('bullseye', this)">Bullseye</button>
   <button class="filter-btn" onclick="filterRecords('needs-verification', this)">Needs Verification</button>
-  <button class="filter-btn" onclick="filterRecords('strong', this)">Strong</button>
-  <button class="filter-btn" onclick="filterRecords('warm', this)">Warm</button>
-  <button class="filter-btn" onclick="filterRecords('cold', this)">Cold</button>
-  <button class="filter-btn" onclick="filterRecords('watchlist', this)">Watchlist</button>
+  <button class="filter-btn" onclick="filterRecords('contender', this)">Contender</button>
   <button class="filter-btn" onclick="filterRecords('excluded', this)">Excluded</button>
   <span class="filter-sep">|</span>
   <button class="filter-btn" onclick="filterByQC('pending', this)">Pending Review</button>
@@ -260,7 +254,7 @@
       {% set displayed = record.displayed_tier | default("") %}
       {% set _city = record.address_city or "" %}
       {% set _state = record.address_state or "" %}
-      {% set _tier_rank = {"bullseye": 4, "needs verification": 3, "watchlist": 2, "excluded": 1}.get(displayed | lower, 0) %}
+      {% set _tier_rank = {"bullseye": 4, "needs verification": 3, "contender": 2, "excluded": 1}.get(displayed | lower, 0) %}
       {% set _blocked = record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
       <tr class="record-row"
           data-rid="{{ rid }}"
@@ -460,9 +454,8 @@
                           onchange="toggleReasonField('{{ rid }}')">
                     <option value="">— No override (use pipeline tier) —</option>
                     <option value="Bullseye" {% if review.override_tier == "Bullseye" %}selected{% endif %}>Bullseye</option>
-                    <option value="Strong"   {% if review.override_tier == "Strong"   %}selected{% endif %}>Strong</option>
-                    <option value="Warm"     {% if review.override_tier == "Warm"     %}selected{% endif %}>Warm</option>
-                    <option value="Cold"     {% if review.override_tier == "Cold"     %}selected{% endif %}>Cold</option>
+                    <option value="Needs Verification" {% if review.override_tier == "Needs Verification" %}selected{% endif %}>Needs Verification</option>
+                    <option value="Contender" {% if review.override_tier == "Contender" %}selected{% endif %}>Contender</option>
                     <option value="Excluded" {% if review.override_tier == "Excluded" %}selected{% endif %}>Excluded</option>
                   </select>
                 </div>

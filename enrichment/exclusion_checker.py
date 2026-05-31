@@ -35,8 +35,18 @@ ALL_KNOWN_EXCLUSION_RULES = HARD_EXCLUSION_RULES | CONFIGURABLE_EXCLUSION_RULES
 # Tier ladder for CLEAR records (worst to best). A signal can cap the tier at a
 # lower rung; an unconfirmed required signal caps a would-be Bullseye at
 # "Needs Verification". "Excluded" only ever comes from an exclusion rule.
-TIER_RANK = {"Excluded": 0, "Watchlist": 1, "Needs Verification": 2, "Bullseye": 3}
+TIER_RANK = {"Excluded": 0, "Contender": 1, "Needs Verification": 2, "Bullseye": 3}
 _RANK_TO_TIER = {rank: tier for tier, rank in TIER_RANK.items()}
+
+# Legacy tier label -> current label. "Watchlist" was renamed to "Contender";
+# frozen run snapshots and older signal cap_tier values may still carry it, so
+# normalize defensively rather than silently dropping a cap.
+_LEGACY_TIER_ALIAS = {"Watchlist": "Contender"}
+
+
+def _canonical_tier(value: str) -> str:
+    """Return the current tier label for a possibly-legacy tier string."""
+    return _LEGACY_TIER_ALIAS.get(value, value)
 
 
 def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
@@ -46,22 +56,22 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     the ceiling down, then applies the must-have gate (required_for_bullseye) and
     the softer verification gate (verification_required).
     """
-    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Watchlist"]
+    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
     signals = record.get("signals") or []
 
     for sig in signals:
-        cap = sig.get("cap_tier")
+        cap = _canonical_tier(sig.get("cap_tier"))
         if cap and cap in TIER_RANK and sig.get("signal_state") == "yes":
             rank = min(rank, TIER_RANK[cap])
 
     # Source confidence gate: a record whose website could not be reliably
     # crawled is not eligible for Bullseye — the signals may be absent or
-    # incomplete, making a top-tier classification untrustworthy.
+    # incomplete, so it must be confirmed before calling (Needs Verification).
     if record.get("source_confidence") in ("limited", "failed"):
-        rank = min(rank, TIER_RANK["Watchlist"])
+        rank = min(rank, TIER_RANK["Needs Verification"])
 
     # Must-have gate: a required_for_bullseye signal must be confirmed present
-    # (or inferred) for Bullseye. Confirmed absent ("no") caps at Watchlist; an
+    # (or inferred) for Bullseye. Confirmed absent ("no") caps at Contender; an
     # unverified ("not_found") caps at Needs Verification. Inferred presence
     # (state_inferred) counts as confirmed and does not cap.
     for sig in signals:
@@ -69,7 +79,7 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
             continue
         state = sig.get("signal_state")
         if state == "no":
-            rank = min(rank, TIER_RANK["Watchlist"])
+            rank = min(rank, TIER_RANK["Contender"])
         elif state == "not_found":
             rank = min(rank, TIER_RANK["Needs Verification"])
 
@@ -166,7 +176,8 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     Sets exclusion_status, exclusion_reason, and target_tier.
     Caps bullseye_score for excluded records.
 
-    CLEAR records are assigned target_tier "Bullseye" or "Watchlist" only.
+    CLEAR records are assigned target_tier "Bullseye", "Needs Verification", or
+    "Contender" only — never "Excluded".
     target_tier = "Excluded" is set if and only if exclusion_status = "EXCLUDED".
 
     Args:

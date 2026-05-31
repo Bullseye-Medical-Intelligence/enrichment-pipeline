@@ -87,7 +87,7 @@ h1 {
   padding: 14px;
 }
 .demo-card.bullseye { border-top: 3px solid #1a7f4b; }
-.demo-card.watchlist { border-top: 3px solid #b87c1a; }
+.demo-card.contender { border-top: 3px solid #b87c1a; }
 .demo-card.excluded  { border-top: 3px solid #c84b2f; }
 .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .badge {
@@ -191,7 +191,7 @@ h1 {
     <p class="eyebrow">Example Account Classifications</p>
     <div class="demo-grid">
       {% for acct in demo %}
-      {% set tier_cls = 'bullseye' if acct.tier == 'Bullseye' else ('watchlist' if acct.tier == 'Watchlist' else 'excluded') %}
+      {% set tier_cls = 'bullseye' if acct.tier == 'Bullseye' else ('contender' if acct.tier == 'Contender' else 'excluded') %}
       <div class="demo-card {{ tier_cls }}">
         <div class="card-top">
           <span class="badge badge-{{ tier_cls }}">{{ acct.tier }}</span>

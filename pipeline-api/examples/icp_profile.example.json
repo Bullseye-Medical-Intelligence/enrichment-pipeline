@@ -12,7 +12,7 @@
       "required_for_bullseye": true,
       "not_found_weight": -10,
       "no_weight": -15,
-      "note": "Must-have money signal. Confirmed absent ('no') caps the tier at Watchlist and applies no_weight; not visible ('not_found') caps at Needs Verification, unless inferred from elective procedures."
+      "note": "Must-have money signal. Confirmed absent ('no') caps the tier at Contender and applies no_weight; not visible ('not_found') caps at Needs Verification, unless inferred from elective procedures."
     },
     {
       "signal_id": "S-ICP-002",
@@ -39,8 +39,8 @@
       "signal_label": "Hospital or health system affiliated",
       "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
       "positive_weight": -30,
-      "cap_tier": "Watchlist",
-      "note": "Confirmed affiliation means long procurement cycles. Caps the tier at Watchlist regardless of score."
+      "cap_tier": "Contender",
+      "note": "Confirmed affiliation means long procurement cycles. Caps the tier at Contender regardless of score."
     }
   ]
 }

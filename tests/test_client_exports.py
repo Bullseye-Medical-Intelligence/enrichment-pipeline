@@ -31,7 +31,7 @@ _EXPECTED_FILES = {
     "Executive_Target_Report.pdf",
     "Bullseye_Target_Report.html",
     "bullseye_accounts.csv",
-    "warm_accounts.csv",
+    "contender_accounts.csv",
     "excluded_targets.csv",
     "run_metadata.json",
 }
@@ -51,7 +51,7 @@ def _build_run(tmp_path):
          "target_tier": "Excluded", "bullseye_score": 20,
          "exclusion_status": "EXCLUDED"},
         {"record_id": "T-3", "practice_name": "Gamma Clinic",
-         "target_tier": "Watchlist", "bullseye_score": 60,
+         "target_tier": "Contender", "bullseye_score": 60,
          "exclusion_status": "CLEAR"},
     ]
     reviews_map = {
@@ -174,15 +174,15 @@ def test_pdf_present_and_not_empty(tmp_path):
     assert pdf_bytes[:4] == b"%PDF"
 
 
-def test_warm_csv_empty_when_no_warm_records(tmp_path):
-    """Fixture has only Bullseye-tier approved records — warm CSV should contain no warm records."""
+def test_contender_csv_empty_when_no_contender_records(tmp_path):
+    """Fixture has only Bullseye-tier approved records — contender CSV should contain none."""
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
-        warm = zf.read("warm_accounts.csv").decode("utf-8")
-    # T-1 is Bullseye, T-2 is EXCLUDED+override Bullseye → no warm records
-    assert "T-1" not in warm
-    assert "T-2" not in warm
+        contender = zf.read("contender_accounts.csv").decode("utf-8")
+    # T-1 is Bullseye, T-2 is EXCLUDED+override Bullseye → no contender records
+    assert "T-1" not in contender
+    assert "T-2" not in contender
 
 
 # ---------------------------------------------------------------------------

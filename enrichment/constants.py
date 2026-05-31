@@ -45,6 +45,29 @@ EXCLUDED_SCORE_CAP = 40             # max bullseye_score retained on excluded re
 HIGH_FIT_THRESHOLD = 70
 HIGH_CONFIDENCE_THRESHOLD = 65
 
+# Confidence band boundaries (client-facing qualitative confidence).
+# The band is DERIVED from the existing confidence_score — no new computation.
+# >= HIGH_CONFIDENCE_THRESHOLD -> "High"; >= LOW_CONFIDENCE_THRESHOLD -> "Moderate";
+# below -> "Low". LOW_CONFIDENCE_THRESHOLD=45 puts a pure low-confidence "yes"
+# (confidence 40) and no-signal records (30) in "Low"; any medium evidence lifts
+# to "Moderate". FLAGGED FOR REVIEW.
+LOW_CONFIDENCE_THRESHOLD = 45
+
+CONFIDENCE_BANDS = ("High", "Moderate", "Low")
+
+
+def confidence_band_for_score(confidence_score: int) -> str:
+    """Map a numeric confidence_score to a qualitative band: High / Moderate / Low.
+
+    Derivation only — does not recompute confidence. Boundaries live in constants.
+    """
+    if confidence_score >= HIGH_CONFIDENCE_THRESHOLD:
+        return "High"
+    if confidence_score >= LOW_CONFIDENCE_THRESHOLD:
+        return "Moderate"
+    return "Low"
+
+
 # Rep call brief: the canonical key set, defined once so the signal extractor
 # (which builds it) and the scorer (which defaults it) never drift.
 CALL_BRIEF_STRING_FIELDS = ("why_contact", "opening_line", "likely_objection", "discovery_question", "hours_of_operation")

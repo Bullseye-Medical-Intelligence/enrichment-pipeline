@@ -700,7 +700,11 @@ async def contact_queue_page(
         record["contact_priority_rank"] = record_adapter.contact_priority_rank(record, review)
 
     if not show_all:
-        merged_records = [r for r in merged_records if r["contact_priority"] != "Do Not Pursue"]
+        # Excluded accounts are not call targets; hide them from the queue.
+        merged_records = [
+            r for r in merged_records
+            if record_adapter.displayed_tier(r, r["review"]).strip().lower() != "excluded"
+        ]
 
     merged_records.sort(
         key=lambda r: (
@@ -1358,10 +1362,7 @@ def _calculate_stats(records: list[dict]) -> dict:
         "total": len(records),
         "bullseye": 0,
         "needs_verification": 0,
-        "strong": 0,
-        "warm": 0,
-        "cold": 0,
-        "watchlist": 0,
+        "contender": 0,
         "excluded": 0,
         "pending_review": 0,
         "approved": 0,

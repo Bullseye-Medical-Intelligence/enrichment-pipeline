@@ -297,20 +297,10 @@ body {
 <body>
 
 {# ── Jinja2 macros ────────────────────────────────────────── #}
-{% macro score_label(v) %}
-  {%- if v is none or v == '' -%}—
-  {%- elif v >= 80 -%}Very Strong
-  {%- elif v >= 60 -%}Strong
-  {%- elif v >= 40 -%}Moderate
-  {%- elif v >= 20 -%}Low
-  {%- else -%}Very Low
-  {%- endif -%}
-{% endmacro %}
-
 {% macro tier_display(tier) %}
-  {%- if tier | lower == 'bullseye' -%}High Priority Target
-  {%- elif tier | lower == 'strong' -%}Strong Target
-  {%- elif tier | lower == 'warm' -%}Warm Target
+  {%- if tier | lower == 'bullseye' -%}Bullseye
+  {%- elif tier | lower == 'needs verification' -%}Needs Verification
+  {%- elif tier | lower == 'contender' -%}Contender
   {%- else -%}{{ tier }}
   {%- endif -%}
 {% endmacro %}
@@ -408,45 +398,19 @@ body {
     {% endif %}
   </div>
 
-  {# Right: score + bars #}
+  {# Right: tier + confidence band (no numeric scores on client-facing output) #}
   <div class="card-right">
-    <div class="score-label">Bullseye Score</div>
-    <div class="score-number">{{ rec.score if rec.score is not none else '—' }}</div>
-    <div class="score-tier">{{ tier_display(rec.tier) }}</div>
+    <div class="score-label">Tier</div>
+    <div class="score-tier" style="font-size:16pt; margin:2pt 0 6pt;">{{ tier_display(rec.tier) }}</div>
+
+    {% if rec.confidence_band and rec.confidence_band != '—' %}
+    <div class="score-label">Confidence</div>
+    <div class="score-tier">{{ rec.confidence_band }}</div>
+    {% endif %}
 
     <hr class="score-divider">
 
     <div class="dimensions">
-
-      {% if rec.fit_score is not none %}
-      <div class="dimension">
-        <div class="dimension-header">
-          <span class="dimension-name">Practice Fit</span>
-          <span class="dimension-value">{{ score_label(rec.fit_score) }}</span>
-        </div>
-        <div class="bar-track"><div class="bar-fill" style="width:{{ rec.fit_score | int }}%"></div></div>
-      </div>
-      {% endif %}
-
-      {% if rec.confidence is not none %}
-      <div class="dimension">
-        <div class="dimension-header">
-          <span class="dimension-name">Evidence Quality</span>
-          <span class="dimension-value">{{ score_label(rec.confidence) }}</span>
-        </div>
-        <div class="bar-track"><div class="bar-fill" style="width:{{ rec.confidence | int }}%"></div></div>
-      </div>
-      {% endif %}
-
-      {% if rec.signal_coverage is not none %}
-      <div class="dimension">
-        <div class="dimension-header">
-          <span class="dimension-name">Signal Coverage</span>
-          <span class="dimension-value">{{ rec.signal_coverage }}%</span>
-        </div>
-        <div class="bar-track"><div class="bar-fill" style="width:{{ rec.signal_coverage }}%"></div></div>
-      </div>
-      {% endif %}
 
       <div class="dimension">
         <div class="dimension-header">

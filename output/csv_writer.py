@@ -26,6 +26,7 @@ CSV_COLUMNS = [
     "bullseye_score",
     "fit_signal_score",
     "confidence_score",
+    "confidence_band",
     "fit_confidence_status",
     "target_tier",
     "exclusion_status",

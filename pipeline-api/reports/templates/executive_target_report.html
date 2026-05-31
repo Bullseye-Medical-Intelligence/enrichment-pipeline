@@ -646,8 +646,8 @@ p { margin: 0; }
         <span class="stat-value stat-value-bullseye">{{ bullseye_count }}</span>
       </td>
       <td>
-        <span class="stat-label">Warm / Strong</span>
-        <span class="stat-value">{{ warm_count }}</span>
+        <span class="stat-label">Contender</span>
+        <span class="stat-value">{{ contender_count }}</span>
       </td>
       <td>
         <span class="stat-label">Excluded</span>
@@ -672,7 +672,7 @@ p { margin: 0; }
   <div class="package-contents-box">
     <p><span class="package-filename">Executive_Target_Report.pdf</span> &nbsp;— This document. Intelligence briefs for all Bullseye-tier accounts.</p>
     <p><span class="package-filename">bullseye_accounts.csv</span> &nbsp;— Bullseye-tier approved accounts, structured for CRM import.</p>
-    <p><span class="package-filename">warm_accounts.csv</span> &nbsp;— Strong/Warm-tier approved accounts for follow-on outreach planning.</p>
+    <p><span class="package-filename">contender_accounts.csv</span> &nbsp;— Contender-tier approved accounts for follow-on outreach planning.</p>
     <p><span class="package-filename">excluded_targets.csv</span> &nbsp;— Accounts excluded from active targeting; provided as an audit reference.</p>
     <p><span class="package-filename">run_metadata.json</span> &nbsp;— Machine-readable run summary for integration workflows.</p>
   </div>
@@ -719,16 +719,10 @@ p { margin: 0; }
   <!-- Sidebar floated right for score panel -->
   <div class="account-sidebar">
     <div class="score-panel">
-      <span class="score-eyebrow">Bullseye Score</span>
-      <span class="score-number">{{ rec.score if rec.score is not none else '—' }}</span>
-      <span class="score-tier-label">High Priority Target</span>
-      {% if rec.score is not none %}
-      <div class="score-bar-track">
-        <div class="score-bar-fill" style="width: {{ [rec.score, 100] | min }}%;"></div>
-      </div>
-      {% endif %}
-      {% if rec.confidence is not none %}
-      <span class="score-confidence">Confidence: {{ rec.confidence }}</span>
+      <span class="score-eyebrow">Tier</span>
+      <span class="score-tier-label" style="font-size:18pt; margin-top:2pt;">{{ rec.tier }}</span>
+      {% if rec.confidence_band and rec.confidence_band != '—' %}
+      <span class="score-confidence">Confidence: {{ rec.confidence_band }}</span>
       {% endif %}
     </div>
   </div>
@@ -817,11 +811,21 @@ p { margin: 0; }
     <tr>
       <td>
         <p class="tier-def-title">&#9679; Bullseye</p>
-        <p class="tier-def-text">Highest-priority accounts demonstrating strong observable signal alignment across the ICP checklist. Recommended for immediate, personalized outreach. Individual intelligence briefs appear in this report.</p>
+        <p class="tier-def-text">Fits the ICP with all must-have signals confirmed on strong evidence. Action: call first. Individual intelligence briefs appear in this report.</p>
       </td>
       <td>
-        <p class="tier-def-title">Warm / Strong</p>
-        <p class="tier-def-text">Accounts showing partial fit or emerging signals. Suitable for near-term nurture sequences and follow-on outreach campaigns. Included in <span style="font-family:monospace;font-size:8pt">warm_accounts.csv</span> for CRM integration.</p>
+        <p class="tier-def-title">Needs Verification</p>
+        <p class="tier-def-text">Would be Bullseye, but a required signal could not be confirmed from public sources. Action: call and confirm the specific unverified signal on the call.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p class="tier-def-title">Contender</p>
+        <p class="tier-def-text">Solid ICP fit with complete evidence, a notch below Bullseye. Action: worth a call, work after Bullseyes. Included in <span style="font-family:monospace;font-size:8pt">contender_accounts.csv</span>.</p>
+      </td>
+      <td>
+        <p class="tier-def-title">Excluded</p>
+        <p class="tier-def-text">A hard exclusion gate fired (wrong specialty, geography, structural disqualifier). Action: skip — the reason is given per account.</p>
       </td>
     </tr>
   </table>
@@ -838,7 +842,7 @@ p { margin: 0; }
     <strong>bullseye_accounts.csv</strong> — All approved Bullseye-tier accounts with enrichment fields and analyst review metadata, suitable for direct import into Salesforce, HubSpot, Outreach, or similar platforms.
   </p>
   <p>
-    <strong>warm_accounts.csv</strong> — Approved Strong/Warm-tier accounts for follow-on outreach planning. CSV field names are stable and integration-friendly.
+    <strong>contender_accounts.csv</strong> — Approved Contender-tier accounts for follow-on outreach planning. CSV field names are stable and integration-friendly.
   </p>
 
   <p class="run-footer">

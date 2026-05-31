@@ -12,6 +12,8 @@ import re
 import urllib.parse
 from typing import Optional
 
+from ingestion import zip_lookup
+
 
 # ---------------------------------------------------------------------------
 # US state full name → 2-letter abbreviation
@@ -283,6 +285,13 @@ def _map_row(row: dict, row_num: int) -> dict:
         address_city = address_city or parsed["address_city"]
         address_state = _normalize_state(parsed["address_state"]) if not address_state else address_state
         address_zip = address_zip or parsed["address_zip"]
+
+    # Last resort: derive city/state from the ZIP via the bundled offline lookup
+    # (deterministic, no network, no LLM) when the source list gave only a ZIP.
+    if address_zip and (not address_city or not address_state):
+        zip_city, zip_state = zip_lookup.infer_city_state(address_zip)
+        address_city = address_city or zip_city
+        address_state = address_state or zip_state
 
     # Require at minimum a practice name
     if not practice_name:

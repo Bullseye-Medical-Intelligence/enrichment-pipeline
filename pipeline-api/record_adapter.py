@@ -58,29 +58,25 @@ def effective_tier(record: dict, all_reviews: dict) -> str:
     return displayed_tier(record, all_reviews.get(get_record_id(record), {}))
 
 
-# Rep-facing relabel of the tier ladder for the Contact Queue. This is pure
-# presentation of the existing displayed_tier — it is NOT a second stored
-# classification, so there is one source of truth for account quality.
-# (rank, label): higher rank sorts first in the queue.
-_CONTACT_PRIORITY = {
-    "bullseye": (5, "Priority Outreach"),
-    "strong": (5, "Priority Outreach"),
-    "needs verification": (4, "Verify & Engage"),
-    "warm": (3, "Develop"),
-    "watchlist": (2, "Develop"),
-    "cold": (1, "Monitor"),
-    "excluded": (0, "Do Not Pursue"),
+# Contact Priority in the queue IS the displayed tier — the four-tier ladder
+# already names the action, so there is no separate relabel. This is pure
+# presentation of displayed_tier; there is one source of truth for account
+# quality. Rank: higher sorts first (call sooner).
+_TIER_QUEUE_RANK = {
+    "bullseye": 3,
+    "needs verification": 2,
+    "contender": 1,
+    "excluded": 0,
 }
-_CONTACT_PRIORITY_DEFAULT = (2, "Develop")
+_TIER_QUEUE_RANK_DEFAULT = 1
 
 
 def contact_priority(record: dict, review: dict) -> str:
-    """Return the rep-facing Contact Priority label for a record's displayed tier."""
-    tier = displayed_tier(record, review).strip().lower()
-    return _CONTACT_PRIORITY.get(tier, _CONTACT_PRIORITY_DEFAULT)[1]
+    """Return the Contact Priority label for a record — its displayed tier."""
+    return displayed_tier(record, review).strip() or "Contender"
 
 
 def contact_priority_rank(record: dict, review: dict) -> int:
-    """Return the sort rank for a record's Contact Priority (higher = call sooner)."""
+    """Return the queue sort rank for a record's tier (higher = call sooner)."""
     tier = displayed_tier(record, review).strip().lower()
-    return _CONTACT_PRIORITY.get(tier, _CONTACT_PRIORITY_DEFAULT)[0]
+    return _TIER_QUEUE_RANK.get(tier, _TIER_QUEUE_RANK_DEFAULT)

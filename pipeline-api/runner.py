@@ -714,7 +714,7 @@ def _recompute_counts_from_records(records: list[dict]) -> dict:
         "bullseye_count": sum(1 for r in records if r.get("target_tier") == "Bullseye"),
         "needs_verification_count": sum(
             1 for r in records if r.get("target_tier") == "Needs Verification"),
-        "watchlist_count": sum(1 for r in records if r.get("target_tier") == "Watchlist"),
+        "contender_count": sum(1 for r in records if r.get("target_tier") == "Contender"),
         "excluded_count": sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED"),
         "error_count": sum(1 for r in records if r.get("enrichment_status") == "failed"),
     }
@@ -925,8 +925,8 @@ def _read_completion_counts(run_id: str) -> dict:
             counts["needs_verification_count"] = sum(
                 1 for r in records if r.get("target_tier") == "Needs Verification"
             )
-            counts["watchlist_count"] = sum(
-                1 for r in records if r.get("target_tier") == "Watchlist"
+            counts["contender_count"] = sum(
+                1 for r in records if r.get("target_tier") == "Contender"
             )
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(

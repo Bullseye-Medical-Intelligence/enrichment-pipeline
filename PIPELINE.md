@@ -301,6 +301,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "bullseye_score": 84,
   "fit_signal_score": 88,
   "confidence_score": 79,
+  "confidence_band": "High",
   "fit_confidence_status": "HIGH FIT / HIGH EVIDENCE",
 
   "exclusion_status": "CLEAR",
@@ -390,7 +391,9 @@ field.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 
-**target_tier:** `"Bullseye"`, `"Needs Verification"`, `"Watchlist"`, or `"Excluded"` only. `"Needs Verification"` is a CLEAR record that scored as a candidate but has an unconfirmed `verification_required` signal (call to confirm before shipping). `"Excluded"` appears if and only if `exclusion_status == "EXCLUDED"`.
+**target_tier:** `"Bullseye"`, `"Needs Verification"`, `"Contender"`, or `"Excluded"` only (rank order, highest first: Bullseye > Needs Verification > Contender > Excluded). `"Needs Verification"` is a CLEAR record that scored as a candidate but has an unconfirmed `verification_required`/must-have signal, or whose crawl evidence was thin (call to confirm before shipping). `"Contender"` is a solid-fit CLEAR record a notch below Bullseye. `"Excluded"` appears if and only if `exclusion_status == "EXCLUDED"`. (The middle tier was formerly named "Watchlist".)
+
+**confidence_band:** `"High"`, `"Moderate"`, or `"Low"` — a qualitative band derived from `confidence_score` (`>= 65` High, `>= 45` Moderate, else Low; boundaries in `constants.py`). Client-facing surfaces show this band, never the numeric scores. The numeric `bullseye_score` / `fit_signal_score` / `confidence_score` remain in this internal record but are stripped from all client-facing output (PDF, HTML report, client CSVs, ZIP).
 
 **qc_status:** Always `"pending"` in pipeline output. The dashboard sets all other values. Never set approved, needs_review, or rejected in pipeline output.
 
@@ -575,14 +578,14 @@ Each signal may also carry these optional fields (all default to off):
   analyst confirms it before the account ships.
 - **`required_for_bullseye`** (bool, default `false`): must-have gate. When the
   signal is **not** confirmed `"yes"` and **not** inferred, the tier is capped: a
-  confirmed `"no"` caps at `"Watchlist"`, a `not_found` caps at `"Needs
+  confirmed `"no"` caps at `"Contender"`, a `not_found` caps at `"Needs
   Verification"`. This is how "Bullseye means all must-have signals are confirmed
   present" is enforced. Supersedes `verification_required` (it also covers the
   `not_found` case), so a must-have signal needs only this flag.
-- **`cap_tier`** (`"Watchlist"` or `"Needs Verification"`): when the signal is
+- **`cap_tier`** (`"Contender"` or `"Needs Verification"`): when the signal is
   `"yes"`, the record's tier is capped at this ceiling regardless of score. Use
   for near-disqualifying signals (e.g. a confirmed hospital affiliation caps at
-  `"Watchlist"`).
+  `"Contender"`).
 - **`exclude_if_yes`** (bool, default `false`): when the signal is confirmed
   `"yes"`, the record is immediately EXCLUDED (sets `exclusion_status =
   "EXCLUDED"`, `target_tier = "Excluded"`, reason derived from the signal label).
@@ -635,7 +638,7 @@ A practice with elective procedures listed but no explicit cash-pay copy gets
 cash pay inferred (partial credit, no gate — eligible for Bullseye). A practice
 where cash pay is `not_found` falls to `"Needs Verification"`. A practice where
 cash pay is confirmed `"no"` takes the `no_weight` penalty and is capped at
-`"Watchlist"` — a must-have it definitively lacks keeps it off Bullseye.
+`"Contender"` — a must-have it definitively lacks keeps it off Bullseye.
 
 ---
 

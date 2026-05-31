@@ -22,7 +22,7 @@
         <th>Source</th>
         <th>Input</th>
         <th>Bullseye</th>
-        <th>Watchlist</th>
+        <th>Contender</th>
         <th>Excluded</th>
         <th>Errors</th>
         <th>Created</th>
@@ -48,7 +48,7 @@
         <td>{{ run.source_type }}</td>
         <td>{{ run.records_input }}</td>
         <td>{{ run.bullseye_count }}</td>
-        <td>{{ run.watchlist_count }}</td>
+        <td>{{ run.contender_count }}</td>
         <td>{{ run.excluded_count }}</td>
         <td>{% if run.error_count > 0 %}<span class="text-error">{{ run.error_count }}</span>{% else %}0{% endif %}</td>
         <td class="text-muted">{{ run.created_at[:16].replace("T", " ") }}</td>

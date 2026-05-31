@@ -61,7 +61,7 @@ class TestSpecialtyMatches:
 
 
 # ---------------------------------------------------------------------------
-# apply_exclusions — CLEAR records get Bullseye or Watchlist, never Excluded
+# apply_exclusions — CLEAR records get Bullseye or Contender, never Excluded
 # ---------------------------------------------------------------------------
 
 _BASE_RECORD = {
@@ -106,10 +106,10 @@ class TestApplyExclusions:
         assert rec["target_tier"] == "Bullseye"
         assert rec["exclusion_reason"] is None
 
-    def test_clear_watchlist_when_score_below_min(self):
+    def test_clear_contender_when_score_below_min(self):
         rec = apply_exclusions(_record(bullseye_score=60), _config())
         assert rec["exclusion_status"] == "CLEAR"
-        assert rec["target_tier"] == "Watchlist"
+        assert rec["target_tier"] == "Contender"
 
     def test_excluded_when_specialty_mismatch(self):
         rec = apply_exclusions(_record(specialty="Dermatology"), _config())

@@ -232,11 +232,11 @@ class TestSignalNormalization:
         icp = [{
             "signal_id": "S-V", "signal_label": "Cash pay visible",
             "prompt_instruction": "?", "positive_weight": 10,
-            "verification_required": True, "cap_tier": "Watchlist",
+            "verification_required": True, "cap_tier": "Contender",
         }]
         result = _validate_and_clean_signals([], icp)
         assert result[0]["verification_required"] is True
-        assert result[0]["cap_tier"] == "Watchlist"
+        assert result[0]["cap_tier"] == "Contender"
 
     def test_tiering_fields_default_off_when_absent(self):
         """Signals without the optional fields default to off / empty."""
@@ -423,8 +423,8 @@ class TestTierAssignment:
     def test_high_score_no_flags_is_bullseye(self):
         assert _assign_tier(self._record_with_signals([]), 90, 75) == "Bullseye"
 
-    def test_low_score_no_flags_is_watchlist(self):
-        assert _assign_tier(self._record_with_signals([]), 50, 75) == "Watchlist"
+    def test_low_score_no_flags_is_contender(self):
+        assert _assign_tier(self._record_with_signals([]), 50, 75) == "Contender"
 
     def test_unconfirmed_required_signal_caps_bullseye_at_needs_verification(self):
         signals = [{"signal_id": "S-1", "signal_state": "not_found",
@@ -436,32 +436,32 @@ class TestTierAssignment:
                     "verification_required": True, "cap_tier": ""}]
         assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Bullseye"
 
-    def test_cap_tier_yes_caps_at_watchlist(self):
+    def test_cap_tier_yes_caps_at_contender(self):
         signals = [{"signal_id": "S-hosp", "signal_state": "yes",
-                    "verification_required": False, "cap_tier": "Watchlist"}]
-        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Watchlist"
+                    "verification_required": False, "cap_tier": "Contender"}]
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Contender"
 
     def test_cap_tier_beats_verification(self):
-        """A hospital-affiliation Watchlist cap wins over a Needs Verification flag."""
+        """A hospital-affiliation Contender cap wins over a Needs Verification flag."""
         signals = [
             {"signal_id": "S-hosp", "signal_state": "yes",
-             "verification_required": False, "cap_tier": "Watchlist"},
+             "verification_required": False, "cap_tier": "Contender"},
             {"signal_id": "S-cash", "signal_state": "not_found",
              "verification_required": True, "cap_tier": ""},
         ]
-        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Watchlist"
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Contender"
 
-    def test_verification_does_not_lift_watchlist(self):
-        """A not_found required signal never raises a low-score Watchlist up a rung."""
+    def test_verification_does_not_lift_contender(self):
+        """A not_found required signal never raises a low-score Contender up a rung."""
         signals = [{"signal_id": "S-1", "signal_state": "not_found",
                     "verification_required": True, "cap_tier": ""}]
-        assert _assign_tier(self._record_with_signals(signals), 50, 75) == "Watchlist"
+        assert _assign_tier(self._record_with_signals(signals), 50, 75) == "Contender"
 
-    def test_must_have_confirmed_no_caps_at_watchlist(self):
-        """A required_for_bullseye signal confirmed 'no' caps at Watchlist even at top score."""
+    def test_must_have_confirmed_no_caps_at_contender(self):
+        """A required_for_bullseye signal confirmed 'no' caps at Contender even at top score."""
         signals = [{"signal_id": "S-cash", "signal_state": "no",
                     "required_for_bullseye": True, "cap_tier": ""}]
-        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Watchlist"
+        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Contender"
 
     def test_must_have_not_found_caps_at_needs_verification(self):
         """A required_for_bullseye signal that is not_found caps at Needs Verification."""
@@ -566,6 +566,37 @@ class TestSpecialtyExclusion:
         result = apply_exclusions(record, config)
         triggered = result.get("exclusion_reason") or ""
         assert "wrong_specialty" not in triggered
+
+
+class TestZipLookup:
+    """Offline ZIP -> (city, state) resolution from the bundled dataset."""
+
+    def _lookup(self, z):
+        from ingestion import zip_lookup
+        return zip_lookup.infer_city_state(z)
+
+    def test_known_zip_resolves(self):
+        assert self._lookup("75201") == ("Dallas", "TX")
+
+    def test_zip_plus_four_resolves(self):
+        assert self._lookup("75201-1234") == ("Dallas", "TX")
+
+    def test_unknown_and_blank_zip_return_empty(self):
+        assert self._lookup("00000") == ("", "")
+        assert self._lookup("") == ("", "")
+        assert self._lookup("abc") == ("", "")
+
+    def test_ingest_fills_city_state_from_zip(self, tmp_path):
+        """A row with only a ZIP gets city/state filled from the offline lookup."""
+        from ingestion.outscraper_adapter import load_outscraper_csv
+        csv_path = tmp_path / "in.csv"
+        csv_path.write_text(
+            "name,postal_code,site\nDallas Clinic,75201,https://x.com\n",
+            encoding="utf-8",
+        )
+        records = load_outscraper_csv(str(csv_path))
+        assert records[0]["address_city"] == "Dallas"
+        assert records[0]["address_state"] == "TX"
 
 
 # ---------------------------------------------------------------------------
@@ -691,6 +722,40 @@ class TestExcludeIfYes:
         assert result["exclusion_status"] == "CLEAR"
 
 
+class TestConfidenceBand:
+    """confidence_band is derived from confidence_score, never recomputed."""
+
+    def test_band_boundaries(self):
+        from enrichment.constants import (
+            confidence_band_for_score,
+            HIGH_CONFIDENCE_THRESHOLD,
+            LOW_CONFIDENCE_THRESHOLD,
+        )
+        assert confidence_band_for_score(HIGH_CONFIDENCE_THRESHOLD) == "High"
+        assert confidence_band_for_score(90) == "High"
+        assert confidence_band_for_score(LOW_CONFIDENCE_THRESHOLD) == "Moderate"
+        assert confidence_band_for_score(64) == "Moderate"
+        assert confidence_band_for_score(LOW_CONFIDENCE_THRESHOLD - 1) == "Low"
+        assert confidence_band_for_score(40) == "Low"   # pure low-confidence yes
+        assert confidence_band_for_score(30) == "Low"   # no-signal default
+
+    def test_finalize_sets_band_from_score(self):
+        record = _clear_record(score=90)
+        record["confidence_score"] = 90
+        record["signals"] = []
+        result = validate_and_finalize(record)
+        assert result["confidence_band"] == "High"
+        # numeric score is preserved in the internal record
+        assert result["confidence_score"] == 90
+
+    def test_finalize_low_score_band_low(self):
+        record = _clear_record(score=20)
+        record["confidence_score"] = 30
+        record["signals"] = []
+        result = validate_and_finalize(record)
+        assert result["confidence_band"] == "Low"
+
+
 # ---------------------------------------------------------------------------
 # CLEAR record tier invariant
 # ---------------------------------------------------------------------------
@@ -703,19 +768,19 @@ class TestClearRecordTierInvariant:
         assert result["exclusion_status"] == "CLEAR"
         assert result["target_tier"] == "Bullseye"
 
-    def test_clear_low_score_is_watchlist_not_excluded(self):
-        """CLEAR records with score < 75 should be Watchlist, never Excluded."""
+    def test_clear_low_score_is_contender_not_excluded(self):
+        """CLEAR records with score < 75 should be Contender, never Excluded."""
         record = _clear_record(score=40)
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
-        assert result["target_tier"] == "Watchlist"
+        assert result["target_tier"] == "Contender"
         assert result["target_tier"] != "Excluded"
 
-    def test_clear_zero_score_is_watchlist(self):
+    def test_clear_zero_score_is_contender(self):
         record = _clear_record(score=0)
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
-        assert result["target_tier"] == "Watchlist"
+        assert result["target_tier"] == "Contender"
 
 
 # ---------------------------------------------------------------------------
@@ -758,14 +823,14 @@ class TestValidateAndFinalizeInvariant:
             "exclusion_reason": None,
         }
 
-    def test_clear_excluded_tier_repaired_to_watchlist(self):
-        """CLEAR + Excluded tier → repaired to Watchlist (score 40 < 75)."""
+    def test_clear_excluded_tier_repaired_to_contender(self):
+        """CLEAR + Excluded tier → repaired to Contender (score 40 < 75)."""
         record = self._base_record()
         record["exclusion_status"] = "CLEAR"
         record["target_tier"] = "Excluded"
         record["bullseye_score"] = 40
         result = validate_and_finalize(record)
-        assert result["target_tier"] == "Watchlist"
+        assert result["target_tier"] == "Contender"
         assert "Invariant violation" in result["internal_notes"]
 
     def test_clear_excluded_tier_repaired_to_bullseye(self):
@@ -778,10 +843,10 @@ class TestValidateAndFinalizeInvariant:
         assert result["target_tier"] == "Bullseye"
 
     def test_excluded_non_excluded_tier_repaired(self):
-        """EXCLUDED + Watchlist tier → repaired to Excluded."""
+        """EXCLUDED + Contender tier → repaired to Excluded."""
         record = self._base_record()
         record["exclusion_status"] = "EXCLUDED"
-        record["target_tier"] = "Watchlist"
+        record["target_tier"] = "Contender"
         record["exclusion_reason"] = "hospital_owned"
         result = validate_and_finalize(record)
         assert result["target_tier"] == "Excluded"
@@ -791,9 +856,9 @@ class TestValidateAndFinalizeInvariant:
         """Valid, consistent records are not modified."""
         record = self._base_record()
         record["exclusion_status"] = "CLEAR"
-        record["target_tier"] = "Watchlist"
+        record["target_tier"] = "Contender"
         result = validate_and_finalize(record)
-        assert result["target_tier"] == "Watchlist"
+        assert result["target_tier"] == "Contender"
         assert result["exclusion_status"] == "CLEAR"
         assert "Invariant violation" not in result.get("internal_notes", "")
 
@@ -848,7 +913,7 @@ class TestCallBrief:
         {"signal_id": "S-cash", "signal_label": "Cash pay visible",
          "prompt_instruction": "?", "positive_weight": 25, "verification_required": True},
         {"signal_id": "S-hosp", "signal_label": "Hospital affiliated",
-         "prompt_instruction": "?", "positive_weight": -30, "cap_tier": "Watchlist"},
+         "prompt_instruction": "?", "positive_weight": -30, "cap_tier": "Contender"},
     ]
 
     def _sig(self, sid, state, label, weight, conf="high", evidence="",
@@ -886,7 +951,7 @@ class TestCallBrief:
 
     def test_disqualifier_risk_from_friction_and_cap(self):
         signals = [
-            self._sig("S-hosp", "yes", "Hospital affiliated", -30, cap_tier="Watchlist"),
+            self._sig("S-hosp", "yes", "Hospital affiliated", -30, cap_tier="Contender"),
         ]
         brief = _build_call_brief(signals, {"fit_signal_score": 20}, {}, {})
         assert len(brief["disqualifier_risk"]) == 1
@@ -1043,11 +1108,11 @@ class TestSourceConfidenceTierCap:
         rec["signals"] = []
         return rec
 
-    def test_limited_confidence_caps_at_watchlist(self):
-        assert _assign_tier(self._record("limited"), 95, 75) == "Watchlist"
+    def test_limited_confidence_caps_at_needs_verification(self):
+        assert _assign_tier(self._record("limited"), 95, 75) == "Needs Verification"
 
-    def test_failed_confidence_caps_at_watchlist(self):
-        assert _assign_tier(self._record("failed"), 95, 75) == "Watchlist"
+    def test_failed_confidence_caps_at_needs_verification(self):
+        assert _assign_tier(self._record("failed"), 95, 75) == "Needs Verification"
 
     def test_complete_confidence_allows_bullseye(self):
         assert _assign_tier(self._record("complete"), 95, 75) == "Bullseye"
@@ -1234,7 +1299,7 @@ class TestIngestOnly:
     def test_not_enriched_status_survives_validation(self):
         rec = {
             "practice_name": "X", "exclusion_status": "CLEAR",
-            "target_tier": "Watchlist", "enrichment_status": "not_enriched",
+            "target_tier": "Contender", "enrichment_status": "not_enriched",
         }
         out = validate_and_finalize(rec)
         assert out["enrichment_status"] == "not_enriched"

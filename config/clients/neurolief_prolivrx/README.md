@@ -63,7 +63,7 @@ These checklists use only verified-live signal fields:
 Fields documented in the product brief but NOT confirmed live by audit
 (`cap_tier`, `not_found_weight`, `verification_required`, `reinforces`) are
 deliberately omitted to avoid shipping phantom config. Where `cap_tier`
-behavior was wanted (hospital affiliation capping at Watchlist), it is
+behavior was wanted (hospital affiliation capping at Contender), it is
 expressed as a heavy negative `positive_weight` instead, with a note. If a
 field audit confirms `cap_tier` is live, convert S-NLF-008 to use it.
 

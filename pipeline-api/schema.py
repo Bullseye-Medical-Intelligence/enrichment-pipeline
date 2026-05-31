@@ -29,7 +29,7 @@ class RunStatus(BaseModel):
     records_output: int = 0
     bullseye_count: int = 0
     needs_verification_count: int = 0
-    watchlist_count: int = 0
+    contender_count: int = 0
     excluded_count: int = 0
     error_count: int = 0
     pipeline_version: str = "v1.0"
@@ -52,7 +52,7 @@ class RunSummary(BaseModel):
     source_type: str
     records_input: int
     bullseye_count: int
-    watchlist_count: int
+    contender_count: int
     excluded_count: int
     error_count: int
     created_at: str
@@ -90,7 +90,7 @@ class ValidationFailure(BaseModel):
 
 
 VALID_OVERRIDE_TIERS: frozenset[str] = frozenset(
-    {"Bullseye", "Strong", "Warm", "Cold", "Excluded"}
+    {"Bullseye", "Needs Verification", "Contender", "Excluded"}
 )
 VALID_QC_STATUSES: frozenset[str] = frozenset({"pending", "approved", "rejected"})
 

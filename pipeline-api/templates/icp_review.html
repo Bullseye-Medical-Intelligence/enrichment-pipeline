@@ -106,7 +106,7 @@
     </p>
     <div class="demo-accounts-grid">
       {% for acct in demo %}
-      {% set tier_class = 'tier-bullseye' if acct.tier == 'Bullseye' else ('tier-watchlist' if acct.tier == 'Watchlist' else 'tier-excluded') %}
+      {% set tier_class = 'tier-bullseye' if acct.tier == 'Bullseye' else ('tier-contender' if acct.tier == 'Contender' else 'tier-excluded') %}
       <div class="demo-acct-card {{ tier_class }}">
         <div class="demo-acct-header">
           <span class="badge badge-{{ acct.tier | lower | replace(' ', '-') }}">{{ acct.tier }}</span>
@@ -184,7 +184,7 @@
           <td style="text-align:center;">
             <input type="checkbox" name="required_for_bullseye_{{ n }}"
                    {% if sig.required_for_bullseye %}checked{% endif %}
-                   title="Required for Bullseye: confirmed absent caps tier at Watchlist; not found caps at Needs Verification.">
+                   title="Required for Bullseye: confirmed absent caps tier at Contender; not found caps at Needs Verification.">
           </td>
         </tr>
         {% endfor %}
@@ -192,7 +192,7 @@
     </table>
     <p class="form-hint" style="margin-top:8px;">
       <strong>No Penalty:</strong> point deduction when a positive-weight signal is confirmed absent (e.g. -15).
-      <strong>Must-Have:</strong> confirmed absent locks tier to Watchlist; unconfirmed locks to Needs Verification.
+      <strong>Must-Have:</strong> confirmed absent locks tier to Contender; unconfirmed locks to Needs Verification.
     </p>
   </div>
 

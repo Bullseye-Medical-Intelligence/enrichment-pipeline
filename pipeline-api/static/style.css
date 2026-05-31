@@ -227,10 +227,7 @@ ul, ol { padding-left: 1.4em; }
 .badge-status-failed   { background: var(--red-bg);   color: var(--red); }
 .badge-tier-bullseye           { background: var(--accent);   color: var(--white); }
 .badge-tier-needs-verification { background: var(--amber-bg); color: #92400e; }
-.badge-tier-strong     { background: var(--ink);       color: var(--surface); }
-.badge-tier-warm       { background: var(--amber);     color: var(--white); }
-.badge-tier-cold       { background: var(--slate-bg);  color: var(--slate); }
-.badge-tier-watchlist  { background: var(--purple-bg); color: var(--purple); }
+.badge-tier-contender  { background: var(--purple-bg); color: var(--purple); }
 .badge-tier-excluded   { background: rgba(10,10,10,0.08); color: var(--muted); }
 .badge-qc-pending      { background: var(--slate-bg);  color: var(--slate); }
 .badge-qc-approved     { background: var(--green-bg);  color: var(--green); }
@@ -244,12 +241,10 @@ th.sortable::after { content: " \2195"; opacity: 0.35; font-size: 0.85em; }
 th.sortable.sort-asc::after  { content: " \2191"; opacity: 1; }
 th.sortable.sort-desc::after { content: " \2193"; opacity: 1; }
 
-/* Contact Priority badges (rep-facing relabel of the tier ladder) */
-.badge-priority-priority-outreach { background: var(--accent);   color: var(--white); }
-.badge-priority-verify-engage     { background: var(--amber-bg); color: #92400e; }
-.badge-priority-develop           { background: var(--purple-bg); color: var(--purple); }
-.badge-priority-monitor           { background: var(--slate-bg);  color: var(--slate); }
-.badge-priority-do-not-pursue     { background: rgba(10,10,10,0.08); color: var(--muted); }
+/* Confidence band badges (qualitative client-facing confidence) */
+.badge-confidence-high     { background: var(--green-bg); color: var(--green); }
+.badge-confidence-moderate { background: var(--amber-bg); color: #92400e; }
+.badge-confidence-low      { background: var(--slate-bg); color: var(--slate); }
 
 /* ── View tabs (Review <-> Contact Queue) ─────────────────────────── */
 .view-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
@@ -760,7 +755,7 @@ a.signal-state-badge:hover { opacity: 0.8; }
   padding: 14px;
 }
 .demo-acct-card.tier-bullseye { border-top: 3px solid #1a7f4b; }
-.demo-acct-card.tier-watchlist { border-top: 3px solid #b87c1a; }
+.demo-acct-card.tier-contender { border-top: 3px solid #b87c1a; }
 .demo-acct-card.tier-excluded  { border-top: 3px solid #c84b2f; }
 .demo-acct-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .demo-score { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--ink); }

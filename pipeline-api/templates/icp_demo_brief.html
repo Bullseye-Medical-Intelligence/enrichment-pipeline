@@ -66,7 +66,7 @@
   </p>
   <div class="demo-accounts-grid">
     {% for acct in demo %}
-    {% set tier_cls = 'tier-bullseye' if acct.tier == 'Bullseye' else ('tier-watchlist' if acct.tier == 'Watchlist' else 'tier-excluded') %}
+    {% set tier_cls = 'tier-bullseye' if acct.tier == 'Bullseye' else ('tier-contender' if acct.tier == 'Contender' else 'tier-excluded') %}
     <div class="demo-acct-card {{ tier_cls }}">
       <div class="demo-acct-header">
         <span class="badge badge-{{ acct.tier | lower | replace(' ', '-') }}">{{ acct.tier }}</span>

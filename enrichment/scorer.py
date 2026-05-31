@@ -17,6 +17,7 @@ from enrichment.constants import (
     EXCLUDED_SCORE_CAP,
     MAX_SCORE,
     MIN_SCORE,
+    confidence_band_for_score,
     empty_call_brief,
 )
 
@@ -24,7 +25,9 @@ DEFAULT_FIT_CONFIDENCE_STATUS = "LOW FIT / LOW EVIDENCE"
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
 VALID_EXCLUSION_STATUSES = {"CLEAR", "EXCLUDED"}
-VALID_TARGET_TIERS = {"Bullseye", "Needs Verification", "Watchlist", "Excluded"}
+VALID_TARGET_TIERS = {"Bullseye", "Needs Verification", "Contender", "Excluded"}
+# Legacy tier label -> current label. "Watchlist" was renamed to "Contender".
+LEGACY_TIER_ALIAS = {"Watchlist": "Contender"}
 VALID_SOURCE_CONFIDENCES = {"complete", "partial", "limited", "failed"}
 VALID_ENRICHMENT_STATUSES = {"complete", "partial", "failed", "needs_review", "not_enriched"}
 VALID_QC_STATUSES = {"pending"}  # Pipeline always outputs "pending"
@@ -98,7 +101,9 @@ def validate_and_finalize(record: dict) -> dict:
         record["exclusion_reason"] = "Excluded by pipeline rules"
 
     # --- Target tier ---
-    tier = record.get("target_tier")
+    # Normalize any legacy label (e.g. "Watchlist" from a frozen snapshot) first.
+    tier = LEGACY_TIER_ALIAS.get(record.get("target_tier"), record.get("target_tier"))
+    record["target_tier"] = tier
     exc_status = record["exclusion_status"]  # already validated above
 
     # Enforce invariant: target_tier == "Excluded" iff exclusion_status == "EXCLUDED".
@@ -106,7 +111,7 @@ def validate_and_finalize(record: dict) -> dict:
     # so this check runs unconditionally — not just when tier is outside the enum.
     if exc_status == "CLEAR" and tier == "Excluded":
         score = record["bullseye_score"]
-        record["target_tier"] = "Bullseye" if score >= DEFAULT_BULLSEYE_MIN_SCORE else "Watchlist"
+        record["target_tier"] = "Bullseye" if score >= DEFAULT_BULLSEYE_MIN_SCORE else "Contender"
         errors.append(
             f"Invariant violation: exclusion_status=CLEAR but target_tier=Excluded; "
             f"repaired to {record['target_tier']}"
@@ -125,7 +130,7 @@ def validate_and_finalize(record: dict) -> dict:
         elif score >= DEFAULT_BULLSEYE_MIN_SCORE:
             record["target_tier"] = "Bullseye"
         else:
-            record["target_tier"] = "Watchlist"
+            record["target_tier"] = "Contender"
         errors.append(f"Invalid target_tier '{tier}', inferred from score")
 
     # --- Source confidence ---
@@ -187,6 +192,10 @@ def validate_and_finalize(record: dict) -> dict:
     # fit_confidence_status: default if missing
     if not record.get("fit_confidence_status"):
         record["fit_confidence_status"] = DEFAULT_FIT_CONFIDENCE_STATUS
+
+    # confidence_band: always present, derived from the (already clamped)
+    # numeric confidence_score. Client-facing display shows this, never the number.
+    record["confidence_band"] = confidence_band_for_score(record.get("confidence_score", 0))
 
     # date_enriched: should be set by signal_extractor, but just in case
     if not record.get("date_enriched"):
