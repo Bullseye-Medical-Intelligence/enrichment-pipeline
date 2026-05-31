@@ -182,7 +182,8 @@ def run_pipeline(input_file: str, source_type: str,
                   config_path: str = DEFAULT_CONFIG_PATH,
                   icp_path: str = DEFAULT_ICP_PATH,
                   dry_run: bool = False,
-                  limit: int = None) -> dict:
+                  limit: int = None,
+                  use_playwright: bool = False) -> dict:
     """
     Run the full enrichment pipeline.
 
@@ -330,7 +331,8 @@ def run_pipeline(input_file: str, source_type: str,
 
     records = batch_extract(records, timeout=timeout, retries=retries,
                              max_pages=max_pages, keywords=subpage_keywords,
-                             max_workers=io_concurrency)
+                             max_workers=io_concurrency,
+                             use_playwright=use_playwright)
 
     extracted_count = sum(1 for r in records if r.get("_context_text", ""))
     print(f"\n  {extracted_count}/{len(records)} records with extracted text")
@@ -632,6 +634,11 @@ Examples:
         default=None,
         help="Process only the first N records (for testing)",
     )
+    parser.add_argument(
+        "--playwright",
+        action="store_true",
+        help="Use headless Chromium (Playwright) instead of requests for web extraction",
+    )
 
     args = parser.parse_args()
 
@@ -654,6 +661,7 @@ Examples:
         icp_path=args.icp,
         dry_run=args.dry_run,
         limit=args.limit,
+        use_playwright=args.playwright,
     )
 
     sys.exit(0)

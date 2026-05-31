@@ -40,6 +40,7 @@ def spawn_pipeline(
     run_dir: Path,
     config_path: Path,
     icp_path: Path,
+    extra_flags: list[str] | None = None,
 ) -> subprocess.Popen:
     """
     Launch pipeline.py as a non-blocking subprocess.
@@ -51,6 +52,7 @@ def spawn_pipeline(
         run_dir: Absolute path to the run output directory.
         config_path: Absolute path to the project_config snapshot.
         icp_path: Absolute path to the ICP profile snapshot.
+        extra_flags: Optional list of extra CLI flags (e.g. ["--playwright"]).
 
     Returns:
         The running Popen object.
@@ -64,6 +66,8 @@ def spawn_pipeline(
         "--config", str(config_path),
         "--icp", str(icp_path),
     ]
+    if extra_flags:
+        cmd.extend(extra_flags)
     logger.info("Spawning pipeline for run %s: %s", run_id, " ".join(cmd))
 
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
@@ -230,6 +234,148 @@ async def orchestrate_run(
         run_id, operator, row_count, project_id, project_config["icp_profile_id"],
     )
     return run_id, row_count
+
+
+async def orchestrate_playwright_retry(
+    source_run_id: str,
+    operator: str,
+    background_tasks,
+) -> tuple[str, int]:
+    """Start a new run for the limited/failed records from a completed run, using Playwright.
+
+    Reads limited/failed records from the source run's enriched_targets.json,
+    builds a manual-format input CSV, and spawns a new pipeline run with
+    the --playwright flag so headless Chromium handles the crawl.
+
+    Args:
+        source_run_id: The completed run whose limited/failed records are retried.
+        operator: Name of the user triggering the retry.
+        background_tasks: FastAPI BackgroundTasks instance.
+
+    Returns:
+        (new_run_id, row_count)
+
+    Raises:
+        ValueError if the source run is not complete, has no limited/failed records,
+        or the concurrent-run cap is reached.
+        FileNotFoundError if the source run does not exist.
+    """
+    import csv
+    import io
+    from urllib.parse import urlparse, urlunparse, unquote
+
+    active = runs.count_active_runs()
+    if active >= MAX_CONCURRENT_RUNS:
+        raise ValueError(
+            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+            "Wait for a run to finish before starting another."
+        )
+
+    source_status = runs.get_run(source_run_id)
+    if source_status is None:
+        raise FileNotFoundError(f"Run '{source_run_id}' not found")
+    if source_status.status != "complete":
+        raise ValueError(f"Source run is {source_status.status!r} — only complete runs can be retried.")
+
+    source_dir = runs.run_dir(source_run_id)
+    results_path = source_dir / "enriched_targets.json"
+    if not results_path.exists():
+        raise ValueError("Source run has no enriched_targets.json")
+
+    with open(results_path, "r", encoding="utf-8") as f:
+        all_records = record_adapter.normalize_records_payload(json.load(f))
+
+    def _normalize_url(url: str) -> str:
+        if not url:
+            return ""
+        url = unquote(url.strip())
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        parsed = urlparse(url)
+        return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
+    limited = [r for r in all_records if r.get("source_confidence") in ("limited", "failed")]
+    if not limited:
+        raise ValueError("No limited/failed records in this run to retry.")
+
+    # Build manual-format CSV in memory
+    fieldnames = ["practice_name", "website", "phone",
+                  "address_city", "address_state", "address_zip", "specialty"]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for rec in limited:
+        writer.writerow({
+            "practice_name": rec.get("practice_name", ""),
+            "website": _normalize_url(rec.get("website_url", "")),
+            "phone": rec.get("phone", ""),
+            "address_city": rec.get("address_city", ""),
+            "address_state": rec.get("address_state", ""),
+            "address_zip": rec.get("address_zip", ""),
+            "specialty": rec.get("specialty", ""),
+        })
+    csv_bytes = buf.getvalue().encode("utf-8")
+    row_count = len(limited)
+
+    # Load project config from source run's snapshot
+    config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
+    if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
+        raise ValueError("Source run is missing config snapshots.")
+    with open(config_snapshot_src, "r", encoding="utf-8") as f:
+        project_config = json.load(f)
+    with open(icp_snapshot_src, "r", encoding="utf-8") as f:
+        icp_profile = json.load(f)
+
+    project_id = source_status.project_id
+
+    new_run_id = runs.generate_run_id()
+    run_directory = OUTPUT_RUNS_PATH / new_run_id
+    run_directory.mkdir(parents=True, exist_ok=True)
+
+    (run_directory / "input.csv").write_bytes(csv_bytes)
+
+    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
+    _write_json(config_snapshot, project_config)
+    _write_json(icp_snapshot, icp_profile)
+
+    runs.create_run(
+        run_id=new_run_id,
+        project_id=project_id,
+        source_type="manual",
+        input_filename=f"{source_run_id}_playwright_retry.csv",
+        operator=operator,
+        records_input=row_count,
+        metadata={
+            "client_name": project_config.get("client_name"),
+            "product_name": project_config.get("product_name"),
+            "target_specialty": project_config.get("target_specialty"),
+            "target_geography": project_config.get("target_geography") or [],
+            "icp_profile_id": project_config.get("icp_profile_id"),
+            "icp_profile_name": icp_profile.get("name"),
+            "icp_profile_version": icp_profile.get("version"),
+            "playwright_retry_of": source_run_id,
+        },
+    )
+
+    process = spawn_pipeline(
+        new_run_id,
+        run_directory / "input.csv",
+        "manual",
+        run_directory,
+        config_snapshot,
+        icp_snapshot,
+        extra_flags=["--playwright"],
+    )
+    runs.update_run_status(new_run_id, status="running")
+    background_tasks.add_task(monitor_pipeline, new_run_id, process)
+
+    logger.info(
+        "Playwright retry run %s started by '%s' (%d rows, source=%s)",
+        new_run_id, operator, row_count, source_run_id,
+    )
+    return new_run_id, row_count
 
 
 async def resume_run(run_id: str, background_tasks) -> int:

@@ -11,11 +11,23 @@ import json
 import logging
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlparse, urlunparse, unquote
 
 import record_adapter
 import reviews
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_url_for_export(url: str) -> str:
+    """Strip tracking params and paths, keeping only scheme://netloc."""
+    if not url:
+        return ""
+    url = unquote(url.strip())
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
 
 # Rep-facing column derived from the pipeline's call_brief (a nested object, so
 # it is not picked up by the scalar-field column scan).
@@ -114,7 +126,7 @@ def build_retry_csv(run_id: str, run_directory: Path) -> io.BytesIO:
     for rec in crawl_failed:
         writer.writerow({
             "practice_name": rec.get("practice_name", ""),
-            "website": rec.get("website_url", ""),
+            "website": _normalize_url_for_export(rec.get("website_url", "")),
             "phone": rec.get("phone", ""),
             "address_city": rec.get("address_city", ""),
             "address_state": rec.get("address_state", ""),

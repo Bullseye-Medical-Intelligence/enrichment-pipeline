@@ -11,6 +11,7 @@ import logging
 import re
 import urllib.request
 from html.parser import HTMLParser
+from urllib.parse import urlparse, urlunparse, unquote
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
@@ -609,6 +610,17 @@ async def runs_page(request: Request, username: str = Depends(auth.require_sessi
 # Results / review dashboard
 # ---------------------------------------------------------------------------
 
+def _normalize_display_url(url: str) -> str:
+    """Strip tracking paths and query strings, keeping only scheme://netloc for display."""
+    if not url:
+        return ""
+    url = unquote(url.strip())
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
+
 def _load_merged_records(run_id: str, status) -> list[dict]:
     """Load a complete run's records merged with their review overlay.
 
@@ -630,6 +642,7 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
         review = all_reviews.get(record_id, reviews.default_review())
         merged.append({
             **record,
+            "website_url": _normalize_display_url(record.get("website_url", "")),
             "record_id": record_id,
             "review": review,
             "displayed_tier": record_adapter.displayed_tier(record, review),
@@ -818,6 +831,27 @@ async def export_retry_crawl(run_id: str, username: str = Depends(auth.require_s
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{run_id}_retry_crawl.csv"'},
     )
+
+
+@router.post("/runs/{run_id}/retry-with-browser")
+async def retry_with_browser(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Start a Playwright re-crawl run for records that failed web extraction."""
+    try:
+        new_run_id, row_count = await runner.orchestrate_playwright_retry(
+            source_run_id=run_id,
+            operator=username,
+            background_tasks=background_tasks,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
 
 
 @router.get("/runs/{run_id}/client-package")

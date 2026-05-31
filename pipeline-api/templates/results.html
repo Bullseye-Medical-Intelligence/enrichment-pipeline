@@ -25,6 +25,14 @@
     <a href="/runs/{{ run_id }}/export/approved" class="btn btn-secondary">Export Approved</a>
     <a href="/runs/{{ run_id }}/export/excluded" class="btn btn-secondary">Export Excluded</a>
     <a href="/runs/{{ run_id }}/export/retry-crawl" class="btn btn-secondary" title="Download records that failed to crawl, ready to re-upload as a new run">Export Failed Crawls</a>
+    {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
+    {% if limited_count > 0 %}
+    <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+      <button type="submit" class="btn btn-secondary" title="Re-crawl {{ limited_count }} site{{ 's' if limited_count != 1 else '' }} that failed extraction using headless browser (Playwright)">
+        Re-crawl with Browser ({{ limited_count }})
+      </button>
+    </form>
+    {% endif %}
     <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary">Full JSON</a>
     <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
     {% endif %}
