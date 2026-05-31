@@ -62,6 +62,11 @@ LOW_CONFIDENCE_THRESHOLD = 45
 
 CONFIDENCE_BANDS = ("High", "Moderate", "Low")
 
+# LLM generation budget for signal extraction responses.
+# 8 signals × ~200 token evidence text + call_brief + sales_angle ≈ 2 000–3 500 tokens
+# in practice. 8 192 gives 2× headroom for verbose sites without hitting Anthropic limits.
+LLM_MAX_TOKENS = 8192
+
 
 def confidence_band_for_score(confidence_score: int) -> str:
     """Map a numeric confidence_score to a qualitative band: High / Moderate / Low.

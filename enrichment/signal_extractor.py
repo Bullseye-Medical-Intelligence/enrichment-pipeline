@@ -29,6 +29,7 @@ from enrichment.constants import (
     HIGH_CONFIDENCE_THRESHOLD,
     HIGH_FIT_THRESHOLD,
     INFERENCE_CREDIT,
+    LLM_MAX_TOKENS,
     MAX_SCORE,
     MIN_CONTEXT_CHARS,
     MIN_SCORE,
@@ -137,7 +138,7 @@ def _call_claude(prompt: str, client: anthropic.Anthropic, model: str,
         try:
             message = client.messages.create(
                 model=model,
-                max_tokens=4096,
+                max_tokens=LLM_MAX_TOKENS,
                 timeout=REQUEST_TIMEOUT_SECONDS,
                 messages=[
                     {
