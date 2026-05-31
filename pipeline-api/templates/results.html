@@ -357,9 +357,14 @@
                 {% if record.exclusion_reason %}
                 <h4>Exclusion Rationale</h4>
                 <p class="exclusion-reason">{{ record.exclusion_reason }}</p>
-                {% if status.status == "complete" %}
+                {% endif %}
+
+                {# Recovery tools for sites the crawler could not read (excluded, or
+                   limited/failed source confidence — bot gates, CAPTCHA walls). #}
+                {% if status.status == "complete" and (record.exclusion_reason or record.source_confidence in ("limited", "failed")) %}
+                <h4>Recover This Site</h4>
                 <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
-                      style="margin-top:0.6em;"
+                      style="margin-top:0.4em;"
                       onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
                   <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                     <input type="url" name="website_url"
@@ -371,7 +376,30 @@
                     </button>
                   </div>
                 </form>
-                {% endif %}
+
+                <details style="margin-top:0.6em;">
+                  <summary style="cursor:pointer; font-size:0.82em; color:var(--accent);">
+                    Site blocked? Paste its content manually
+                  </summary>
+                  <p class="text-muted small" style="margin:0.4em 0;">
+                    For sites that block our crawler: open the site in your browser, then either
+                    "Save Page As" an .html file and upload it, or select all (Ctrl+A), copy, and paste the text.
+                  </p>
+                  <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/manual-content"
+                        enctype="multipart/form-data"
+                        onsubmit="this.querySelector('button[type=submit]').disabled=true; this.querySelector('button[type=submit]').textContent='Starting…';">
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                      <input type="file" name="html_file" accept=".html,.htm"
+                             style="font-size:0.82em;">
+                      <textarea name="pasted_text" rows="4"
+                                placeholder="Or paste the page text / view-source here"
+                                style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.82em;"></textarea>
+                      <button type="submit" class="btn btn-secondary" style="padding:4px 10px; font-size:0.82em; white-space:nowrap; align-self:flex-start;">
+                        Enrich from pasted content
+                      </button>
+                    </div>
+                  </form>
+                </details>
                 {% endif %}
 
                 <h4>Scores</h4>

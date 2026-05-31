@@ -222,6 +222,8 @@ GET    /runs/{run_id}/download/csv               Full enriched_targets.csv downl
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
 GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs)
+POST   /runs/{run_id}/records/{record_id}/recrawl          Re-crawl one record with headless browser
+POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record from operator-pasted/uploaded page content
 POST   /api/ui/runs                              Create run from browser upload
 POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 ```

@@ -20,6 +20,7 @@ import runs
 from config import (
     ICP_SNAPSHOT_FILENAME,
     MAX_CONCURRENT_RUNS,
+    MAX_CSV_SIZE_BYTES,
     OUTPUT_RUNS_PATH,
     PIPELINE_REPO_PATH,
     PIPELINE_SCRIPT,
@@ -614,6 +615,158 @@ async def orchestrate_single_recrawl(
     logger.info(
         "Single-record Playwright recrawl %s started by '%s' (record=%s, url=%s)",
         new_run_id, operator, record_id, url,
+    )
+    return new_run_id, 1
+
+
+async def orchestrate_manual_content_recrawl(
+    source_run_id: str,
+    record_id: str,
+    content_bytes: bytes,
+    content_filename: str,
+    operator: str,
+    background_tasks,
+) -> tuple[str, int]:
+    """Enrich a single record from operator-provided page content, not a crawl.
+
+    For a site behind a hard CAPTCHA wall the crawler cannot clear, the operator
+    captures the page in their own browser (Save Page As .html, or copy the
+    visible text) and submits it. This saves that content into a new run and
+    spawns the pipeline with --manual-content-path, so signal extraction runs on
+    the operator's content instead of crawling. Mirrors orchestrate_single_recrawl.
+
+    Args:
+        source_run_id: The completed run containing the record.
+        record_id: The record's ID within that run.
+        content_bytes: The raw HTML or text the operator supplied.
+        content_filename: Original filename (used to pick .html vs .txt).
+        operator: Name of the user triggering the enrichment.
+        background_tasks: FastAPI BackgroundTasks instance.
+
+    Returns:
+        (new_run_id, 1)
+
+    Raises:
+        FileNotFoundError if run/record not found.
+        ValueError if the run is not complete, the content is empty/too large,
+        or the concurrent-run cap is reached.
+    """
+    import csv
+    import io
+
+    if not content_bytes or not content_bytes.strip():
+        raise ValueError("No content provided. Upload an HTML file or paste page content.")
+    if len(content_bytes) > MAX_CSV_SIZE_BYTES:
+        raise ValueError("Provided content is too large.")
+
+    active = runs.count_active_runs()
+    if active >= MAX_CONCURRENT_RUNS:
+        raise ValueError(
+            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+            "Wait for a run to finish before starting another."
+        )
+
+    source_status = runs.get_run(source_run_id)
+    if source_status is None:
+        raise FileNotFoundError(f"Run '{source_run_id}' not found")
+    if source_status.status != "complete":
+        raise ValueError(f"Source run is {source_status.status!r} — only complete runs can be enriched.")
+
+    source_dir = runs.run_dir(source_run_id)
+    results_path = source_dir / "enriched_targets.json"
+    if not results_path.exists():
+        raise ValueError("Source run has no enriched_targets.json")
+
+    with open(results_path, "r", encoding="utf-8") as f:
+        all_records = record_adapter.normalize_records_payload(json.load(f))
+
+    record = next((r for r in all_records if record_adapter.get_record_id(r) == record_id), None)
+    if record is None:
+        raise FileNotFoundError(f"Record '{record_id}' not found in run '{source_run_id}'")
+
+    url = record_adapter.normalize_homepage_url(record.get("website_url", ""))
+
+    fieldnames = ["practice_name", "website_url", "phone",
+                  "address_city", "address_state", "address_zip", "specialty"]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerow({
+        "practice_name": record.get("practice_name", ""),
+        "website_url": url,
+        "phone": record.get("phone", ""),
+        "address_city": record.get("address_city", ""),
+        "address_state": record.get("address_state", ""),
+        "address_zip": record.get("address_zip", ""),
+        "specialty": record.get("specialty", ""),
+    })
+    csv_bytes = buf.getvalue().encode("utf-8")
+
+    config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
+    if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
+        raise ValueError("Source run is missing config snapshots.")
+    with open(config_snapshot_src, "r", encoding="utf-8") as f:
+        project_config = json.load(f)
+    with open(icp_snapshot_src, "r", encoding="utf-8") as f:
+        icp_profile = json.load(f)
+
+    new_run_id = runs.generate_run_id()
+    run_directory = OUTPUT_RUNS_PATH / new_run_id
+    run_directory.mkdir(parents=True, exist_ok=True)
+    (run_directory / "input.csv").write_bytes(csv_bytes)
+
+    # Save the operator's content into the run dir as .html or .txt.
+    looks_html = (
+        (content_filename or "").lower().endswith((".html", ".htm"))
+        or b"<html" in content_bytes[:4000].lower()
+        or b"<body" in content_bytes[:4000].lower()
+        or b"<div" in content_bytes[:4000].lower()
+    )
+    suffix = ".html" if looks_html else ".txt"
+    content_path = run_directory / f"manual_content{suffix}"
+    content_path.write_bytes(content_bytes)
+
+    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
+    _write_json(config_snapshot, project_config)
+    _write_json(icp_snapshot, icp_profile)
+
+    runs.create_run(
+        run_id=new_run_id,
+        project_id=source_status.project_id,
+        source_type="manual",
+        input_filename=f"{record.get('practice_name', record_id)[:40]}_manual.csv",
+        operator=operator,
+        records_input=1,
+        metadata={
+            "client_name": project_config.get("client_name"),
+            "product_name": project_config.get("product_name"),
+            "target_specialty": project_config.get("target_specialty"),
+            "target_geography": project_config.get("target_geography") or [],
+            "icp_profile_id": project_config.get("icp_profile_id"),
+            "icp_profile_name": icp_profile.get("name"),
+            "icp_profile_version": icp_profile.get("version"),
+            "manual_content_of": source_run_id,
+            "recrawl_record_id": record_id,
+        },
+    )
+
+    process = spawn_pipeline(
+        new_run_id,
+        run_directory / "input.csv",
+        "manual",
+        run_directory,
+        config_snapshot,
+        icp_snapshot,
+        extra_flags=["--manual-content-path", str(content_path)],
+    )
+    runs.update_run_status(new_run_id, status="running")
+    background_tasks.add_task(monitor_pipeline, new_run_id, process)
+
+    logger.info(
+        "Manual-content enrich %s started by '%s' (record=%s, %d bytes, %s)",
+        new_run_id, operator, record_id, len(content_bytes), suffix,
     )
     return new_run_id, 1
 

@@ -196,6 +196,37 @@ def _records_needing_browser_retry(records: list[dict]) -> list[dict]:
     return blocked
 
 
+def _load_manual_content(records: list[dict], manual_content_path: str) -> None:
+    """Populate records' context text from an operator-provided file, no crawl.
+
+    For sites blocked by a hard CAPTCHA wall, the operator captures the page in
+    their own browser (Save Page As .html, or copy the visible text) and supplies
+    it here. The content replaces Steps 2-3 (URL validation + web extraction): it
+    is loaded into every record's `_context_text` so Step 4 signal extraction runs
+    on it exactly as if the crawler had fetched it. HTML is converted to clean
+    text with the same extractor the browser crawler uses; plain text is used
+    as-is. source_confidence is "partial" — operator-vouched but single-page.
+    """
+    from extraction.playwright_extractor import _extract_text_from_html
+
+    raw_bytes = Path(manual_content_path).read_bytes()
+    raw = raw_bytes.decode("utf-8", errors="replace")
+    is_html = (
+        manual_content_path.lower().endswith((".html", ".htm"))
+        or any(tag in raw[:4000].lower() for tag in ("<html", "<body", "<div", "<!doctype"))
+    )
+    clean_text = _extract_text_from_html(raw) if is_html else raw.strip()
+
+    for record in records:
+        record["_context_text"] = clean_text
+        record["_pages_crawled"] = ["[Manual content]"]
+        record["_url_valid"] = True
+        record["_url_error"] = ""
+        # Operator-supplied single-page content: trustworthy enough to enrich,
+        # but not a full multi-page crawl, so cap honesty at "partial".
+        record["source_confidence"] = "partial"
+
+
 def _validate_required_fields(records: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Validate that records have minimum required fields.
@@ -228,6 +259,7 @@ def run_pipeline(input_file: str, source_type: str,
                   limit: int = None,
                   use_playwright: bool = False,
                   auto_browser_retry: bool = False,
+                  manual_content_path: str = None,
                   ingest_only: bool = False) -> dict:
     """
     Run the full enrichment pipeline.
@@ -244,6 +276,10 @@ def run_pipeline(input_file: str, source_type: str,
         auto_browser_retry: If True, after the standard crawl, re-crawl any
             blocked/thin records once with headless Chromium before signal
             extraction. No effect when use_playwright is already True.
+        manual_content_path: If set, path to an operator-provided HTML or text
+            file. Replaces URL validation + web extraction (Steps 2-3) by loading
+            that content into every record's context, then runs signal extraction
+            on it. For single-record manual enrichment of CAPTCHA-blocked sites.
         ingest_only: If True, ingest + normalize + structural exclusions only,
             then write the roster with every record marked "not_enriched" and
             exit before any crawl or LLM call. Enrichment is triggered later.
@@ -398,35 +434,49 @@ def run_pipeline(input_file: str, source_type: str,
               f"(wrong specialty / outside geography); {len(eligible)} eligible")
     records = eligible
 
-    # -------------------------------------------------------------------------
-    # STEP 2: URL VALIDATION
-    # -------------------------------------------------------------------------
-    _write_progress(output_dir, 2, "URL validation", 0, len(records))
-    print(f"\n{'-'*40}")
-    print("STEP 2: URL VALIDATION")
-    print(f"{'-'*40}")
+    if manual_content_path:
+        # -------------------------------------------------------------------------
+        # MANUAL CONTENT MODE: operator-provided page content replaces Steps 2-3.
+        # Used to enrich a single CAPTCHA-blocked site the crawler cannot reach.
+        # -------------------------------------------------------------------------
+        _write_progress(output_dir, 3, "Loading manual content", 0, len(records))
+        print(f"\n{'-'*40}")
+        print("STEPS 2-3: MANUAL CONTENT (no crawl)")
+        print(f"{'-'*40}")
+        _load_manual_content(records, manual_content_path)
+        loaded = sum(1 for r in records if r.get("_context_text", ""))
+        print(f"\n  Loaded operator content into {loaded}/{len(records)} record(s) "
+              f"from {manual_content_path}")
+    else:
+        # -------------------------------------------------------------------------
+        # STEP 2: URL VALIDATION
+        # -------------------------------------------------------------------------
+        _write_progress(output_dir, 2, "URL validation", 0, len(records))
+        print(f"\n{'-'*40}")
+        print("STEP 2: URL VALIDATION")
+        print(f"{'-'*40}")
 
-    records = batch_validate_urls(records, timeout=timeout, retries=retries,
-                                   max_workers=io_concurrency)
+        records = batch_validate_urls(records, timeout=timeout, retries=retries,
+                                       max_workers=io_concurrency)
 
-    url_valid_count = sum(1 for r in records if r.get("_url_valid", False))
-    print(f"\n  {url_valid_count}/{len(records)} URLs valid")
+        url_valid_count = sum(1 for r in records if r.get("_url_valid", False))
+        print(f"\n  {url_valid_count}/{len(records)} URLs valid")
 
-    # -------------------------------------------------------------------------
-    # STEP 3: WEB EXTRACTION
-    # -------------------------------------------------------------------------
-    _write_progress(output_dir, 3, "Web extraction", 0, len(records))
-    print(f"\n{'-'*40}")
-    print("STEP 3: WEB EXTRACTION")
-    print(f"{'-'*40}")
+        # -------------------------------------------------------------------------
+        # STEP 3: WEB EXTRACTION
+        # -------------------------------------------------------------------------
+        _write_progress(output_dir, 3, "Web extraction", 0, len(records))
+        print(f"\n{'-'*40}")
+        print("STEP 3: WEB EXTRACTION")
+        print(f"{'-'*40}")
 
-    records = batch_extract(records, timeout=timeout, retries=retries,
-                             max_pages=max_pages, keywords=subpage_keywords,
-                             max_workers=io_concurrency,
-                             use_playwright=use_playwright)
+        records = batch_extract(records, timeout=timeout, retries=retries,
+                                 max_pages=max_pages, keywords=subpage_keywords,
+                                 max_workers=io_concurrency,
+                                 use_playwright=use_playwright)
 
-    extracted_count = sum(1 for r in records if r.get("_context_text", ""))
-    print(f"\n  {extracted_count}/{len(records)} records with extracted text")
+        extracted_count = sum(1 for r in records if r.get("_context_text", ""))
+        print(f"\n  {extracted_count}/{len(records)} records with extracted text")
 
     # -------------------------------------------------------------------------
     # STEP 3b: AUTO BROWSER-RETRY (opt-in)
@@ -434,9 +484,9 @@ def run_pipeline(input_file: str, source_type: str,
     # come back blocked/thin. Re-crawl just those once with headless Chromium
     # before spending LLM budget, so blocked sites are recovered automatically
     # instead of waiting for an operator to click "Re-crawl with Browser".
-    # No-op when the run is already Playwright-based.
+    # No-op when the run is already Playwright-based or in manual-content mode.
     # -------------------------------------------------------------------------
-    if auto_browser_retry and not use_playwright:
+    if auto_browser_retry and not use_playwright and not manual_content_path:
         blocked = _records_needing_browser_retry(records)
         if blocked:
             _write_progress(output_dir, 3, "Browser retry (blocked sites)", 0, len(blocked))
@@ -762,6 +812,14 @@ Examples:
              "automatically). Ignored when --playwright is set.",
     )
     parser.add_argument(
+        "--manual-content-path",
+        default=None,
+        help="Path to an operator-provided HTML or text file. Replaces URL "
+             "validation + web extraction: loads that content into the record(s) "
+             "and runs signal extraction on it. For manual enrichment of "
+             "CAPTCHA-blocked sites.",
+    )
+    parser.add_argument(
         "--ingest-only",
         action="store_true",
         help="Ingest + normalize + structural exclusions only; write the roster "
@@ -791,6 +849,7 @@ Examples:
         limit=args.limit,
         use_playwright=args.playwright,
         auto_browser_retry=args.auto_browser_retry,
+        manual_content_path=args.manual_content_path,
         ingest_only=args.ingest_only,
     )
 

@@ -31,7 +31,7 @@ from enrichment.signal_extractor import (
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
-from pipeline import _finalize_ingest_only, _records_needing_browser_retry
+from pipeline import _finalize_ingest_only, _records_needing_browser_retry, _load_manual_content
 
 
 # ---------------------------------------------------------------------------
@@ -1251,3 +1251,43 @@ class TestChallengeDetection:
 
     def test_empty_html_not_flagged(self):
         assert self._detect("") is False
+
+
+class TestManualContent:
+    """_load_manual_content injects operator-provided page content, no crawl."""
+
+    def _write(self, tmp_path, name, data):
+        p = tmp_path / name
+        p.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
+        return str(p)
+
+    def test_html_file_extracts_visible_text(self, tmp_path):
+        html = ("<html><head><title>T</title><script>var x=1;</script></head>"
+                "<body><h1>Dallas Ketamine Clinic</h1>"
+                "<p>We offer Spravato and TMS therapy for depression.</p>"
+                "</body></html>")
+        path = self._write(tmp_path, "page.html", html)
+        rec = {"website_url": "https://x.com"}
+        _load_manual_content([rec], path)
+        assert "Ketamine" in rec["_context_text"]
+        assert "var x=1" not in rec["_context_text"]   # script stripped
+        assert rec["_pages_crawled"] == ["[Manual content]"]
+        assert rec["source_confidence"] == "partial"
+        assert rec["_url_valid"] is True
+
+    def test_plain_text_used_verbatim(self, tmp_path):
+        text = "TMS therapy and ketamine infusions offered. Cash pay accepted. " * 3
+        path = self._write(tmp_path, "notes.txt", text)
+        rec = {"website_url": "https://x.com"}
+        _load_manual_content([rec], path)
+        assert "ketamine infusions" in rec["_context_text"]
+        assert rec["source_confidence"] == "partial"
+
+    def test_thin_content_left_short_for_downstream_gate(self, tmp_path):
+        # Under MIN_CONTEXT_CHARS: helper does not pad; the empty-context gate
+        # in extract_signals will set signals not_found downstream.
+        path = self._write(tmp_path, "tiny.txt", "too short")
+        rec = {"website_url": "https://x.com"}
+        _load_manual_content([rec], path)
+        assert rec["_context_text"] == "too short"
+        assert len(rec["_context_text"]) < 150

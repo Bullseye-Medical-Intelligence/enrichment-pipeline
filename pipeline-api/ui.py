@@ -13,7 +13,7 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -837,6 +837,50 @@ async def recrawl_single_record(
             source_run_id=run_id,
             record_id=record_id,
             website_url_override=website_url,
+            operator=username,
+            background_tasks=background_tasks,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+
+
+@router.post("/runs/{run_id}/records/{record_id}/manual-content")
+async def manual_content_recrawl(
+    run_id: str,
+    record_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    html_file: UploadFile | None = File(None),
+    pasted_text: str = Form(""),
+    username: str = Depends(auth.require_session),
+):
+    """Enrich a single record from operator-provided page content.
+
+    For CAPTCHA-blocked sites the crawler cannot reach: the operator uploads a
+    saved .html file or pastes the page text, and signal extraction runs on it.
+    """
+    content_bytes = b""
+    content_filename = "pasted.txt"
+    if html_file is not None:
+        content_bytes = await html_file.read()
+        content_filename = html_file.filename or "uploaded.html"
+    if not content_bytes.strip() and pasted_text.strip():
+        content_bytes = pasted_text.encode("utf-8")
+        content_filename = "pasted.txt"
+    if not content_bytes.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Provide an HTML file or paste page content.",
+        )
+    try:
+        new_run_id, _ = await runner.orchestrate_manual_content_recrawl(
+            source_run_id=run_id,
+            record_id=record_id,
+            content_bytes=content_bytes,
+            content_filename=content_filename,
             operator=username,
             background_tasks=background_tasks,
         )
