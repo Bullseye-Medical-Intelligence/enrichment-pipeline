@@ -9,6 +9,7 @@ template rendering, redirects, and simple orchestration calls.
 import json
 import logging
 import re
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
@@ -529,13 +530,65 @@ async def icp_save(
 
 
 @router.get("/icp-profiles", response_class=HTMLResponse)
-async def icp_profiles_page(request: Request, username: str = Depends(auth.require_session)):
+async def icp_profiles_page(
+    request: Request,
+    import_error: str = "",
+    username: str = Depends(auth.require_session),
+):
     """List the ICP profiles available on disk."""
     return _render(
         "icp_profiles.html",
         username=username,
         profiles=icp_profiles.list_icp_profiles(),
+        import_error=import_error,
     )
+
+
+@router.post("/icp-profiles/import", response_class=HTMLResponse)
+async def icp_import(
+    request: Request,
+    icp_file: UploadFile = File(...),
+    username: str = Depends(auth.require_session),
+):
+    """Import an ICP profile from an uploaded JSON file.
+
+    The file must be valid JSON matching the ICP profile schema. The icp_id
+    is taken from the JSON body; if absent, it is derived from the filename
+    (stripping the .json extension). Overwrites an existing profile with the
+    same icp_id after validation passes.
+    """
+    raw = await icp_file.read()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return RedirectResponse(
+            f"/icp-profiles?import_error={urllib.parse.quote(f'Invalid JSON: {exc}')}",
+            status_code=303,
+        )
+
+    # Derive icp_id from JSON body or filename.
+    if not data.get("icp_id"):
+        stem = Path(icp_file.filename or "").stem
+        if icp_profiles.is_valid_icp_id(stem):
+            data["icp_id"] = stem
+
+    try:
+        icp_profiles.validate_icp_profile(data)
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/icp-profiles?import_error={urllib.parse.quote(str(exc))}",
+            status_code=303,
+        )
+
+    try:
+        icp_profiles.save_icp_profile(data, overwrite=True)
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/icp-profiles?import_error={urllib.parse.quote(str(exc))}",
+            status_code=303,
+        )
+
+    return RedirectResponse("/icp-profiles", status_code=303)
 
 
 @router.get("/icp-profiles/{icp_id}/edit", response_class=HTMLResponse)
@@ -638,10 +691,16 @@ async def upload_page(
 # ---------------------------------------------------------------------------
 
 @router.get("/dashboard", response_class=HTMLResponse)
-async def runs_page(request: Request, username: str = Depends(auth.require_session)):
-    """Render the full run list."""
-    all_runs = runs.list_runs()
-    return _render("runs.html", username=username, runs=all_runs)
+async def runs_page(
+    request: Request,
+    show_archived: bool = False,
+    username: str = Depends(auth.require_session),
+):
+    """Render the full run list. Archived runs hidden by default."""
+    all_runs = runs.list_runs(include_archived=show_archived)
+    archived_count = len(runs.list_runs(include_archived=True)) - len(runs.list_runs())
+    return _render("runs.html", username=username, runs=all_runs,
+                   show_archived=show_archived, archived_count=archived_count)
 
 
 @router.post("/dashboard/{run_id}/delete", response_class=HTMLResponse)
@@ -656,7 +715,60 @@ async def delete_run_route(
     except ValueError as exc:
         all_runs = runs.list_runs()
         return _render("runs.html", username=username, runs=all_runs,
-                       delete_error=str(exc))
+                       archived_count=0, delete_error=str(exc))
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@router.post("/dashboard/{run_id}/archive", response_class=HTMLResponse)
+async def archive_run_route(
+    run_id: str,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Archive a run so it is hidden from the default list (files preserved)."""
+    try:
+        runs.archive_run(run_id)
+    except ValueError as exc:
+        all_runs = runs.list_runs()
+        return _render("runs.html", username=username, runs=all_runs,
+                       archived_count=0, delete_error=str(exc))
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@router.post("/dashboard/{run_id}/unarchive", response_class=HTMLResponse)
+async def unarchive_run_route(
+    run_id: str,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Restore an archived run to the default run list."""
+    try:
+        runs.unarchive_run(run_id)
+    except ValueError as exc:
+        all_runs = runs.list_runs(include_archived=True)
+        return _render("runs.html", username=username, runs=all_runs,
+                       show_archived=True, archived_count=0, delete_error=str(exc))
+    return RedirectResponse(url="/dashboard?show_archived=true", status_code=303)
+
+
+@router.post("/dashboard/bulk-delete", response_class=HTMLResponse)
+async def bulk_delete_runs_route(
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Delete multiple runs at once. Skips active runs silently."""
+    form = await request.form()
+    run_ids = form.getlist("run_ids")
+    errors = []
+    for run_id in run_ids:
+        try:
+            runs.delete_run(run_id)
+        except ValueError as exc:
+            errors.append(str(exc))
+    if errors:
+        all_runs = runs.list_runs()
+        return _render("runs.html", username=username, runs=all_runs,
+                       archived_count=0, delete_error=" | ".join(errors))
     return RedirectResponse(url="/dashboard", status_code=303)
 
 

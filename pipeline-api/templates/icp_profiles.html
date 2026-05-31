@@ -12,6 +12,21 @@
   </div>
 </div>
 
+{% if import_error %}
+<div class="alert alert-error">{{ import_error }}</div>
+{% endif %}
+
+<div class="card upload-card" style="margin-bottom:24px;">
+  <p class="eyebrow">Import ICP Profile</p>
+  <form method="post" action="/icp-profiles/import" enctype="multipart/form-data" class="upload-form" style="flex-direction:row;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:220px;">
+      <input type="file" name="icp_file" accept=".json,application/json" required style="width:100%;">
+      <p class="form-hint" style="margin-top:4px;">Upload a <code>.json</code> ICP profile file. The <code>icp_id</code> inside the JSON is used as the profile ID. Overwrites an existing profile with the same ID.</p>
+    </div>
+    <button type="submit" class="btn btn-submit" style="white-space:nowrap;">Import JSON</button>
+  </form>
+</div>
+
 {% if profiles %}
 {% for icp in profiles %}
 <div class="card">

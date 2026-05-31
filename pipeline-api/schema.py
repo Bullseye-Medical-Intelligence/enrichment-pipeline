@@ -43,6 +43,7 @@ class RunStatus(BaseModel):
     icp_profile_id: Optional[str] = None
     icp_profile_name: Optional[str] = None
     icp_profile_version: Optional[str] = None
+    archived: bool = False
 
 
 class RunSummary(BaseModel):
@@ -63,6 +64,7 @@ class RunSummary(BaseModel):
     client_name: Optional[str] = None
     icp_profile_id: Optional[str] = None
     error_summary: str = ""
+    archived: bool = False
 
 
 class RunListResponse(BaseModel):

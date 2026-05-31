@@ -6,8 +6,20 @@
 <script>setTimeout(function(){ location.reload(); }, 5000);</script>
 {% endif %}
 <div class="page-header">
-  <h2>Enrichment Runs</h2>
-  <a href="/upload" class="btn btn-primary">+ New Run</a>
+  <div>
+    <h2>Enrichment Runs</h2>
+    {% if show_archived %}
+    <p class="page-subtitle">Showing archived runs</p>
+    {% endif %}
+  </div>
+  <div class="header-actions">
+    {% if archived_count and not show_archived %}
+    <a href="/dashboard?show_archived=true" class="btn btn-secondary">{{ archived_count }} Archived</a>
+    {% elif show_archived %}
+    <a href="/dashboard" class="btn btn-secondary">← Active Runs</a>
+    {% endif %}
+    <a href="/upload" class="btn btn-primary">+ New Run</a>
+  </div>
 </div>
 
 {% if delete_error %}
@@ -15,10 +27,19 @@
 {% endif %}
 
 {% if runs %}
+<form method="post" action="/dashboard/bulk-delete" id="bulk-form"
+      onsubmit="return confirmBulkDelete()">
 <div class="card">
+  <div class="bulk-actions" id="bulk-actions" style="display:none">
+    <span id="bulk-count">0</span> selected
+    <button type="submit" class="btn btn-secondary btn-sm btn-delete-run" style="margin-left:10px;">Delete Selected</button>
+    <button type="button" class="btn btn-secondary btn-sm" style="margin-left:6px;" onclick="clearSelection()">Clear</button>
+  </div>
+  <div class="table-scroll">
   <table class="data-table">
     <thead>
       <tr>
+        <th style="width:32px;"><input type="checkbox" id="select-all" title="Select all" onchange="toggleAll(this)"></th>
         <th>Run ID</th>
         <th>Client / Project</th>
         <th>ICP Profile</th>
@@ -37,8 +58,16 @@
     </thead>
     <tbody>
       {% for run in runs %}
-      <tr>
-        <td><a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a></td>
+      <tr {% if run.archived %}class="run-archived"{% endif %}>
+        <td>
+          {% if run.status not in ("pending", "running") %}
+          <input type="checkbox" name="run_ids" value="{{ run.run_id }}" class="run-checkbox" onchange="updateBulkBar()">
+          {% endif %}
+        </td>
+        <td>
+          <a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a>
+          {% if run.archived %}<span class="badge badge-archived">Archived</span>{% endif %}
+        </td>
         <td>
           {{ run.client_name | default("—") }}
           {% if run.project_id %}<br><span class="text-muted small">{{ run.project_id }}</span>{% endif %}
@@ -62,9 +91,19 @@
         <td class="text-muted">
           {% if run.completed_at %}{{ run.completed_at[:16].replace("T", " ") }}{% else %}—{% endif %}
         </td>
-        <td>
+        <td class="run-actions">
           {% if run.status not in ("pending", "running") %}
-          <form method="post" action="/dashboard/{{ run.run_id }}/delete"
+          {% if run.archived %}
+          <form method="post" action="/dashboard/{{ run.run_id }}/unarchive" style="display:inline">
+            <button type="submit" class="btn btn-secondary btn-sm" title="Restore to active runs">Unarchive</button>
+          </form>
+          {% else %}
+          <form method="post" action="/dashboard/{{ run.run_id }}/archive" style="display:inline"
+                onsubmit="return confirm('Archive {{ run.run_id }}? It will be hidden from the main list but files are preserved.');">
+            <button type="submit" class="btn btn-secondary btn-sm" title="Hide from main list">Archive</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/dashboard/{{ run.run_id }}/delete" style="display:inline"
                 onsubmit="return confirm('Permanently delete {{ run.run_id }}? This cannot be undone.');">
             <button type="submit" class="btn btn-secondary btn-sm btn-delete-run"
                     title="Delete this run and all its files">Delete</button>
@@ -75,10 +114,46 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
+</form>
 {% else %}
 <div class="card empty-state">
+  {% if show_archived %}
+  <p>No archived runs. <a href="/dashboard">Back to active runs</a></p>
+  {% else %}
   <p>No runs yet. <a href="/upload">Start your first run →</a></p>
+  {% endif %}
 </div>
 {% endif %}
+
+<script>
+function toggleAll(cb) {
+  document.querySelectorAll('.run-checkbox').forEach(c => c.checked = cb.checked);
+  updateBulkBar();
+}
+function updateBulkBar() {
+  const checked = document.querySelectorAll('.run-checkbox:checked');
+  const bar = document.getElementById('bulk-actions');
+  const countEl = document.getElementById('bulk-count');
+  if (checked.length > 0) {
+    bar.style.display = '';
+    countEl.textContent = checked.length;
+  } else {
+    bar.style.display = 'none';
+  }
+  const all = document.querySelectorAll('.run-checkbox');
+  document.getElementById('select-all').checked = all.length > 0 && checked.length === all.length;
+}
+function clearSelection() {
+  document.querySelectorAll('.run-checkbox').forEach(c => c.checked = false);
+  document.getElementById('select-all').checked = false;
+  updateBulkBar();
+}
+function confirmBulkDelete() {
+  const checked = document.querySelectorAll('.run-checkbox:checked');
+  if (checked.length === 0) return false;
+  return confirm('Permanently delete ' + checked.length + ' run(s)? This cannot be undone.');
+}
+</script>
 {% endblock %}

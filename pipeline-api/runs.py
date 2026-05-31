@@ -121,11 +121,14 @@ def update_run_status(run_id: str, **fields) -> RunStatus:
     return updated
 
 
-def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
-    """
-    Return up to max_runs RunSummary objects sorted newest-first.
+def list_runs(
+    max_runs: int = MAX_RUNS_RETURNED,
+    include_archived: bool = False,
+) -> list[RunSummary]:
+    """Return up to max_runs RunSummary objects sorted newest-first.
 
     Skips any run directory whose status.json is missing or malformed.
+    Archived runs are excluded by default; pass include_archived=True to include them.
     """
     if not OUTPUT_RUNS_PATH.exists():
         return []
@@ -140,6 +143,9 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
         try:
             with open(status_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            archived = bool(data.get("archived", False))
+            if archived and not include_archived:
+                continue
             summaries.append(
                 RunSummary(
                     run_id=data["run_id"],
@@ -159,6 +165,7 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
                     client_name=data.get("client_name"),
                     icp_profile_id=data.get("icp_profile_id"),
                     error_summary=data.get("error_summary", ""),
+                    archived=archived,
                 )
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
@@ -171,6 +178,30 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
 def count_active_runs() -> int:
     """Return the number of runs currently in 'pending' or 'running' state."""
     return sum(1 for s in list_runs() if s.status in ("pending", "running"))
+
+
+def archive_run(run_id: str) -> None:
+    """Mark a run as archived so it is hidden from the default run list.
+
+    Archived runs are preserved on disk. They can be unarchived or deleted.
+    Raises ValueError if the run does not exist or is actively running.
+    """
+    status = get_run(run_id)
+    if status is None:
+        raise ValueError(f"Run '{run_id}' does not exist.")
+    if status.status in ("pending", "running"):
+        raise ValueError(f"Cannot archive an active run (status: {status.status}).")
+    update_run_status(run_id, archived=True)
+    logger.info("Archived run: %s", run_id)
+
+
+def unarchive_run(run_id: str) -> None:
+    """Restore an archived run to the default run list."""
+    status = get_run(run_id)
+    if status is None:
+        raise ValueError(f"Run '{run_id}' does not exist.")
+    update_run_status(run_id, archived=False)
+    logger.info("Unarchived run: %s", run_id)
 
 
 def delete_run(run_id: str) -> None:
