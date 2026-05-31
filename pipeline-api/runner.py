@@ -294,6 +294,7 @@ async def orchestrate_enrich_all(
     run_id: str,
     operator: str,
     background_tasks,
+    auto_browser_retry: bool = False,
 ) -> None:
     """Enrich an already-ingested run in place: spawn the full pipeline on its roster.
 
@@ -301,6 +302,9 @@ async def orchestrate_enrich_all(
     runs against the exact roster and config the operator reviewed. Overwrites
     the run's enriched_targets.json with the enriched result and flips the run
     to 'complete'.
+
+    When auto_browser_retry is True, the pipeline re-crawls blocked/thin sites
+    once with headless Chromium before signal extraction.
 
     Raises:
         FileNotFoundError if the run does not exist.
@@ -339,11 +343,15 @@ async def orchestrate_enrich_all(
         run_directory,
         config_snapshot,
         icp_snapshot,
+        extra_flags=["--auto-browser-retry"] if auto_browser_retry else None,
     )
     runs.update_run_status(run_id, status="running", completed_at=None)
     background_tasks.add_task(monitor_pipeline, run_id, process)
 
-    logger.info("Run %s enrichment started by '%s'", run_id, operator)
+    logger.info(
+        "Run %s enrichment started by '%s' (auto_browser_retry=%s)",
+        run_id, operator, auto_browser_retry,
+    )
 
 
 async def orchestrate_playwright_retry(

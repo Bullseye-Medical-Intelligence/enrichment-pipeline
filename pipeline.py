@@ -43,7 +43,7 @@ from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
 from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import batch_extract
-from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE
+from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, MIN_CONTEXT_CHARS
 from enrichment.signal_extractor import extract_signals
 from enrichment.verifier import verify_bullseye_record
 from enrichment.exclusion_checker import apply_exclusions, check_structural_exclusions
@@ -176,6 +176,26 @@ def _finalize_ingest_only(records: list[dict], run_config: dict) -> list[dict]:
     return finalized
 
 
+def _records_needing_browser_retry(records: list[dict]) -> list[dict]:
+    """Select records whose standard crawl came back blocked or too thin.
+
+    A record qualifies when it has a URL but the requests-based extractor
+    produced weak source data: source_confidence of "limited"/"failed", or less
+    than MIN_CONTEXT_CHARS of usable text. These are exactly the records a
+    headless-browser re-crawl can recover (JS challenges / soft bot gates).
+    Records with no URL are skipped — a browser cannot help them.
+    """
+    blocked = []
+    for record in records:
+        if not record.get("website_url"):
+            continue
+        thin_context = len(record.get("_context_text", "") or "") < MIN_CONTEXT_CHARS
+        weak_source = record.get("source_confidence") in ("limited", "failed")
+        if thin_context or weak_source:
+            blocked.append(record)
+    return blocked
+
+
 def _validate_required_fields(records: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Validate that records have minimum required fields.
@@ -207,6 +227,7 @@ def run_pipeline(input_file: str, source_type: str,
                   dry_run: bool = False,
                   limit: int = None,
                   use_playwright: bool = False,
+                  auto_browser_retry: bool = False,
                   ingest_only: bool = False) -> dict:
     """
     Run the full enrichment pipeline.
@@ -219,6 +240,10 @@ def run_pipeline(input_file: str, source_type: str,
         icp_path: Path to icp_checklist.json.
         dry_run: If True, skip all LLM calls (parse + normalize only).
         limit: If set, process only the first N records.
+        use_playwright: If True, crawl every record with headless Chromium.
+        auto_browser_retry: If True, after the standard crawl, re-crawl any
+            blocked/thin records once with headless Chromium before signal
+            extraction. No effect when use_playwright is already True.
         ingest_only: If True, ingest + normalize + structural exclusions only,
             then write the roster with every record marked "not_enriched" and
             exit before any crawl or LLM call. Enrichment is triggered later.
@@ -252,6 +277,9 @@ def run_pipeline(input_file: str, source_type: str,
     subpage_keywords = run_config.get("subpage_keywords") or None
     io_concurrency = int(run_config.get("io_concurrency", 6))
     llm_concurrency = int(run_config.get("llm_concurrency", 3))
+
+    # Config can enable auto browser-retry without a CLI flag; the flag forces it on.
+    auto_browser_retry = auto_browser_retry or bool(run_config.get("auto_browser_retry", False))
 
     print(f"  Project: {run_config.get('client_name', 'Unknown')}")
     print(f"  Target specialty: {run_config.get('target_specialty', 'Any')}")
@@ -399,6 +427,30 @@ def run_pipeline(input_file: str, source_type: str,
 
     extracted_count = sum(1 for r in records if r.get("_context_text", ""))
     print(f"\n  {extracted_count}/{len(records)} records with extracted text")
+
+    # -------------------------------------------------------------------------
+    # STEP 3b: AUTO BROWSER-RETRY (opt-in)
+    # Records the standard crawler could not reach (bot gates, JS challenges)
+    # come back blocked/thin. Re-crawl just those once with headless Chromium
+    # before spending LLM budget, so blocked sites are recovered automatically
+    # instead of waiting for an operator to click "Re-crawl with Browser".
+    # No-op when the run is already Playwright-based.
+    # -------------------------------------------------------------------------
+    if auto_browser_retry and not use_playwright:
+        blocked = _records_needing_browser_retry(records)
+        if blocked:
+            _write_progress(output_dir, 3, "Browser retry (blocked sites)", 0, len(blocked))
+            print(f"\n{'-'*40}")
+            print(f"STEP 3b: BROWSER RETRY ({len(blocked)} blocked/thin sites)")
+            print(f"{'-'*40}")
+            before = sum(1 for r in blocked if r.get("_context_text", ""))
+            batch_extract(blocked, timeout=timeout, retries=retries,
+                          max_pages=max_pages, keywords=subpage_keywords,
+                          max_workers=io_concurrency, use_playwright=True)
+            after = sum(1 for r in blocked if r.get("_context_text", ""))
+            print(f"\n  Browser retry recovered {after - before} of {len(blocked)} blocked records")
+        else:
+            print("\n  No blocked/thin records — skipping browser retry")
 
     # -------------------------------------------------------------------------
     # STEP 4: SIGNAL EXTRACTION (Claude)
@@ -703,6 +755,13 @@ Examples:
         help="Use headless Chromium (Playwright) instead of requests for web extraction",
     )
     parser.add_argument(
+        "--auto-browser-retry",
+        action="store_true",
+        help="After the standard crawl, re-crawl blocked/thin sites once with "
+             "headless Chromium before signal extraction (recovers bot-gated sites "
+             "automatically). Ignored when --playwright is set.",
+    )
+    parser.add_argument(
         "--ingest-only",
         action="store_true",
         help="Ingest + normalize + structural exclusions only; write the roster "
@@ -731,6 +790,7 @@ Examples:
         dry_run=args.dry_run,
         limit=args.limit,
         use_playwright=args.playwright,
+        auto_browser_retry=args.auto_browser_retry,
         ingest_only=args.ingest_only,
     )
 

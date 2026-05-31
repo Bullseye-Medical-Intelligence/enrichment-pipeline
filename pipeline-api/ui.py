@@ -873,11 +873,19 @@ async def enrich_all(
     run_id: str,
     background_tasks: BackgroundTasks,
     request: Request,
+    auto_browser_retry: str = Form(default=""),
     username: str = Depends(auth.require_session),
 ):
-    """Enrich an ingested roster: run the full pipeline over the loaded list."""
+    """Enrich an ingested roster: run the full pipeline over the loaded list.
+
+    When the operator ticks "auto browser retry", blocked/thin sites are
+    re-crawled once with headless Chromium before signal extraction.
+    """
     try:
-        await runner.orchestrate_enrich_all(run_id, username, background_tasks)
+        await runner.orchestrate_enrich_all(
+            run_id, username, background_tasks,
+            auto_browser_retry=bool(auto_browser_retry),
+        )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:

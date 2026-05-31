@@ -14,8 +14,14 @@
   </div>
   <div class="header-actions">
     {% if is_ingested %}
-    <form method="post" action="/runs/{{ run_id }}/enrich-all" style="display:inline;"
+    <form method="post" action="/runs/{{ run_id }}/enrich-all"
+          style="display:inline-flex; align-items:center; gap:10px;"
           onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+      <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; cursor:pointer;"
+             title="After the standard crawl, re-crawl bot-blocked sites once with a headless browser. Slower, but recovers sites that block the fast crawler.">
+        <input type="checkbox" name="auto_browser_retry" value="1">
+        Auto browser-retry blocked sites
+      </label>
       <button type="submit" class="btn btn-submit"
               title="Run crawl + signal extraction over the loaded roster">
         Enrich All ({{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }})

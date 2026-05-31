@@ -31,7 +31,7 @@ from enrichment.signal_extractor import (
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
-from pipeline import _finalize_ingest_only
+from pipeline import _finalize_ingest_only, _records_needing_browser_retry
 
 
 # ---------------------------------------------------------------------------
@@ -1196,3 +1196,32 @@ class TestIngestOnly:
         }
         out = validate_and_finalize(rec)
         assert out["enrichment_status"] == "not_enriched"
+
+
+class TestBrowserRetrySelection:
+    """_records_needing_browser_retry selects only blocked/thin records with a URL."""
+
+    def test_limited_source_confidence_selected(self):
+        recs = [{"website_url": "https://a.com", "source_confidence": "limited",
+                 "_context_text": "x" * 5000}]
+        assert _records_needing_browser_retry(recs) == recs
+
+    def test_failed_source_confidence_selected(self):
+        recs = [{"website_url": "https://a.com", "source_confidence": "failed",
+                 "_context_text": "x" * 5000}]
+        assert len(_records_needing_browser_retry(recs)) == 1
+
+    def test_thin_context_selected(self):
+        recs = [{"website_url": "https://a.com", "source_confidence": "partial",
+                 "_context_text": "too short"}]
+        assert len(_records_needing_browser_retry(recs)) == 1
+
+    def test_healthy_record_skipped(self):
+        recs = [{"website_url": "https://a.com", "source_confidence": "complete",
+                 "_context_text": "x" * 5000}]
+        assert _records_needing_browser_retry(recs) == []
+
+    def test_no_url_skipped_even_if_blocked(self):
+        # A browser cannot help a record that has no URL.
+        recs = [{"website_url": "", "source_confidence": "failed", "_context_text": ""}]
+        assert _records_needing_browser_retry(recs) == []
