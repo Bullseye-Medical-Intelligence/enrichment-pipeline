@@ -249,8 +249,13 @@ def _icp_with_signal(**signal_extra):
 def test_icp_validation_accepts_optional_tiering_fields():
     icp_profiles.validate_icp_profile(_icp_with_signal(
         not_found_weight=-15, verification_required=True, cap_tier="Watchlist",
-        no_weight=-15, required_for_bullseye=True,
+        no_weight=-15, required_for_bullseye=True, exclude_if_yes=True,
     ))
+
+
+def test_icp_validation_rejects_non_bool_exclude_if_yes():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(exclude_if_yes="yes"))
 
 
 def test_icp_validation_rejects_non_numeric_not_found_weight():

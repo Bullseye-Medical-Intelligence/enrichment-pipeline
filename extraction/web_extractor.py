@@ -41,7 +41,8 @@ DEFAULT_HEADERS = {
 # not in source - keeps the extractor portable across campaigns.
 DEFAULT_SUBPAGE_KEYWORDS = [
     "service", "procedure", "treatment", "care",
-    "provider", "physician", "doctor", "staff", "team", "about",
+    "provider", "providers", "physician", "physicians", "doctor", "staff",
+    "team", "our-team", "about", "our-practice",
     "speciali", "contact",
 ]
 

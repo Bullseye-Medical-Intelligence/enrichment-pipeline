@@ -233,6 +233,66 @@ def test_merge_invalid_scratch_leaves_source_untouched(run_store):
     assert (run_dir / "enriched_targets.json").read_text() == before
 
 
+def _complete_run_with_snapshots(run_store: Path, run_id: str, record: dict) -> Path:
+    """Complete run dir that also carries the config + ICP snapshots a re-enrich needs."""
+    run_dir = _complete_run(run_store, run_id, [record])
+    (run_dir / config.PROJECT_CONFIG_SNAPSHOT_FILENAME).write_text(json.dumps(
+        {"project_id": "p", "active_exclusion_rules": [], "bullseye_min_score": 75}))
+    (run_dir / config.ICP_SNAPSHOT_FILENAME).write_text(json.dumps(
+        {"icp_id": "t", "name": "T", "version": "v1",
+         "signals": [{"signal_id": "S-1", "signal_label": "x",
+                      "prompt_instruction": "y", "positive_weight": 10}]}))
+    return run_dir
+
+
+def test_manual_content_writes_one_scratch_file_and_flag_per_page(run_store, monkeypatch):
+    run_id = "RUN-20260528-120000-aaaa"
+    _complete_run_with_snapshots(run_store, run_id, {
+        "id": "T-A", "practice_name": "A", "website_url": "https://a.com",
+        "target_tier": "Watchlist", "bullseye_score": 0, "exclusion_status": "CLEAR"})
+
+    captured = {}
+
+    def _fake_spawn(*args, extra_flags=None, **kwargs):
+        captured["extra_flags"] = extra_flags
+        return _FakeProcess(returncode=0)
+
+    async def _fake_update(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(runner, "spawn_pipeline", _fake_spawn)
+    monkeypatch.setattr(runner, "_run_inplace_update", _fake_update)
+
+    asyncio.run(runner.orchestrate_manual_content_recrawl(
+        source_run_id=run_id,
+        record_id="T-A",
+        contents=[(b"<html><body>Home page content here.</body></html>", "home.html"),
+                  (b"Plain about page text.", "about.txt"),
+                  (b"   ", "blank.txt")],  # blank is dropped
+        operator="tester",
+    ))
+
+    flags = captured["extra_flags"]
+    # One --manual-content-path per non-empty page (blank dropped → 2 pages).
+    assert flags.count("--manual-content-path") == 2
+    paths = [flags[i + 1] for i, f in enumerate(flags) if f == "--manual-content-path"]
+    assert all(Path(p).exists() for p in paths)
+    assert paths[0].endswith(".html")   # HTML sniffed
+    assert paths[1].endswith(".txt")    # plain text
+
+
+def test_manual_content_rejects_all_empty(run_store):
+    run_id = "RUN-20260528-120001-bbbb"
+    _complete_run_with_snapshots(run_store, run_id, {
+        "id": "T-A", "practice_name": "A", "website_url": "https://a.com",
+        "target_tier": "Watchlist", "bullseye_score": 0, "exclusion_status": "CLEAR"})
+
+    with pytest.raises(ValueError):
+        asyncio.run(runner.orchestrate_manual_content_recrawl(
+            source_run_id=run_id, record_id="T-A",
+            contents=[(b"", "a.txt"), (b"   ", "b.txt")], operator="tester"))
+
+
 def test_recompute_counts_from_records():
     recs = [
         {"target_tier": "Bullseye", "exclusion_status": "CLEAR", "enrichment_status": "complete"},

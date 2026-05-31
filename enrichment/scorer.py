@@ -82,6 +82,8 @@ def validate_and_finalize(record: dict) -> dict:
         # Ensure analyst_note is empty string, not null
         if sig.get("analyst_note") is None:
             sig["analyst_note"] = ""
+        # Ensure exclude_if_yes is always present as a bool
+        sig["exclude_if_yes"] = bool(sig.get("exclude_if_yes", False))
 
     # --- Exclusion status ---
     exc_status = record.get("exclusion_status")

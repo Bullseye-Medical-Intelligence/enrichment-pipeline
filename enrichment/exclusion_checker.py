@@ -218,6 +218,17 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
                 "No valid website URL and no public web presence detected."
             )
 
+    # Signal-driven hard exclusion: any confirmed "yes" signal flagged
+    # exclude_if_yes in the ICP profile is an immediate disqualifier (e.g.
+    # telehealth-only). Generic — the engine never names the concept itself.
+    for sig in record.get("signals", []):
+        if sig.get("exclude_if_yes") and sig.get("signal_state") == "yes":
+            rule = sig.get("signal_id") or "signal_exclusion"
+            if rule not in triggered:
+                triggered.append(rule)
+                label = sig.get("signal_label") or rule
+                rationale_parts.append(f"{label} confirmed present (immediate exclusion).")
+
     # --- Apply results ---
     score = record.get("bullseye_score", 0)
 

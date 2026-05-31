@@ -850,25 +850,29 @@ async def manual_content_recrawl(
     run_id: str,
     record_id: str,
     request: Request,
-    html_file: UploadFile | None = File(None),
+    html_files: list[UploadFile] = File(default=[]),
     pasted_text: str = Form(""),
     username: str = Depends(auth.require_session),
 ):
     """Enrich one record from operator-provided page content, updating in place.
 
-    For CAPTCHA-blocked sites the crawler cannot reach: the operator uploads a
-    saved .html file or pastes the page text, signal extraction runs on it, and
-    the updated record is merged back into the same run.
+    For CAPTCHA-blocked sites the crawler cannot reach: the operator uploads one
+    or more saved .html pages and/or pastes the page text. Signal extraction runs
+    on the combined content and the updated record is merged back into the run.
     """
-    content_bytes = b""
-    content_filename = "pasted.txt"
-    if html_file is not None:
-        content_bytes = await html_file.read()
-        content_filename = html_file.filename or "uploaded.html"
-    if not content_bytes.strip() and pasted_text.strip():
-        content_bytes = pasted_text.encode("utf-8")
-        content_filename = "pasted.txt"
-    if not content_bytes.strip():
+    contents: list[tuple[bytes, str]] = []
+    # Only treat a file part as present when an actual file was chosen (a blank
+    # file input still arrives as an UploadFile with an empty filename — that must
+    # not shadow pasted text).
+    for upload in html_files or []:
+        if upload is None or not (upload.filename or "").strip():
+            continue
+        data = await upload.read()
+        if data and data.strip():
+            contents.append((data, upload.filename or "uploaded.html"))
+    if pasted_text.strip():
+        contents.append((pasted_text.encode("utf-8"), "pasted.txt"))
+    if not contents:
         raise HTTPException(
             status_code=400,
             detail="Provide an HTML file or paste page content.",
@@ -877,8 +881,7 @@ async def manual_content_recrawl(
         await runner.orchestrate_manual_content_recrawl(
             source_run_id=run_id,
             record_id=record_id,
-            content_bytes=content_bytes,
-            content_filename=content_filename,
+            contents=contents,
             operator=username,
         )
     except FileNotFoundError as e:

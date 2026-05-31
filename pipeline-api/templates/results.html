@@ -367,7 +367,9 @@
 
                 {# Recovery tools for sites the crawler could not read (excluded, or
                    limited/failed source confidence — bot gates, CAPTCHA walls). #}
-                {% if status.status == "complete" and (record.exclusion_reason or record.source_confidence in ("limited", "failed")) %}
+                {% if status.status == "complete" and (record.exclusion_reason
+                      or record.source_confidence in ("limited", "failed")
+                      or (record.bullseye_score | default(0)) == 0) %}
                 <h4>Recover This Site</h4>
                 <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
                       class="recrawl-form"
@@ -390,14 +392,15 @@
                   </summary>
                   <p class="text-muted small" style="margin:0.4em 0;">
                     For sites that block our crawler: open the site in your browser, then either
-                    "Save Page As" an .html file and upload it, or select all (Ctrl+A), copy, and paste the text.
+                    "Save Page As" the .html page(s) and upload them, or select all (Ctrl+A), copy, and paste the text.
+                    Add several pages (Home, About, Providers) for a fuller read.
                   </p>
                   <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/manual-content"
                         class="manual-content-form"
                         enctype="multipart/form-data"
                         onsubmit="lockRecrawlForms('Processing…');">
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                      <input type="file" name="html_file" accept=".html,.htm"
+                      <input type="file" name="html_files" accept=".html,.htm" multiple
                              style="font-size:0.82em;">
                       <textarea name="pasted_text" rows="4"
                                 placeholder="Or paste the page text / view-source here"

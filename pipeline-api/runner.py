@@ -608,29 +608,32 @@ async def orchestrate_single_recrawl(
 async def orchestrate_manual_content_recrawl(
     source_run_id: str,
     record_id: str,
-    content_bytes: bytes,
-    content_filename: str,
+    contents: list[tuple[bytes, str]],
     operator: str,
 ) -> str:
     """Enrich one record from operator-provided page content, updating in place.
 
     For a site behind a hard CAPTCHA wall the crawler cannot clear, the operator
-    captures the page in their own browser (Save Page As .html, or copy the
-    visible text) and submits it. The content is run through the pipeline
-    (--manual-content-path) in a hidden scratch dir and the updated record is
-    merged back into the source run. The source run stays 'complete'.
+    captures the page(s) in their own browser (Save Page As .html, or copy the
+    visible text) and submits them. Each page is run through the pipeline (one
+    --manual-content-path flag per page) in a hidden scratch dir and the updated
+    record is merged back into the source run. The source run stays 'complete'.
+
+    contents is a list of (content_bytes, content_filename) pairs, one per page.
 
     Returns the source_run_id.
 
     Raises:
         FileNotFoundError if run/record not found.
-        ValueError if the run is not complete, its inputs are missing, or the
-        content is empty/too large.
+        ValueError if the run is not complete, its inputs are missing, or no
+        usable content was provided / a page is too large.
     """
-    if not content_bytes or not content_bytes.strip():
+    usable = [(b, name) for (b, name) in contents if b and b.strip()]
+    if not usable:
         raise ValueError("No content provided. Upload an HTML file or paste page content.")
-    if len(content_bytes) > MAX_CSV_SIZE_BYTES:
-        raise ValueError("Provided content is too large.")
+    for content_bytes, _ in usable:
+        if len(content_bytes) > MAX_CSV_SIZE_BYTES:
+            raise ValueError("Provided content is too large.")
 
     source_dir, record, scratch_dir, config_src, icp_src = _prepare_single_record_job(
         source_run_id, record_id
@@ -639,16 +642,22 @@ async def orchestrate_manual_content_recrawl(
     url = record_adapter.normalize_homepage_url(record.get("website_url", ""))
     input_path = _write_single_record_csv(scratch_dir, record, url)
 
-    # Save the operator's content into the scratch dir as .html or .txt.
-    looks_html = (
-        (content_filename or "").lower().endswith((".html", ".htm"))
-        or b"<html" in content_bytes[:4000].lower()
-        or b"<body" in content_bytes[:4000].lower()
-        or b"<div" in content_bytes[:4000].lower()
-    )
-    suffix = ".html" if looks_html else ".txt"
-    content_path = scratch_dir / f"manual_content{suffix}"
-    content_path.write_bytes(content_bytes)
+    # Save each page into the scratch dir as .html or .txt and pass one
+    # --manual-content-path flag per page so the pipeline concatenates them.
+    extra_flags: list[str] = []
+    total_bytes = 0
+    for idx, (content_bytes, content_filename) in enumerate(usable, start=1):
+        looks_html = (
+            (content_filename or "").lower().endswith((".html", ".htm"))
+            or b"<html" in content_bytes[:4000].lower()
+            or b"<body" in content_bytes[:4000].lower()
+            or b"<div" in content_bytes[:4000].lower()
+        )
+        suffix = ".html" if looks_html else ".txt"
+        content_path = scratch_dir / f"manual_content_{idx}{suffix}"
+        content_path.write_bytes(content_bytes)
+        extra_flags += ["--manual-content-path", str(content_path)]
+        total_bytes += len(content_bytes)
 
     process = spawn_pipeline(
         source_run_id,
@@ -657,11 +666,11 @@ async def orchestrate_manual_content_recrawl(
         scratch_dir,
         config_src,
         icp_src,
-        extra_flags=["--manual-content-path", str(content_path)],
+        extra_flags=extra_flags,
     )
     logger.info(
-        "In-place manual-content enrich of record %s in run %s started by '%s' (%d bytes, %s)",
-        record_id, source_run_id, operator, len(content_bytes), suffix,
+        "In-place manual-content enrich of record %s in run %s started by '%s' (%d page(s), %d bytes)",
+        record_id, source_run_id, operator, len(usable), total_bytes,
     )
     await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "manual content")
     return source_run_id

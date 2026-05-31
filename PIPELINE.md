@@ -321,6 +321,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
       "state_inferred": false,
       "inferred_from": "",
       "not_found_reason": "",
+      "exclude_if_yes": false,
       "analyst_note": ""
     }
   ],
@@ -582,6 +583,12 @@ Each signal may also carry these optional fields (all default to off):
   `"yes"`, the record's tier is capped at this ceiling regardless of score. Use
   for near-disqualifying signals (e.g. a confirmed hospital affiliation caps at
   `"Watchlist"`).
+- **`exclude_if_yes`** (bool, default `false`): when the signal is confirmed
+  `"yes"`, the record is immediately EXCLUDED (sets `exclusion_status =
+  "EXCLUDED"`, `target_tier = "Excluded"`, reason derived from the signal label).
+  This is the only signal-driven path to `Excluded`; use for hard disqualifiers
+  (e.g. a telehealth-only practice). Unlike `cap_tier`, which only lowers a tier,
+  this removes the record from the eligible set entirely.
 - **`reinforces`** (string `signal_id`): names another signal this one supplies
   indirect evidence for. When this signal is `"yes"` and the named target is
   `"not_found"`, the target is marked inferred (`state_inferred`): it earns

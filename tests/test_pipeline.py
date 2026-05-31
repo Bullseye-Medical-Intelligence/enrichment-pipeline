@@ -649,6 +649,48 @@ class TestNoWebPresenceExclusion:
         assert "web presence" not in triggered.lower()
 
 
+class TestExcludeIfYes:
+    """A signal flagged exclude_if_yes is an immediate disqualifier when 'yes'."""
+
+    def _record_with_signal(self, state):
+        record = _clear_record(score=95)
+        record["signals"] = [{
+            "signal_id": "S-TELE",
+            "signal_label": "Telehealth-only practice",
+            "signal_state": state,
+            "exclude_if_yes": True,
+        }]
+        return record
+
+    def test_yes_excludes_record(self):
+        record = self._record_with_signal("yes")
+        result = apply_exclusions(record, BASE_RUN_CONFIG)
+        assert result["exclusion_status"] == "EXCLUDED"
+        assert result["target_tier"] == "Excluded"
+        assert "Telehealth-only practice" in (result["exclusion_reason"] or "")
+
+    def test_not_found_does_not_exclude(self):
+        record = self._record_with_signal("not_found")
+        result = apply_exclusions(record, BASE_RUN_CONFIG)
+        assert result["exclusion_status"] == "CLEAR"
+        assert result["target_tier"] != "Excluded"
+
+    def test_no_does_not_exclude(self):
+        record = self._record_with_signal("no")
+        result = apply_exclusions(record, BASE_RUN_CONFIG)
+        assert result["exclusion_status"] == "CLEAR"
+
+    def test_flag_absent_yes_does_not_exclude(self):
+        record = _clear_record(score=95)
+        record["signals"] = [{
+            "signal_id": "S-PLAIN",
+            "signal_label": "Some positive signal",
+            "signal_state": "yes",
+        }]
+        result = apply_exclusions(record, BASE_RUN_CONFIG)
+        assert result["exclusion_status"] == "CLEAR"
+
+
 # ---------------------------------------------------------------------------
 # CLEAR record tier invariant
 # ---------------------------------------------------------------------------
@@ -1268,10 +1310,10 @@ class TestManualContent:
                 "</body></html>")
         path = self._write(tmp_path, "page.html", html)
         rec = {"website_url": "https://x.com"}
-        _load_manual_content([rec], path)
+        _load_manual_content([rec], [path])
         assert "Ketamine" in rec["_context_text"]
         assert "var x=1" not in rec["_context_text"]   # script stripped
-        assert rec["_pages_crawled"] == ["[Manual content]"]
+        assert rec["_pages_crawled"] == ["[Manual content] page.html"]
         assert rec["source_confidence"] == "partial"
         assert rec["_url_valid"] is True
 
@@ -1279,7 +1321,7 @@ class TestManualContent:
         text = "TMS therapy and ketamine infusions offered. Cash pay accepted. " * 3
         path = self._write(tmp_path, "notes.txt", text)
         rec = {"website_url": "https://x.com"}
-        _load_manual_content([rec], path)
+        _load_manual_content([rec], [path])
         assert "ketamine infusions" in rec["_context_text"]
         assert rec["source_confidence"] == "partial"
 
@@ -1288,9 +1330,25 @@ class TestManualContent:
         # in extract_signals will set signals not_found downstream.
         path = self._write(tmp_path, "tiny.txt", "too short")
         rec = {"website_url": "https://x.com"}
-        _load_manual_content([rec], path)
+        _load_manual_content([rec], [path])
         assert rec["_context_text"] == "too short"
         assert len(rec["_context_text"]) < 150
+
+    def test_multiple_pages_joined_with_separator(self, tmp_path):
+        p1 = self._write(tmp_path, "home.html",
+                         "<html><body><h1>Dallas Clinic</h1>"
+                         "<p>Ketamine infusions offered.</p></body></html>")
+        p2 = self._write(tmp_path, "about.txt",
+                         "Solo practice run by Dr. Smith for fifteen years.")
+        rec = {"website_url": "https://x.com"}
+        _load_manual_content([rec], [p1, p2])
+        # Both pages present, joined with the crawler's separator.
+        assert "Ketamine infusions" in rec["_context_text"]
+        assert "Solo practice" in rec["_context_text"]
+        assert "\n\n---\n\n" in rec["_context_text"]
+        assert rec["_pages_crawled"] == ["[Manual content] home.html",
+                                         "[Manual content] about.txt"]
+        assert rec["source_confidence"] == "partial"
 
 
 class TestNoContextReason:

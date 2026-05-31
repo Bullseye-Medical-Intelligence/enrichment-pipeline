@@ -163,6 +163,7 @@ Defined per signal in `config/icp_checklist.json` / ICP profiles. Required:
 | `verification_required` | bool | When `not_found` (and not inferred), caps a would-be Bullseye at `"Needs Verification"`. |
 | `required_for_bullseye` | bool | Must-have gate. When the signal is **not** confirmed `"yes"` and **not** inferred: a confirmed `"no"` caps the tier at `"Watchlist"`; a `not_found` caps at `"Needs Verification"`. Supersedes `verification_required` (also covers the `not_found` case), so a must-have signal needs only this flag. |
 | `cap_tier` | `"Watchlist"` \| `"Needs Verification"` | When the signal is `"yes"`, caps the tier at this ceiling regardless of score (e.g. confirmed hospital affiliation → `"Watchlist"`). |
+| `exclude_if_yes` | bool | When the signal is confirmed `"yes"`, the record is immediately EXCLUDED via the normal exclusion path. The only signal-driven route to `Excluded` (e.g. telehealth-only practice). Default off. |
 | `reinforces` | string `signal_id` | When this signal is `"yes"` and the named target is `not_found`, the target is marked `state_inferred`. Must reference a signal_id in the same profile. |
 
 **Reinforcement** lets an observable signal stand in for one rarely printed
@@ -211,11 +212,13 @@ TIER_RANK = {"Excluded": 0, "Watchlist": 1, "Needs Verification": 2, "Bullseye":
    caps a would-be Bullseye at `Needs Verification`.
 6. Caps only ever pull down (`min`); nothing lifts a low-score Watchlist.
 
-`"Excluded"` is never assigned here — it comes only from an exclusion rule, and
-the invariant `target_tier == "Excluded" iff exclusion_status == "EXCLUDED"` is
-enforced in `enrichment/scorer.py`. Exported tiers: Bullseye / Needs Verification
-/ Watchlist / Excluded. (Analyst overrides in the API may add Strong/Warm/Cold;
-that is a UI concern, not the pipeline's.)
+`"Excluded"` is never assigned here — it comes only from an exclusion rule (a
+structural/LLM trigger, or a signal flagged `exclude_if_yes` that is confirmed
+`"yes"`, both handled in `apply_exclusions`), and the invariant
+`target_tier == "Excluded" iff exclusion_status == "EXCLUDED"` is enforced in
+`enrichment/scorer.py`. Exported tiers: Bullseye / Needs Verification / Watchlist
+/ Excluded. (Analyst overrides in the API may add Strong/Warm/Cold; that is a UI
+concern, not the pipeline's.)
 
 `"Needs Verification"` is UI-visible but **not** included in client exports until
 an analyst confirms it with an override.

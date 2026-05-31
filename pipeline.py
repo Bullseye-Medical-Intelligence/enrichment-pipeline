@@ -196,34 +196,46 @@ def _records_needing_browser_retry(records: list[dict]) -> list[dict]:
     return blocked
 
 
-def _load_manual_content(records: list[dict], manual_content_path: str) -> None:
-    """Populate records' context text from an operator-provided file, no crawl.
+def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -> None:
+    """Populate records' context text from operator-provided files, no crawl.
 
-    For sites blocked by a hard CAPTCHA wall, the operator captures the page in
-    their own browser (Save Page As .html, or copy the visible text) and supplies
-    it here. The content replaces Steps 2-3 (URL validation + web extraction): it
-    is loaded into every record's `_context_text` so Step 4 signal extraction runs
-    on it exactly as if the crawler had fetched it. HTML is converted to clean
-    text with the same extractor the browser crawler uses; plain text is used
-    as-is. source_confidence is "partial" — operator-vouched but single-page.
+    For sites blocked by a hard CAPTCHA wall, the operator captures the page(s)
+    in their own browser (Save Page As .html, or copy the visible text) and
+    supplies them here. The content replaces Steps 2-3 (URL validation + web
+    extraction): it is loaded into every record's `_context_text` so Step 4
+    signal extraction runs on it exactly as if the crawler had fetched it. HTML
+    is converted to clean text with the same extractor the browser crawler uses;
+    plain text is used as-is. Multiple pages are joined with the same separator
+    the crawler uses and capped at MAX_COMBINED_CHARS. source_confidence is
+    "partial" — operator-vouched but not a full crawl.
     """
     from extraction.playwright_extractor import _extract_text_from_html
+    from extraction.web_extractor import MAX_COMBINED_CHARS
 
-    raw_bytes = Path(manual_content_path).read_bytes()
-    raw = raw_bytes.decode("utf-8", errors="replace")
-    is_html = (
-        manual_content_path.lower().endswith((".html", ".htm"))
-        or any(tag in raw[:4000].lower() for tag in ("<html", "<body", "<div", "<!doctype"))
-    )
-    clean_text = _extract_text_from_html(raw) if is_html else raw.strip()
+    blocks = []
+    page_labels = []
+    for path in manual_content_paths:
+        raw = Path(path).read_bytes().decode("utf-8", errors="replace")
+        is_html = (
+            path.lower().endswith((".html", ".htm"))
+            or any(tag in raw[:4000].lower() for tag in ("<html", "<body", "<div", "<!doctype"))
+        )
+        clean_text = _extract_text_from_html(raw) if is_html else raw.strip()
+        if clean_text:
+            blocks.append(clean_text)
+            page_labels.append(f"[Manual content] {Path(path).name}")
+
+    combined = "\n\n---\n\n".join(blocks)
+    if len(combined) > MAX_COMBINED_CHARS:
+        combined = combined[:MAX_COMBINED_CHARS] + "\n\n[... truncated for token budget ...]"
 
     for record in records:
-        record["_context_text"] = clean_text
-        record["_pages_crawled"] = ["[Manual content]"]
+        record["_context_text"] = combined
+        record["_pages_crawled"] = list(page_labels)
         record["_url_valid"] = True
         record["_url_error"] = ""
-        # Operator-supplied single-page content: trustworthy enough to enrich,
-        # but not a full multi-page crawl, so cap honesty at "partial".
+        # Operator-supplied content: trustworthy enough to enrich, but not a full
+        # multi-page crawl, so cap honesty at "partial".
         record["source_confidence"] = "partial"
 
 
@@ -259,7 +271,7 @@ def run_pipeline(input_file: str, source_type: str,
                   limit: int = None,
                   use_playwright: bool = False,
                   auto_browser_retry: bool = False,
-                  manual_content_path: str = None,
+                  manual_content_path: list[str] = None,
                   ingest_only: bool = False) -> dict:
     """
     Run the full enrichment pipeline.
@@ -276,10 +288,11 @@ def run_pipeline(input_file: str, source_type: str,
         auto_browser_retry: If True, after the standard crawl, re-crawl any
             blocked/thin records once with headless Chromium before signal
             extraction. No effect when use_playwright is already True.
-        manual_content_path: If set, path to an operator-provided HTML or text
-            file. Replaces URL validation + web extraction (Steps 2-3) by loading
-            that content into every record's context, then runs signal extraction
-            on it. For single-record manual enrichment of CAPTCHA-blocked sites.
+        manual_content_path: If set, a list of paths to operator-provided HTML or
+            text files (one per page). Replaces URL validation + web extraction
+            (Steps 2-3) by loading that content into every record's context, then
+            runs signal extraction on it. For single-record manual enrichment of
+            CAPTCHA-blocked sites.
         ingest_only: If True, ingest + normalize + structural exclusions only,
             then write the roster with every record marked "not_enriched" and
             exit before any crawl or LLM call. Enrichment is triggered later.
@@ -446,7 +459,7 @@ def run_pipeline(input_file: str, source_type: str,
         _load_manual_content(records, manual_content_path)
         loaded = sum(1 for r in records if r.get("_context_text", ""))
         print(f"\n  Loaded operator content into {loaded}/{len(records)} record(s) "
-              f"from {manual_content_path}")
+              f"from {len(manual_content_path)} page(s)")
     else:
         # -------------------------------------------------------------------------
         # STEP 2: URL VALIDATION
@@ -813,10 +826,12 @@ Examples:
     )
     parser.add_argument(
         "--manual-content-path",
+        action="append",
         default=None,
         help="Path to an operator-provided HTML or text file. Replaces URL "
              "validation + web extraction: loads that content into the record(s) "
-             "and runs signal extraction on it. For manual enrichment of "
+             "and runs signal extraction on it. Pass once per page to supply "
+             "multiple pages (Home, About, Providers). For manual enrichment of "
              "CAPTCHA-blocked sites.",
     )
     parser.add_argument(
