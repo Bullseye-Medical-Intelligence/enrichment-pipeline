@@ -522,6 +522,28 @@ class TestTierAssignment:
                     "state_inferred": True}]
         assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Bullseye"
 
+    def test_all_required_confirmed_is_bullseye_below_score_threshold(self):
+        """All must-haves confirmed YES → Bullseye even when score is below bullseye_min."""
+        signals = [
+            {"signal_id": "S-tms", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": ""},
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": ""},
+        ]
+        assert _assign_tier(self._record_with_signals(signals), 73, 90) == "Bullseye"
+
+    def test_partial_required_confirmed_uses_score_threshold(self):
+        """Some must-haves not confirmed → score threshold still applies (not all confirmed)."""
+        signals = [
+            {"signal_id": "S-tms", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": ""},
+            {"signal_id": "S-cash", "signal_state": "not_found",
+             "required_for_bullseye": True, "cap_tier": ""},
+        ]
+        # score 73 < bullseye_min 90, not all required confirmed → Contender;
+        # the NV cap on cash can only pull DOWN from Bullseye, not further below Contender
+        assert _assign_tier(self._record_with_signals(signals), 73, 90) == "Contender"
+
     def test_apply_exclusions_sets_needs_verification_tier(self):
         """End to end: a CLEAR record with evidence + an unconfirmed required signal is NV."""
         rec = _clear_record(score=90, specialty="OBGYN")

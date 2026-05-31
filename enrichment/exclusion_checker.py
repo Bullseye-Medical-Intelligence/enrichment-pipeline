@@ -90,7 +90,21 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
         if (not has_evidence or score < LOW_SCORE_MANUAL_REVIEW_THRESHOLD) and floor_rank < 0:
             return "Manual Review"
 
-    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
+    # When the ICP defines must-have signals and every one is confirmed (or inferred),
+    # the qualitative gate IS the quality gate — start at Bullseye directly.
+    # The score threshold only applies as a fallback when some must-haves are missing,
+    # so records that lack key evidence don't auto-promote on volume of minor signals.
+    # Cap gates (cap_tier, source confidence, must-have "no"/"not_found") still apply below.
+    required_sigs = [s for s in signals if s.get("required_for_bullseye")]
+    all_required_confirmed = bool(required_sigs) and all(
+        s.get("signal_state") == "yes" or s.get("state_inferred")
+        for s in required_sigs
+    )
+    rank = (
+        TIER_RANK["Bullseye"]
+        if all_required_confirmed or score >= bullseye_min
+        else TIER_RANK["Contender"]
+    )
     # Apply floor guarantee: lift rank up to the floor minimum.
     if floor_rank > rank:
         rank = floor_rank

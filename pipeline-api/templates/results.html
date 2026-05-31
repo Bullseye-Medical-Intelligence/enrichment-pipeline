@@ -492,7 +492,7 @@
                   <label>QC Status</label>
                   <div class="qc-buttons">
                     <button class="btn btn-sm qc-btn {% if review.qc_status == 'approved' %}btn-qc-active-approved{% endif %}"
-                            onclick="setQC('{{ rid }}', 'approved')">✓ Mark Reviewed</button>
+                            onclick="setQC('{{ rid }}', 'approved')">✓ Reviewed</button>
                     <button class="btn btn-sm qc-btn {% if review.qc_status == 'rejected' %}btn-qc-active-rejected{% endif %}"
                             onclick="setQC('{{ rid }}', 'rejected')">✗ Reject</button>
                     <button class="btn btn-sm qc-btn {% if review.qc_status == 'pending' %}btn-qc-active-pending{% endif %}"
