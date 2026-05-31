@@ -81,12 +81,19 @@ def spawn_pipeline(
     return process
 
 
-async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
+async def monitor_pipeline(
+    run_id: str,
+    process: subprocess.Popen,
+    success_status: str = "complete",
+) -> None:
     """
     Wait for the pipeline subprocess to exit and update status.json.
 
     Runs as a FastAPI BackgroundTask. Uses run_in_executor so process.wait()
     does not block the event loop.
+
+    success_status is the status to set on a clean exit — "complete" for a
+    full enrichment run, "ingested" for an --ingest-only roster load.
     """
     loop = asyncio.get_event_loop()
     try:
@@ -107,11 +114,11 @@ async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
                 counts = _read_completion_counts(run_id)
                 runs.update_run_status(
                     run_id,
-                    status="complete",
+                    status=success_status,
                     completed_at=datetime.now(timezone.utc).isoformat(),
                     **counts,
                 )
-                logger.info("Run %s completed successfully", run_id)
+                logger.info("Run %s finished with status '%s'", run_id, success_status)
         else:
             error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
             runs.update_run_status(
@@ -140,32 +147,22 @@ async def monitor_pipeline(run_id: str, process: subprocess.Popen) -> None:
             )
 
 
-async def orchestrate_run(
+async def _prepare_run(
     file,
     source_type: str,
     project_id: str,
     operator: str,
-    background_tasks,
-) -> tuple[str, int]:
-    """
-    Full run creation flow: validate CSV, save input, create run record,
-    spawn pipeline subprocess, and register background monitor.
+) -> tuple[str, "Path", "Path", "Path", int]:
+    """Validate the upload, snapshot config/ICP, and create the run directory.
 
-    Used by both the Bearer-auth API route and the session-auth UI route
-    to avoid duplicating this orchestration logic.
+    Shared by the full-run and ingest-only flows so the validation, snapshot,
+    and run-record creation logic lives in one place. Leaves the run in
+    'pending' status; the caller spawns the pipeline and flips it to running.
 
-    Args:
-        file: UploadFile from the HTTP request.
-        source_type: 'outscraper' or 'manual'.
-        project_id: Client project identifier (must reference an existing project).
-        operator: Name of the user triggering the run.
-        background_tasks: FastAPI BackgroundTasks instance.
+    Returns (run_id, run_directory, config_snapshot, icp_snapshot, row_count).
 
-    Returns:
-        (run_id, row_count)
-
-    Raises:
-        ValueError if the project/ICP cannot be resolved or CSV validation fails.
+    Raises ValueError if the concurrent-run cap is reached, the project/ICP
+    cannot be resolved, or CSV validation fails.
     """
     import validator  # imported here to avoid circular imports at module load
 
@@ -217,6 +214,31 @@ async def orchestrate_run(
             "icp_profile_version": icp_profile.get("version"),
         },
     )
+    return run_id, run_directory, config_snapshot, icp_snapshot, row_count
+
+
+async def orchestrate_run(
+    file,
+    source_type: str,
+    project_id: str,
+    operator: str,
+    background_tasks,
+) -> tuple[str, int]:
+    """
+    Full run creation flow: validate CSV, save input, create run record,
+    spawn pipeline subprocess, and register background monitor.
+
+    Used by the Bearer-auth API route to run ingest + enrichment in one shot.
+
+    Returns:
+        (run_id, row_count)
+
+    Raises:
+        ValueError if the project/ICP cannot be resolved or CSV validation fails.
+    """
+    run_id, run_directory, config_snapshot, icp_snapshot, row_count = await _prepare_run(
+        file, source_type, project_id, operator
+    )
 
     process = spawn_pipeline(
         run_id,
@@ -229,11 +251,99 @@ async def orchestrate_run(
     runs.update_run_status(run_id, status="running")
     background_tasks.add_task(monitor_pipeline, run_id, process)
 
-    logger.info(
-        "Run %s started by '%s' (%d rows, project=%s, icp=%s)",
-        run_id, operator, row_count, project_id, project_config["icp_profile_id"],
-    )
+    logger.info("Run %s (full) started by '%s' (%d rows)", run_id, operator, row_count)
     return run_id, row_count
+
+
+async def orchestrate_ingest(
+    file,
+    source_type: str,
+    project_id: str,
+    operator: str,
+    background_tasks,
+) -> tuple[str, int]:
+    """Ingest-only flow: load + normalize the roster without crawl or LLM spend.
+
+    Same preparation as a full run, but spawns the pipeline with --ingest-only
+    and lands the run in 'ingested' status. Enrichment is triggered separately
+    via orchestrate_enrich_all once the operator has reviewed the list.
+
+    Returns (run_id, row_count).
+    """
+    run_id, run_directory, config_snapshot, icp_snapshot, row_count = await _prepare_run(
+        file, source_type, project_id, operator
+    )
+
+    process = spawn_pipeline(
+        run_id,
+        run_directory / "input.csv",
+        source_type,
+        run_directory,
+        config_snapshot,
+        icp_snapshot,
+        extra_flags=["--ingest-only"],
+    )
+    runs.update_run_status(run_id, status="running")
+    background_tasks.add_task(monitor_pipeline, run_id, process, "ingested")
+
+    logger.info("Run %s (ingest-only) started by '%s' (%d rows)", run_id, operator, row_count)
+    return run_id, row_count
+
+
+async def orchestrate_enrich_all(
+    run_id: str,
+    operator: str,
+    background_tasks,
+) -> None:
+    """Enrich an already-ingested run in place: spawn the full pipeline on its roster.
+
+    Reuses the run's existing input.csv and config/ICP snapshots, so enrichment
+    runs against the exact roster and config the operator reviewed. Overwrites
+    the run's enriched_targets.json with the enriched result and flips the run
+    to 'complete'.
+
+    Raises:
+        FileNotFoundError if the run does not exist.
+        ValueError if the run is not in 'ingested' status, its inputs are
+        missing, or the concurrent-run cap is reached.
+    """
+    active = runs.count_active_runs()
+    if active >= MAX_CONCURRENT_RUNS:
+        raise ValueError(
+            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+            "Wait for a run to finish before starting another."
+        )
+
+    status = runs.get_run(run_id)
+    if status is None:
+        raise FileNotFoundError(f"Run '{run_id}' not found")
+    if status.status != "ingested":
+        raise ValueError(
+            f"Run is {status.status!r}; only an 'ingested' run can be enriched."
+        )
+
+    run_directory = runs.run_dir(run_id)
+    input_csv = run_directory / "input.csv"
+    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
+    for path, label in ((input_csv, "input.csv"),
+                        (config_snapshot, "config snapshot"),
+                        (icp_snapshot, "ICP snapshot")):
+        if not path.exists():
+            raise ValueError(f"Run is missing its {label}; cannot enrich.")
+
+    process = spawn_pipeline(
+        run_id,
+        input_csv,
+        status.source_type,
+        run_directory,
+        config_snapshot,
+        icp_snapshot,
+    )
+    runs.update_run_status(run_id, status="running", completed_at=None)
+    background_tasks.add_task(monitor_pipeline, run_id, process)
+
+    logger.info("Run %s enrichment started by '%s'", run_id, operator)
 
 
 async def orchestrate_playwright_retry(

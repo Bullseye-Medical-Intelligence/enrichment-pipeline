@@ -153,6 +153,29 @@ def _write_progress(output_dir: str, step_num: int, step_name: str,
         pass  # Non-fatal: progress display is best-effort
 
 
+def _finalize_ingest_only(records: list[dict], run_config: dict) -> list[dict]:
+    """Shape ingested records for output without crawling or calling any LLM.
+
+    Each record is marked `enrichment_status = "not_enriched"` with zeroed
+    scores and no signals, then run through the deterministic exclusion check
+    (only structural rules fire — wrong specialty / outside geography / no web
+    presence) and the standard validation pass so the output schema is complete.
+    This is what `--ingest-only` writes: the full roster, ready for the operator
+    to review before spending any crawl or LLM budget on enrichment.
+    """
+    finalized = []
+    for record in records:
+        record["enrichment_status"] = "not_enriched"
+        record["bullseye_score"] = 0
+        record["fit_signal_score"] = 0
+        record["confidence_score"] = 0
+        record["signals"] = []
+        record = apply_exclusions(record, run_config)
+        record = validate_and_finalize(record)
+        finalized.append(record)
+    return finalized
+
+
 def _validate_required_fields(records: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Validate that records have minimum required fields.
@@ -183,7 +206,8 @@ def run_pipeline(input_file: str, source_type: str,
                   icp_path: str = DEFAULT_ICP_PATH,
                   dry_run: bool = False,
                   limit: int = None,
-                  use_playwright: bool = False) -> dict:
+                  use_playwright: bool = False,
+                  ingest_only: bool = False) -> dict:
     """
     Run the full enrichment pipeline.
 
@@ -195,6 +219,9 @@ def run_pipeline(input_file: str, source_type: str,
         icp_path: Path to icp_checklist.json.
         dry_run: If True, skip all LLM calls (parse + normalize only).
         limit: If set, process only the first N records.
+        ingest_only: If True, ingest + normalize + structural exclusions only,
+            then write the roster with every record marked "not_enriched" and
+            exit before any crawl or LLM call. Enrichment is triggered later.
 
     Returns:
         Dict with run summary metrics.
@@ -290,6 +317,42 @@ def run_pipeline(input_file: str, source_type: str,
         elapsed = time.time() - start_time
         print(f"\n  Dry run complete in {elapsed:.1f}s")
         return {"run_id": run_id, "records_processed": len(records), "dry_run": True}
+
+    if ingest_only:
+        print(f"\n{'-'*40}")
+        print("INGEST-ONLY MODE - Writing roster (no crawl, no LLM)")
+        print(f"{'-'*40}")
+        output_records = _finalize_ingest_only(records, run_config)
+        output_records = [strip_internal_fields(r) for r in output_records]
+        for r in output_records:
+            r["source_pipeline_version"] = PIPELINE_VERSION
+
+        excluded_ingest = sum(1 for r in output_records if r.get("target_tier") == "Excluded")
+        json_path = write_json(output_records, output_dir=output_dir, run_id=run_id)
+        write_csv(output_records, output_dir=output_dir, pipeline_version=PIPELINE_VERSION)
+        write_run_log(
+            run_id=run_id,
+            records=output_records,
+            errors=all_errors,
+            warnings=all_warnings,
+            input_file=input_file,
+            input_source_type=source_type,
+            records_input=records_input_total,
+            pipeline_version=PIPELINE_VERSION,
+            output_dir=output_dir,
+        )
+        elapsed = time.time() - start_time
+        print(f"\n  Ingest complete: {len(output_records)} records "
+              f"({excluded_ingest} pre-excluded) in {elapsed:.1f}s")
+        print(f"  Roster written: {json_path}")
+        return {
+            "run_id": run_id,
+            "records_input": records_input_total,
+            "records_output": len(output_records),
+            "excluded": excluded_ingest,
+            "ingest_only": True,
+            "elapsed_seconds": round(elapsed, 1),
+        }
 
     # -------------------------------------------------------------------------
     # STRUCTURAL PRE-FILTER (cost routing): records that deterministic
@@ -639,6 +702,12 @@ Examples:
         action="store_true",
         help="Use headless Chromium (Playwright) instead of requests for web extraction",
     )
+    parser.add_argument(
+        "--ingest-only",
+        action="store_true",
+        help="Ingest + normalize + structural exclusions only; write the roster "
+             "(all records 'not_enriched') and exit before any crawl or LLM call",
+    )
 
     args = parser.parse_args()
 
@@ -662,6 +731,7 @@ Examples:
         dry_run=args.dry_run,
         limit=args.limit,
         use_playwright=args.playwright,
+        ingest_only=args.ingest_only,
     )
 
     sys.exit(0)

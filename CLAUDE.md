@@ -82,6 +82,15 @@ Every score bound, weight, threshold, and blend factor lives in
 7. **Scoring validation** — clamp, validate, enforce invariants (`enrichment/scorer.py`).
 8. **Output** — write JSON, CSV, run_log.json (`output/`, atomic writes).
 
+### `--ingest-only` (roster pass, no spend)
+`--ingest-only` runs Step 1 + structural exclusions only, then writes the full
+roster (`enrichment_status = "not_enriched"`, scores 0, no signals) via Step 8
+and exits before any crawl or LLM call (`_finalize_ingest_only`). It lets an
+operator load and review the list before spending crawl/LLM budget; enrichment
+is triggered as a separate full run over the same `input.csv`. The API exposes
+this as upload → `ingested` status → "Enrich All" (`pipeline-api/runner.py`:
+`orchestrate_ingest` / `orchestrate_enrich_all`).
+
 ---
 
 ## Scoring Model (commercial-fit confidence)

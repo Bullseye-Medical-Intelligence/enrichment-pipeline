@@ -108,7 +108,9 @@ REQUIRED_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {
 }
 
 VALID_RUN_STATUSES: frozenset[str] = frozenset(
-    {"pending", "running", "complete", "failed"}
+    # "ingested": roster loaded (normalized + structural exclusions) but not yet
+    # enriched — the operator triggers enrichment as a second step.
+    {"pending", "ingested", "running", "complete", "failed"}
 )
 
 # ---------------------------------------------------------------------------

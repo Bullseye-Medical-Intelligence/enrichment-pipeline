@@ -31,6 +31,7 @@ from enrichment.signal_extractor import (
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
+from pipeline import _finalize_ingest_only
 
 
 # ---------------------------------------------------------------------------
@@ -1148,3 +1149,50 @@ class TestInferredFrom:
     def test_empty_signals_helper_sets_empty_inferred_from(self):
         out = _build_empty_signals(self._ICP)
         assert all(s["inferred_from"] == "" for s in out)
+
+
+class TestIngestOnly:
+    """The --ingest-only roster pass: normalize + structural exclusions, no enrichment."""
+
+    def _roster_record(self, state="TX", website="https://example.com", specialty="OBGYN"):
+        return {
+            "id": "T-ingest",
+            "practice_name": "Roster Practice",
+            "specialty": specialty,
+            "address_state": state,
+            "address_city": "Houston",
+            "address_zip": "77001",
+            "website_url": website,
+        }
+
+    def test_clear_record_marked_not_enriched(self):
+        out = _finalize_ingest_only([self._roster_record()], BASE_RUN_CONFIG)
+        rec = out[0]
+        assert rec["enrichment_status"] == "not_enriched"
+        assert rec["exclusion_status"] == "CLEAR"
+        assert rec["bullseye_score"] == 0
+        assert rec["signals"] == []
+
+    def test_structural_exclusion_still_fires(self):
+        # Wrong geography should be excluded even in ingest-only mode.
+        out = _finalize_ingest_only([self._roster_record(state="CA")], BASE_RUN_CONFIG)
+        rec = out[0]
+        assert rec["exclusion_status"] == "EXCLUDED"
+        assert rec["target_tier"] == "Excluded"
+        assert rec["enrichment_status"] == "not_enriched"
+
+    def test_output_schema_is_complete(self):
+        # validate_and_finalize must leave a fully-shaped record the UI can render.
+        out = _finalize_ingest_only([self._roster_record()], BASE_RUN_CONFIG)
+        rec = out[0]
+        assert isinstance(rec.get("call_brief"), dict)
+        assert isinstance(rec.get("sales_angle"), list)
+        assert rec.get("qc_status") == "pending"
+
+    def test_not_enriched_status_survives_validation(self):
+        rec = {
+            "practice_name": "X", "exclusion_status": "CLEAR",
+            "target_tier": "Watchlist", "enrichment_status": "not_enriched",
+        }
+        out = validate_and_finalize(rec)
+        assert out["enrichment_status"] == "not_enriched"

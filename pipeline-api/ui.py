@@ -610,12 +610,13 @@ async def runs_page(request: Request, username: str = Depends(auth.require_sessi
 # ---------------------------------------------------------------------------
 
 def _load_merged_records(run_id: str, status) -> list[dict]:
-    """Load a complete run's records merged with their review overlay.
+    """Load a run's records merged with their review overlay.
 
     Each record gains record_id, review, and displayed_tier. Returns an empty
-    list when the run is not complete or has no results file.
+    list unless the run is 'complete' (enriched) or 'ingested' (roster loaded,
+    not yet enriched) — both have a written enriched_targets.json to render.
     """
-    if status.status != "complete":
+    if status.status not in ("complete", "ingested"):
         return []
     run_directory = runs.run_dir(run_id)
     results_path = run_directory / "enriched_targets.json"
@@ -867,6 +868,23 @@ async def retry_with_browser(
     return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
 
 
+@router.post("/runs/{run_id}/enrich-all")
+async def enrich_all(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Enrich an ingested roster: run the full pipeline over the loaded list."""
+    try:
+        await runner.orchestrate_enrich_all(run_id, username, background_tasks)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+
+
 @router.get("/runs/{run_id}/client-package")
 async def client_package(run_id: str, username: str = Depends(auth.require_session)):
     """Download a client deliverable ZIP for a completed, fully-reviewed run."""
@@ -908,10 +926,13 @@ async def ui_create_run(
 ):
     """
     Create a run from the web upload form.
-    Uses the same orchestration logic as POST /runs (no duplication).
+
+    Ingests the roster only (no crawl/LLM spend); the operator reviews the list
+    and then triggers enrichment from the results page via POST
+    /runs/{run_id}/enrich-all.
     """
     try:
-        run_id, row_count = await runner.orchestrate_run(
+        run_id, row_count = await runner.orchestrate_ingest(
             file, source_type, project_id, operator, background_tasks
         )
     except ValueError as e:

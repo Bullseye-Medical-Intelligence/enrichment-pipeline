@@ -404,6 +404,9 @@ field.
 - `"partial"` — some steps succeeded, others failed or returned no data
 - `"failed"` — pipeline failure, record may be incomplete
 - `"needs_review"` — pipeline flagged for human attention (e.g. LLM disagreement)
+- `"not_enriched"` — written by `--ingest-only`: the record was ingested and
+  structurally screened (specialty/geography/no-web-presence) but has not been
+  crawled or scored. Scores are 0 and `signals` is empty until enrichment runs.
 
 **null usage:**
 - `exclusion_reason`: null when exclusion_status is CLEAR

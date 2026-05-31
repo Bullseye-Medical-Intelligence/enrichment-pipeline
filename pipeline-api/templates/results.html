@@ -2,6 +2,7 @@
 {% block title %}Results: {{ run_id }} — BEMI Pipeline{% endblock %}
 
 {% block content %}
+{% set is_ingested = status.status == "ingested" %}
 <div class="page-header">
   <div>
     <h2>{{ run_id }}</h2>
@@ -12,6 +13,15 @@
     </p>
   </div>
   <div class="header-actions">
+    {% if is_ingested %}
+    <form method="post" action="/runs/{{ run_id }}/enrich-all" style="display:inline;"
+          onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+      <button type="submit" class="btn btn-submit"
+              title="Run crawl + signal extraction over the loaded roster">
+        Enrich All ({{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }})
+      </button>
+    </form>
+    {% endif %}
     {% if status.status == "complete" %}
     {% if readiness and readiness.state == 'ready' %}
     <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
@@ -143,6 +153,13 @@
 {% endif %}
 {% elif status.status == "pending" %}
 <div class="alert alert-info">Run is queued.</div>
+{% elif is_ingested %}
+<div class="alert alert-info">
+  <strong>Roster loaded — not yet enriched.</strong>
+  {{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }} record(s) ready to enrich
+  ({{ records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }} pre-excluded by specialty/geography/no-web-presence).
+  Review the list below, then click <strong>Enrich All</strong> to run the crawl and signal extraction. No LLM or crawl budget has been spent yet.
+</div>
 {% endif %}
 
 {% if readiness %}
@@ -166,6 +183,7 @@
 {% endif %}
 
 {% if records %}
+{% if not is_ingested %}
 {# ── Reviewer guidance ────────────────────────────────────────────── #}
 <div class="alert alert-info review-guidance">
   <strong>Before you approve:</strong>
@@ -173,8 +191,16 @@
   Excluded records appear in a separate CSV. To include a pipeline-excluded record
   in the approved export, set an override tier AND approve it — otherwise the exclusion stands.
 </div>
+{% endif %}
 
 {# ── Stats bar ────────────────────────────────────────────────────── #}
+{% if is_ingested %}
+<div class="stats-bar">
+  <div class="stat-item"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
+  <div class="stat-item stat-pending"><span class="stat-num">{{ stats.total - stats.excluded }}</span><span class="stat-label">Not Enriched</span></div>
+  <div class="stat-item stat-excluded"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Pre-Excluded</span></div>
+</div>
+{% else %}
 <div class="stats-bar">
   <div class="stat-item"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
   <div class="stat-item stat-bullseye"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
@@ -186,8 +212,10 @@
   <div class="stat-item stat-excluded"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
   <div class="stat-item stat-pending"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
 </div>
+{% endif %}
 
 {# ── Filter bar ───────────────────────────────────────────────────── #}
+{% if not is_ingested %}
 <div class="filter-bar">
   <span class="filter-label">Filter:</span>
   <button class="filter-btn active" onclick="filterRecords('all', this)">All</button>
@@ -203,6 +231,7 @@
   <button class="filter-btn" onclick="filterByQC('approved', this)">Approved</button>
   <button class="filter-btn" onclick="filterByQC('rejected', this)">Rejected</button>
 </div>
+{% endif %}
 
 {# ── Records table ────────────────────────────────────────────────── #}
 <div class="card table-card">
@@ -243,11 +272,15 @@
         <td>{{ record.specialty | default("—") }}</td>
         <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
+          {% if record.enrichment_status == "not_enriched" and record.exclusion_status != "EXCLUDED" %}
+          <span class="badge badge-status-pending" title="Not yet enriched — run Enrich All">Not enriched</span>
+          {% else %}
           <span class="badge badge-tier-{{ displayed | lower | replace(' ', '-') }}">
             {{ displayed or "—" }}
           </span>
           {% if review.override_tier %}
           <span class="override-indicator" title="Analyst override">✎</span>
+          {% endif %}
           {% endif %}
         </td>
         <td class="text-muted">{{ record.target_tier | default("—") }}</td>
