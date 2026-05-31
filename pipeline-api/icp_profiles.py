@@ -85,6 +85,10 @@ def validate_icp_profile(data: dict) -> None:
             raise ValueError(
                 f"ICP signal #{i + 1} 'cap_tier' must be 'Contender' or 'Needs Verification'."
             )
+        if "floor_tier" in signal and signal["floor_tier"] not in ("Contender", "Needs Verification"):
+            raise ValueError(
+                f"ICP signal #{i + 1} 'floor_tier' must be 'Contender' or 'Needs Verification'."
+            )
         if "exclude_if_yes" in signal and not isinstance(signal["exclude_if_yes"], bool):
             raise ValueError(
                 f"ICP signal #{i + 1} 'exclude_if_yes' must be true or false."

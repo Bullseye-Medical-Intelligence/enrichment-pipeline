@@ -45,7 +45,7 @@ from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import batch_extract
 from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, MIN_CONTEXT_CHARS
 from enrichment.signal_extractor import extract_signals
-from enrichment.verifier import verify_bullseye_record
+from enrichment.verifier import verify_bullseye_record, generate_sales_brief
 from enrichment.exclusion_checker import apply_exclusions, check_structural_exclusions
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from output.json_writer import write_json
@@ -609,21 +609,38 @@ def run_pipeline(input_file: str, source_type: str,
             _write_step4_checkpoint(output_dir, record)
 
     # -------------------------------------------------------------------------
-    # STEP 5: BULLSEYE VERIFICATION (GPT - conditional)
+    # STEP 5: GPT SECOND PASS — verification (Bullseye) + sales brief (all)
     # -------------------------------------------------------------------------
     bullseye_records = [
         r for r in records if r.get("bullseye_score", 0) >= bullseye_min
     ]
+    # Sales brief candidates: enriched records with confirmed signals that aren't
+    # already flagged as LLM-detected exclusions (avoid spending GPT on soon-to-
+    # be-excluded records). Bullseye records get both verification + sales brief.
+    brief_candidates = [
+        r for r in records
+        if r.get("enrichment_status") not in ("not_enriched", "failed")
+        and not r.get("_llm_exclusion_triggers")
+        and any(
+            s.get("signal_state") == "yes"
+            for s in (r.get("signals") or [])
+        )
+    ]
+    bullseye_ids = {r.get("id") or r.get("record_id") for r in bullseye_records}
 
+    print(f"\n{'-'*40}")
+    print("STEP 5: GPT SECOND PASS")
+    print(f"{'-'*40}")
+    print(f"  {len(bullseye_records)} Bullseye records → verification")
+    print(f"  {len(brief_candidates)} records → practice-specific sales brief")
+
+    _write_progress(output_dir, 5, "GPT second pass", 0,
+                    len(bullseye_records) + len(brief_candidates))
+
+    # 5a — Bullseye verification
     if bullseye_records:
-        _write_progress(output_dir, 5, "Bullseye verification (GPT)", 0, len(bullseye_records))
-        print(f"\n{'-'*40}")
-        print("STEP 5: BULLSEYE VERIFICATION (GPT)")
-        print(f"{'-'*40}")
-        print(f"  {len(bullseye_records)} records qualify for verification")
-
         for i, record in enumerate(bullseye_records):
-            print(f"\n  [{i+1}/{len(bullseye_records)}] {record.get('practice_name', 'Unknown')} "
+            print(f"\n  [V {i+1}/{len(bullseye_records)}] {record.get('practice_name', 'Unknown')} "
                   f"(score: {record.get('bullseye_score', 0)})")
             context_text = record.get("_context_text", "")
             try:
@@ -648,7 +665,27 @@ def run_pipeline(input_file: str, source_type: str,
                 f"and are flagged needs_review"
             )
     else:
-        print(f"\n  STEP 5: SKIPPED - no records scored >= {bullseye_min}")
+        print(f"  No records scored >= {bullseye_min} — verification skipped")
+
+    # 5b — Practice-specific sales brief for all enriched candidates
+    if brief_candidates:
+        for i, record in enumerate(brief_candidates):
+            print(f"\n  [B {i+1}/{len(brief_candidates)}] {record.get('practice_name', 'Unknown')}")
+            context_text = record.get("_context_text", "")
+            try:
+                record = generate_sales_brief(record, context_text, run_config)
+            except Exception as e:
+                error_msg = str(e)[:200]
+                print(f"    [FAIL] Sales brief error: {error_msg}")
+                all_errors.append({
+                    "record_id": record.get("id", "unknown"),
+                    "step": "sales_brief",
+                    "error": error_msg,
+                    "resolution": "Sales brief skipped, Claude-generated content preserved",
+                })
+            time.sleep(0.3)
+    else:
+        print("  No enriched records with confirmed signals — sales brief skipped")
 
     # -------------------------------------------------------------------------
     # STEP 6: EXCLUSION CHECK

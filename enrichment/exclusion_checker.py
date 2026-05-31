@@ -14,16 +14,19 @@ from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, EXCLUDED_SCORE_CAP,
 
 # Hard exclusions — always applied regardless of run_config
 HARD_EXCLUSION_RULES = {
-    "hospital_owned",
-    "health_system_affiliated",
     "wrong_specialty",
     "outside_geography",
     "practice_closed",
     "academic_medical_center",
 }
 
-# Configurable exclusions — only applied when listed in active_exclusion_rules
+# Configurable exclusions — only applied when listed in active_exclusion_rules.
+# Hospital affiliation rules are listed here so operators can downgrade them from
+# auto-exclude to a tier cap (e.g. cap_tier: "Needs Verification" on the ICP signal)
+# when they prefer to review affiliated practices rather than discard them.
 CONFIGURABLE_EXCLUSION_RULES = {
+    "hospital_owned",
+    "health_system_affiliated",
     "rei_on_staff",
     "no_web_presence",
     "competitor_conflict",
@@ -59,20 +62,38 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     A record with zero confirmed evidence (no "yes", nothing inferred) is not a
     fit verdict at all — it gets "Manual Review", a CLEAR non-call status, so a
     blocked/empty crawl never reads as a Contender.
+
+    A confirmed "yes" signal with floor_tier guarantees a minimum tier — it
+    overrides the low-score Manual Review gate for that signal's own evidence.
     """
     signals = record.get("signals") or []
 
     # Not-yet-enriched roster rows (ingest-only) have no signals by definition and
     # are not a Manual Review finding — skip the evidence gate for them.
     enriched = record.get("enrichment_status") != "not_enriched"
+    floor_rank = -1
     if enriched:
         has_evidence = any(
             s.get("signal_state") == "yes" or s.get("state_inferred") for s in signals
         )
-        if not has_evidence or score < LOW_SCORE_MANUAL_REVIEW_THRESHOLD:
+        # A confirmed signal with floor_tier guarantees at least that tier rank,
+        # bypassing the low-score Manual Review gate for primary qualifying signals
+        # (e.g. cash pay confirmed → always at least Contender).
+        floor_rank = max(
+            (TIER_RANK[_canonical_tier(s["floor_tier"])]
+             for s in signals
+             if s.get("floor_tier")
+             and s.get("signal_state") == "yes"
+             and _canonical_tier(s.get("floor_tier", "")) in TIER_RANK),
+            default=-1,
+        )
+        if (not has_evidence or score < LOW_SCORE_MANUAL_REVIEW_THRESHOLD) and floor_rank < 0:
             return "Manual Review"
 
     rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
+    # Apply floor guarantee: lift rank up to the floor minimum.
+    if floor_rank > rank:
+        rank = floor_rank
 
     for sig in signals:
         cap = _canonical_tier(sig.get("cap_tier"))

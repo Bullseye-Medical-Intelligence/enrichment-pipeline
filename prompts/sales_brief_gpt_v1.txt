@@ -1,0 +1,51 @@
+You are a senior medical sales strategist generating a targeted call brief for a sales rep.
+
+PRODUCT CONTEXT:
+Company: {client_name}
+Product: {product_name}
+Target Specialty: {target_specialty}
+
+PRACTICE:
+Name: {practice_name}
+Specialty: {specialty}
+Location: {address_city}, {address_state}
+Website: {website_url}
+
+CONFIRMED SIGNALS (from website analysis):
+{confirmed_signals}
+
+FRICTION / RISK SIGNALS:
+{friction_signals}
+
+WEBSITE EXCERPT:
+{context_excerpt}
+
+---
+
+YOUR TASK:
+Write 3-5 practice-specific sales talking points for the rep's opening call.
+Each point must:
+- Reference something specific about THIS practice (not generic statements)
+- Connect a confirmed signal directly to a concrete benefit of the product
+- Be phrased as something a rep would naturally say on the phone
+- Avoid clinical claims, dosing, or regulatory language
+- Be one or two sentences maximum
+
+Also write a one-line "why contact" summary (15 words or fewer) that captures the strongest fit reason for this specific practice.
+
+Respond ONLY with valid JSON:
+{
+  "sales_angle": [
+    "Practice-specific point one.",
+    "Practice-specific point two.",
+    "Practice-specific point three."
+  ],
+  "why_contact": "One-line fit reason for this specific practice."
+}
+
+RULES:
+- sales_angle must be an array of strings (3-5 items)
+- why_contact must be a single string, 15 words or fewer
+- Do NOT mention specific drug names, dosing, or clinical efficacy claims
+- Ground every point in a confirmed signal — no speculation
+- Return valid JSON only

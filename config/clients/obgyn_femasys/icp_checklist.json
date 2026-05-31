@@ -50,7 +50,8 @@
       "signal_label": "Hospital or health system affiliated",
       "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
       "positive_weight": -30,
-      "note": "Hard negative — triggers hospital_owned or health_system_affiliated exclusion"
+      "cap_tier": "Needs Verification",
+      "note": "Friction signal — caps tier at Needs Verification for operator review"
     }
   ]
 }

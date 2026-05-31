@@ -141,8 +141,8 @@ h1 {
   <h1>{{ profile.name }}</h1>
   <p class="meta">
     {% if profile.source_urls and profile.source_urls.company_url %}
-      <a href="{{ profile.source_urls.company_url }}">{{ profile.source_urls.company_url }}</a>
-      {% if profile.source_urls.product_url %} &nbsp;·&nbsp; <a href="{{ profile.source_urls.product_url }}">Product Page</a>{% endif %}
+      <a href="{{ profile.source_urls.company_url }}" target="_blank" rel="noopener noreferrer">{{ profile.source_urls.company_url }}</a>
+      {% if profile.source_urls.product_url %} &nbsp;·&nbsp; <a href="{{ profile.source_urls.product_url }}" target="_blank" rel="noopener noreferrer">Product Page</a>{% endif %}
       &nbsp;·&nbsp;
     {% endif %}
     v{{ profile.version }} &nbsp;·&nbsp; {{ profile.signals | length }} signals

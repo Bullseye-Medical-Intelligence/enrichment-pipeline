@@ -1,7 +1,10 @@
 """
 verifier.py
-GPT-based verification for Bullseye-tier records (bullseye_score >= 75).
-Second-opinion quality gate - not a vote, not an override.
+GPT-based second pass: Bullseye verification + practice-specific sales brief.
+
+Verification (Bullseye only): independent quality gate — not a vote, not an override.
+Sales brief (all enriched CLEAR records): GPT generates practice-specific talking
+points grounded in confirmed signals, replacing the generic Claude-generated angles.
 """
 
 import json
@@ -16,6 +19,9 @@ load_dotenv()
 
 PROMPT_VERSION = "verification_v1"
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "verification_v1.txt"
+
+_SALES_BRIEF_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "sales_brief_gpt_v1.txt"
+_CONTEXT_EXCERPT_CHARS = 3000
 
 # Per-call LLM timeout (seconds). Prevents a stalled socket from hanging a run.
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("LLM_REQUEST_TIMEOUT_SECONDS", "60"))
@@ -219,5 +225,115 @@ def verify_bullseye_record(record: dict, context_text: str) -> dict:
         record["internal_notes"] = f"{existing} {note}".strip()
         print(f"    [FAIL] GPT API failed: {e}")
         # Don't change enrichment_status on API failure - not a disagreement
+
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Practice-specific sales brief generation (all enriched CLEAR records)
+# ---------------------------------------------------------------------------
+
+def _format_confirmed_signals(signals: list[dict]) -> str:
+    """Format confirmed positive signals for the sales brief prompt."""
+    lines = [
+        f"- {s['signal_label']}: {s.get('evidence_text', '').strip()}"
+        for s in signals
+        if s.get("signal_state") == "yes" and (s.get("positive_weight", 0) or 0) > 0
+    ]
+    return "\n".join(lines) if lines else "(none confirmed)"
+
+
+def _format_friction_signals(signals: list[dict]) -> str:
+    """Format confirmed friction/negative signals for the sales brief prompt."""
+    lines = [
+        f"- {s['signal_label']}: {s.get('evidence_text', '').strip()}"
+        for s in signals
+        if s.get("signal_state") == "yes" and (s.get("positive_weight", 0) or 0) <= 0
+    ]
+    return "\n".join(lines) if lines else "(none)"
+
+
+def _build_sales_brief_prompt(record: dict, context_text: str, run_config: dict) -> str:
+    """Build the practice-specific sales brief prompt."""
+    template = _SALES_BRIEF_PROMPT_PATH.read_text(encoding="utf-8")
+    signals = record.get("signals") or []
+    replacements = {
+        "{client_name}": run_config.get("client_name") or "the company",
+        "{product_name}": run_config.get("product_name") or "the product",
+        "{target_specialty}": run_config.get("target_specialty") or "the target specialty",
+        "{practice_name}": record.get("practice_name", "Unknown"),
+        "{specialty}": record.get("specialty", "Unknown"),
+        "{address_city}": record.get("address_city", ""),
+        "{address_state}": record.get("address_state", ""),
+        "{website_url}": record.get("website_url", ""),
+        "{confirmed_signals}": _format_confirmed_signals(signals),
+        "{friction_signals}": _format_friction_signals(signals),
+        "{context_excerpt}": (context_text or "")[:_CONTEXT_EXCERPT_CHARS],
+    }
+    result = template
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, str(value))
+    return result
+
+
+def _parse_sales_brief_response(raw: str) -> dict:
+    """Parse GPT's sales brief JSON response."""
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+    parsed = json.loads(text)
+    angles = parsed.get("sales_angle")
+    if not isinstance(angles, list):
+        raise ValueError("sales_brief response missing 'sales_angle' list")
+    return parsed
+
+
+def generate_sales_brief(record: dict, context_text: str, run_config: dict) -> dict:
+    """Generate a practice-specific sales brief via GPT and update the record.
+
+    Replaces the Claude-generated sales_angle with GPT-authored practice-specific
+    talking points. Also updates call_brief.why_contact with the GPT summary.
+    On API failure the existing Claude-generated content is preserved unchanged.
+
+    Args:
+        record: Enriched record (after Step 4 signal extraction).
+        context_text: Extracted website text for the practice.
+        run_config: Pipeline run configuration (provides product/client context).
+
+    Returns:
+        Updated record dict.
+    """
+    gpt_model = _get_model()
+    try:
+        client = _get_client()
+    except EnvironmentError as e:
+        print(f"    Sales brief skipped: {e}")
+        return record
+
+    try:
+        prompt = _build_sales_brief_prompt(record, context_text, run_config)
+        print(f"    Calling GPT ({gpt_model}) for sales brief...")
+        raw_response = _call_gpt(prompt, client, gpt_model)
+        parsed = _parse_sales_brief_response(raw_response)
+
+        angles = [str(a).strip() for a in parsed["sales_angle"] if a]
+        why = str(parsed.get("why_contact") or "").strip()
+
+        # Only update if GPT returned substantive content.
+        if angles:
+            record["sales_angle"] = angles
+        if why:
+            brief = record.get("call_brief") or {}
+            brief["why_contact"] = why
+            record["call_brief"] = brief
+
+        print(f"    [OK] Sales brief generated ({len(angles)} angles)")
+
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"    [FAIL] Sales brief parse failed: {e}")
+
+    except RuntimeError as e:
+        print(f"    [FAIL] Sales brief GPT error: {e}")
 
     return record

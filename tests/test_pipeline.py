@@ -534,6 +534,74 @@ class TestTierAssignment:
 
 
 # ---------------------------------------------------------------------------
+# floor_tier ICP signal flag
+# ---------------------------------------------------------------------------
+
+class TestFloorTier:
+    """floor_tier guarantees a minimum tier when a qualifying signal is confirmed."""
+
+    def _record(self, signals, score=30, status="complete"):
+        return {
+            "enrichment_status": status,
+            "bullseye_score": score,
+            "signals": signals,
+        }
+
+    def test_floor_tier_overrides_low_score_manual_review(self):
+        """Confirmed signal with floor_tier: Contender prevents Manual Review from low score."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "positive_weight": 20, "floor_tier": "Contender"},
+        ]
+        result = _assign_tier(self._record(signals, score=30), 30, 75)
+        assert result == "Contender"
+
+    def test_floor_tier_does_not_apply_when_signal_not_confirmed(self):
+        """floor_tier has no effect when the signal is not_found — Manual Review still fires."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "not_found",
+             "positive_weight": 20, "floor_tier": "Contender"},
+        ]
+        result = _assign_tier(self._record(signals, score=20), 20, 75)
+        assert result == "Manual Review"
+
+    def test_floor_tier_does_not_prevent_higher_tier(self):
+        """A high score above bullseye_min is not capped down to the floor."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "positive_weight": 20, "floor_tier": "Contender"},
+        ]
+        result = _assign_tier(self._record(signals, score=90), 90, 75)
+        assert result == "Bullseye"
+
+    def test_floor_tier_still_subject_to_cap_tier(self):
+        """A cap_tier from another confirmed signal can pull the floor-lifted tier back down."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "positive_weight": 20, "floor_tier": "Contender"},
+            {"signal_id": "S-hosp", "signal_state": "yes",
+             "positive_weight": -30, "cap_tier": "Needs Verification"},
+        ]
+        # Score-based start = Contender (30 < 75 bullseye_min), floor = Contender.
+        # cap_tier: Needs Verification (rank 2) > Contender (rank 1), so cap doesn't
+        # pull down — Contender wins.
+        result = _assign_tier(self._record(signals, score=30), 30, 75)
+        assert result == "Contender"
+
+    def test_floor_tier_cap_pulls_down_when_lower_than_floor(self):
+        """cap_tier: Contender pulls a floor-lifted Bullseye down to Contender."""
+        signals = [
+            {"signal_id": "S-qual", "signal_state": "yes",
+             "positive_weight": 20, "floor_tier": "Needs Verification"},
+            {"signal_id": "S-hosp", "signal_state": "yes",
+             "positive_weight": -30, "cap_tier": "Contender"},
+        ]
+        # Floor lifts to NV (rank 2); cap pulls back to Contender (rank 1).
+        result = _assign_tier(self._record(signals, score=90), 90, 75)
+        assert result == "Contender"
+
+
+# ---------------------------------------------------------------------------
 # Specialty inference (type column, with practice-name fallback)
 # ---------------------------------------------------------------------------
 
