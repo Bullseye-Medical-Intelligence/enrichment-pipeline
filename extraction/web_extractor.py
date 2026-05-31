@@ -346,18 +346,23 @@ def batch_extract(records: list[dict], timeout: int = 15,
     if use_playwright:
         try:
             try:
-                from playwright_extractor import crawl_with_playwright
+                from playwright_extractor import crawl_with_playwright, launch_browser
             except ImportError:
-                from extraction.playwright_extractor import crawl_with_playwright
-            # Probe: verify the browser binary is reachable before committing to the pool
+                from extraction.playwright_extractor import crawl_with_playwright, launch_browser
+            # Probe: verify a browser launches before committing to the pool.
+            # launch_browser tries bundled Chromium, then installed Chrome/Edge.
             from playwright.sync_api import sync_playwright
             with sync_playwright() as _pw:
-                _b = _pw.chromium.launch(headless=True)
+                _b = launch_browser(_pw)
                 _b.close()
             _playwright_available = True
             print("  [Playwright] Headless browser available - using Playwright for extraction")
         except Exception as _pw_err:
-            print(f"  [Playwright] Browser not available ({_pw_err!s:.120}), falling back to requests")
+            print("  [Playwright] WARNING: no headless browser could launch "
+                  f"({_pw_err!s:.160})")
+            print("  [Playwright] Browser re-crawl will produce NO new data. To fix, run:")
+            print("  [Playwright]   python -m playwright install chromium")
+            print("  [Playwright] (or install Google Chrome). Falling back to requests.")
 
     def _extract(record):
         try:

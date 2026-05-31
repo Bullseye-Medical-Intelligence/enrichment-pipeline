@@ -27,6 +27,28 @@ from web_extractor import (  # noqa: E402
 )
 
 
+def launch_browser(pw):
+    """Launch a headless browser, preferring the bundled Chromium.
+
+    Falls back to an installed Google Chrome, then Microsoft Edge, when the
+    bundled Chromium binary was never downloaded (`playwright install chromium`
+    not run). This lets the browser path work on a machine that has Chrome but
+    no Playwright browser download. Raises the original error if nothing launches.
+    """
+    attempts = [
+        {},                       # bundled Chromium (playwright install chromium)
+        {"channel": "chrome"},    # installed Google Chrome
+        {"channel": "msedge"},    # installed Microsoft Edge
+    ]
+    last_error = None
+    for opts in attempts:
+        try:
+            return pw.chromium.launch(headless=True, **opts)
+        except Exception as e:  # try the next channel
+            last_error = e
+    raise last_error
+
+
 def _extract_text_from_html(html: str) -> str:
     """Strip tags and collapse whitespace — same logic as web_extractor."""
     from bs4 import BeautifulSoup
@@ -82,7 +104,7 @@ def crawl_with_playwright(
 
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+            browser = launch_browser(pw)
             context = browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
