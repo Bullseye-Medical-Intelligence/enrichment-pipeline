@@ -5,6 +5,9 @@
 # Output files — never commit real client data
 /output/*.json
 /output/*.csv
+/output/icp_profiles/
+/output/runs/
+/output/projects/
 
 # Python
 __pycache__/
