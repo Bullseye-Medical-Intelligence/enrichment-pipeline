@@ -159,12 +159,13 @@ def list_icp_profiles() -> list[dict]:
     return profiles
 
 
-def save_icp_profile(data: dict) -> None:
+def save_icp_profile(data: dict, overwrite: bool = False) -> None:
     """
     Validate and write an ICP profile to ICP_PROFILES_PATH/{icp_id}.json.
 
-    Uses atomic temp-file + os.replace() so a crash mid-write cannot
-    produce a partial file. Raises ValueError on invalid data or duplicate id.
+    Uses atomic temp-file + os.replace() so a crash mid-write cannot produce a
+    partial file. Raises ValueError on invalid data. A new profile must not clash
+    with an existing id; pass overwrite=True (the Edit flow) to update one in place.
     """
     validate_icp_profile(data)
     icp_id = data["icp_id"]
@@ -173,7 +174,7 @@ def save_icp_profile(data: dict) -> None:
     base = config.ICP_PROFILES_PATH
     base.mkdir(parents=True, exist_ok=True)
     path = base / f"{icp_id}.json"
-    if path.exists():
+    if path.exists() and not overwrite:
         raise ValueError(f"A profile with id '{icp_id}' already exists. Choose a different ID.")
     tmp = path.with_suffix(".tmp")
     try:

@@ -228,7 +228,7 @@ def test_runs_endpoint_requires_auth(tmp_path, monkeypatch):
         assert "runs" in ok.json()
 
 import sys as _sys  # noqa: E402 (re-import to avoid name collision)
-from ui import _friendly_error, _compute_readiness  # noqa: E402
+from ui import _friendly_error, _compute_readiness, _pending_review_count, _parse_signals_from_form  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +324,40 @@ def test_compute_readiness_excluded_not_counted():
     r = _compute_readiness(records)
     assert r["state"] == "no_approved"
     assert r["approved_count"] == 0
+
+
+def test_pending_review_count_only_counts_bullseye_and_contender(tmp_path):
+    """The client-package gate ignores pending NV / Manual Review / Excluded."""
+    records = [
+        {"record_id": "T-1", "target_tier": "Bullseye", "exclusion_status": "CLEAR"},
+        {"record_id": "T-2", "target_tier": "Contender", "exclusion_status": "CLEAR"},
+        {"record_id": "T-3", "target_tier": "Manual Review", "exclusion_status": "CLEAR"},
+        {"record_id": "T-4", "target_tier": "Needs Verification", "exclusion_status": "CLEAR"},
+        {"record_id": "T-5", "target_tier": "Excluded", "exclusion_status": "EXCLUDED"},
+    ]
+    _write_run(tmp_path, records, {})  # all pending by default
+    # Only T-1 + T-2 (Bullseye/Contender) count toward the gate.
+    assert _pending_review_count("RUN-20260527-143000-aaaa", tmp_path) == 2
+
+
+def test_parse_signals_skips_blank_and_preserves_hidden_fields():
+    """A removed (blank-id) row is dropped; cap_tier / exclude_if_yes survive an edit."""
+    form = {
+        "signal_id_0": "S-1", "signal_label_0": "Cash pay", "prompt_instruction_0": "?",
+        "positive_weight_0": "25", "cap_tier_0": "", "exclude_if_yes_0": "",
+        # row 1 removed by the UI: disabled inputs -> absent from form data
+        "signal_id_2": "S-3", "signal_label_2": "Hospital owned", "prompt_instruction_2": "?",
+        "positive_weight_2": "0", "cap_tier_2": "Contender", "exclude_if_yes_2": "1",
+        "reinforces_2": "S-1", "verification_required_2": "1",
+    }
+    out = _parse_signals_from_form(form, signal_count=3)
+    ids = [s["signal_id"] for s in out]
+    assert ids == ["S-1", "S-3"]              # blank/removed row 1 dropped
+    s3 = next(s for s in out if s["signal_id"] == "S-3")
+    assert s3["cap_tier"] == "Contender"      # preserved
+    assert s3["exclude_if_yes"] is True
+    assert s3["reinforces"] == "S-1"
+    assert s3["verification_required"] is True
 
 
 # ---------------------------------------------------------------------------

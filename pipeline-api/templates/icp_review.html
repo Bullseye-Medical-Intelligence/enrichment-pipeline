@@ -39,6 +39,7 @@
   <input type="hidden" name="specialty"          value="{{ specialty }}">
   <input type="hidden" name="demo_accounts_json" value="{{ demo_accounts | default([]) | tojson | e }}">
   <input type="hidden" name="product_brief_json" value="{{ product_brief_json | default('') | e }}">
+  <input type="hidden" name="is_edit"            value="{{ '1' if is_edit else '' }}">
 
   {# ------------------------------------------------------------------ #}
   {# SECTION 1 — ICP summary description                                #}
@@ -149,6 +150,7 @@
           <th style="width:68px; text-align:center;">Weight</th>
           <th style="width:72px; text-align:center;">No Penalty</th>
           <th style="width:72px; text-align:center;">Must-Have</th>
+          <th style="width:70px; text-align:center;"></th>
         </tr>
       </thead>
       <tbody>
@@ -185,6 +187,16 @@
             <input type="checkbox" name="required_for_bullseye_{{ n }}"
                    {% if sig.required_for_bullseye %}checked{% endif %}
                    title="Required for Bullseye: confirmed absent caps tier at Contender; not found caps at Needs Verification.">
+          </td>
+          <td style="text-align:center;">
+            <button type="button" class="btn btn-secondary btn-sm" title="Remove this signal"
+                    onclick="removeSignalRow(this)">Remove</button>
+            {# Preserve tiering fields the visible form does not edit, so saving
+               keeps each signal's full config (e.g. a cap_tier disqualifier). #}
+            <input type="hidden" name="cap_tier_{{ n }}" value="{{ sig.cap_tier | default('') }}">
+            <input type="hidden" name="exclude_if_yes_{{ n }}" value="{{ '1' if sig.exclude_if_yes else '' }}">
+            <input type="hidden" name="reinforces_{{ n }}" value="{{ sig.reinforces | default('') }}">
+            <input type="hidden" name="verification_required_{{ n }}" value="{{ '1' if sig.verification_required else '' }}">
           </td>
         </tr>
         {% endfor %}
@@ -223,5 +235,14 @@ document.querySelector('form').addEventListener('submit', function (e) {
     document.querySelectorAll('.form-actions button').forEach(function (b) { b.disabled = true; });
   }
 });
+
+/* Remove a signal row: disabling its inputs drops them from the submission (and
+   skips their HTML5 required validation), so _parse_signals_from_form omits it. */
+function removeSignalRow(btn) {
+  var row = btn.closest('tr');
+  if (!row) return;
+  row.querySelectorAll('input, textarea, select').forEach(function (el) { el.disabled = true; });
+  row.style.display = 'none';
+}
 </script>
 {% endblock %}

@@ -477,6 +477,7 @@ async def icp_save(
     icp_description: str = Form(""),
     demo_accounts_json: str = Form(""),
     product_brief_json: str = Form(""),
+    is_edit: str = Form(""),
 ):
     """Validate and persist the edited ICP profile to disk."""
     form_data = await request.form()
@@ -501,12 +502,13 @@ async def icp_save(
         "signals": signals,
     }
     try:
-        icp_profiles.save_icp_profile(profile)
+        icp_profiles.save_icp_profile(profile, overwrite=bool(is_edit))
     except ValueError as exc:
         return _render(
             "icp_review.html",
             username=username,
             error=str(exc),
+            is_edit=is_edit,
             signals=signals,
             hypothesis=hypothesis,
             icp_description=icp_description,
@@ -533,6 +535,43 @@ async def icp_profiles_page(request: Request, username: str = Depends(auth.requi
         "icp_profiles.html",
         username=username,
         profiles=icp_profiles.list_icp_profiles(),
+    )
+
+
+@router.get("/icp-profiles/{icp_id}/edit", response_class=HTMLResponse)
+async def icp_edit_page(
+    request: Request, icp_id: str, username: str = Depends(auth.require_session)
+):
+    """Load an existing ICP profile into the editable review form.
+
+    Lets an operator add, edit, or remove signals on a live profile and save over
+    it (overwrite). Optional tiering fields (cap_tier, exclude_if_yes, reinforces,
+    verification_required) are preserved via hidden inputs in the form.
+    """
+    try:
+        profile = icp_profiles.get_icp_profile(icp_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    source_urls = profile.get("source_urls") or {}
+    return _render(
+        "icp_review.html",
+        username=username,
+        is_edit=True,
+        signals=profile.get("signals", []),
+        hypothesis=profile.get("hypothesis") or {},
+        icp_description=profile.get("description", ""),
+        demo_accounts=profile.get("demo_accounts", []),
+        crawl_notes=[],
+        product_brief_json=json.dumps(profile.get("product_brief") or {}),
+        icp_id=profile.get("icp_id", icp_id),
+        icp_name=profile.get("name", ""),
+        version=profile.get("version", "1.0"),
+        company_name="",
+        company_url=source_urls.get("company_url", ""),
+        product_name=profile.get("product_name", ""),
+        product_type="",
+        product_url=source_urls.get("product_url", ""),
+        specialty=profile.get("default_specialty", ""),
     )
 
 
@@ -849,6 +888,52 @@ async def recrawl_single_record(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
+
+
+@router.get("/runs/{run_id}/recrawl-progress")
+async def recrawl_progress(run_id: str, username: str = Depends(auth.require_session)):
+    """Report progress of the in-flight per-record re-crawl for a run.
+
+    The re-crawl runs the pipeline in a hidden scratch dir (`.recrawl_*`) that
+    carries a progress.json; this read-only endpoint peeks at it so the button can
+    show a live percentage. Returns {active: false} when no re-crawl is running
+    (not started yet, or already merged and cleaned up).
+    """
+    try:
+        run_directory = runs.run_dir(run_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    scratch_dirs = sorted(
+        run_directory.glob(".recrawl_*"),
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True,
+    )
+    for scratch in scratch_dirs:
+        progress_path = scratch / "progress.json"
+        if not progress_path.exists():
+            continue
+        try:
+            with open(progress_path, "r", encoding="utf-8") as f:
+                prog = json.load(f)
+        except (ValueError, OSError):
+            continue
+        step_num = int(prog.get("step_num", 0))
+        step_total = int(prog.get("step_total", 8)) or 8
+        done = int(prog.get("records_done", 0))
+        total = int(prog.get("records_total", 0))
+        within = (done / total) if total else 0.0
+        percent = max(0, min(100, round((step_num - 1 + within) / step_total * 100)))
+        return JSONResponse(content={
+            "active": True,
+            "percent": percent,
+            "step_num": step_num,
+            "step_total": step_total,
+            "step_name": prog.get("step_name", ""),
+        })
+    return JSONResponse(content={"active": False})
 
 
 @router.post("/runs/{run_id}/records/{record_id}/manual-content")
@@ -1217,17 +1302,27 @@ def _friendly_error(raw: str | None) -> str | None:
 
 
 def _pending_review_count(run_id: str, run_directory: Path) -> int:
-    """Count records in a completed run that still have qc_status='pending'."""
+    """Count Bullseye/Contender records still pending QC.
+
+    Only the client-shipped tiers require sign-off (same scope as
+    _compute_readiness). Needs Verification / Manual Review / Excluded never block
+    the client-package download — operators audit those ad hoc.
+    """
     results_path = run_directory / "enriched_targets.json"
     if not results_path.exists():
         return 0
     with open(results_path, "r", encoding="utf-8") as f:
         all_records = record_adapter.normalize_records_payload(json.load(f))
     all_reviews = reviews.get_reviews(run_id, run_directory)
-    return sum(
-        1 for r in all_records
-        if all_reviews.get(record_adapter.get_record_id(r), {}).get("qc_status", "pending") == "pending"
-    )
+    _qc_required = {"bullseye", "contender"}
+    pending = 0
+    for r in all_records:
+        review = all_reviews.get(record_adapter.get_record_id(r), {})
+        if record_adapter.displayed_tier(r, review).strip().lower() not in _qc_required:
+            continue
+        if review.get("qc_status", "pending") == "pending":
+            pending += 1
+    return pending
 
 
 def _compute_readiness(merged_records: list) -> dict:
@@ -1290,11 +1385,20 @@ class _TagStripper(HTMLParser):
 
 
 def _parse_signals_from_form(form_data: dict, signal_count: int) -> list[dict]:
-    """Extract and normalize signal rows from a review form submission."""
+    """Extract and normalize signal rows from a review form submission.
+
+    Rows whose signal_id is blank are skipped — that is how the Edit flow removes
+    a signal (its row is cleared client-side). Optional tiering fields the visible
+    form does not expose (cap_tier, exclude_if_yes, reinforces, verification_required)
+    ride along as hidden inputs so editing one signal never strips another's config.
+    """
     signals = []
     for i in range(signal_count):
+        signal_id = (form_data.get(f"signal_id_{i}") or "").strip()
+        if not signal_id:
+            continue  # removed/blank row
         sig: dict = {
-            "signal_id": (form_data.get(f"signal_id_{i}") or "").strip(),
+            "signal_id": signal_id,
             "signal_label": (form_data.get(f"signal_label_{i}") or "").strip(),
             "prompt_instruction": (form_data.get(f"prompt_instruction_{i}") or "").strip(),
             "positive_weight": int(form_data.get(f"positive_weight_{i}") or 0),
@@ -1307,6 +1411,17 @@ def _parse_signals_from_form(form_data: dict, signal_count: int) -> list[dict]:
                 sig["no_weight"] = int(raw_no_weight)
             except ValueError:
                 pass
+        # Preserved hidden fields (present only when editing an existing profile).
+        cap_tier = (form_data.get(f"cap_tier_{i}") or "").strip()
+        if cap_tier:
+            sig["cap_tier"] = cap_tier
+        if (form_data.get(f"exclude_if_yes_{i}") or "").strip().lower() in ("1", "true", "on"):
+            sig["exclude_if_yes"] = True
+        reinforces = (form_data.get(f"reinforces_{i}") or "").strip()
+        if reinforces:
+            sig["reinforces"] = reinforces
+        if (form_data.get(f"verification_required_{i}") or "").strip().lower() in ("1", "true", "on"):
+            sig["verification_required"] = True
         signals.append(sig)
     return signals
 

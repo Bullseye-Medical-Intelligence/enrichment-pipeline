@@ -22,12 +22,13 @@
         <code>{{ icp.icp_id }}</code> · v{{ icp.version }} · {{ icp.signal_count }} signals
       </p>
     </div>
-    {% if icp.demo_accounts %}
     <div class="header-actions">
+      <a href="/icp-profiles/{{ icp.icp_id }}/edit" class="btn btn-secondary" style="font-size:12px;">Edit</a>
+      {% if icp.demo_accounts %}
       <a href="/icp-profiles/{{ icp.icp_id }}/demo" class="btn btn-secondary" style="font-size:12px;">Demo Brief</a>
       <a href="/icp-profiles/{{ icp.icp_id }}/demo.pdf" class="btn btn-secondary" style="font-size:12px;">↓ PDF</a>
+      {% endif %}
     </div>
-    {% endif %}
   </div>
   {% if icp.description %}<p style="margin-bottom:10px; font-size:13px; color:#444;">{{ icp.description }}</p>{% endif %}
   {% if icp.hypothesis %}

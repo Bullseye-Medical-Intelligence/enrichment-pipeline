@@ -308,6 +308,26 @@ def test_icp_validation_rejects_non_string_reinforces():
         icp_profiles.validate_icp_profile(_icp_with_signal(reinforces=123))
 
 
+def test_save_icp_profile_rejects_duplicate_without_overwrite(store):
+    icp_profiles.save_icp_profile(dict(_VALID_ICP))
+    with pytest.raises(ValueError):
+        icp_profiles.save_icp_profile(dict(_VALID_ICP))  # id exists, no overwrite
+
+
+def test_save_icp_profile_overwrites_when_editing(store):
+    icp_profiles.save_icp_profile(dict(_VALID_ICP))
+    edited = dict(_VALID_ICP)
+    edited["signals"] = [
+        {"signal_id": "S-1", "signal_label": "Kept", "prompt_instruction": "?",
+         "positive_weight": 10, "cap_tier": "Contender"},
+    ]
+    icp_profiles.save_icp_profile(edited, overwrite=True)
+    reloaded = icp_profiles.get_icp_profile(_VALID_ICP["icp_id"])
+    assert len(reloaded["signals"]) == 1
+    assert reloaded["signals"][0]["signal_label"] == "Kept"
+    assert reloaded["signals"][0]["cap_tier"] == "Contender"
+
+
 # ---------------------------------------------------------------------------
 # Upload rejection for a missing project
 # ---------------------------------------------------------------------------

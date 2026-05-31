@@ -29,8 +29,44 @@ function lockRecrawlForms(label) {
   document.querySelectorAll('.recrawl-form button[type=submit], .manual-content-form button[type=submit]')
     .forEach(function(btn) {
       btn.disabled = true;
+      btn.classList.add('btn-working');
       btn.textContent = label || 'Processing…';
     });
+}
+
+/* ── Browser re-crawl: submit in the background and show live % progress ──
+   The server blocks until the record is merged; we stay on the page, poll the
+   crawl's step progress, paint it into the button, then jump to the fresh card. */
+var _recrawlPoll = null;
+function submitRecrawl(form, event) {
+  event.preventDefault();
+  if (form.dataset.submitting === '1') return false;
+  form.dataset.submitting = '1';
+  var runId = form.dataset.runId;
+  var recordId = form.dataset.recordId;
+  var btn = form.querySelector('button[type=submit]');
+  var target = '/dashboard/' + runId + '?scrollto=' + recordId;
+  lockRecrawlForms('Starting…');
+
+  if (_recrawlPoll) clearInterval(_recrawlPoll);
+  _recrawlPoll = setInterval(function() {
+    fetch('/runs/' + runId + '/recrawl-progress', {headers: {'Accept': 'application/json'}})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (d && d.active && btn) {
+          btn.textContent = (d.step_name || 'Working') + ' · ' + d.percent + '%';
+        }
+      })
+      .catch(function() {});
+  }, 1500);
+
+  function done() {
+    if (_recrawlPoll) { clearInterval(_recrawlPoll); _recrawlPoll = null; }
+    window.location = target;
+  }
+  fetch(form.action, {method: 'POST', body: new FormData(form), redirect: 'follow'})
+    .then(done).catch(done);
+  return false;
 }
 
 /* ── Row expand/collapse ────────────────────────────────────── */

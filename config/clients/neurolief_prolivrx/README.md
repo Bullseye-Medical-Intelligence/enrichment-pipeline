@@ -82,6 +82,6 @@ the service-line signals. Same pattern as the Angel Aligner elective cartridge.
 2. Verify the engine handles a cartridge with no state_mandate_status field
    cleanly (the Angel work should have proven this).
 3. Reimbursement will change. When a major payer issues a Proliv Rx coverage
-   policy, the cash-pay weighting (S-NLF-002, S-NLF-009) should be revisited.
+   policy, the cash-pay weighting (S-NLF-002) should be revisited.
    Build so that weighting can be tuned down without re-architecting.
 4. Corrections profile needs a public-record source adapter before it can run.

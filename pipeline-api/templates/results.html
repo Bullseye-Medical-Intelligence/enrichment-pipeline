@@ -373,8 +373,9 @@
                 <h4>Recover This Site</h4>
                 <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
                       class="recrawl-form"
+                      data-run-id="{{ run_id }}" data-record-id="{{ rid }}"
                       style="margin-top:0.4em;"
-                      onsubmit="lockRecrawlForms('Processing…');">
+                      onsubmit="return submitRecrawl(this, event);">
                   <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                     <input type="url" name="website_url"
                            value="{{ record.website_url }}"
@@ -421,7 +422,7 @@
 
                 <h4>Scores</h4>
                 <table class="score-table">
-                  <tr><td>Bullseye</td><td><strong>{{ record.bullseye_score | default("—") }}</strong></td></tr>
+                  <tr><td>Total</td><td><strong>{{ record.bullseye_score | default("—") }}</strong></td></tr>
                   <tr><td>Fit</td><td>{{ record.fit_signal_score | default("—") }}</td></tr>
                   <tr><td>Confidence</td><td>{{ record.confidence_score | default("—") }}</td></tr>
                   <tr><td>Status</td><td>{{ record.fit_confidence_status | default("—") | title }}</td></tr>
