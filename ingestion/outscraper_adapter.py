@@ -106,8 +106,9 @@ def _parse_full_address(full_address: str) -> dict:
     if not full_address:
         return result
 
-    # Try to match "City, ST 12345" or "City, ST 12345-6789" at end of string
-    pattern = r"([A-Za-z\s\.]+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)"
+    # Match "City, ST 12345", "City, ST", or "City, Texas" — zip is optional,
+    # state is 2–20 letters (handles both abbreviations and full names).
+    pattern = r"([A-Za-z][A-Za-z\s\.]+?),\s*([A-Za-z]{2,20})(?:\s+(\d{5}(?:-\d{4})?))?"
     match = re.search(pattern, full_address)
     if match:
         result["address_city"] = match.group(1).strip()

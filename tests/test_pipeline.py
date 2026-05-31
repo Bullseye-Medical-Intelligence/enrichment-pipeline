@@ -604,12 +604,26 @@ class TestGeographyExclusion:
 class TestNoWebPresenceExclusion:
 
     def test_no_url_and_no_text_excluded(self):
+        """Exclusion fires only when there is genuinely no URL in the record."""
         record = _clear_record()
+        record["website_url"] = ""      # no URL at all
         record["_url_valid"] = False
         record["_context_text"] = ""
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "EXCLUDED"
         assert "web presence" in (result.get("exclusion_reason") or "").lower()
+
+    def test_url_present_but_validation_failed_not_excluded(self):
+        """URL validation failure alone must not trigger no_web_presence.
+        A URL string in the record proves the practice has a website."""
+        record = _clear_record()
+        record["website_url"] = "https://nepenthewellness.com"
+        record["_url_valid"] = False    # validator couldn't connect (SSL, timeout, etc.)
+        record["_context_text"] = ""   # no crawled content
+        result = apply_exclusions(record, BASE_RUN_CONFIG)
+        assert result["exclusion_status"] == "CLEAR"
+        triggered = result.get("exclusion_reason") or ""
+        assert "web presence" not in triggered.lower()
 
     def test_valid_url_and_text_not_excluded(self):
         record = _clear_record()
@@ -626,10 +640,10 @@ class TestNoWebPresenceExclusion:
                                         if r != "no_web_presence"],
         }
         record = _clear_record()
+        record["website_url"] = ""
         record["_url_valid"] = False
         record["_context_text"] = ""
         result = apply_exclusions(record, config)
-        # Should not fire no_web_presence
         triggered = result.get("exclusion_reason") or ""
         assert "web presence" not in triggered.lower()
 

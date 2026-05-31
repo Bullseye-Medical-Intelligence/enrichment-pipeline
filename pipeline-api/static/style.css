@@ -291,6 +291,9 @@ ul, ol { padding-left: 1.4em; }
 /* ── Results table ────────────────────────────────────────────────── */
 .record-row:hover td     { background: rgba(200,75,47,0.03) !important; }
 .expand-icon             { color: var(--muted); font-size: 10px; width: 16px; }
+.practice-cell           { max-width: 280px; }
+.practice-url            { display: block; max-width: 260px; overflow: hidden;
+                           text-overflow: ellipsis; white-space: nowrap; }
 .override-indicator      { color: var(--accent); font-size: 13px; margin-left: 4px; }
 .spinner {
   display: inline-block;

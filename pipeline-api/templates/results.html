@@ -224,12 +224,12 @@
           onclick="toggleDetail('{{ rid }}')"
           style="cursor:pointer">
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
-        <td>
+        <td class="practice-cell">
           <strong>{{ record.practice_name | default("—") }}</strong>
           {% if record.source_confidence in ("limited", "failed") %}
           <br><span class="text-muted small">⚠ Limited data</span>
           {% endif %}
-          {% if record.website_url %}<br><a class="text-muted small" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
+          {% if record.website_url %}<br><a class="text-muted small practice-url" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
         <td>{{ record.specialty | default("—") }}</td>
         <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% else %}<span class="text-muted">—</span>{% endif %}</td>

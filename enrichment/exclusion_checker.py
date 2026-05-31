@@ -210,9 +210,9 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     # No-web-presence: deterministic pipeline-level check (configurable)
     if ("no_web_presence" in active_rules
             and "no_web_presence" not in triggered):
-        url_valid = record.get("_url_valid", True)
+        has_url = bool((record.get("website_url") or "").strip())
         context_text = (record.get("_context_text") or "").strip()
-        if not url_valid and not context_text:
+        if not has_url and not context_text:
             triggered.append("no_web_presence")
             rationale_parts.append(
                 "No valid website URL and no public web presence detected."
