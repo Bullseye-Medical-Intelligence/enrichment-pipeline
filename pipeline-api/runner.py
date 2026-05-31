@@ -605,6 +605,55 @@ async def orchestrate_single_recrawl(
     return source_run_id
 
 
+async def orchestrate_excluded_reenrich(
+    source_run_id: str,
+    record_id: str,
+    website_url_override: str,
+    operator: str,
+) -> str:
+    """Re-enrich a pre-excluded record, bypassing structural specialty/geography filters.
+
+    Pre-excluded records were never crawled or scored — structural exclusions fired
+    at ingest before any LLM call. When an operator flags one as a false positive,
+    this path runs the full pipeline on it again but with target_specialty and
+    target_geography cleared so the structural pre-filter does not fire a second
+    time. LLM-detected exclusions (hospital_owned, etc.) still apply normally.
+
+    Returns the source_run_id (same run, record updated in place).
+    """
+    source_dir, record, scratch_dir, config_src, icp_src = _prepare_single_record_job(
+        source_run_id, record_id
+    )
+
+    # Write a modified config with no specialty/geography restriction so the
+    # structural pre-filter cannot re-exclude the record before signals are scored.
+    config_data = json.loads(config_src.read_text(encoding="utf-8"))
+    config_data["target_specialty"] = ""
+    config_data["target_geography"] = []
+    override_config_path = scratch_dir / "config_override.json"
+    override_config_path.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+
+    url = (record_adapter.normalize_homepage_url(website_url_override)
+           or record_adapter.normalize_homepage_url(record.get("website_url", "")))
+    input_path = _write_single_record_csv(scratch_dir, record, url)
+
+    process = spawn_pipeline(
+        source_run_id,
+        input_path,
+        "manual",
+        scratch_dir,
+        override_config_path,
+        icp_src,
+        extra_flags=["--playwright"],
+    )
+    logger.info(
+        "Excluded record re-enrich for %s in run %s started by '%s' (url=%s)",
+        record_id, source_run_id, operator, url,
+    )
+    await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "excluded re-enrich")
+    return source_run_id
+
+
 async def orchestrate_manual_content_recrawl(
     source_run_id: str,
     record_id: str,

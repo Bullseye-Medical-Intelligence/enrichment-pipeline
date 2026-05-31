@@ -370,6 +370,34 @@
                 {% if status.status == "complete" and (record.exclusion_reason
                       or record.source_confidence in ("limited", "failed")
                       or (record.bullseye_score | default(0)) == 0) %}
+
+                {# Pre-excluded records (never crawled): offer a dedicated re-enrich
+                   that strips specialty/geography filters so the LLM can evaluate
+                   the site on its actual signals rather than re-triggering the same
+                   structural exclusion. #}
+                {% if record.exclusion_status == "EXCLUDED" and record.enrichment_status == "not_enriched" %}
+                <h4>Re-Enrich This Record</h4>
+                <p class="text-muted small" style="margin:0 0 0.5em;">
+                  This record was excluded before it was crawled.
+                  Use this to run the full browser crawl and signal evaluation, ignoring the original specialty/geography exclusion.
+                </p>
+                <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/re-enrich"
+                      class="recrawl-form"
+                      data-run-id="{{ run_id }}" data-record-id="{{ rid }}"
+                      style="margin-top:0.4em;"
+                      onsubmit="return submitRecrawl(this, event);">
+                  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="url" name="website_url"
+                           value="{{ record.website_url }}"
+                           placeholder="https://practice-website.com"
+                           style="flex:1; min-width:180px; padding:4px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.82em;">
+                    <button type="submit" class="btn btn-submit" style="padding:4px 10px; font-size:0.82em; white-space:nowrap;">
+                      Re-Enrich with Browser
+                    </button>
+                  </div>
+                </form>
+
+                {% else %}
                 <h4>Recover This Site</h4>
                 <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
                       class="recrawl-form"
@@ -386,6 +414,7 @@
                     </button>
                   </div>
                 </form>
+                {% endif %}
 
                 <details style="margin-top:0.6em;">
                   <summary style="cursor:pointer; font-size:0.82em; color:var(--accent);">

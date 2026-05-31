@@ -1027,6 +1027,35 @@ async def recrawl_single_record(
     return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
 
 
+@router.post("/runs/{run_id}/records/{record_id}/re-enrich")
+async def reenrich_excluded_record(
+    run_id: str,
+    record_id: str,
+    request: Request,
+    website_url: str = Form(""),
+    username: str = Depends(auth.require_session),
+):
+    """Re-enrich a pre-excluded record, bypassing structural specialty/geography filters.
+
+    For records that were structurally excluded at ingest (wrong_specialty,
+    outside_geography) but may be false positives. Runs the full pipeline with
+    no specialty or geography restriction so the LLM can score the site on its
+    actual signals. LLM-detected exclusions still apply.
+    """
+    try:
+        await runner.orchestrate_excluded_reenrich(
+            source_run_id=run_id,
+            record_id=record_id,
+            website_url_override=website_url,
+            operator=username,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
+
+
 @router.get("/runs/{run_id}/recrawl-progress")
 async def recrawl_progress(run_id: str, username: str = Depends(auth.require_session)):
     """Report progress of the in-flight per-record re-crawl for a run.
