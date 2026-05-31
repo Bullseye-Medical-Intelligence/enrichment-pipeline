@@ -152,7 +152,12 @@ _URL_PLACEHOLDERS = frozenset({
 
 
 def _normalize_url(url: str) -> str:
-    """Normalize to homepage: decode percent-encoding, strip query/fragment/path.
+    """Decode percent-encoding and strip tracking query params / fragments.
+
+    Keeps scheme + netloc + path so that a practice with a specific location
+    page (e.g. a franchise sub-URL) is validated and crawled from that page
+    rather than the generic domain root. Stripping the path caused URL
+    validation failures for sub-page URLs, producing false "limited" results.
 
     Returns empty string for blank/placeholder values and malformed URLs with no netloc.
     """
@@ -164,11 +169,12 @@ def _normalize_url(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     parsed = urllib.parse.urlparse(url)
-    # Keep only scheme + netloc — strips UTM params, tracking paths, fragments.
-    # Reject URLs that have no netloc after parsing (malformed input).
+    # Keep scheme + netloc + path; drop query string and fragment (tracking params).
+    # Reject URLs with no netloc (malformed input).
     if not parsed.netloc:
         return ""
-    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    path = parsed.path.rstrip("/") or ""
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
 
 
 def _clean_phone(phone: str) -> str:

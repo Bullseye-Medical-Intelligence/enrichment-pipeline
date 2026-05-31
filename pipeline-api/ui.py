@@ -611,14 +611,20 @@ async def runs_page(request: Request, username: str = Depends(auth.require_sessi
 # ---------------------------------------------------------------------------
 
 def _normalize_display_url(url: str) -> str:
-    """Strip tracking paths and query strings, keeping only scheme://netloc for display."""
+    """Decode percent-encoding and strip tracking query params / fragments for display.
+
+    Keeps path so sub-page URLs (franchise location pages, etc.) display correctly.
+    """
     if not url:
         return ""
     url = unquote(url.strip())
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     parsed = urlparse(url)
-    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    if not parsed.netloc:
+        return ""
+    path = parsed.path.rstrip("/") or ""
+    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
 
 
 def _load_merged_records(run_id: str, status) -> list[dict]:
