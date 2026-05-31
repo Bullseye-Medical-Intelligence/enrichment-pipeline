@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import secrets
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -170,6 +171,23 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
 def count_active_runs() -> int:
     """Return the number of runs currently in 'pending' or 'running' state."""
     return sum(1 for s in list_runs() if s.status in ("pending", "running"))
+
+
+def delete_run(run_id: str) -> None:
+    """Permanently remove a run directory and all its files.
+
+    Raises ValueError if the run is currently active (pending/running) or does
+    not exist. The run_id format is validated by run_dir() before any filesystem
+    access.
+    """
+    directory = run_dir(run_id)
+    if not directory.exists():
+        raise ValueError(f"Run '{run_id}' does not exist.")
+    status = get_run(run_id)
+    if status and status.status in ("pending", "running"):
+        raise ValueError(f"Cannot delete an active run (status: {status.status}).")
+    shutil.rmtree(directory)
+    logger.info("Deleted run directory: %s", directory)
 
 
 def reconcile_orphaned_runs() -> int:

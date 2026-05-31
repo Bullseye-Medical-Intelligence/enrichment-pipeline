@@ -10,6 +10,10 @@
   <a href="/upload" class="btn btn-primary">+ New Run</a>
 </div>
 
+{% if delete_error %}
+<div class="alert alert-error">{{ delete_error }}</div>
+{% endif %}
+
 {% if runs %}
 <div class="card">
   <table class="data-table">
@@ -28,6 +32,7 @@
         <th>Errors</th>
         <th>Created</th>
         <th>Completed</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -56,6 +61,15 @@
         <td class="text-muted">{{ run.created_at[:16].replace("T", " ") }}</td>
         <td class="text-muted">
           {% if run.completed_at %}{{ run.completed_at[:16].replace("T", " ") }}{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if run.status not in ("pending", "running") %}
+          <form method="post" action="/dashboard/{{ run.run_id }}/delete"
+                onsubmit="return confirm('Permanently delete {{ run.run_id }}? This cannot be undone.');">
+            <button type="submit" class="btn btn-secondary btn-sm btn-delete-run"
+                    title="Delete this run and all its files">Delete</button>
+          </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

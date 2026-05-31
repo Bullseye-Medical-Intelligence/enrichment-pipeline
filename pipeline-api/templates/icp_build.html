@@ -26,8 +26,8 @@
         <label for="icp_id">Profile ID</label>
         <input type="text" id="icp_id" name="icp_id" required
                value="{{ form.icp_id | default('') }}"
-               placeholder="e.g. femaseed-obgyn-v1">
-        <p class="form-hint">Lowercase, hyphens, digits only. Used as the filename.</p>
+               placeholder="e.g. cardiowave-cardiology-v1">
+        <p class="form-hint">Lowercase, hyphens, digits only. Used as the filename. Format: product-specialty-v1</p>
       </div>
       <div class="form-group">
         <label for="version">Version</label>
@@ -41,7 +41,7 @@
       <label for="icp_name">Profile Name</label>
       <input type="text" id="icp_name" name="icp_name" required
              value="{{ form.icp_name | default('') }}"
-             placeholder="e.g. FemaSeed OBGYN ICP">
+             placeholder="e.g. CardioWave Independent Cardiology ICP">
     </div>
 
     <p class="eyebrow">Product &amp; Company</p>
@@ -51,7 +51,7 @@
         <label for="company_name">Company Name</label>
         <input type="text" id="company_name" name="company_name"
                value="{{ form.company_name | default('') }}"
-               placeholder="e.g. Femasys">
+               placeholder="e.g. Acme Medical">
         <p class="form-hint">Optional. Helps Claude tailor the commercial hypothesis.</p>
       </div>
       <div class="form-group">
@@ -77,13 +77,13 @@
         <label for="company_url">Company Website URL</label>
         <input type="url" id="company_url" name="company_url"
                value="{{ form.company_url | default('') }}"
-               placeholder="https://femasys.com">
+               placeholder="https://yourcompany.com">
       </div>
       <div class="form-group">
         <label for="product_url">Product Page URL</label>
         <input type="url" id="product_url" name="product_url"
                value="{{ form.product_url | default('') }}"
-               placeholder="https://femasys.com/femaseed">
+               placeholder="https://yourcompany.com/product">
       </div>
     </div>
 
@@ -91,14 +91,14 @@
       <label for="product_name">Product Name</label>
       <input type="text" id="product_name" name="product_name" required
              value="{{ form.product_name | default('') }}"
-             placeholder="e.g. FemaSeed">
+             placeholder="e.g. CardioWave Pro">
     </div>
 
     <div class="form-group">
       <label for="specialty">Target Specialty</label>
       <input type="text" id="specialty" name="specialty" required
              value="{{ form.specialty | default('') }}"
-             placeholder="e.g. OBGYN, Reproductive Endocrinology">
+             placeholder="e.g. Cardiology, Internal Medicine">
     </div>
 
     <div class="form-group">

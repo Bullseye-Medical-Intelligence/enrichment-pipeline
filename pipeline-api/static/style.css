@@ -389,16 +389,24 @@ a.signal-state-badge:hover { opacity: 0.8; }
 .detail-cols > * { min-width: 0; }
 @media (max-width: 1100px) { .detail-cols { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px)  { .detail-cols { grid-template-columns: 1fr; } }
+.detail-section p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  color: var(--ink);
+}
 .detail-section h4 {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);
+  margin-top: 22px;
   margin-bottom: 12px;
   padding-bottom: 7px;
   border-bottom: 1px solid var(--border);
 }
+.detail-section h4:first-child { margin-top: 0; }
 
 /* ── Signals ──────────────────────────────────────────────────────── */
 .signals-list { display: flex; flex-direction: column; gap: 10px; }
@@ -430,8 +438,10 @@ a.signal-state-badge:hover { opacity: 0.8; }
 .signal-source   { font-size: 11px; color: var(--accent); }
 
 /* ── Sales angles + scores ────────────────────────────────────────── */
-.sales-list { font-size: 12px; color: var(--ink); margin-bottom: 16px; }
-.sales-list li { margin-bottom: 4px; }
+.sales-list { font-size: 12px; color: var(--ink); margin-bottom: 16px; line-height: 1.55; }
+.sales-list li { margin-bottom: 7px; }
+.btn-delete-run { color: #b91c1c; border-color: #b91c1c; }
+.btn-delete-run:hover { background: #b91c1c; color: #fff; }
 .exclusion-reason {
   font-size: 12px;
   color: #991b1b;

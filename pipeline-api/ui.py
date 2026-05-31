@@ -644,6 +644,22 @@ async def runs_page(request: Request, username: str = Depends(auth.require_sessi
     return _render("runs.html", username=username, runs=all_runs)
 
 
+@router.post("/dashboard/{run_id}/delete", response_class=HTMLResponse)
+async def delete_run_route(
+    run_id: str,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Permanently delete a run and all its files. Blocked for active runs."""
+    try:
+        runs.delete_run(run_id)
+    except ValueError as exc:
+        all_runs = runs.list_runs()
+        return _render("runs.html", username=username, runs=all_runs,
+                       delete_error=str(exc))
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # Results / review dashboard
 # ---------------------------------------------------------------------------

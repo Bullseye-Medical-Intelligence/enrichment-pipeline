@@ -106,10 +106,10 @@
               {# Call brief #}
               <div class="detail-section">
                 <h4>Rep Call Brief</h4>
-                {% if brief.why_contact %}<p><span class="brief-label">Why contact</span> {{ brief.why_contact }}</p>{% endif %}
+                {% if brief.why_contact %}<p><span class="brief-label">Why Contact</span> {{ brief.why_contact }}</p>{% endif %}
                 {% if brief.opening_line %}<p><span class="brief-label">Opener</span> {{ brief.opening_line }}</p>{% endif %}
-                {% if brief.likely_objection %}<p><span class="brief-label">Likely objection</span> {{ brief.likely_objection }}</p>{% endif %}
-                {% if brief.discovery_question %}<p><span class="brief-label">Discovery question</span> {{ brief.discovery_question }}</p>{% endif %}
+                {% if brief.likely_objection %}<p><span class="brief-label">Likely Objection</span> {{ brief.likely_objection }}</p>{% endif %}
+                {% if brief.discovery_question %}<p><span class="brief-label">Discovery Question</span> {{ brief.discovery_question }}</p>{% endif %}
                 {% if brief.hours_of_operation %}<p><span class="brief-label">Hours</span> {{ brief.hours_of_operation }}</p>{% endif %}
 
                 {% if brief.top_evidence %}
@@ -117,7 +117,7 @@
                 <ul class="sales-list">
                   {% for ev in brief.top_evidence %}
                   <li>{{ ev.point }}{% if ev.evidence %} — {{ ev.evidence }}{% endif %}
-                    {% if ev.source_url %}<a class="text-muted small" href="{{ ev.source_url }}" target="_blank" rel="noopener noreferrer">source</a>{% endif %}
+                    {% if ev.source_url %} <a class="text-muted small" href="{{ ev.source_url }}" target="_blank" rel="noopener noreferrer">source</a>{% endif %}
                   </li>
                   {% endfor %}
                 </ul>
