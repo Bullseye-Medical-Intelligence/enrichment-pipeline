@@ -28,11 +28,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
+def _log_pipeline_python() -> None:
+    """Log which Python runs the pipeline and whether it has a browser.
+
+    Browser re-crawl runs in the spawned pipeline subprocess, not this server.
+    Logging the interpreter and its Playwright/Chromium availability at startup
+    makes a silently-broken re-crawl diagnosable from the server log.
+    """
+    import subprocess
+    from config import PYTHON_EXECUTABLE
+
+    logger.info("Pipeline subprocess Python: %s", PYTHON_EXECUTABLE)
+    probe = (
+        "from playwright.sync_api import sync_playwright; "
+        "p=sync_playwright().start(); "
+        "b=p.chromium.launch(headless=True); b.close(); print('ok')"
+    )
+    try:
+        result = subprocess.run(
+            [PYTHON_EXECUTABLE, "-c", probe],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode == 0:
+            logger.info("Browser re-crawl ready: Chromium launches in pipeline Python")
+        else:
+            logger.warning(
+                "Browser re-crawl UNAVAILABLE in pipeline Python — re-crawl will "
+                "produce no data. Fix: %s -m playwright install chromium. Detail: %s",
+                PYTHON_EXECUTABLE, (result.stderr or "").strip()[:200],
+            )
+    except Exception as e:  # never block startup on the probe
+        logger.warning("Could not probe browser availability: %s", str(e)[:160])
+
+
 async def _lifespan(app: FastAPI):
     """On startup, fail any run orphaned by a prior server instance."""
     count = runs.reconcile_orphaned_runs()
     if count:
         logger.warning("Reconciled %d orphaned run(s) on startup", count)
+    _log_pipeline_python()
     yield
 
 

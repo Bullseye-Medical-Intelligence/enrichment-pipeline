@@ -5,6 +5,7 @@ All configurable values live here. No magic numbers or strings elsewhere.
 """
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,7 +25,12 @@ OUTPUT_RUNS_PATH: Path = Path(os.environ.get("OUTPUT_RUNS_PATH", ""))
 # ---------------------------------------------------------------------------
 
 ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
-PYTHON_EXECUTABLE: str = os.environ.get("PYTHON_EXECUTABLE", "python3")
+# Default to the exact Python running this server (sys.executable) so the
+# spawned pipeline subprocess inherits the same venv — including Playwright and
+# its Chromium browser. A bare "python3" can resolve to a different interpreter
+# with no Playwright installed, which silently breaks browser re-crawl. An
+# explicit PYTHON_EXECUTABLE in .env still overrides this.
+PYTHON_EXECUTABLE: str = os.environ.get("PYTHON_EXECUTABLE") or sys.executable
 MAX_CSV_SIZE_MB: int = int(os.environ.get("MAX_CSV_SIZE_MB", "50"))
 MAX_CSV_ROWS: int = int(os.environ.get("MAX_CSV_ROWS", "10000"))
 MAX_CONCURRENT_RUNS: int = int(os.environ.get("MAX_CONCURRENT_RUNS", "3"))
