@@ -1225,3 +1225,29 @@ class TestBrowserRetrySelection:
         # A browser cannot help a record that has no URL.
         recs = [{"website_url": "", "source_confidence": "failed", "_context_text": ""}]
         assert _records_needing_browser_retry(recs) == []
+
+
+class TestChallengeDetection:
+    """_looks_like_challenge flags bot/security interstitials, not real content."""
+
+    def _detect(self, html):
+        import importlib, sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "extraction"))
+        mod = importlib.import_module("playwright_extractor")
+        return mod._looks_like_challenge(html)
+
+    def test_cloudflare_just_a_moment_flagged(self):
+        assert self._detect("<html><title>Just a moment...</title></html>") is True
+
+    def test_checking_your_browser_flagged(self):
+        assert self._detect("<body>Checking your browser before accessing</body>") is True
+
+    def test_verify_human_flagged(self):
+        assert self._detect("<div>Please verify you are a human</div>") is True
+
+    def test_real_content_not_flagged(self):
+        html = "<html><body>Welcome to our TMS and ketamine clinic in Dallas.</body></html>"
+        assert self._detect(html) is False
+
+    def test_empty_html_not_flagged(self):
+        assert self._detect("") is False

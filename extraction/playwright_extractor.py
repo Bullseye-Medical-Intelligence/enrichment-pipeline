@@ -27,6 +27,33 @@ from web_extractor import (  # noqa: E402
 )
 
 
+# Launch flags that suppress the headless automation tells bot-protection
+# (Cloudflare, etc.) fingerprints on. --disable-blink-features=AutomationControlled
+# removes the navigator.webdriver banner; the rest quiet sandbox/automation noise.
+_STEALTH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-features=IsolateOrigins,site-per-process",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+]
+
+# Injected before any page script runs. Masks the remaining headless tells a
+# challenge page checks: navigator.webdriver, empty plugins, missing languages.
+_STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+window.chrome = window.chrome || {runtime: {}};
+"""
+
+# Realistic desktop Chrome UA — no "HeadlessChrome" token, which is an instant tell.
+_REAL_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+
 def launch_browser(pw):
     """Launch a headless browser, preferring the bundled Chromium.
 
@@ -34,6 +61,9 @@ def launch_browser(pw):
     bundled Chromium binary was never downloaded (`playwright install chromium`
     not run). This lets the browser path work on a machine that has Chrome but
     no Playwright browser download. Raises the original error if nothing launches.
+
+    Stealth launch flags are applied so bot-protection pages are less likely to
+    serve a CAPTCHA wall in response to the headless automation fingerprint.
     """
     attempts = [
         {},                       # bundled Chromium (playwright install chromium)
@@ -43,10 +73,34 @@ def launch_browser(pw):
     last_error = None
     for opts in attempts:
         try:
-            return pw.chromium.launch(headless=True, **opts)
+            return pw.chromium.launch(headless=True, args=_STEALTH_ARGS, **opts)
         except Exception as e:  # try the next channel
             last_error = e
     raise last_error
+
+
+# Phrases that mark a bot/security interstitial rather than real site content.
+_CHALLENGE_MARKERS = (
+    "just a moment",
+    "checking your browser",
+    "verify you are human",
+    "verifying you are human",
+    "enable javascript and cookies to continue",
+    "attention required",
+    "cf-browser-verification",
+    "cf-challenge",
+    "ddos protection by",
+    "please verify you are a human",
+    "ray id",
+)
+
+
+def _looks_like_challenge(html: str) -> bool:
+    """True when the HTML is a bot/security verification page, not site content."""
+    if not html:
+        return False
+    sample = html[:4000].lower()
+    return any(marker in sample for marker in _CHALLENGE_MARKERS)
 
 
 def _extract_text_from_html(html: str) -> str:
@@ -106,14 +160,23 @@ def crawl_with_playwright(
         with sync_playwright() as pw:
             browser = launch_browser(pw)
             context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
+                user_agent=_REAL_USER_AGENT,
                 viewport={"width": 1280, "height": 800},
                 java_script_enabled=True,
+                locale="en-US",
+                timezone_id="America/Chicago",
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": ("text/html,application/xhtml+xml,application/xml;"
+                               "q=0.9,image/avif,image/webp,*/*;q=0.8"),
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Upgrade-Insecure-Requests": "1",
+                },
             )
+            # Mask headless tells before any page script runs.
+            context.add_init_script(_STEALTH_INIT_SCRIPT)
             page = context.new_page()
 
             # --- Homepage ---
@@ -124,6 +187,18 @@ def crawl_with_playwright(
                 page.wait_for_timeout(1500)
                 html = page.content()
                 final_url = page.url
+                # JS-based challenge pages (Cloudflare "Just a moment...") clear
+                # themselves and redirect to real content after a few seconds.
+                # Wait it out and re-read instead of capturing the interstitial.
+                if _looks_like_challenge(html):
+                    print("    [Playwright] Security challenge detected, waiting for it to clear...")
+                    for _ in range(3):
+                        page.wait_for_timeout(3500)
+                        html = page.content()
+                        final_url = page.url
+                        if not _looks_like_challenge(html):
+                            print("    [Playwright] Challenge cleared.")
+                            break
             except PlaywrightTimeout:
                 browser.close()
                 return ExtractionResult(url=url, context_text="", pages_crawled=[],
@@ -132,6 +207,15 @@ def crawl_with_playwright(
                 browser.close()
                 return ExtractionResult(url=url, context_text="", pages_crawled=[],
                                         error=f"Navigation error: {str(e)[:120]}")
+
+            # If the page is still a challenge wall, report it clearly rather
+            # than passing the bot-verification text downstream as "content".
+            if _looks_like_challenge(html):
+                browser.close()
+                return ExtractionResult(
+                    url=url, context_text="", pages_crawled=[],
+                    error="Blocked by bot/security challenge (CAPTCHA wall)",
+                )
 
             homepage_text = _extract_text_from_html(html)
             if homepage_text:
