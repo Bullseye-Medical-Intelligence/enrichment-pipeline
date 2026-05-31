@@ -169,7 +169,9 @@ def _call_claude(prompt: str, client: anthropic.Anthropic, model: str,
 def _parse_response(raw: str) -> dict:
     """
     Parse Claude's JSON response into a structured dict.
-    Raises ValueError if JSON is malformed or missing required keys.
+    Falls back to json_repair for malformed output (unescaped newlines/quotes in
+    evidence_text are the most common LLM JSON bug).
+    Raises ValueError if JSON is missing required keys after repair.
     """
     # Strip markdown code blocks if present
     text = raw.strip()
@@ -177,7 +179,11 @@ def _parse_response(raw: str) -> dict:
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
 
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        from json_repair import repair_json
+        parsed = json.loads(repair_json(text))
 
     # Validate structure
     if "signals" not in parsed:
