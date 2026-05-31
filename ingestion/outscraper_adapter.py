@@ -196,6 +196,20 @@ def load_outscraper_csv(filepath: str) -> list[dict]:
         # map the same way pre-flight validation reads them (it lowercases too).
         rows = [{(k.strip().lower() if k else k): v for k, v in row.items()} for row in reader]
 
+    if rows:
+        headers = list(rows[0].keys())
+        print(f"[outscraper_adapter] CSV columns detected: {headers}")
+        _URL_COLS = ("site", "website", "website_url", "url", "web", "web_url", "website_address")
+        found_url_col = next((c for c in _URL_COLS if c in headers), None)
+        if found_url_col:
+            print(f"[outscraper_adapter] Using URL column: '{found_url_col}'")
+        else:
+            print(
+                f"[outscraper_adapter] WARNING: No URL column found in CSV headers. "
+                f"Expected one of: {_URL_COLS}. "
+                f"All records will have empty website_url and may be excluded as no_web_presence."
+            )
+
     for row_num, row in enumerate(rows, start=2):  # row 1 is header
         try:
             record = _map_row(row, row_num)
@@ -212,7 +226,11 @@ def load_outscraper_csv(filepath: str) -> list[dict]:
         for s in skipped:
             print(f"  Row {s['row']}: {s['error']}")
 
-    print(f"[outscraper_adapter] Loaded {len(records)} records from {filepath}")
+    no_url_count = sum(1 for r in records if not r.get("website_url"))
+    print(
+        f"[outscraper_adapter] Loaded {len(records)} records — "
+        f"{len(records) - no_url_count} with URL, {no_url_count} without URL"
+    )
     return records
 
 
