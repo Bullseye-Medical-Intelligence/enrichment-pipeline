@@ -21,6 +21,7 @@ import record_adapter
 import reviews
 import runs
 from config import (
+    ICP_PROFILES_PATH,
     ICP_SNAPSHOT_FILENAME,
     MAX_CONCURRENT_RUNS,
     MAX_CSV_SIZE_BYTES,
@@ -526,6 +527,19 @@ def _prepare_single_record_job(source_run_id: str, record_id: str):
     icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
     if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
         raise ValueError("Source run is missing config snapshots.")
+
+    # Prefer the current live ICP profile over the frozen run snapshot so that
+    # any edits to the profile (added/removed signals) take effect on re-enrichment.
+    # Falls back to the frozen snapshot only if the live profile no longer exists.
+    try:
+        config_data = json.loads(config_snapshot_src.read_text(encoding="utf-8"))
+        icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
+        if icp_id:
+            live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
+            if live_icp.exists():
+                icp_snapshot_src = live_icp
+    except Exception:
+        pass  # snapshot unreadable or missing icp_id — fall back to frozen snapshot
 
     # Hidden, run-scoped scratch dir. The leading dot keeps it out of
     # is_valid_run_id, and the absence of a status.json keeps it out of
