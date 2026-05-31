@@ -25,6 +25,20 @@ if exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
 )
 
+:: Ensure the Playwright headless browser is installed (needed for "Re-crawl
+:: with Browser"). Idempotent: a quick no-op when Chromium is already present.
+python -c "import playwright" 2>nul
+if %errorlevel% equ 0 (
+    echo Ensuring headless browser is installed...
+    python -m playwright install chromium
+) else (
+    echo NOTE: Playwright is not installed in this environment.
+    echo       Re-crawl with Browser will fall back to basic mode.
+    echo       To enable it, run:
+    echo         python -m pip install -r requirements.txt
+    echo         python -m playwright install chromium
+)
+
 :: Open browser after a 3-second delay so the server has time to start
 start "" /b cmd /c "ping -n 4 127.0.0.1 >nul && start http://localhost:8000/login"
 

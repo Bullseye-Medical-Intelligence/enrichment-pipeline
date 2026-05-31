@@ -21,6 +21,19 @@ if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
 
+# Ensure the Playwright headless browser is installed (needed for "Re-crawl
+# with Browser"). Idempotent: a quick no-op when Chromium is already present.
+if python -c "import playwright" 2>/dev/null; then
+    echo "Ensuring headless browser is installed..."
+    python -m playwright install chromium
+else
+    echo "NOTE: Playwright is not installed in this environment."
+    echo "      Re-crawl with Browser will fall back to basic mode."
+    echo "      To enable it, run:"
+    echo "        python -m pip install -r requirements.txt"
+    echo "        python -m playwright install chromium"
+fi
+
 # Open browser after 3s delay (server needs time to start)
 (sleep 3 && (open "http://localhost:8000/login" 2>/dev/null || xdg-open "http://localhost:8000/login" 2>/dev/null || true)) &
 
