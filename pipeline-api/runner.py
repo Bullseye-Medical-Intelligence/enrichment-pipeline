@@ -299,7 +299,7 @@ async def orchestrate_playwright_retry(
         raise ValueError("No limited/failed records in this run to retry.")
 
     # Build manual-format CSV in memory
-    fieldnames = ["practice_name", "website", "phone",
+    fieldnames = ["practice_name", "website_url", "phone",
                   "address_city", "address_state", "address_zip", "specialty"]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
@@ -307,7 +307,7 @@ async def orchestrate_playwright_retry(
     for rec in limited:
         writer.writerow({
             "practice_name": rec.get("practice_name", ""),
-            "website": _normalize_url(rec.get("website_url", "")),
+            "website_url": _normalize_url(rec.get("website_url", "")),
             "phone": rec.get("phone", ""),
             "address_city": rec.get("address_city", ""),
             "address_state": rec.get("address_state", ""),

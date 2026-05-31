@@ -288,7 +288,10 @@ def batch_extract(records: list[dict], timeout: int = 15,
     for record in records:
         url = record.get("website_url", "")
         url_valid = record.get("_url_valid", False)
-        if not url_valid or not url:
+        # In playwright mode, attempt every record that has a URL — the requests-based
+        # URL validator rejects bot-blocking sites that Playwright can reach just fine.
+        has_url = bool(url)
+        if not has_url or (not url_valid and not use_playwright):
             record["_context_text"] = ""
             record["_pages_crawled"] = []
             if not record.get("source_confidence"):

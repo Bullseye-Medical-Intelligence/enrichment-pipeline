@@ -118,7 +118,7 @@ def build_retry_csv(run_id: str, run_directory: Path) -> io.BytesIO:
     if not crawl_failed:
         return io.BytesIO()
 
-    fieldnames = ["practice_name", "website", "phone",
+    fieldnames = ["practice_name", "website_url", "phone",
                   "address_city", "address_state", "address_zip", "specialty"]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
@@ -126,7 +126,7 @@ def build_retry_csv(run_id: str, run_directory: Path) -> io.BytesIO:
     for rec in crawl_failed:
         writer.writerow({
             "practice_name": rec.get("practice_name", ""),
-            "website": _normalize_url_for_export(rec.get("website_url", "")),
+            "website_url": _normalize_url_for_export(rec.get("website_url", "")),
             "phone": rec.get("phone", ""),
             "address_city": rec.get("address_city", ""),
             "address_state": rec.get("address_state", ""),
