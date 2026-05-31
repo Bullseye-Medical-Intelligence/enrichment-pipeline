@@ -801,6 +801,25 @@ async def export_excluded(run_id: str, username: str = Depends(auth.require_sess
     )
 
 
+@router.get("/runs/{run_id}/export/retry-crawl")
+async def export_retry_crawl(run_id: str, username: str = Depends(auth.require_session)):
+    """Download a manual-format CSV of records that failed to crawl, ready for re-upload."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(status_code=425,
+            detail=f"Run is not complete (status: {status.status}).")
+    buf = exports.build_retry_csv(run_id, runs.run_dir(run_id))
+    if not buf.getvalue():
+        raise HTTPException(status_code=404, detail="No failed-crawl records found in this run.")
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_retry_crawl.csv"'},
+    )
+
+
 @router.get("/runs/{run_id}/client-package")
 async def client_package(run_id: str, username: str = Depends(auth.require_session)):
     """Download a client deliverable ZIP for a completed, fully-reviewed run."""

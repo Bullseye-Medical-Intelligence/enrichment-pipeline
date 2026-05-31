@@ -86,6 +86,44 @@ def build_excluded_csv(run_id, run_directory, records=None, all_reviews=None) ->
     return _build_csv(run_id, run_directory, _excluded, records, all_reviews)
 
 
+def build_retry_csv(run_id: str, run_directory: Path) -> io.BytesIO:
+    """Return a BytesIO manual-format CSV of records that failed to crawl.
+
+    Includes records with source_confidence 'limited' or 'failed' — i.e.
+    the pipeline could not extract meaningful web content. The CSV is in the
+    Bullseye manual format so it can be uploaded as a new run for re-crawling.
+    """
+    results_path = run_directory / "enriched_targets.json"
+    if not results_path.exists():
+        return io.BytesIO()
+    with open(results_path, "r", encoding="utf-8") as f:
+        records = record_adapter.normalize_records_payload(json.load(f))
+
+    crawl_failed = [
+        r for r in records
+        if r.get("source_confidence") in ("limited", "failed")
+    ]
+    if not crawl_failed:
+        return io.BytesIO()
+
+    fieldnames = ["practice_name", "website", "phone",
+                  "address_city", "address_state", "address_zip", "specialty"]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for rec in crawl_failed:
+        writer.writerow({
+            "practice_name": rec.get("practice_name", ""),
+            "website": rec.get("website_url", ""),
+            "phone": rec.get("phone", ""),
+            "address_city": rec.get("address_city", ""),
+            "address_state": rec.get("address_state", ""),
+            "address_zip": rec.get("address_zip", ""),
+            "specialty": rec.get("specialty", ""),
+        })
+    return io.BytesIO(buf.getvalue().encode("utf-8"))
+
+
 def _build_csv(
     run_id: str,
     run_directory: Path,

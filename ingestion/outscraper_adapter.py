@@ -9,6 +9,7 @@ This adapter is the only place they exist.
 import csv
 import hashlib
 import re
+import urllib.parse
 from typing import Optional
 
 
@@ -138,13 +139,15 @@ def infer_specialty(type_raw: str, practice_name: str = "") -> str:
 
 
 def _normalize_url(url: str) -> str:
-    """Ensure URL has a scheme; strip trailing slashes."""
+    """Normalize to homepage: decode percent-encoding, strip query/fragment/path."""
     if not url:
         return ""
-    url = url.strip()
-    if url and not url.startswith(("http://", "https://")):
+    url = urllib.parse.unquote(url.strip())
+    if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    return url.rstrip("/")
+    parsed = urllib.parse.urlparse(url)
+    # Keep only scheme + netloc — strips UTM params, tracking paths, fragments
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
 
 
 def _clean_phone(phone: str) -> str:
