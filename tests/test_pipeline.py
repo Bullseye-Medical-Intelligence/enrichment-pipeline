@@ -1291,3 +1291,28 @@ class TestManualContent:
         _load_manual_content([rec], path)
         assert rec["_context_text"] == "too short"
         assert len(rec["_context_text"]) < 150
+
+
+class TestNoContextReason:
+    """_no_context_reason explains a zero-data record at the record level."""
+
+    def _reason(self, record, context_text=""):
+        from enrichment.signal_extractor import _no_context_reason
+        return _no_context_reason(record, context_text)
+
+    def test_no_url(self):
+        r = self._reason({"website_url": ""})
+        assert "No website URL" in r
+
+    def test_url_error_surfaced(self):
+        r = self._reason({"website_url": "https://x.com", "_url_error": "HTTP 403"})
+        assert "HTTP 403" in r
+        assert "could not be reached" in r
+
+    def test_blocked_no_text(self):
+        r = self._reason({"website_url": "https://x.com"}, context_text="")
+        assert "no readable text" in r
+
+    def test_thin_text_reports_char_count(self):
+        r = self._reason({"website_url": "https://x.com"}, context_text="abc")
+        assert "3 characters" in r

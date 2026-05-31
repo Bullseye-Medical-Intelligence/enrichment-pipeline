@@ -246,12 +246,12 @@
     <thead>
       <tr>
         <th></th>
-        <th>Practice</th>
-        <th>Location</th>
-        <th>Tier</th>
-        <th>Original</th>
-        <th>Score</th>
-        <th>QC</th>
+        <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
+        <th class="sortable" onclick="sortRecords('location', this)">Location</th>
+        <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
+        <th class="sortable" onclick="sortRecords('original', this)">Original</th>
+        <th class="sortable" onclick="sortRecords('score', this)">Score</th>
+        <th class="sortable" onclick="sortRecords('qc', this)">QC</th>
       </tr>
     </thead>
     <tbody>
@@ -261,16 +261,25 @@
       {% set displayed = record.displayed_tier | default("") %}
       {% set _city = record.address_city or "" %}
       {% set _state = record.address_state or "" %}
+      {% set _tier_rank = {"bullseye": 4, "needs verification": 3, "watchlist": 2, "excluded": 1}.get(displayed | lower, 0) %}
+      {% set _blocked = record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
       <tr class="record-row"
+          data-rid="{{ rid }}"
           data-tier="{{ displayed | lower | replace(' ', '-') }}"
           data-qc="{{ review.qc_status }}"
+          data-sort-practice="{{ record.practice_name | default('') | lower }}"
+          data-sort-location="{{ (_city ~ ' ' ~ _state) | lower }}"
+          data-sort-tier="{{ _tier_rank }}"
+          data-sort-original="{{ record.target_tier | default('') | lower }}"
+          data-sort-score="{{ record.bullseye_score | default(0) }}"
+          data-sort-qc="{{ review.qc_status }}"
           onclick="toggleDetail('{{ rid }}')"
           style="cursor:pointer">
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
         <td class="practice-cell">
           <strong>{{ record.practice_name | default("—") }}</strong>
-          {% if record.source_confidence in ("limited", "failed") %}
-          <br><span class="text-muted small">⚠ Limited data</span>
+          {% if _blocked %}
+          <br><span class="badge badge-blocked" title="Crawler could not read this site (bot/security wall). Use 'Re-crawl with Browser' or paste the page content.">Manual review</span>
           {% endif %}
           {% if record.website_url %}<br><a class="text-muted small practice-url" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
@@ -400,6 +409,12 @@
                     </div>
                   </form>
                 </details>
+                {% endif %}
+
+                {% if record.internal_notes and record.source_confidence in ("limited", "failed") %}
+                <p class="text-muted small" style="margin:0.4em 0; padding:6px 8px; background:var(--surface); border-left:3px solid var(--accent); border-radius:4px;">
+                  <strong>Why no data:</strong> {{ record.internal_notes }}
+                </p>
                 {% endif %}
 
                 <h4>Scores</h4>

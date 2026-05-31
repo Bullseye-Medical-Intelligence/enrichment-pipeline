@@ -282,6 +282,31 @@ def _validate_and_clean_signals(raw_signals: list[dict],
     return normalized
 
 
+def _no_context_reason(record: dict, context_text: str) -> str:
+    """Human-readable reason a record reached signal extraction with no usable text.
+
+    Distinguishes the failure modes an operator otherwise can't tell apart from a
+    bare score of 0: no URL at all, URL that failed validation (with the HTTP/
+    network error), URL valid but the crawler got blocked or returned nothing,
+    or a site so thin it fell under the minimum-context bar.
+    """
+    url = (record.get("website_url") or "").strip()
+    url_error = (record.get("_url_error") or "").strip()
+    chars = len((context_text or "").strip())
+
+    if not url:
+        return "No website URL provided — nothing to crawl."
+    if url_error:
+        return (f"Website could not be reached: {url_error}. "
+                "Try 'Re-crawl with Browser' or paste the page content manually.")
+    if chars == 0:
+        return ("Website returned no readable text — likely a bot/security wall or "
+                "a script-rendered page. Try 'Re-crawl with Browser' or paste the "
+                "page content manually.")
+    return (f"Website returned only {chars} characters of text (under the minimum "
+            f"needed to evaluate). Paste fuller page content manually to enrich.")
+
+
 def _build_empty_signals(icp_signals: list[dict]) -> list[dict]:
     """Return one not_found/low-confidence signal per ICP signal.
 
@@ -587,7 +612,10 @@ def extract_signals(record: dict, icp_signals: list[dict],
                 "qc_status": "pending",
                 "analyst_override_classification": None,
                 "override_reason": None,
-                "internal_notes": "",
+                # Record-level reason the operator sees: a score of 0 with no
+                # signals is otherwise unexplained. Surfaces the actual crawl
+                # outcome so "active site, no data" is no longer a mystery.
+                "internal_notes": _no_context_reason(record, context_text),
                 "client_facing_rationale": None,
                 "_llm_exclusion_triggers": [],
                 "_llm_exclusion_rationale": "",

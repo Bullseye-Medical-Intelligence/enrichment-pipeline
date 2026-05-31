@@ -47,6 +47,55 @@ function _applyFilter(predicate) {
   });
 }
 
+/* ── Column sorting ─────────────────────────────────────────── */
+/* Each record is two rows: a .record-row and its hidden .detail-row.
+   Sorting reorders these pairs together so detail panels stay attached. */
+var _sortState = {key: null, dir: 1};
+
+function sortRecords(key, th) {
+  var tbody = document.querySelector('#results-table tbody');
+  if (!tbody) return;
+
+  /* toggle direction when re-clicking the same column */
+  if (_sortState.key === key) {
+    _sortState.dir = -_sortState.dir;
+  } else {
+    _sortState.key = key;
+    _sortState.dir = 1;
+  }
+  var dir = _sortState.dir;
+
+  /* collect (record-row, detail-row) pairs */
+  var pairs = [];
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('.record-row'));
+  rows.forEach(function(row) {
+    var rid = row.dataset.rid || '';
+    var detail = rid ? document.getElementById('detail-' + rid) : null;
+    pairs.push({row: row, detail: detail});
+  });
+
+  var numeric = (key === 'score' || key === 'tier');
+  pairs.sort(function(a, b) {
+    var av = a.row.dataset['sort' + key.charAt(0).toUpperCase() + key.slice(1)] || '';
+    var bv = b.row.dataset['sort' + key.charAt(0).toUpperCase() + key.slice(1)] || '';
+    if (numeric) {
+      return (parseFloat(av || 0) - parseFloat(bv || 0)) * dir;
+    }
+    return av.localeCompare(bv) * dir;
+  });
+
+  pairs.forEach(function(p) {
+    tbody.appendChild(p.row);
+    if (p.detail) tbody.appendChild(p.detail);
+  });
+
+  /* update header arrows */
+  document.querySelectorAll('#results-table th.sortable').forEach(function(h) {
+    h.classList.remove('sort-asc', 'sort-desc');
+  });
+  if (th) th.classList.add(dir === 1 ? 'sort-asc' : 'sort-desc');
+}
+
 /* ── Toggle override reason field ───────────────────────────── */
 function toggleReasonField(recordId) {
   var select = document.getElementById('override-' + recordId);
