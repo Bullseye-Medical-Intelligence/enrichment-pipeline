@@ -153,15 +153,13 @@ def _write_progress(output_dir: str, step_num: int, step_name: str,
         pass  # Non-fatal: progress display is best-effort
 
 
-def _finalize_ingest_only(records: list[dict], run_config: dict) -> list[dict]:
+def _finalize_ingest_only(records: list[dict]) -> list[dict]:
     """Shape ingested records for output without crawling or calling any LLM.
 
-    Each record is marked `enrichment_status = "not_enriched"` with zeroed
-    scores and no signals, then run through the deterministic exclusion check
-    (only structural rules fire — wrong specialty / outside geography / no web
-    presence) and the standard validation pass so the output schema is complete.
-    This is what `--ingest-only` writes: the full roster, ready for the operator
-    to review before spending any crawl or LLM budget on enrichment.
+    Every record is imported as CLEAR/not_enriched — no exclusions fire at
+    import time. Structural exclusions (wrong_specialty, outside_geography) only
+    run during the full enrichment pass once actual crawl data is available.
+    The standard validation pass completes the output schema.
     """
     finalized = []
     for record in records:
@@ -170,7 +168,9 @@ def _finalize_ingest_only(records: list[dict], run_config: dict) -> list[dict]:
         record["fit_signal_score"] = 0
         record["confidence_score"] = 0
         record["signals"] = []
-        record = apply_exclusions(record, run_config)
+        record["exclusion_status"] = "CLEAR"
+        record["exclusion_reason"] = None
+        record["target_tier"] = "Contender"
         record = validate_and_finalize(record)
         finalized.append(record)
     return finalized
@@ -399,12 +399,10 @@ def run_pipeline(input_file: str, source_type: str,
         print(f"\n{'-'*40}")
         print("INGEST-ONLY MODE - Writing roster (no crawl, no LLM)")
         print(f"{'-'*40}")
-        output_records = _finalize_ingest_only(records, run_config)
+        output_records = _finalize_ingest_only(records)
         output_records = [strip_internal_fields(r) for r in output_records]
         for r in output_records:
             r["source_pipeline_version"] = PIPELINE_VERSION
-
-        excluded_ingest = sum(1 for r in output_records if r.get("target_tier") == "Excluded")
         json_path = write_json(output_records, output_dir=output_dir, run_id=run_id)
         write_csv(output_records, output_dir=output_dir, pipeline_version=PIPELINE_VERSION)
         write_run_log(
@@ -419,14 +417,13 @@ def run_pipeline(input_file: str, source_type: str,
             output_dir=output_dir,
         )
         elapsed = time.time() - start_time
-        print(f"\n  Ingest complete: {len(output_records)} records "
-              f"({excluded_ingest} pre-excluded) in {elapsed:.1f}s")
+        print(f"\n  Ingest complete: {len(output_records)} records in {elapsed:.1f}s")
         print(f"  Roster written: {json_path}")
         return {
             "run_id": run_id,
             "records_input": records_input_total,
             "records_output": len(output_records),
-            "excluded": excluded_ingest,
+            "excluded": 0,
             "ingest_only": True,
             "elapsed_seconds": round(elapsed, 1),
         }

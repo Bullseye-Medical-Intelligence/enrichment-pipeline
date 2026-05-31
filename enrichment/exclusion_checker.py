@@ -101,10 +101,10 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
             rank = min(rank, TIER_RANK[cap])
 
     # Source confidence gate: a record whose website could not be reliably
-    # crawled is not eligible for Bullseye — the signals may be absent or
-    # incomplete, so it must be confirmed before calling (Needs Verification).
-    if record.get("source_confidence") in ("limited", "failed"):
-        rank = min(rank, TIER_RANK["Needs Verification"])
+    # crawled cannot be scored — send it to Manual Review so the operator
+    # can trigger a browser re-crawl rather than auto-promoting to Contender.
+    if enriched and record.get("source_confidence") in ("limited", "failed"):
+        return "Manual Review"
 
     # Must-have gate: a required_for_bullseye signal must be confirmed present
     # (or inferred) for Bullseye. Confirmed absent ("no") caps at Contender; an

@@ -1233,7 +1233,7 @@ class TestEmptySignalsHelper:
 
 
 class TestSourceConfidenceTierCap:
-    """Records with limited/failed source confidence cannot reach Bullseye."""
+    """Blocked (limited/failed) sites go to Manual Review; partial/complete allow normal tier."""
 
     _ICP = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
              "positive_weight": 20}]
@@ -1242,15 +1242,15 @@ class TestSourceConfidenceTierCap:
         rec = _clear_record(score=95)
         rec["source_confidence"] = source_confidence
         # A confirmed signal so the record has evidence — isolates the
-        # source-confidence cap from the no-evidence Manual Review rule.
+        # source-confidence gate from the no-evidence Manual Review rule.
         rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
         return rec
 
-    def test_limited_confidence_caps_at_needs_verification(self):
-        assert _assign_tier(self._record("limited"), 95, 75) == "Needs Verification"
+    def test_limited_confidence_becomes_manual_review(self):
+        assert _assign_tier(self._record("limited"), 95, 75) == "Manual Review"
 
-    def test_failed_confidence_caps_at_needs_verification(self):
-        assert _assign_tier(self._record("failed"), 95, 75) == "Needs Verification"
+    def test_failed_confidence_becomes_manual_review(self):
+        assert _assign_tier(self._record("failed"), 95, 75) == "Manual Review"
 
     def test_complete_confidence_allows_bullseye(self):
         assert _assign_tier(self._record("complete"), 95, 75) == "Bullseye"
@@ -1259,7 +1259,7 @@ class TestSourceConfidenceTierCap:
         assert _assign_tier(self._record("partial"), 95, 75) == "Bullseye"
 
     def test_missing_source_confidence_allows_bullseye(self):
-        # Records without source_confidence set are not capped.
+        # Records without source_confidence set are not gated.
         rec = _clear_record(score=95)
         rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
         assert _assign_tier(rec, 95, 75) == "Bullseye"
@@ -1411,24 +1411,31 @@ class TestIngestOnly:
         }
 
     def test_clear_record_marked_not_enriched(self):
-        out = _finalize_ingest_only([self._roster_record()], BASE_RUN_CONFIG)
+        out = _finalize_ingest_only([self._roster_record()])
         rec = out[0]
         assert rec["enrichment_status"] == "not_enriched"
         assert rec["exclusion_status"] == "CLEAR"
         assert rec["bullseye_score"] == 0
         assert rec["signals"] == []
 
-    def test_structural_exclusion_still_fires(self):
-        # Wrong geography should be excluded even in ingest-only mode.
-        out = _finalize_ingest_only([self._roster_record(state="CA")], BASE_RUN_CONFIG)
+    def test_no_exclusions_at_import(self):
+        # Wrong geography/specialty must NOT exclude at import — exclusions are
+        # deferred to enrichment time so the operator sees the full roster.
+        out = _finalize_ingest_only([self._roster_record(state="CA")])
         rec = out[0]
-        assert rec["exclusion_status"] == "EXCLUDED"
-        assert rec["target_tier"] == "Excluded"
+        assert rec["exclusion_status"] == "CLEAR"
+        assert rec["target_tier"] != "Excluded"
+        assert rec["enrichment_status"] == "not_enriched"
+
+    def test_wrong_specialty_not_excluded_at_import(self):
+        out = _finalize_ingest_only([self._roster_record(specialty="Cardiology")])
+        rec = out[0]
+        assert rec["exclusion_status"] == "CLEAR"
         assert rec["enrichment_status"] == "not_enriched"
 
     def test_output_schema_is_complete(self):
         # validate_and_finalize must leave a fully-shaped record the UI can render.
-        out = _finalize_ingest_only([self._roster_record()], BASE_RUN_CONFIG)
+        out = _finalize_ingest_only([self._roster_record()])
         rec = out[0]
         assert isinstance(rec.get("call_brief"), dict)
         assert isinstance(rec.get("sales_angle"), list)
