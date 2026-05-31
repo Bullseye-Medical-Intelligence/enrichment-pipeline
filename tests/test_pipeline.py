@@ -448,6 +448,18 @@ class TestTierAssignment:
         rec = {"signals": [], "enrichment_status": "not_enriched"}
         assert _assign_tier(rec, 0, 75) == "Contender"
 
+    def test_low_score_with_evidence_is_manual_review(self):
+        """A score below 30 is Manual Review even when some evidence exists."""
+        rec = _clear_record(score=20)
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
+        assert _assign_tier(rec, 20, 75) == "Manual Review"
+
+    def test_score_at_threshold_is_not_manual_review(self):
+        """A score of exactly 30 is not Manual Review — threshold is exclusive."""
+        rec = _clear_record(score=30)
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
+        assert _assign_tier(rec, 30, 75) == "Contender"
+
     def test_unconfirmed_required_signal_caps_bullseye_at_needs_verification(self):
         signals = [{"signal_id": "S-1", "signal_state": "not_found",
                     "verification_required": True, "cap_tier": ""}]

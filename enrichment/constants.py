@@ -41,6 +41,10 @@ CONFIDENCE_WEIGHT = 0.4
 DEFAULT_BULLSEYE_MIN_SCORE = 90     # fallback when run_config omits bullseye_min_score
 EXCLUDED_SCORE_CAP = 40             # max bullseye_score retained on excluded records
 
+# Records scoring below this threshold have insufficient signal evidence to support
+# a Contender call verdict and are assigned Manual Review instead.
+LOW_SCORE_MANUAL_REVIEW_THRESHOLD = 30
+
 # fit_confidence_status quadrant thresholds
 HIGH_FIT_THRESHOLD = 70
 HIGH_CONFIDENCE_THRESHOLD = 65

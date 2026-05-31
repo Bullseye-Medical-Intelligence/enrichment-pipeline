@@ -245,7 +245,7 @@
         <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
         <th class="sortable" onclick="sortRecords('location', this)">Location</th>
         <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
-        <th class="sortable" onclick="sortRecords('score', this)">Score</th>
+        <th class="sortable" onclick="sortRecords('score', this)">Confidence</th>
         <th class="sortable" onclick="sortRecords('qc', this)">QC</th>
       </tr>
     </thead>
@@ -290,7 +290,12 @@
           {% endif %}
           {% endif %}
         </td>
-        <td>{{ record.bullseye_score | default("—") }}</td>
+        <td>
+          {% set _cband = record.confidence_band | default("") %}
+          {% if _cband %}
+          <span class="badge badge-confidence-{{ _cband | lower }}">{{ _cband }}</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
         <td>
           <span class="badge badge-qc-{{ review.qc_status }}">{{ review.qc_status }}</span>
         </td>

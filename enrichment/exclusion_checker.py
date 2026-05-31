@@ -6,7 +6,7 @@ Hard exclusions always fire. Configurable exclusions fire only when listed in ru
 
 import re
 
-from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, EXCLUDED_SCORE_CAP
+from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, EXCLUDED_SCORE_CAP, LOW_SCORE_MANUAL_REVIEW_THRESHOLD
 
 # ---------------------------------------------------------------------------
 # Exclusion rule definitions
@@ -65,10 +65,12 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     # Not-yet-enriched roster rows (ingest-only) have no signals by definition and
     # are not a Manual Review finding — skip the evidence gate for them.
     enriched = record.get("enrichment_status") != "not_enriched"
-    if enriched and not any(
-        s.get("signal_state") == "yes" or s.get("state_inferred") for s in signals
-    ):
-        return "Manual Review"
+    if enriched:
+        has_evidence = any(
+            s.get("signal_state") == "yes" or s.get("state_inferred") for s in signals
+        )
+        if not has_evidence or score < LOW_SCORE_MANUAL_REVIEW_THRESHOLD:
+            return "Manual Review"
 
     rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
 
