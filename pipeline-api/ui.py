@@ -11,7 +11,6 @@ import logging
 import re
 import urllib.request
 from html.parser import HTMLParser
-from urllib.parse import urlparse, urlunparse, unquote
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
@@ -610,23 +609,6 @@ async def runs_page(request: Request, username: str = Depends(auth.require_sessi
 # Results / review dashboard
 # ---------------------------------------------------------------------------
 
-def _normalize_display_url(url: str) -> str:
-    """Decode percent-encoding and strip tracking query params / fragments for display.
-
-    Keeps path so sub-page URLs (franchise location pages, etc.) display correctly.
-    """
-    if not url:
-        return ""
-    url = unquote(url.strip())
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    parsed = urlparse(url)
-    if not parsed.netloc:
-        return ""
-    path = parsed.path.rstrip("/") or ""
-    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
-
-
 def _load_merged_records(run_id: str, status) -> list[dict]:
     """Load a complete run's records merged with their review overlay.
 
@@ -648,7 +630,7 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
         review = all_reviews.get(record_id, reviews.default_review())
         merged.append({
             **record,
-            "website_url": _normalize_display_url(record.get("website_url", "")),
+            "website_url": record_adapter.normalize_homepage_url(record.get("website_url", "")),
             "record_id": record_id,
             "review": review,
             "displayed_tier": record_adapter.displayed_tier(record, review),

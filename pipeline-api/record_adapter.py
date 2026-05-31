@@ -5,6 +5,30 @@ Centralises field-name differences (record_id vs id) and payload shapes
 (wrapper dict vs bare list) so no other module duplicates this logic.
 """
 
+from urllib.parse import unquote, urlparse, urlunparse
+
+
+def normalize_homepage_url(url: str) -> str:
+    """Decode percent-encoding and strip tracking query params / fragments.
+
+    Keeps scheme + netloc + path so a practice's specific location page
+    (franchise sub-URL, etc.) is preserved for display, export, and re-crawl.
+    Stripping the path sent a bare domain that often failed validation, which
+    is why re-crawls of sub-page URLs came back empty. Drops only the query
+    string and fragment (UTM/tracking params). Returns "" for blank or
+    malformed input with no netloc.
+    """
+    if not url:
+        return ""
+    url = unquote(url.strip())
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return ""
+    path = parsed.path.rstrip("/") or ""
+    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+
 
 def get_record_id(record: dict) -> str:
     """Return the record's stable ID, checking record_id then id."""

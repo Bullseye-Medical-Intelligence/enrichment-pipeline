@@ -262,7 +262,6 @@ async def orchestrate_playwright_retry(
     """
     import csv
     import io
-    from urllib.parse import urlparse, urlunparse, unquote
 
     active = runs.count_active_runs()
     if active >= MAX_CONCURRENT_RUNS:
@@ -285,15 +284,6 @@ async def orchestrate_playwright_retry(
     with open(results_path, "r", encoding="utf-8") as f:
         all_records = record_adapter.normalize_records_payload(json.load(f))
 
-    def _normalize_url(url: str) -> str:
-        if not url:
-            return ""
-        url = unquote(url.strip())
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-        parsed = urlparse(url)
-        return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
-
     limited = [r for r in all_records if r.get("source_confidence") in ("limited", "failed")]
     if not limited:
         raise ValueError("No limited/failed records in this run to retry.")
@@ -307,7 +297,7 @@ async def orchestrate_playwright_retry(
     for rec in limited:
         writer.writerow({
             "practice_name": rec.get("practice_name", ""),
-            "website_url": _normalize_url(rec.get("website_url", "")),
+            "website_url": record_adapter.normalize_homepage_url(rec.get("website_url", "")),
             "phone": rec.get("phone", ""),
             "address_city": rec.get("address_city", ""),
             "address_state": rec.get("address_state", ""),
@@ -407,7 +397,6 @@ async def orchestrate_single_recrawl(
     """
     import csv
     import io
-    from urllib.parse import urlparse, urlunparse, unquote
 
     active = runs.count_active_runs()
     if active >= MAX_CONCURRENT_RUNS:
@@ -434,16 +423,8 @@ async def orchestrate_single_recrawl(
     if record is None:
         raise FileNotFoundError(f"Record '{record_id}' not found in run '{source_run_id}'")
 
-    def _normalize_url(url: str) -> str:
-        if not url:
-            return ""
-        url = unquote(url.strip())
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-        parsed = urlparse(url)
-        return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
-
-    url = _normalize_url(website_url_override) or _normalize_url(record.get("website_url", ""))
+    url = (record_adapter.normalize_homepage_url(website_url_override)
+           or record_adapter.normalize_homepage_url(record.get("website_url", "")))
 
     fieldnames = ["practice_name", "website_url", "phone",
                   "address_city", "address_state", "address_zip", "specialty"]
