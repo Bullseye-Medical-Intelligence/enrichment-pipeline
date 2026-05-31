@@ -23,6 +23,39 @@ _ICP_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 _REQUIRED_SIGNAL_FIELDS = ("signal_id", "signal_label", "prompt_instruction", "positive_weight")
 
+# Legacy tier label aliases — same map used by the pipeline's exclusion_checker.
+# Normalised before validation so existing ICP files with old names keep working.
+_TIER_ALIASES: dict[str, str] = {"Watchlist": "Contender"}
+_VALID_CAP_FLOOR_TIERS = ("Contender", "Needs Verification")
+
+
+def _normalize_tier_value(value: str) -> str:
+    """Return the canonical tier label for a possibly-legacy tier string."""
+    return _TIER_ALIASES.get(value, value)
+
+
+def _normalize_hypothesis(hypothesis: dict) -> dict:
+    """Normalize hypothesis fields so all values are plain strings.
+
+    The AI builder sometimes stores common_objections as a structured dict
+    ({objection_1: {objection, response}, ...}). Convert it to a formatted
+    text string so all display paths (profiles list, edit textarea, demo
+    brief) work without per-template type checks.
+    """
+    if not isinstance(hypothesis, dict):
+        return hypothesis
+    co = hypothesis.get("common_objections")
+    if isinstance(co, dict):
+        parts = []
+        for obj in co.values():
+            if isinstance(obj, dict):
+                q = obj.get("objection", "")
+                r = obj.get("response", "")
+                if q:
+                    parts.append(f"Q: {q}\nA: {r}" if r else f"Q: {q}")
+        hypothesis = {**hypothesis, "common_objections": "\n\n".join(parts)}
+    return hypothesis
+
 
 def is_valid_icp_id(icp_id: str) -> bool:
     """Return True if icp_id is safe to use as a filename."""
@@ -81,14 +114,18 @@ def validate_icp_profile(data: dict) -> None:
             raise ValueError(
                 f"ICP signal #{i + 1} 'required_for_bullseye' must be true or false."
             )
-        if "cap_tier" in signal and signal["cap_tier"] not in ("Contender", "Needs Verification"):
-            raise ValueError(
-                f"ICP signal #{i + 1} 'cap_tier' must be 'Contender' or 'Needs Verification'."
-            )
-        if "floor_tier" in signal and signal["floor_tier"] not in ("Contender", "Needs Verification"):
-            raise ValueError(
-                f"ICP signal #{i + 1} 'floor_tier' must be 'Contender' or 'Needs Verification'."
-            )
+        if "cap_tier" in signal:
+            canonical = _normalize_tier_value(signal["cap_tier"])
+            if canonical not in _VALID_CAP_FLOOR_TIERS:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'cap_tier' must be 'Contender' or 'Needs Verification'."
+                )
+        if "floor_tier" in signal:
+            canonical = _normalize_tier_value(signal["floor_tier"])
+            if canonical not in _VALID_CAP_FLOOR_TIERS:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'floor_tier' must be 'Contender' or 'Needs Verification'."
+                )
         if "exclude_if_yes" in signal and not isinstance(signal["exclude_if_yes"], bool):
             raise ValueError(
                 f"ICP signal #{i + 1} 'exclude_if_yes' must be true or false."
@@ -123,6 +160,14 @@ def get_icp_profile(icp_profile_id: str) -> dict:
             profile = json.load(f)
     except json.JSONDecodeError as e:
         raise ValueError(f"ICP profile '{icp_profile_id}' is malformed JSON: {e}") from e
+    # Normalize legacy tier aliases before validation so old files with e.g.
+    # cap_tier: "Watchlist" are transparently upgraded without requiring a file edit.
+    for sig in profile.get("signals") or []:
+        for field in ("cap_tier", "floor_tier"):
+            if field in sig:
+                sig[field] = _normalize_tier_value(sig[field])
+    if "hypothesis" in profile:
+        profile["hypothesis"] = _normalize_hypothesis(profile["hypothesis"])
     validate_icp_profile(profile)
     return profile
 
