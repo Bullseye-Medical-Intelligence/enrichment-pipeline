@@ -134,24 +134,46 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     return _RANK_TO_TIER[rank]
 
 
+_SPECIALTY_PREFIX_LEN = 7
+
+
 def _specialty_words(text: str) -> set[str]:
     return set(re.findall(r'[a-z0-9]+', text.lower()))
 
 
-def _specialty_matches(record_specialty: str, target_specialty: str) -> bool:
+def _word_prefix_match(target_word: str, rec_words: set[str]) -> bool:
+    """Return True if target_word exactly matches or shares a 7+ char prefix with any record word.
+
+    Handles medical inflection variants: 'psychiatry'/'psychiatrist',
+    'cardiology'/'cardiologist', 'neurology'/'neurologist', etc.
+    Short words (<7 chars) require exact match only, preventing false prefix matches
+    on common short tokens like 'care', 'pain', 'lab'.
     """
-    Return True if record_specialty matches any comma-separated token in target_specialty.
+    if target_word in rec_words:
+        return True
+    if len(target_word) < _SPECIALTY_PREFIX_LEN:
+        return False
+    prefix = target_word[:_SPECIALTY_PREFIX_LEN]
+    return any(
+        len(rw) >= _SPECIALTY_PREFIX_LEN and rw[:_SPECIALTY_PREFIX_LEN] == prefix
+        for rw in rec_words
+    )
+
+
+def _specialty_matches(record_specialty: str, target_specialty: str) -> bool:
+    """Return True if record_specialty matches any comma-separated token in target_specialty.
 
     Uses word-boundary tokenization so short tokens like "ENT" cannot accidentally
-    match mid-word in strings like "urgent care" (where "ent" is a substring of "urgent").
-    A target token matches when all its words appear as whole words in the record specialty.
+    match mid-word in strings like "urgent care". A target token matches when every
+    one of its words appears in the record specialty, either as an exact word or as a
+    7+ character prefix match (covering inflection variants like psychiatry/psychiatrist).
     """
     rec_words = _specialty_words(record_specialty)
     if not rec_words:
         return False
     for token in target_specialty.split(","):
         tok_words = _specialty_words(token.strip())
-        if tok_words and tok_words.issubset(rec_words):
+        if tok_words and all(_word_prefix_match(tw, rec_words) for tw in tok_words):
             return True
     return False
 

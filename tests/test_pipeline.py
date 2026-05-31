@@ -676,6 +676,27 @@ class TestSpecialtyExclusion:
         triggered = result.get("exclusion_reason") or ""
         assert "wrong_specialty" not in triggered
 
+    def test_specialty_inflection_psychiatrist_matches_psychiatry(self):
+        """'Psychiatrist' matches target 'Psychiatry' via 7-char prefix."""
+        config = {**BASE_RUN_CONFIG, "target_specialty": "Psychiatry, primary care"}
+        record = _clear_record(specialty="Psychiatrist")
+        result = apply_exclusions(record, config)
+        assert result["exclusion_status"] == "CLEAR"
+
+    def test_specialty_inflection_cardiologist_matches_cardiology(self):
+        """'Cardiologist' matches target 'Cardiology' via prefix."""
+        config = {**BASE_RUN_CONFIG, "target_specialty": "Cardiology"}
+        record = _clear_record(specialty="Cardiologist")
+        result = apply_exclusions(record, config)
+        assert result["exclusion_status"] == "CLEAR"
+
+    def test_specialty_unrelated_name_still_excluded(self):
+        """'Mental Health Clinic' does not match 'Psychiatry' — requires operator config."""
+        config = {**BASE_RUN_CONFIG, "target_specialty": "Psychiatry"}
+        record = _clear_record(specialty="Mental Health Clinic")
+        result = apply_exclusions(record, config)
+        assert result["exclusion_status"] == "EXCLUDED"
+
 
 class TestZipLookup:
     """Offline ZIP -> (city, state) resolution from the bundled dataset."""

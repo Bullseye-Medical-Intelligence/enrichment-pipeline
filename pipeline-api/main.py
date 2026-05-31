@@ -27,7 +27,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-@asynccontextmanager
 def _log_pipeline_python() -> None:
     """Log which Python runs the pipeline and whether it has a browser.
 
@@ -61,11 +60,35 @@ def _log_pipeline_python() -> None:
         logger.warning("Could not probe browser availability: %s", str(e)[:160])
 
 
+def _seed_icp_profiles() -> None:
+    """Copy bundled seed ICP profiles to ICP_PROFILES_PATH on first run.
+
+    Only seeds when the profiles directory has no JSON files yet, so operator
+    edits and imported profiles are never overwritten by a restart.
+    """
+    import shutil
+    from config import ICP_PROFILES_PATH
+
+    seeds_dir = Path(__file__).parent / "seeds" / "icp_profiles"
+    if not seeds_dir.exists():
+        return
+    ICP_PROFILES_PATH.mkdir(parents=True, exist_ok=True)
+    existing = list(ICP_PROFILES_PATH.glob("*.json"))
+    if existing:
+        return
+    for seed in seeds_dir.glob("*.json"):
+        dest = ICP_PROFILES_PATH / seed.name
+        shutil.copy2(seed, dest)
+        logger.info("Seeded ICP profile: %s", seed.name)
+
+
+@asynccontextmanager
 async def _lifespan(app: FastAPI):
     """On startup, fail any run orphaned by a prior server instance."""
     count = runs.reconcile_orphaned_runs()
     if count:
         logger.warning("Reconciled %d orphaned run(s) on startup", count)
+    _seed_icp_profiles()
     _log_pipeline_python()
     yield
 
