@@ -296,21 +296,39 @@ def batch_extract(records: list[dict], timeout: int = 15,
         else:
             to_crawl.append(record)
 
+    _playwright_available = False
     if use_playwright:
         try:
-            from playwright_extractor import crawl_with_playwright
-        except ImportError:
-            from extraction.playwright_extractor import crawl_with_playwright
+            try:
+                from playwright_extractor import crawl_with_playwright
+            except ImportError:
+                from extraction.playwright_extractor import crawl_with_playwright
+            # Probe: verify the browser binary is reachable before committing to the pool
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as _pw:
+                _b = _pw.chromium.launch(headless=True)
+                _b.close()
+            _playwright_available = True
+            print("  [Playwright] Headless browser available — using Playwright for extraction")
+        except Exception as _pw_err:
+            print(f"  [Playwright] Browser not available ({_pw_err!s:.120}), falling back to requests")
 
     def _extract(record):
         try:
-            if use_playwright:
+            if _playwright_available:
                 result = crawl_with_playwright(
                     url=record.get("website_url", ""),
                     max_pages=max_pages,
                     keywords=keywords,
                     timeout_ms=timeout * 1000,
                 )
+                # If playwright returned empty, fall back to requests for this record
+                if not result.success:
+                    print(f"    [Playwright→requests fallback] {record.get('practice_name', '')}: {result.error}")
+                    result = extract_practice_text(
+                        url=record.get("website_url", ""), timeout=timeout,
+                        retries=retries, max_pages=max_pages, keywords=keywords,
+                    )
             else:
                 result = extract_practice_text(
                     url=record.get("website_url", ""), timeout=timeout,
