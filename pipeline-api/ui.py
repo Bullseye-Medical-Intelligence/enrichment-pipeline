@@ -668,12 +668,20 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
     for record in raw_records:
         record_id = record_adapter.get_record_id(record)
         review = all_reviews.get(record_id, reviews.default_review())
+        # Backfill display fields missing from runs enriched before these fields existed.
+        city = record.get("address_city") or ""
+        state = record.get("address_state") or ""
+        if not city and not state:
+            city, state = record_adapter.zip_to_city_state(record.get("address_zip", ""))
         merged.append({
             **record,
             "website_url": record_adapter.normalize_homepage_url(record.get("website_url", "")),
             "record_id": record_id,
             "review": review,
             "displayed_tier": record_adapter.displayed_tier(record, review),
+            "confidence_band": record_adapter.effective_confidence_band(record),
+            "address_city": city,
+            "address_state": state,
         })
     return merged
 
