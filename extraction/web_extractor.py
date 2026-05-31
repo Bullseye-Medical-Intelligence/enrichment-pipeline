@@ -8,8 +8,9 @@ batch_extract() sets source_confidence from extraction quality:
   2+ pages crawled AND > 3000 chars -> "complete"
   1 page crawled OR <= 3000 chars   -> "partial"
   No text extracted                 -> "limited"
-It does not override a "limited"/"failed" confidence already set by
-url_validator (those records failed before reaching web extraction).
+For normal requests extraction, it preserves a "limited"/"failed" confidence
+already set upstream by url_validator. In Playwright retry mode, a successful
+browser crawl is treated as source recovery and can upgrade that prior status.
 """
 
 import re
@@ -37,7 +38,7 @@ DEFAULT_HEADERS = {
 
 # Generic, specialty-agnostic default keywords for relevant-subpage scoring.
 # Specialty-specific terms belong in run_config.json ("subpage_keywords"),
-# not in source — keeps the extractor portable across campaigns.
+# not in source - keeps the extractor portable across campaigns.
 DEFAULT_SUBPAGE_KEYWORDS = [
     "service", "procedure", "treatment", "care",
     "provider", "physician", "doctor", "staff", "team", "about",
@@ -70,6 +71,48 @@ class ExtractionResult:
         self.success = bool(context_text)
 
 
+def _source_confidence_for_extraction(result: ExtractionResult) -> str:
+    """Map successful crawl richness to the pipeline source-confidence label."""
+    pages_crawled = len(result.pages_crawled)
+    text_len = len(result.context_text)
+    if pages_crawled >= 2 and text_len > 3000:
+        return "complete"
+    return "partial"
+
+
+def _apply_successful_extraction(
+    record: dict,
+    result: ExtractionResult,
+    *,
+    recover_blocked_source: bool = False,
+) -> None:
+    """Apply successful extraction metadata to a record.
+
+    Browser retries are meant to recover sites the requests validator marked as
+    blocked. When recovery succeeds, clear the stale validator failure so the
+    downstream tier gate can use the newly crawled evidence.
+    """
+    record["_context_text"] = result.context_text
+    record["_pages_crawled"] = result.pages_crawled
+
+    if recover_blocked_source:
+        final_url = result.pages_crawled[0] if result.pages_crawled else result.url
+        final_url = final_url or record.get("website_url", "")
+        if final_url:
+            record["website_url"] = final_url
+        record["_url_valid"] = True
+        record["_url_final"] = final_url
+        record["_url_error"] = ""
+        record["source_confidence"] = _source_confidence_for_extraction(result)
+        return
+
+    # Set source_confidence based on extraction richness. Do not override
+    # upstream validator failures unless this was an explicit recovery crawl.
+    existing_conf = record.get("source_confidence")
+    if existing_conf not in ("limited", "failed"):
+        record["source_confidence"] = _source_confidence_for_extraction(result)
+
+
 def _fetch_html(url: str, timeout: int = 15, retries: int = 3) -> tuple[str, str, str]:
     """
     Fetch HTML from a URL with retry logic.
@@ -88,7 +131,7 @@ def _fetch_html(url: str, timeout: int = 15, retries: int = 3) -> tuple[str, str
                 allow_redirects=True,
             )
             response.raise_for_status()
-            # Respect content type — skip non-HTML
+            # Respect content type - skip non-HTML
             ct = response.headers.get("content-type", "")
             if "html" not in ct.lower():
                 return "", response.url, f"Non-HTML content type: {ct}"
@@ -156,7 +199,7 @@ def _find_relevant_subpages(html: str, base_url: str,
     parsed_base = urlparse(base_url)
     base_domain = parsed_base.netloc.lower()
 
-    candidates = {}  # url → relevance score
+    candidates = {}  # url -> relevance score
 
     for a_tag in soup.find_all("a", href=True):
         href = a_tag.get("href", "").strip()
@@ -288,7 +331,7 @@ def batch_extract(records: list[dict], timeout: int = 15,
     for record in records:
         url = record.get("website_url", "")
         url_valid = record.get("_url_valid", False)
-        # In playwright mode, attempt every record that has a URL — the requests-based
+        # In playwright mode, attempt every record that has a URL - the requests-based
         # URL validator rejects bot-blocking sites that Playwright can reach just fine.
         has_url = bool(url)
         if not has_url or (not url_valid and not use_playwright):
@@ -312,7 +355,7 @@ def batch_extract(records: list[dict], timeout: int = 15,
                 _b = _pw.chromium.launch(headless=True)
                 _b.close()
             _playwright_available = True
-            print("  [Playwright] Headless browser available — using Playwright for extraction")
+            print("  [Playwright] Headless browser available - using Playwright for extraction")
         except Exception as _pw_err:
             print(f"  [Playwright] Browser not available ({_pw_err!s:.120}), falling back to requests")
 
@@ -327,7 +370,7 @@ def batch_extract(records: list[dict], timeout: int = 15,
                 )
                 # If playwright returned empty, fall back to requests for this record
                 if not result.success:
-                    print(f"    [Playwright→requests fallback] {record.get('practice_name', '')}: {result.error}")
+                    print(f"    [Playwright->requests fallback] {record.get('practice_name', '')}: {result.error}")
                     result = extract_practice_text(
                         url=record.get("website_url", ""), timeout=timeout,
                         retries=retries, max_pages=max_pages, keywords=keywords,
@@ -352,23 +395,24 @@ def batch_extract(records: list[dict], timeout: int = 15,
                 print(f"    [FAIL] Extraction error: {record.get('practice_name', 'Unknown')}: {error}")
                 continue
 
-            record["_context_text"] = result.context_text
-            record["_pages_crawled"] = result.pages_crawled
-
             if result.success:
-                # Set source_confidence based on extraction richness.
-                # Do not override "limited"/"failed" set upstream by url_validator.
-                existing_conf = record.get("source_confidence")
-                if existing_conf not in ("limited", "failed"):
-                    pages_crawled = len(result.pages_crawled)
-                    text_len = len(result.context_text)
-                    if pages_crawled >= 2 and text_len > 3000:
-                        record["source_confidence"] = "complete"
-                    else:
-                        record["source_confidence"] = "partial"
+                recovered_source = bool(use_playwright and (
+                    record.get("source_confidence") in ("limited", "failed")
+                    or not record.get("_url_valid", False)
+                    or record.get("_url_error")
+                ))
+                _apply_successful_extraction(
+                    record,
+                    result,
+                    recover_blocked_source=recovered_source,
+                )
+                recovery_note = " (source recovered)" if recovered_source else ""
                 print(f"    [OK] {record.get('practice_name', 'Unknown')}: "
-                      f"{len(result.context_text)} chars from {len(result.pages_crawled)} pages")
+                      f"{len(result.context_text)} chars from {len(result.pages_crawled)} pages"
+                      f"{recovery_note}")
             else:
+                record["_context_text"] = ""
+                record["_pages_crawled"] = []
                 record["source_confidence"] = record.get("source_confidence") or "limited"
                 print(f"    [FAIL] Extraction failed: {result.error}")
 
