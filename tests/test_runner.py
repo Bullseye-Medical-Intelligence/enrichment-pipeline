@@ -125,6 +125,129 @@ def test_monitor_marks_failed_when_enriched_malformed(run_store):
     assert "malformed" in status.error_summary.lower()
 
 
+# ---------------------------------------------------------------------------
+# In-place single-record merge (_merge_recrawled_record)
+# ---------------------------------------------------------------------------
+
+def _complete_run(run_store: Path, run_id: str, records: list[dict]) -> Path:
+    """Create a complete run dir with status.json + enriched_targets.json."""
+    run_dir = run_store / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "status.json").write_text(json.dumps({
+        "run_id": run_id, "project_id": "p", "source_type": "manual",
+        "input_filename": "in.csv", "status": "complete",
+        "created_at": "2026-05-28T10:00:00+00:00", "operator": "tester",
+        "records_input": len(records), "records_output": len(records),
+    }))
+    (run_dir / "enriched_targets.json").write_text(json.dumps(
+        {"run_id": run_id, "record_count": len(records), "records": records}))
+    return run_dir
+
+
+def _scratch_with(run_dir: Path, record: dict) -> Path:
+    """Build a valid scratch dir holding one re-enriched record."""
+    scratch = run_dir / ".recrawl_test"
+    scratch.mkdir()
+    (scratch / "enriched_targets.json").write_text(json.dumps({"records": [record]}))
+    (scratch / "run_log.json").write_text(json.dumps(
+        {"run_id": "x", "records_output": 1, "records_excluded": 0, "records_failed": 0}))
+    return scratch
+
+
+def test_merge_updates_record_and_counts(run_store):
+    run_id = "RUN-20260528-110000-aaaa"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"},
+        {"id": "T-B", "practice_name": "B", "target_tier": "Bullseye",
+         "bullseye_score": 90, "exclusion_status": "CLEAR"},
+    ])
+    scratch = _scratch_with(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+        "bullseye_score": 92, "exclusion_status": "CLEAR"})
+
+    runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    data = json.loads((run_dir / "enriched_targets.json").read_text())
+    by_id = {r["id"]: r for r in data["records"]}
+    assert by_id["T-A"]["target_tier"] == "Bullseye"
+    assert by_id["T-A"]["bullseye_score"] == 92
+    assert by_id["T-B"]["target_tier"] == "Bullseye"   # untouched
+    assert data["record_count"] == 2
+    status = runs.get_run(run_id)
+    assert status.status == "complete"
+    assert status.bullseye_count == 2
+    assert status.watchlist_count == 0
+
+
+def test_merge_stamps_review_note(run_store):
+    run_id = "RUN-20260528-110001-bbbb"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"}])
+    (run_dir / "reviews.json").write_text(json.dumps({
+        "T-A": {"analyst_note": "prior note", "override_tier": "Strong",
+                "override_reason": "good fit", "qc_status": "approved",
+                "reviewed_by": "tester", "reviewed_at": "2026-05-28T10:00:00+00:00"}}))
+    scratch = _scratch_with(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+        "bullseye_score": 92, "exclusion_status": "CLEAR"})
+
+    runner._merge_recrawled_record(run_id, scratch, "T-A", "manual content")
+
+    review = json.loads((run_dir / "reviews.json").read_text())["T-A"]
+    assert review["qc_status"] == "approved"          # decision preserved
+    assert review["override_tier"] == "Strong"
+    assert "prior note" in review["analyst_note"]
+    assert "Re-enriched on" in review["analyst_note"]
+    assert "manual content" in review["analyst_note"]
+
+
+def test_merge_id_not_found_leaves_source_untouched(run_store):
+    run_id = "RUN-20260528-110002-cccc"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"}])
+    before = (run_dir / "enriched_targets.json").read_text()
+    scratch = _scratch_with(run_dir, {
+        "id": "T-ZZZ", "practice_name": "Z", "target_tier": "Bullseye",
+        "bullseye_score": 92, "exclusion_status": "CLEAR"})
+
+    runner._merge_recrawled_record(run_id, scratch, "T-ZZZ", "browser re-crawl")
+
+    assert (run_dir / "enriched_targets.json").read_text() == before
+
+
+def test_merge_invalid_scratch_leaves_source_untouched(run_store):
+    run_id = "RUN-20260528-110003-dddd"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Watchlist",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"}])
+    before = (run_dir / "enriched_targets.json").read_text()
+    scratch = run_dir / ".recrawl_bad"
+    scratch.mkdir()
+    (scratch / "enriched_targets.json").write_text("{ not valid json")
+
+    runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    assert (run_dir / "enriched_targets.json").read_text() == before
+
+
+def test_recompute_counts_from_records():
+    recs = [
+        {"target_tier": "Bullseye", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+        {"target_tier": "Watchlist", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+        {"target_tier": "Excluded", "exclusion_status": "EXCLUDED", "enrichment_status": "complete"},
+        {"target_tier": "Needs Verification", "exclusion_status": "CLEAR", "enrichment_status": "failed"},
+    ]
+    counts = runner._recompute_counts_from_records(recs)
+    assert counts["bullseye_count"] == 1
+    assert counts["watchlist_count"] == 1
+    assert counts["needs_verification_count"] == 1
+    assert counts["excluded_count"] == 1
+    assert counts["error_count"] == 1
+
+
 def test_monitor_marks_failed_when_log_missing(run_store):
     run_id = "RUN-20260528-100003-dddd"
     run_dir = _make_run(run_store, run_id)

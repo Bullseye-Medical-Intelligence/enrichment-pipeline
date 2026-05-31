@@ -826,41 +826,39 @@ async def export_retry_crawl(run_id: str, username: str = Depends(auth.require_s
 async def recrawl_single_record(
     run_id: str,
     record_id: str,
-    background_tasks: BackgroundTasks,
     request: Request,
     website_url: str = Form(""),
     username: str = Depends(auth.require_session),
 ):
-    """Start a Playwright re-crawl for a single practice, optionally with a new URL."""
+    """Re-crawl one practice with a headless browser and update its run in place."""
     try:
-        new_run_id, _ = await runner.orchestrate_single_recrawl(
+        await runner.orchestrate_single_recrawl(
             source_run_id=run_id,
             record_id=record_id,
             website_url_override=website_url,
             operator=username,
-            background_tasks=background_tasks,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
 @router.post("/runs/{run_id}/records/{record_id}/manual-content")
 async def manual_content_recrawl(
     run_id: str,
     record_id: str,
-    background_tasks: BackgroundTasks,
     request: Request,
     html_file: UploadFile | None = File(None),
     pasted_text: str = Form(""),
     username: str = Depends(auth.require_session),
 ):
-    """Enrich a single record from operator-provided page content.
+    """Enrich one record from operator-provided page content, updating in place.
 
     For CAPTCHA-blocked sites the crawler cannot reach: the operator uploads a
-    saved .html file or pastes the page text, and signal extraction runs on it.
+    saved .html file or pastes the page text, signal extraction runs on it, and
+    the updated record is merged back into the same run.
     """
     content_bytes = b""
     content_filename = "pasted.txt"
@@ -876,19 +874,18 @@ async def manual_content_recrawl(
             detail="Provide an HTML file or paste page content.",
         )
     try:
-        new_run_id, _ = await runner.orchestrate_manual_content_recrawl(
+        await runner.orchestrate_manual_content_recrawl(
             source_run_id=run_id,
             record_id=record_id,
             content_bytes=content_bytes,
             content_filename=content_filename,
             operator=username,
-            background_tasks=background_tasks,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
 @router.post("/runs/{run_id}/retry-with-browser")

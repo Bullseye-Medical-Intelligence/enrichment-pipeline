@@ -222,8 +222,8 @@ GET    /runs/{run_id}/download/csv               Full enriched_targets.csv downl
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
 GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs)
-POST   /runs/{run_id}/records/{record_id}/recrawl          Re-crawl one record with headless browser
-POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record from operator-pasted/uploaded page content
+POST   /runs/{run_id}/records/{record_id}/recrawl          Re-crawl one record with headless browser; updates the record in place
+POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record from operator-pasted/uploaded page content; updates in place
 POST   /api/ui/runs                              Create run from browser upload
 POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 ```
@@ -292,6 +292,15 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   rejects new runs over the cap so a small host cannot be exhausted.
 - **Orphan recovery**: on startup (`main.py` lifespan) any run still `pending`/`running`
   is marked `failed` — monitors do not survive a restart, so such runs are orphaned.
+- **In-place single-record re-enrich**: the per-record re-crawl and manual-content
+  routes do NOT create a new run. They run the one record through the pipeline in a
+  hidden scratch dir (`<run_dir>/.recrawl_<token>/`, no `status.json` so it is
+  invisible to `list_runs`/orphan recovery/the run cap), then merge the updated
+  record back into the source run's `enriched_targets.json` by stable `id`
+  (`runner._merge_recrawled_record`), recompute its status counts, and keep the run
+  `complete`. The analyst's review is preserved and stamped with a dated
+  "Re-enriched" note (`reviews.stamp_reenriched`). The route blocks until merge so
+  the operator returns to fresh data on the same run.
 - **Constant-time auth**: API key and UI password comparisons use `hmac.compare_digest`.
 - **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
   output (`output/atomic_write.py`) use temp-file + `os.replace()`.

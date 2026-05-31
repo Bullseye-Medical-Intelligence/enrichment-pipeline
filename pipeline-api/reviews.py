@@ -60,6 +60,29 @@ def get_review(run_id: str, record_id: str, run_directory: Path) -> dict:
     return all_reviews.get(record_id, default_review())
 
 
+def stamp_reenriched(run_id: str, record_id: str, run_directory: Path, kind: str) -> dict:
+    """Append a re-enriched note to a record's review, preserving the analyst's decision.
+
+    When a record's pipeline data is replaced in place (browser re-crawl or
+    operator-provided content), the analyst's prior QC decision, override tier,
+    and notes are kept untouched — but a dated line is appended to the analyst
+    note so it is clear the underlying data changed under that decision.
+
+    kind is a human label, e.g. "browser re-crawl" or "manual content".
+    Returns the updated review entry.
+    """
+    all_reviews = get_reviews(run_id, run_directory)
+    entry = dict(all_reviews.get(record_id) or default_review())
+
+    stamp = f"Re-enriched on {datetime.now(timezone.utc).date().isoformat()} ({kind})."
+    existing = (entry.get("analyst_note") or "").rstrip()
+    entry["analyst_note"] = f"{existing}\n{stamp}".strip() if existing else stamp
+
+    all_reviews[record_id] = entry
+    _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+    return entry
+
+
 def save_review(
     run_id: str,
     record_id: str,

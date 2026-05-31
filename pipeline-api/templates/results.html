@@ -249,7 +249,6 @@
         <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
         <th class="sortable" onclick="sortRecords('location', this)">Location</th>
         <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
-        <th class="sortable" onclick="sortRecords('original', this)">Original</th>
         <th class="sortable" onclick="sortRecords('score', this)">Score</th>
         <th class="sortable" onclick="sortRecords('qc', this)">QC</th>
       </tr>
@@ -270,7 +269,6 @@
           data-sort-practice="{{ record.practice_name | default('') | lower }}"
           data-sort-location="{{ (_city ~ ' ' ~ _state) | lower }}"
           data-sort-tier="{{ _tier_rank }}"
-          data-sort-original="{{ record.target_tier | default('') | lower }}"
           data-sort-score="{{ record.bullseye_score | default(0) }}"
           data-sort-qc="{{ review.qc_status }}"
           onclick="toggleDetail('{{ rid }}')"
@@ -296,7 +294,6 @@
           {% endif %}
           {% endif %}
         </td>
-        <td class="text-muted">{{ record.target_tier | default("—") }}</td>
         <td>{{ record.bullseye_score | default("—") }}</td>
         <td>
           <span class="badge badge-qc-{{ review.qc_status }}">{{ review.qc_status }}</span>
@@ -305,7 +302,7 @@
 
       {# ── Detail / review row (hidden by default) ─────────────────── #}
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
-        <td colspan="8">
+        <td colspan="7">
           <div class="detail-panel">
             {% if record.phone or record.website_url %}
             <div class="detail-contact-header">
@@ -429,6 +426,11 @@
               {# Review controls #}
               <div class="detail-section review-section" id="review-{{ rid }}">
                 <h4>Analyst Review</h4>
+
+                <p class="text-muted small" style="margin:0 0 0.6em;">
+                  Original pipeline tier:
+                  <strong>{{ record.target_tier | default("—") }}</strong>
+                </p>
 
                 <div class="form-group">
                   <label>Analyst Note</label>

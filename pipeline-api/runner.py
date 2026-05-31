@@ -8,6 +8,8 @@ import asyncio
 import json
 import logging
 import os
+import secrets
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,7 @@ from typing import TYPE_CHECKING
 import icp_profiles
 import projects
 import record_adapter
+import reviews
 import runs
 from config import (
     ICP_SNAPSHOT_FILENAME,
@@ -487,48 +490,26 @@ async def orchestrate_playwright_retry(
     return new_run_id, row_count
 
 
-async def orchestrate_single_recrawl(
-    source_run_id: str,
-    record_id: str,
-    website_url_override: str,
-    operator: str,
-    background_tasks,
-) -> tuple[str, int]:
-    """Start a Playwright run for a single record, optionally with a new URL.
+def _prepare_single_record_job(source_run_id: str, record_id: str):
+    """Validate a source run + record and build a scratch job dir for re-enrich.
 
-    Used by the per-practice Re-crawl button in the exclusion rationale panel.
-    Looks up the record from the source run, substitutes the URL if provided,
-    and spawns a one-record pipeline run with --playwright.
+    Shared setup for the in-place re-crawl / manual-content paths: confirms the
+    source run is complete and contains the record, writes a one-row manual CSV
+    into a hidden scratch dir nested in the source run dir (no status.json, so it
+    is invisible to list_runs / orphan recovery / the run cap), and returns the
+    handles the caller needs to spawn the pipeline.
 
-    Args:
-        source_run_id: The completed run containing the record.
-        record_id: The record's ID within that run.
-        website_url_override: URL to use; falls back to stored URL if empty.
-        operator: Name of the user triggering the retry.
-        background_tasks: FastAPI BackgroundTasks instance.
-
-    Returns:
-        (new_run_id, 1)
+    Returns (source_dir, record, scratch_dir, config_snapshot_src, icp_snapshot_src).
 
     Raises:
-        FileNotFoundError if run/record not found.
-        ValueError if the run is not complete or concurrent-run cap reached.
+        FileNotFoundError if the run or record is not found.
+        ValueError if the run is not complete or its inputs are missing.
     """
-    import csv
-    import io
-
-    active = runs.count_active_runs()
-    if active >= MAX_CONCURRENT_RUNS:
-        raise ValueError(
-            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
-            "Wait for a run to finish before starting another."
-        )
-
     source_status = runs.get_run(source_run_id)
     if source_status is None:
         raise FileNotFoundError(f"Run '{source_run_id}' not found")
     if source_status.status != "complete":
-        raise ValueError(f"Source run is {source_status.status!r} — only complete runs can be retried.")
+        raise ValueError(f"Source run is {source_status.status!r} — only complete runs can be re-enriched.")
 
     source_dir = runs.run_dir(source_run_id)
     results_path = source_dir / "enriched_targets.json"
@@ -537,13 +518,28 @@ async def orchestrate_single_recrawl(
 
     with open(results_path, "r", encoding="utf-8") as f:
         all_records = record_adapter.normalize_records_payload(json.load(f))
-
     record = next((r for r in all_records if record_adapter.get_record_id(r) == record_id), None)
     if record is None:
         raise FileNotFoundError(f"Record '{record_id}' not found in run '{source_run_id}'")
 
-    url = (record_adapter.normalize_homepage_url(website_url_override)
-           or record_adapter.normalize_homepage_url(record.get("website_url", "")))
+    config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
+    if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
+        raise ValueError("Source run is missing config snapshots.")
+
+    # Hidden, run-scoped scratch dir. The leading dot keeps it out of
+    # is_valid_run_id, and the absence of a status.json keeps it out of
+    # list_runs(), so orphan recovery and the concurrent-run cap never see it.
+    scratch_dir = source_dir / f".recrawl_{secrets.token_hex(4)}"
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+
+    return source_dir, record, scratch_dir, config_snapshot_src, icp_snapshot_src
+
+
+def _write_single_record_csv(scratch_dir: Path, record: dict, website_url: str) -> Path:
+    """Write a one-row manual-format input.csv into the scratch dir."""
+    import csv
+    import io
 
     fieldnames = ["practice_name", "website_url", "phone",
                   "address_city", "address_state", "address_zip", "specialty"]
@@ -552,71 +548,61 @@ async def orchestrate_single_recrawl(
     writer.writeheader()
     writer.writerow({
         "practice_name": record.get("practice_name", ""),
-        "website_url": url,
+        "website_url": website_url,
         "phone": record.get("phone", ""),
         "address_city": record.get("address_city", ""),
         "address_state": record.get("address_state", ""),
         "address_zip": record.get("address_zip", ""),
         "specialty": record.get("specialty", ""),
     })
-    csv_bytes = buf.getvalue().encode("utf-8")
+    input_path = scratch_dir / "input.csv"
+    input_path.write_bytes(buf.getvalue().encode("utf-8"))
+    return input_path
 
-    config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
-    icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
-    if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
-        raise ValueError("Source run is missing config snapshots.")
-    with open(config_snapshot_src, "r", encoding="utf-8") as f:
-        project_config = json.load(f)
-    with open(icp_snapshot_src, "r", encoding="utf-8") as f:
-        icp_profile = json.load(f)
 
-    new_run_id = runs.generate_run_id()
-    run_directory = OUTPUT_RUNS_PATH / new_run_id
-    run_directory.mkdir(parents=True, exist_ok=True)
-    (run_directory / "input.csv").write_bytes(csv_bytes)
+async def orchestrate_single_recrawl(
+    source_run_id: str,
+    record_id: str,
+    website_url_override: str,
+    operator: str,
+) -> str:
+    """Re-crawl one record with a headless browser and update its run in place.
 
-    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
-    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
-    _write_json(config_snapshot, project_config)
-    _write_json(icp_snapshot, icp_profile)
+    Runs the single record through the pipeline (--playwright) in a hidden
+    scratch dir, then merges the updated record back into the source run's
+    enriched_targets.json. The source run stays 'complete' the whole time — no
+    new run appears in the dashboard. Blocks until the merge is done so the
+    operator returns to fresh data.
 
-    runs.create_run(
-        run_id=new_run_id,
-        project_id=source_status.project_id,
-        source_type="manual",
-        input_filename=f"{record.get('practice_name', record_id)[:40]}_recrawl.csv",
-        operator=operator,
-        records_input=1,
-        metadata={
-            "client_name": project_config.get("client_name"),
-            "product_name": project_config.get("product_name"),
-            "target_specialty": project_config.get("target_specialty"),
-            "target_geography": project_config.get("target_geography") or [],
-            "icp_profile_id": project_config.get("icp_profile_id"),
-            "icp_profile_name": icp_profile.get("name"),
-            "icp_profile_version": icp_profile.get("version"),
-            "playwright_retry_of": source_run_id,
-            "recrawl_record_id": record_id,
-        },
+    Returns the source_run_id (the same run, now updated).
+
+    Raises:
+        FileNotFoundError if run/record not found.
+        ValueError if the run is not complete or its inputs are missing.
+    """
+    source_dir, record, scratch_dir, config_src, icp_src = _prepare_single_record_job(
+        source_run_id, record_id
     )
+
+    url = (record_adapter.normalize_homepage_url(website_url_override)
+           or record_adapter.normalize_homepage_url(record.get("website_url", "")))
+    input_path = _write_single_record_csv(scratch_dir, record, url)
 
     process = spawn_pipeline(
-        new_run_id,
-        run_directory / "input.csv",
+        source_run_id,
+        input_path,
         "manual",
-        run_directory,
-        config_snapshot,
-        icp_snapshot,
+        scratch_dir,
+        config_src,
+        icp_src,
         extra_flags=["--playwright"],
     )
-    runs.update_run_status(new_run_id, status="running")
-    background_tasks.add_task(monitor_pipeline, new_run_id, process)
-
     logger.info(
-        "Single-record Playwright recrawl %s started by '%s' (record=%s, url=%s)",
-        new_run_id, operator, record_id, url,
+        "In-place browser re-crawl of record %s in run %s started by '%s' (url=%s)",
+        record_id, source_run_id, operator, url,
     )
-    return new_run_id, 1
+    await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "browser re-crawl")
+    return source_run_id
 
 
 async def orchestrate_manual_content_recrawl(
@@ -625,98 +611,35 @@ async def orchestrate_manual_content_recrawl(
     content_bytes: bytes,
     content_filename: str,
     operator: str,
-    background_tasks,
-) -> tuple[str, int]:
-    """Enrich a single record from operator-provided page content, not a crawl.
+) -> str:
+    """Enrich one record from operator-provided page content, updating in place.
 
     For a site behind a hard CAPTCHA wall the crawler cannot clear, the operator
     captures the page in their own browser (Save Page As .html, or copy the
-    visible text) and submits it. This saves that content into a new run and
-    spawns the pipeline with --manual-content-path, so signal extraction runs on
-    the operator's content instead of crawling. Mirrors orchestrate_single_recrawl.
+    visible text) and submits it. The content is run through the pipeline
+    (--manual-content-path) in a hidden scratch dir and the updated record is
+    merged back into the source run. The source run stays 'complete'.
 
-    Args:
-        source_run_id: The completed run containing the record.
-        record_id: The record's ID within that run.
-        content_bytes: The raw HTML or text the operator supplied.
-        content_filename: Original filename (used to pick .html vs .txt).
-        operator: Name of the user triggering the enrichment.
-        background_tasks: FastAPI BackgroundTasks instance.
-
-    Returns:
-        (new_run_id, 1)
+    Returns the source_run_id.
 
     Raises:
         FileNotFoundError if run/record not found.
-        ValueError if the run is not complete, the content is empty/too large,
-        or the concurrent-run cap is reached.
+        ValueError if the run is not complete, its inputs are missing, or the
+        content is empty/too large.
     """
-    import csv
-    import io
-
     if not content_bytes or not content_bytes.strip():
         raise ValueError("No content provided. Upload an HTML file or paste page content.")
     if len(content_bytes) > MAX_CSV_SIZE_BYTES:
         raise ValueError("Provided content is too large.")
 
-    active = runs.count_active_runs()
-    if active >= MAX_CONCURRENT_RUNS:
-        raise ValueError(
-            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
-            "Wait for a run to finish before starting another."
-        )
-
-    source_status = runs.get_run(source_run_id)
-    if source_status is None:
-        raise FileNotFoundError(f"Run '{source_run_id}' not found")
-    if source_status.status != "complete":
-        raise ValueError(f"Source run is {source_status.status!r} — only complete runs can be enriched.")
-
-    source_dir = runs.run_dir(source_run_id)
-    results_path = source_dir / "enriched_targets.json"
-    if not results_path.exists():
-        raise ValueError("Source run has no enriched_targets.json")
-
-    with open(results_path, "r", encoding="utf-8") as f:
-        all_records = record_adapter.normalize_records_payload(json.load(f))
-
-    record = next((r for r in all_records if record_adapter.get_record_id(r) == record_id), None)
-    if record is None:
-        raise FileNotFoundError(f"Record '{record_id}' not found in run '{source_run_id}'")
+    source_dir, record, scratch_dir, config_src, icp_src = _prepare_single_record_job(
+        source_run_id, record_id
+    )
 
     url = record_adapter.normalize_homepage_url(record.get("website_url", ""))
+    input_path = _write_single_record_csv(scratch_dir, record, url)
 
-    fieldnames = ["practice_name", "website_url", "phone",
-                  "address_city", "address_state", "address_zip", "specialty"]
-    buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
-    writer.writeheader()
-    writer.writerow({
-        "practice_name": record.get("practice_name", ""),
-        "website_url": url,
-        "phone": record.get("phone", ""),
-        "address_city": record.get("address_city", ""),
-        "address_state": record.get("address_state", ""),
-        "address_zip": record.get("address_zip", ""),
-        "specialty": record.get("specialty", ""),
-    })
-    csv_bytes = buf.getvalue().encode("utf-8")
-
-    config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
-    icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
-    if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
-        raise ValueError("Source run is missing config snapshots.")
-    with open(config_snapshot_src, "r", encoding="utf-8") as f:
-        project_config = json.load(f)
-    with open(icp_snapshot_src, "r", encoding="utf-8") as f:
-        icp_profile = json.load(f)
-
-    new_run_id = runs.generate_run_id()
-    run_directory = OUTPUT_RUNS_PATH / new_run_id
-    run_directory.mkdir(parents=True, exist_ok=True)
-    (run_directory / "input.csv").write_bytes(csv_bytes)
-
-    # Save the operator's content into the run dir as .html or .txt.
+    # Save the operator's content into the scratch dir as .html or .txt.
     looks_html = (
         (content_filename or "").lower().endswith((".html", ".htm"))
         or b"<html" in content_bytes[:4000].lower()
@@ -724,51 +647,152 @@ async def orchestrate_manual_content_recrawl(
         or b"<div" in content_bytes[:4000].lower()
     )
     suffix = ".html" if looks_html else ".txt"
-    content_path = run_directory / f"manual_content{suffix}"
+    content_path = scratch_dir / f"manual_content{suffix}"
     content_path.write_bytes(content_bytes)
 
-    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
-    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
-    _write_json(config_snapshot, project_config)
-    _write_json(icp_snapshot, icp_profile)
-
-    runs.create_run(
-        run_id=new_run_id,
-        project_id=source_status.project_id,
-        source_type="manual",
-        input_filename=f"{record.get('practice_name', record_id)[:40]}_manual.csv",
-        operator=operator,
-        records_input=1,
-        metadata={
-            "client_name": project_config.get("client_name"),
-            "product_name": project_config.get("product_name"),
-            "target_specialty": project_config.get("target_specialty"),
-            "target_geography": project_config.get("target_geography") or [],
-            "icp_profile_id": project_config.get("icp_profile_id"),
-            "icp_profile_name": icp_profile.get("name"),
-            "icp_profile_version": icp_profile.get("version"),
-            "manual_content_of": source_run_id,
-            "recrawl_record_id": record_id,
-        },
-    )
-
     process = spawn_pipeline(
-        new_run_id,
-        run_directory / "input.csv",
+        source_run_id,
+        input_path,
         "manual",
-        run_directory,
-        config_snapshot,
-        icp_snapshot,
+        scratch_dir,
+        config_src,
+        icp_src,
         extra_flags=["--manual-content-path", str(content_path)],
     )
-    runs.update_run_status(new_run_id, status="running")
-    background_tasks.add_task(monitor_pipeline, new_run_id, process)
-
     logger.info(
-        "Manual-content enrich %s started by '%s' (record=%s, %d bytes, %s)",
-        new_run_id, operator, record_id, len(content_bytes), suffix,
+        "In-place manual-content enrich of record %s in run %s started by '%s' (%d bytes, %s)",
+        record_id, source_run_id, operator, len(content_bytes), suffix,
     )
-    return new_run_id, 1
+    await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "manual content")
+    return source_run_id
+
+
+async def _run_inplace_update(
+    source_run_id: str,
+    scratch_dir: Path,
+    record_id: str,
+    process: subprocess.Popen,
+    kind: str,
+) -> None:
+    """Wait for a single-record pipeline run, then merge its result in place.
+
+    On a clean exit, merges the updated record into the source run; on any
+    failure, leaves the source run untouched. The scratch dir is always removed.
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
+        if process.returncode != 0:
+            error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
+            logger.error(
+                "In-place %s of record %s in run %s failed (exit %d): %.500s",
+                kind, record_id, source_run_id, process.returncode, error_text,
+            )
+            return
+        _merge_recrawled_record(source_run_id, scratch_dir, record_id, kind)
+    finally:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
+def _recompute_counts_from_records(records: list[dict]) -> dict:
+    """Derive status.json tier/exclusion counts from the records list itself.
+
+    Keeps every count consistent with the authoritative enriched_targets.json
+    after an in-place record swap, rather than the per-run run_log.json (which a
+    single-record scratch run would not have updated for the whole run).
+    """
+    return {
+        "bullseye_count": sum(1 for r in records if r.get("target_tier") == "Bullseye"),
+        "needs_verification_count": sum(
+            1 for r in records if r.get("target_tier") == "Needs Verification"),
+        "watchlist_count": sum(1 for r in records if r.get("target_tier") == "Watchlist"),
+        "excluded_count": sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED"),
+        "error_count": sum(1 for r in records if r.get("enrichment_status") == "failed"),
+    }
+
+
+def _merge_recrawled_record(
+    source_run_id: str,
+    scratch_dir: Path,
+    record_id: str,
+    kind: str,
+) -> None:
+    """Merge a re-enriched single record back into its source run, in place.
+
+    Validates the scratch output, replaces the matching record (by stable id) in
+    the source enriched_targets.json via an atomic write, stamps the analyst
+    review note, and recomputes the source run's status counts. The source run
+    stays 'complete'. On any error the source run is left untouched.
+    """
+    failure = _validate_output_dir(scratch_dir)
+    if failure:
+        logger.error(
+            "In-place %s of record %s in run %s: scratch output invalid: %s",
+            kind, record_id, source_run_id, failure,
+        )
+        return
+
+    try:
+        with open(scratch_dir / "enriched_targets.json", "r", encoding="utf-8") as f:
+            new_records = record_adapter.normalize_records_payload(json.load(f))
+        updated = next(
+            (r for r in new_records if record_adapter.get_record_id(r) == record_id),
+            new_records[0] if new_records else None,
+        )
+        if updated is None:
+            logger.error(
+                "In-place %s of record %s in run %s: scratch produced no record.",
+                kind, record_id, source_run_id,
+            )
+            return
+
+        source_dir = runs.run_dir(source_run_id)
+        enriched_path = source_dir / "enriched_targets.json"
+        with open(enriched_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        records = record_adapter.normalize_records_payload(payload)
+
+        idx = next(
+            (i for i, r in enumerate(records) if record_adapter.get_record_id(r) == record_id),
+            None,
+        )
+        if idx is None:
+            logger.error(
+                "In-place %s: record %s vanished from run %s; leaving run untouched.",
+                kind, record_id, source_run_id,
+            )
+            return
+
+        records[idx] = updated
+
+        # Preserve the wrapper shape; refresh the generation timestamp only.
+        if isinstance(payload, dict):
+            payload["records"] = records
+            payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+            payload["record_count"] = len(records)
+            out_payload = payload
+        else:
+            out_payload = records
+        reviews._atomic_write(enriched_path, out_payload)
+
+        # Keep the analyst's decision; flag that the data changed under it.
+        reviews.stamp_reenriched(source_run_id, record_id, source_dir, kind)
+
+        # Recompute counts from the merged file. records_output is unchanged
+        # (one record replaced one record), so it is preserved as-is.
+        counts = _recompute_counts_from_records(records)
+        runs.update_run_status(source_run_id, status="complete", **counts)
+
+        logger.info(
+            "In-place %s merged: record %s updated in run %s (tier now %s, score %s).",
+            kind, record_id, source_run_id,
+            updated.get("target_tier"), updated.get("bullseye_score"),
+        )
+    except Exception:
+        logger.exception(
+            "In-place %s of record %s in run %s failed during merge; run untouched.",
+            kind, record_id, source_run_id,
+        )
 
 
 async def resume_run(run_id: str, background_tasks) -> int:
@@ -820,8 +844,16 @@ def _validate_output_files(run_id: str) -> str | None:
     Returns None on success, or a human-readable error string on failure.
     A non-None return means the run should be marked failed even if exit code was 0.
     """
-    directory = runs.run_dir(run_id)
+    return _validate_output_dir(runs.run_dir(run_id))
 
+
+def _validate_output_dir(directory: Path) -> str | None:
+    """
+    Verify that both required output files exist, parse, and have expected shape
+    in an arbitrary output directory (a run dir or a scratch dir).
+
+    Returns None on success, or a human-readable error string on failure.
+    """
     enriched_path = directory / "enriched_targets.json"
     if not enriched_path.exists():
         return "Pipeline exited 0 but enriched_targets.json was not written."
