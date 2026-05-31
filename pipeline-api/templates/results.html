@@ -247,7 +247,6 @@
       <tr>
         <th></th>
         <th>Practice</th>
-        <th>Specialty</th>
         <th>Location</th>
         <th>Tier</th>
         <th>Original</th>
@@ -275,8 +274,7 @@
           {% endif %}
           {% if record.website_url %}<br><a class="text-muted small practice-url" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
-        <td>{{ record.specialty | default("—") }}</td>
-        <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% elif record.address_zip %}<span class="text-muted">{{ record.address_zip }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
           {% if record.enrichment_status == "not_enriched" and record.exclusion_status != "EXCLUDED" %}
           <span class="badge badge-status-pending" title="Not yet enriched — run Enrich All">Not enriched</span>

@@ -251,10 +251,17 @@ def _map_row(row: dict, row_num: int) -> dict:
 
     # Pull raw values using Outscraper field names (only place this happens)
     practice_name = (row.get("name") or "").strip()
-    full_address = (row.get("full_address") or "").strip()
-    address_state = _normalize_state(row.get("state") or "")
-    address_city = (row.get("city") or "").strip()
-    address_zip = (row.get("postal_code") or "").strip()
+    full_address = (row.get("full_address") or row.get("address") or "").strip()
+    # Check every state/city column name seen across Outscraper export formats
+    address_state = _normalize_state(
+        row.get("state") or row.get("region") or row.get("address_state")
+        or row.get("state_code") or row.get("state_name") or ""
+    )
+    address_city = (
+        row.get("city") or row.get("locality") or row.get("address_city")
+        or row.get("city_name") or ""
+    ).strip()
+    address_zip = (row.get("postal_code") or row.get("zip") or row.get("zip_code") or "").strip()
     phone = _clean_phone(row.get("phone") or "")
     # Check every URL column name seen across different Outscraper export formats
     website_url = _normalize_url(
@@ -267,7 +274,7 @@ def _map_row(row: dict, row_num: int) -> dict:
         or row.get("website_address")
         or ""
     )
-    type_raw = (row.get("type") or "").strip()
+    type_raw = (row.get("type") or row.get("category") or row.get("business_type") or "").strip()
     npi = (row.get("npi") or "").strip() or None
 
     # If city/state/zip are missing, try to parse from full_address
