@@ -449,16 +449,22 @@ class TestTierAssignment:
         assert _assign_tier(rec, 0, 75) == "Contender"
 
     def test_low_score_with_evidence_is_manual_review(self):
-        """A score below 30 is Manual Review even when some evidence exists."""
+        """A score below 50 is Manual Review even when some evidence exists."""
         rec = _clear_record(score=20)
         rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
         assert _assign_tier(rec, 20, 75) == "Manual Review"
 
-    def test_score_at_threshold_is_not_manual_review(self):
-        """A score of exactly 30 is not Manual Review — threshold is exclusive."""
-        rec = _clear_record(score=30)
+    def test_score_below_50_with_evidence_is_manual_review(self):
+        """A score of 45 (one medium-confidence signal) is not enough for Contender."""
+        rec = _clear_record(score=45)
         rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
-        assert _assign_tier(rec, 30, 75) == "Contender"
+        assert _assign_tier(rec, 45, 75) == "Manual Review"
+
+    def test_score_at_threshold_is_not_manual_review(self):
+        """A score of exactly 50 is not Manual Review — threshold is exclusive."""
+        rec = _clear_record(score=50)
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
+        assert _assign_tier(rec, 50, 75) == "Contender"
 
     def test_unconfirmed_required_signal_caps_bullseye_at_needs_verification(self):
         signals = [{"signal_id": "S-1", "signal_state": "not_found",
@@ -807,8 +813,8 @@ class TestClearRecordTierInvariant:
         assert result["target_tier"] == "Bullseye"
 
     def test_clear_low_score_is_contender_not_excluded(self):
-        """CLEAR records with score < 75 and some evidence are Contender, never Excluded."""
-        record = _clear_record(score=40)
+        """CLEAR records with score between threshold and bullseye_min are Contender, never Excluded."""
+        record = _clear_record(score=55)
         record["signals"] = list(self._YES)
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"

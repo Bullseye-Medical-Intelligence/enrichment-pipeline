@@ -43,7 +43,10 @@ EXCLUDED_SCORE_CAP = 40             # max bullseye_score retained on excluded re
 
 # Records scoring below this threshold have insufficient signal evidence to support
 # a Contender call verdict and are assigned Manual Review instead.
-LOW_SCORE_MANUAL_REVIEW_THRESHOLD = 30
+# 50 ≈ one high-confidence confirmed signal of meaningful weight — the minimum
+# evidence floor for a rep call. Scores 30–49 typically represent a single
+# medium-confidence signal, which is too thin to justify outreach.
+LOW_SCORE_MANUAL_REVIEW_THRESHOLD = 50
 
 # fit_confidence_status quadrant thresholds
 HIGH_FIT_THRESHOLD = 70
