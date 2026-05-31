@@ -272,9 +272,9 @@ ul, ol { padding-left: 1.4em; }
 .badge-tier-contender  { background: var(--purple-bg); color: var(--purple); }
 .badge-tier-manual-review { background: var(--slate-bg); color: var(--slate); font-weight: 600; }
 .badge-tier-excluded   { background: rgba(10,10,10,0.08); color: var(--muted); }
-.badge-qc-pending      { background: var(--slate-bg);  color: var(--slate); }
-.badge-qc-approved     { background: var(--green-bg);  color: var(--green); }
-.badge-qc-rejected     { background: var(--red-bg);    color: var(--red); }
+.badge-qc-pending      { background: var(--slate-bg);  color: var(--slate); text-transform: none; font-size: 12px; }
+.badge-qc-approved     { background: var(--green-bg);  color: var(--green); text-transform: none; font-size: 12px; }
+.badge-qc-rejected     { background: var(--red-bg);    color: var(--red);   text-transform: none; font-size: 12px; }
 .badge-blocked         { background: var(--amber-bg);  color: #92400e; font-weight: 600; }
 
 /* Sortable column headers */
