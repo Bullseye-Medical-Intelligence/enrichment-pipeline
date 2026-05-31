@@ -3,7 +3,8 @@
 # Run: ./start-bemi.sh
 # Press Ctrl+C to stop the server.
 
-cd "$(dirname "$0")/pipeline-api"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT/pipeline-api"
 
 if [ ! -f ".env" ]; then
     echo "ERROR: .env not found in pipeline-api/."
@@ -17,24 +18,41 @@ if lsof -i :8000 -sTCP:LISTEN -t >/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep 
     exit 1
 fi
 
-if [ -f ".venv/bin/activate" ]; then
-    source .venv/bin/activate
+# Resolve the venv Python explicitly. The server spawns the pipeline with its
+# own interpreter, so uvicorn MUST run from the venv that has Playwright and
+# Chromium. Check the repo root first (.venv), then pipeline-api/.venv.
+if [ -x "$ROOT/.venv/bin/python" ]; then
+    PYEXE="$ROOT/.venv/bin/python"
+elif [ -x "$ROOT/pipeline-api/.venv/bin/python" ]; then
+    PYEXE="$ROOT/pipeline-api/.venv/bin/python"
+else
+    echo "ERROR: No virtual environment found."
+    echo "Expected .venv at:"
+    echo "  $ROOT/.venv"
+    echo "  or $ROOT/pipeline-api/.venv"
+    echo
+    echo "Create one from the repo root, then install dependencies:"
+    echo "  python -m venv .venv"
+    echo "  .venv/bin/python -m pip install -r pipeline-api/requirements.txt"
+    echo "  .venv/bin/python -m playwright install chromium"
+    exit 1
 fi
+
+echo "Using Python: $PYEXE"
 
 # Ensure the Playwright headless browser is installed (needed for "Re-crawl
 # with Browser"). Idempotent: a quick no-op when Chromium is already present.
-if python -c "import playwright" 2>/dev/null; then
+if "$PYEXE" -c "import playwright" 2>/dev/null; then
     echo "Ensuring headless browser is installed..."
-    python -m playwright install chromium
+    "$PYEXE" -m playwright install chromium
 else
     echo "NOTE: Playwright is not installed in this environment."
-    echo "      Re-crawl with Browser will fall back to basic mode."
-    echo "      To enable it, run:"
-    echo "        python -m pip install -r requirements.txt"
-    echo "        python -m playwright install chromium"
+    echo "      Re-crawl with Browser will produce no data until you run:"
+    echo "        \"$PYEXE\" -m pip install -r requirements.txt"
+    echo "        \"$PYEXE\" -m playwright install chromium"
 fi
 
 # Open browser after 3s delay (server needs time to start)
 (sleep 3 && (open "http://localhost:8000/login" 2>/dev/null || xdg-open "http://localhost:8000/login" 2>/dev/null || true)) &
 
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+"$PYEXE" -m uvicorn main:app --host 0.0.0.0 --port 8000
