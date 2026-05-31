@@ -842,7 +842,7 @@ async def recrawl_single_record(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+    return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
 
 
 @router.post("/runs/{run_id}/records/{record_id}/manual-content")
@@ -885,7 +885,7 @@ async def manual_content_recrawl(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+    return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
 
 
 @router.post("/runs/{run_id}/retry-with-browser")

@@ -1,5 +1,38 @@
 /* app.js — minimal UI interactions only. No business logic. */
 
+/* ── Scroll back to the record after a re-crawl redirect ───────── */
+document.addEventListener('DOMContentLoaded', function() {
+  var params = new URLSearchParams(window.location.search);
+  var rid = params.get('scrollto');
+  if (!rid) return;
+  var row = document.querySelector('.record-row[data-rid="' + rid + '"]');
+  if (!row) return;
+  /* expand the detail panel */
+  var detail = document.getElementById('detail-' + rid);
+  var icon   = document.getElementById('icon-'   + rid);
+  if (detail && detail.style.display === 'none') {
+    detail.style.display = 'table-row';
+    if (icon) icon.textContent = '▼';
+  }
+  /* scroll the row into view with a short delay so layout is settled */
+  setTimeout(function() {
+    row.scrollIntoView({behavior: 'smooth', block: 'center'});
+  }, 120);
+  /* clean the param from the URL without a reload */
+  params.delete('scrollto');
+  var newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+  history.replaceState(null, '', newUrl);
+});
+
+/* ── Disable all re-crawl submit buttons while a request is in flight ── */
+function lockRecrawlForms(label) {
+  document.querySelectorAll('.recrawl-form button[type=submit], .manual-content-form button[type=submit]')
+    .forEach(function(btn) {
+      btn.disabled = true;
+      btn.textContent = label || 'Processing…';
+    });
+}
+
 /* ── Row expand/collapse ────────────────────────────────────── */
 function toggleDetail(recordId) {
   var detail = document.getElementById('detail-' + recordId);

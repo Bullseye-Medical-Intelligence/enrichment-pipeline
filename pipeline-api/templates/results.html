@@ -370,8 +370,9 @@
                 {% if status.status == "complete" and (record.exclusion_reason or record.source_confidence in ("limited", "failed")) %}
                 <h4>Recover This Site</h4>
                 <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
+                      class="recrawl-form"
                       style="margin-top:0.4em;"
-                      onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+                      onsubmit="lockRecrawlForms('Processing…');">
                   <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                     <input type="url" name="website_url"
                            value="{{ record.website_url }}"
@@ -392,8 +393,9 @@
                     "Save Page As" an .html file and upload it, or select all (Ctrl+A), copy, and paste the text.
                   </p>
                   <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/manual-content"
+                        class="manual-content-form"
                         enctype="multipart/form-data"
-                        onsubmit="this.querySelector('button[type=submit]').disabled=true; this.querySelector('button[type=submit]').textContent='Starting…';">
+                        onsubmit="lockRecrawlForms('Processing…');">
                     <div style="display:flex; flex-direction:column; gap:6px;">
                       <input type="file" name="html_file" accept=".html,.htm"
                              style="font-size:0.82em;">
