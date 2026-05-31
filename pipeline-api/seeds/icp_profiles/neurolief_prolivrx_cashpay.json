@@ -82,15 +82,6 @@
       "cap_tier": "Contender",
       "required_for_bullseye": false,
       "note": "STRUCTURAL DISQUALIFIER. cap_tier: Contender hard-ceilings any confirmed hospital-employed practice regardless of other signal scores."
-    },
-    {
-      "signal_id": "S-NLF-009",
-      "signal_label": "Insurance-only billing model",
-      "prompt_instruction": "Does the website indicate the practice bills exclusively through insurance with no self-pay, cash, or out-of-network option mentioned anywhere?",
-      "positive_weight": 0,
-      "no_weight": -20,
-      "required_for_bullseye": false,
-      "note": "If every service routes through insurance, a non-covered device does not fit the billing model. Penalty applies only on a confirmed 'no cash-pay' reading, not on absence of evidence."
     }
   ]
 }

@@ -51,3 +51,13 @@ def test_needs_verification_not_eligible_when_not_approved():
 def test_excluded_still_blocked_without_override():
     rec = {"target_tier": "Excluded", "exclusion_status": "EXCLUDED"}
     assert exports.is_approved(rec, _rev()) is False
+
+
+def test_manual_review_not_eligible_without_override():
+    rec = {"target_tier": "Manual Review", "exclusion_status": "CLEAR"}
+    assert exports.is_approved(rec, _rev()) is False
+
+
+def test_manual_review_eligible_when_overridden_to_positive_tier():
+    rec = {"target_tier": "Manual Review", "exclusion_status": "CLEAR"}
+    assert exports.is_approved(rec, _rev(override="Contender")) is True

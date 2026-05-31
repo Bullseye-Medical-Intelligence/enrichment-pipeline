@@ -203,6 +203,11 @@ TIER_RANK = {"Excluded": 0, "Contender": 1, "Needs Verification": 2, "Bullseye":
 (The middle tier was renamed from "Watchlist" to "Contender". A legacy alias maps
 any stale `"Watchlist"` value to `"Contender"` so frozen snapshots still resolve.)
 
+0. **Zero-evidence gate (first):** a CLEAR record with no confirmed `"yes"` signal
+   and nothing `state_inferred` is `Manual Review` — not a fit verdict. It is kept
+   out of the call queue and client exports until an operator acts. (Not-enriched
+   roster rows from `--ingest-only` are exempt.) The steps below apply only to
+   records that have at least one piece of confirmed evidence.
 1. Start at `Bullseye` if `score >= bullseye_min`, else `Contender`.
 2. Any `"yes"` signal with a `cap_tier` pulls the ceiling down (`min`).
 3. **Source confidence gate**: `source_confidence = "limited"` or `"failed"` caps at
@@ -220,7 +225,10 @@ structural/LLM trigger, or a signal flagged `exclude_if_yes` that is confirmed
 `"yes"`, both handled in `apply_exclusions`), and the invariant
 `target_tier == "Excluded" iff exclusion_status == "EXCLUDED"` is enforced in
 `enrichment/scorer.py`. Exported tiers: Bullseye / Needs Verification / Contender
-/ Excluded. Analyst overrides in the API use the same four-tier ladder.
+/ Manual Review / Excluded. Analyst overrides in the API use the four call tiers.
+**QC sign-off is required only for Bullseye and Contender** (the client-shipped
+tiers); Needs Verification / Manual Review / Excluded never block run readiness —
+operators audit them ad hoc (`pipeline-api/ui.py::_compute_readiness`).
 
 **Confidence band (client-facing).** Every record carries a `confidence_band`
 (`High` / `Moderate` / `Low`) derived from `confidence_score` (`constants.confidence_band_for_score`).
@@ -280,6 +288,12 @@ let scoring and signals decide instead. The `type` column is optional on import.
   ```
 - **`.env`** (never committed): API keys, `CLAUDE_MODEL`,
   `LLM_REQUEST_TIMEOUT_SECONDS`, `SESSION_SECRET_KEY`.
+- **Browser re-crawl knobs** (env, for bot-gated sites): `PIPELINE_BROWSER_HEADFUL=1`
+  runs a visible (headed) Chromium window, which clears Cloudflare / "Just a moment"
+  JS challenges far more reliably than headless — set it on a machine with a display
+  (the operator's laptop). `PIPELINE_BROWSER_CHALLENGE_WAIT_MS` (default 25000) is how
+  long the crawler patiently waits, nudging like a human, for a challenge timer to
+  clear before giving up. Both are read in `extraction/playwright_extractor.py`.
 
 ---
 

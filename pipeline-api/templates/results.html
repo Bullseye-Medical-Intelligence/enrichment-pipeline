@@ -212,6 +212,7 @@
   <div class="stat-item stat-bullseye"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
   <div class="stat-item stat-needs-verification"><span class="stat-num">{{ stats.needs_verification }}</span><span class="stat-label">Needs Verification</span></div>
   <div class="stat-item stat-contender"><span class="stat-num">{{ stats.contender }}</span><span class="stat-label">Contender</span></div>
+  <div class="stat-item stat-manual-review"><span class="stat-num">{{ stats.manual_review }}</span><span class="stat-label">Manual Review</span></div>
   <div class="stat-item stat-excluded"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
   <div class="stat-item stat-pending"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
 </div>
@@ -225,6 +226,7 @@
   <button class="filter-btn" onclick="filterRecords('bullseye', this)">Bullseye</button>
   <button class="filter-btn" onclick="filterRecords('needs-verification', this)">Needs Verification</button>
   <button class="filter-btn" onclick="filterRecords('contender', this)">Contender</button>
+  <button class="filter-btn" onclick="filterRecords('manual-review', this)">Manual Review</button>
   <button class="filter-btn" onclick="filterRecords('excluded', this)">Excluded</button>
   <span class="filter-sep">|</span>
   <button class="filter-btn" onclick="filterByQC('pending', this)">Pending Review</button>
@@ -254,7 +256,7 @@
       {% set displayed = record.displayed_tier | default("") %}
       {% set _city = record.address_city or "" %}
       {% set _state = record.address_state or "" %}
-      {% set _tier_rank = {"bullseye": 4, "needs verification": 3, "contender": 2, "excluded": 1}.get(displayed | lower, 0) %}
+      {% set _tier_rank = {"bullseye": 5, "needs verification": 4, "contender": 3, "manual review": 2, "excluded": 1}.get(displayed | lower, 0) %}
       {% set _blocked = record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
       <tr class="record-row"
           data-rid="{{ rid }}"
@@ -313,8 +315,12 @@
                 <div class="signals-list">
                   {% for sig in record.signals %}
                   {% set sig_weight = sig.positive_weight | default(0) | int %}
-                  {% set is_good = (sig.signal_state == "yes" and sig_weight > 0) or (sig.signal_state == "no" and sig_weight < 0) %}
-                  {% set is_bad  = (sig.signal_state == "yes" and sig_weight < 0) or (sig.signal_state == "no" and sig_weight > 0) %}
+                  {# Friction = a "yes" is undesirable: negative weight, or a cap_tier /
+                     exclude_if_yes disqualifier (even at weight 0). For friction a "no"
+                     is GOOD (less friction) and renders green. #}
+                  {% set is_friction = sig_weight < 0 or sig.cap_tier or sig.exclude_if_yes %}
+                  {% set is_good = (sig.signal_state == "yes" and sig_weight > 0 and not is_friction) or (sig.signal_state == "no" and is_friction) %}
+                  {% set is_bad  = (sig.signal_state == "yes" and is_friction) or (sig.signal_state == "no" and sig_weight > 0 and not is_friction) %}
                   {% set display_state = "not_found" if sig.signal_state == "not_found" else ("yes" if is_good else ("no" if is_bad else sig.signal_state)) %}
                   <div class="signal-item signal-{{ display_state }}">
                     <div class="signal-header">
@@ -407,7 +413,7 @@
                 </details>
                 {% endif %}
 
-                {% if record.internal_notes and record.source_confidence in ("limited", "failed") %}
+                {% if record.internal_notes and (record.source_confidence in ("limited", "failed") or displayed | lower == "manual review") %}
                 <p class="text-muted small" style="margin:0.4em 0; padding:6px 8px; background:var(--surface); border-left:3px solid var(--accent); border-radius:4px;">
                   <strong>Why no data:</strong> {{ record.internal_notes }}
                 </p>

@@ -149,6 +149,7 @@ def list_runs(max_runs: int = MAX_RUNS_RETURNED) -> list[RunSummary]:
                     # contender_count is the renamed watchlist_count; fall back to
                     # the old key so historical runs still report a value.
                     contender_count=data.get("contender_count", data.get("watchlist_count", 0)),
+                    manual_review_count=data.get("manual_review_count", 0),
                     excluded_count=data.get("excluded_count", 0),
                     error_count=data.get("error_count", 0),
                     created_at=data["created_at"],

@@ -700,10 +700,12 @@ async def contact_queue_page(
         record["contact_priority_rank"] = record_adapter.contact_priority_rank(record, review)
 
     if not show_all:
-        # Excluded accounts are not call targets; hide them from the queue.
+        # Excluded and Manual Review accounts are not call targets; hide them from
+        # the default queue (operators reach them via Show All).
+        _not_callable = {"excluded", "manual review"}
         merged_records = [
             r for r in merged_records
-            if record_adapter.displayed_tier(r, r["review"]).strip().lower() != "excluded"
+            if record_adapter.displayed_tier(r, r["review"]).strip().lower() not in _not_callable
         ]
 
     merged_records.sort(
@@ -1231,17 +1233,25 @@ def _pending_review_count(run_id: str, run_directory: Path) -> int:
 def _compute_readiness(merged_records: list) -> dict:
     """Compute client package readiness from the merged records list.
 
+    Only Bullseye and Contender records require QC sign-off — they are the tiers
+    that ship to the client. Needs Verification / Manual Review / Excluded never
+    block readiness; operators audit those ad hoc.
+
     Returns a dict with keys: state ('needs_review'|'no_approved'|'ready'),
     pending_count, approved_count.
     """
+    _qc_required = {"bullseye", "contender"}
+    qc_records = [
+        r for r in merged_records
+        if r.get("displayed_tier", "").lower() in _qc_required
+    ]
     pending = sum(
-        1 for r in merged_records
+        1 for r in qc_records
         if r.get("review", {}).get("qc_status", "pending") == "pending"
     )
     approved = sum(
-        1 for r in merged_records
+        1 for r in qc_records
         if r.get("review", {}).get("qc_status") == "approved"
-        and r.get("displayed_tier", "").lower() != "excluded"
     )
     if pending > 0:
         return {"state": "needs_review", "pending_count": pending, "approved_count": approved}
@@ -1363,6 +1373,7 @@ def _calculate_stats(records: list[dict]) -> dict:
         "bullseye": 0,
         "needs_verification": 0,
         "contender": 0,
+        "manual_review": 0,
         "excluded": 0,
         "pending_review": 0,
         "approved": 0,

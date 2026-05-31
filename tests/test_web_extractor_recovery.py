@@ -19,7 +19,9 @@ def test_browser_recovery_lifts_limited_source_confidence_gate():
         "_url_final": "",
         "_url_error": "HTTP 403",
         "source_confidence": "limited",
-        "signals": [],
+        # A confirmed signal so the record has evidence; the test isolates the
+        # source-confidence gate, not the no-evidence Manual Review rule.
+        "signals": [{"signal_id": "S-1", "signal_state": "yes"}],
     }
     result = ExtractionResult(
         url="https://blocked.example",

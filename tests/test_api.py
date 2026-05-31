@@ -303,6 +303,20 @@ def test_compute_readiness_no_approved():
     assert r["state"] == "no_approved"
 
 
+def test_compute_readiness_ignores_pending_non_call_tiers():
+    """Only Bullseye + Contender require QC; pending NV / Manual Review do not block."""
+    records = [
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Bullseye"},
+        {"review": {"qc_status": "pending"}, "displayed_tier": "Needs Verification"},
+        {"review": {"qc_status": "pending"}, "displayed_tier": "Manual Review"},
+        {"review": {"qc_status": "pending"}, "displayed_tier": "Excluded"},
+    ]
+    r = _compute_readiness(records)
+    assert r["state"] == "ready"
+    assert r["approved_count"] == 1
+    assert r["pending_count"] == 0
+
+
 def test_compute_readiness_excluded_not_counted():
     records = [
         {"review": {"qc_status": "approved"}, "displayed_tier": "Excluded"},

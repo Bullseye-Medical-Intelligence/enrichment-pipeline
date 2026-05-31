@@ -25,7 +25,7 @@ DEFAULT_FIT_CONFIDENCE_STATUS = "LOW FIT / LOW EVIDENCE"
 
 VALID_SIGNAL_STATES = {"yes", "no", "not_found"}
 VALID_EXCLUSION_STATUSES = {"CLEAR", "EXCLUDED"}
-VALID_TARGET_TIERS = {"Bullseye", "Needs Verification", "Contender", "Excluded"}
+VALID_TARGET_TIERS = {"Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"}
 # Legacy tier label -> current label. "Watchlist" was renamed to "Contender".
 LEGACY_TIER_ALIAS = {"Watchlist": "Contender"}
 VALID_SOURCE_CONFIDENCES = {"complete", "partial", "limited", "failed"}

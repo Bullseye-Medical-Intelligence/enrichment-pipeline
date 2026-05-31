@@ -681,6 +681,14 @@ def extract_signals(record: dict, icp_signals: list[dict],
         else:
             source_confidence = "limited"
 
+        # When the crawl succeeded but no signal was confirmed, the record has no
+        # fit evidence and will land in Manual Review — record why so the operator
+        # sees an explanation instead of a bare score of 0.
+        no_evidence_note = (
+            "" if call_brief.get("top_evidence")
+            else "Site was crawled but no ICP signals were confirmed — needs manual review."
+        )
+
         # Update record
         record.update({
             "signals": signals,
@@ -699,7 +707,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "qc_status": "pending",
             "analyst_override_classification": None,
             "override_reason": None,
-            "internal_notes": "",
+            "internal_notes": no_evidence_note,
             "client_facing_rationale": None,
             # Store LLM-detected exclusion triggers for Step 6
             "_llm_exclusion_triggers": exclusion_triggers,

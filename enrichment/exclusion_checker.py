@@ -55,9 +55,22 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     Starts from the score-based tier, lets any "yes" signal with a cap_tier pull
     the ceiling down, then applies the must-have gate (required_for_bullseye) and
     the softer verification gate (verification_required).
+
+    A record with zero confirmed evidence (no "yes", nothing inferred) is not a
+    fit verdict at all — it gets "Manual Review", a CLEAR non-call status, so a
+    blocked/empty crawl never reads as a Contender.
     """
-    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
     signals = record.get("signals") or []
+
+    # Not-yet-enriched roster rows (ingest-only) have no signals by definition and
+    # are not a Manual Review finding — skip the evidence gate for them.
+    enriched = record.get("enrichment_status") != "not_enriched"
+    if enriched and not any(
+        s.get("signal_state") == "yes" or s.get("state_inferred") for s in signals
+    ):
+        return "Manual Review"
+
+    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
 
     for sig in signals:
         cap = _canonical_tier(sig.get("cap_tier"))

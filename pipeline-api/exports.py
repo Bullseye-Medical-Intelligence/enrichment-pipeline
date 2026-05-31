@@ -49,8 +49,9 @@ def is_approved(rec: dict, rev: dict) -> bool:
     - qc_status == "approved"
     - effective displayed_tier != "excluded"
     - without an analyst override_tier, the pipeline tier is exportable:
-      not "EXCLUDED" and not "Needs Verification" (unconfirmed accounts ship
-      only after an analyst confirms them with an override)
+      not "EXCLUDED", not "Needs Verification", and not "Manual Review"
+      (unconfirmed / no-evidence accounts ship only after an analyst confirms
+      them with an override)
     """
     if rev.get("qc_status") != "approved":
         return False
@@ -59,7 +60,7 @@ def is_approved(rec: dict, rev: dict) -> bool:
     if not rev.get("override_tier"):
         if rec.get("exclusion_status") == "EXCLUDED":
             return False
-        if rec.get("target_tier") == "Needs Verification":
+        if rec.get("target_tier") in ("Needs Verification", "Manual Review"):
             return False
     return True
 

@@ -404,7 +404,10 @@ class TestReinforcement:
 
     def test_uninferred_cash_pay_triggers_verification_gate(self):
         rec = _clear_record(score=90)
-        rec["signals"] = self._signals("not_found", "not_found")
+        # A confirmed signal so the record has evidence; cash pay stays not_found
+        # and uninferred, so the verification gate (not Manual Review) applies.
+        rec["signals"] = ([{"signal_id": "S-other", "signal_state": "yes"}]
+                          + self._signals("not_found", "not_found"))
         _apply_reinforcement(rec["signals"], self.CASH_PAY_ICP)
         assert _assign_tier(rec, 90, 75) == "Needs Verification"
 
@@ -417,7 +420,10 @@ class TestTierAssignment:
 
     def _record_with_signals(self, signals):
         rec = _clear_record(score=90)
-        rec["signals"] = signals
+        # A plain confirmed signal so the record has evidence; without any "yes"
+        # the record is correctly Manual Review. These tests exercise capping on
+        # top of a record that was actually evaluated.
+        rec["signals"] = [{"signal_id": "S-base", "signal_state": "yes"}] + list(signals)
         return rec
 
     def test_high_score_no_flags_is_bullseye(self):
@@ -425,6 +431,22 @@ class TestTierAssignment:
 
     def test_low_score_no_flags_is_contender(self):
         assert _assign_tier(self._record_with_signals([]), 50, 75) == "Contender"
+
+    def test_no_confirmed_evidence_is_manual_review(self):
+        """A record with no 'yes' and nothing inferred is Manual Review, not a fit tier."""
+        rec = _clear_record(score=90)
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "not_found"},
+                          {"signal_id": "S-2", "signal_state": "no"}]
+        assert _assign_tier(rec, 90, 75) == "Manual Review"
+
+    def test_empty_signals_is_manual_review(self):
+        assert _assign_tier({"signals": [], "enrichment_status": "complete"},
+                            90, 75) == "Manual Review"
+
+    def test_not_enriched_roster_skips_manual_review(self):
+        """An ingest-only roster row (not_enriched, no signals) is not Manual Review."""
+        rec = {"signals": [], "enrichment_status": "not_enriched"}
+        assert _assign_tier(rec, 0, 75) == "Contender"
 
     def test_unconfirmed_required_signal_caps_bullseye_at_needs_verification(self):
         signals = [{"signal_id": "S-1", "signal_state": "not_found",
@@ -483,9 +505,10 @@ class TestTierAssignment:
         assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Bullseye"
 
     def test_apply_exclusions_sets_needs_verification_tier(self):
-        """End to end: a CLEAR record with an unconfirmed required signal is tiered NV."""
+        """End to end: a CLEAR record with evidence + an unconfirmed required signal is NV."""
         rec = _clear_record(score=90, specialty="OBGYN")
-        rec["signals"] = [{"signal_id": "S-1", "signal_state": "not_found",
+        rec["signals"] = [{"signal_id": "S-base", "signal_state": "yes"},
+                          {"signal_id": "S-1", "signal_state": "not_found",
                            "verification_required": True, "cap_tier": ""}]
         result = apply_exclusions(rec, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
@@ -762,25 +785,31 @@ class TestConfidenceBand:
 
 class TestClearRecordTierInvariant:
 
+    _YES = [{"signal_id": "S-base", "signal_state": "yes"}]
+
     def test_clear_high_score_is_bullseye(self):
         record = _clear_record(score=80)
+        record["signals"] = list(self._YES)
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
         assert result["target_tier"] == "Bullseye"
 
     def test_clear_low_score_is_contender_not_excluded(self):
-        """CLEAR records with score < 75 should be Contender, never Excluded."""
+        """CLEAR records with score < 75 and some evidence are Contender, never Excluded."""
         record = _clear_record(score=40)
+        record["signals"] = list(self._YES)
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
         assert result["target_tier"] == "Contender"
         assert result["target_tier"] != "Excluded"
 
-    def test_clear_zero_score_is_contender(self):
+    def test_clear_zero_evidence_is_manual_review(self):
+        """A CLEAR record with no confirmed signals is Manual Review (still not Excluded)."""
         record = _clear_record(score=0)
+        record["signals"] = []
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
-        assert result["target_tier"] == "Contender"
+        assert result["target_tier"] == "Manual Review"
 
 
 # ---------------------------------------------------------------------------
@@ -1105,7 +1134,9 @@ class TestSourceConfidenceTierCap:
     def _record(self, source_confidence):
         rec = _clear_record(score=95)
         rec["source_confidence"] = source_confidence
-        rec["signals"] = []
+        # A confirmed signal so the record has evidence — isolates the
+        # source-confidence cap from the no-evidence Manual Review rule.
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
         return rec
 
     def test_limited_confidence_caps_at_needs_verification(self):
@@ -1123,7 +1154,7 @@ class TestSourceConfidenceTierCap:
     def test_missing_source_confidence_allows_bullseye(self):
         # Records without source_confidence set are not capped.
         rec = _clear_record(score=95)
-        rec["signals"] = []
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "yes"}]
         assert _assign_tier(rec, 95, 75) == "Bullseye"
 
 
@@ -1358,6 +1389,36 @@ class TestChallengeDetection:
 
     def test_empty_html_not_flagged(self):
         assert self._detect("") is False
+
+
+class TestBrowserChallengeKnobs:
+    """Env-driven knobs for the patient browser challenge handling."""
+
+    def _mod(self):
+        import importlib, sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "extraction"))
+        return importlib.import_module("playwright_extractor")
+
+    def test_headful_requested_reads_env(self, monkeypatch):
+        mod = self._mod()
+        monkeypatch.delenv("PIPELINE_BROWSER_HEADFUL", raising=False)
+        assert mod._headful_requested() is False
+        monkeypatch.setenv("PIPELINE_BROWSER_HEADFUL", "1")
+        assert mod._headful_requested() is True
+        monkeypatch.setenv("PIPELINE_BROWSER_HEADFUL", "true")
+        assert mod._headful_requested() is True
+
+    def test_challenge_budget_default_and_override(self, monkeypatch):
+        mod = self._mod()
+        monkeypatch.delenv("PIPELINE_BROWSER_CHALLENGE_WAIT_MS", raising=False)
+        assert mod._challenge_wait_budget_ms() == 25000
+        monkeypatch.setenv("PIPELINE_BROWSER_CHALLENGE_WAIT_MS", "40000")
+        assert mod._challenge_wait_budget_ms() == 40000
+        # Clamps to a sane floor and ignores garbage.
+        monkeypatch.setenv("PIPELINE_BROWSER_CHALLENGE_WAIT_MS", "100")
+        assert mod._challenge_wait_budget_ms() == 5000
+        monkeypatch.setenv("PIPELINE_BROWSER_CHALLENGE_WAIT_MS", "abc")
+        assert mod._challenge_wait_budget_ms() == 25000
 
 
 class TestManualContent:

@@ -8,6 +8,7 @@ Runs Playwright synchronously inside a thread (called from batch_extract's
 ThreadPoolExecutor) so the async Playwright API is not required.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -54,28 +55,38 @@ _REAL_USER_AGENT = (
 )
 
 
+def _headful_requested() -> bool:
+    """True when the operator asked for a visible (headed) browser.
+
+    A real headed window clears Cloudflare / Turnstile JS challenges far more
+    reliably than headless Chromium, which those challenges are tuned to detect
+    and never clear. Set PIPELINE_BROWSER_HEADFUL=1 on a machine with a display
+    (e.g. the operator's laptop) for the toughest bot-gated sites.
+    """
+    return os.environ.get("PIPELINE_BROWSER_HEADFUL", "").strip().lower() in ("1", "true", "yes")
+
+
 def launch_browser(pw):
-    """Launch a headless browser, preferring the bundled Chromium.
+    """Launch a browser, preferring the bundled Chromium.
 
     Falls back to an installed Google Chrome, then Microsoft Edge, when the
     bundled Chromium binary was never downloaded (`playwright install chromium`
     not run). This lets the browser path work on a machine that has Chrome but
     no Playwright browser download. Raises the original error if nothing launches.
 
-    Stealth launch flags are applied so bot-protection pages are less likely to
-    serve a CAPTCHA wall in response to the headless automation fingerprint.
+    When PIPELINE_BROWSER_HEADFUL is set, a headed window is tried first (best
+    for bot challenges) and headless is the fallback if no display is available.
+    Stealth launch flags are always applied to quiet the automation fingerprint.
     """
-    attempts = [
-        {},                       # bundled Chromium (playwright install chromium)
-        {"channel": "chrome"},    # installed Google Chrome
-        {"channel": "msedge"},    # installed Microsoft Edge
-    ]
+    headless_modes = [False, True] if _headful_requested() else [True]
+    channels = [{}, {"channel": "chrome"}, {"channel": "msedge"}]
     last_error = None
-    for opts in attempts:
-        try:
-            return pw.chromium.launch(headless=True, args=_STEALTH_ARGS, **opts)
-        except Exception as e:  # try the next channel
-            last_error = e
+    for headless in headless_modes:
+        for opts in channels:
+            try:
+                return pw.chromium.launch(headless=headless, args=_STEALTH_ARGS, **opts)
+            except Exception as e:  # try the next channel / mode
+                last_error = e
     raise last_error
 
 
@@ -103,6 +114,57 @@ def _looks_like_challenge(html: str) -> bool:
     return any(marker in sample for marker in _CHALLENGE_MARKERS)
 
 
+# Minimum rendered text (chars) that counts as "real content has loaded" — used
+# to know a JS challenge has actually handed off to the site, not just changed
+# its own wording.
+_MIN_REAL_TEXT = 200
+
+# How long to keep waiting for a challenge to clear, total, in ms. These pages
+# typically run a 5-10s timer; give generous headroom. Operator-overridable.
+def _challenge_wait_budget_ms() -> int:
+    try:
+        return max(5000, int(os.environ.get("PIPELINE_BROWSER_CHALLENGE_WAIT_MS", "25000")))
+    except ValueError:
+        return 25000
+
+
+def _human_nudge(page) -> None:
+    """Small mouse move + scroll so a JS challenge sees human-like interaction."""
+    try:
+        page.mouse.move(240, 260)
+        page.mouse.wheel(0, 600)
+        page.mouse.move(520, 420)
+    except Exception:
+        pass
+
+
+def _wait_for_real_content(page, budget_ms: int, poll_ms: int = 2000):
+    """Wait out a JS/Cloudflare challenge until real content appears.
+
+    Polls on a steady cadence, nudging like a human each round, until the page is
+    no longer a challenge wall AND has rendered meaningful text — or the budget is
+    exhausted. Returns (html, final_url). Patience is the point: these interstitials
+    clear themselves on a timer (often 5-10s) and only then redirect to the site.
+    """
+    html = page.content()
+    final_url = page.url
+    waited = 0
+    while _looks_like_challenge(html) or len(_extract_text_from_html(html)) < _MIN_REAL_TEXT:
+        if waited >= budget_ms:
+            break
+        _human_nudge(page)
+        page.wait_for_timeout(poll_ms)
+        waited += poll_ms
+        # Let any challenge-triggered navigation/network settle before re-reading.
+        try:
+            page.wait_for_load_state("networkidle", timeout=poll_ms)
+        except Exception:
+            pass
+        html = page.content()
+        final_url = page.url
+    return html, final_url
+
+
 def _extract_text_from_html(html: str) -> str:
     """Strip tags and collapse whitespace — same logic as web_extractor."""
     from bs4 import BeautifulSoup
@@ -123,7 +185,7 @@ def crawl_with_playwright(
     url: str,
     max_pages: int = 5,
     keywords: list[str] | None = None,
-    timeout_ms: int = 20000,
+    timeout_ms: int = 30000,
 ) -> ExtractionResult:
     """Extract visible text using a headless Chromium browser.
 
@@ -183,22 +245,24 @@ def crawl_with_playwright(
             print(f"    [Playwright] Fetching homepage: {url}")
             try:
                 page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
-                # Brief settle wait for lazy-loaded content
+                # Let the page (and any JS challenge timer) run: settle to network
+                # idle if we can, then a brief pause for lazy content.
+                try:
+                    page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 8000))
+                except Exception:
+                    pass
                 page.wait_for_timeout(1500)
                 html = page.content()
                 final_url = page.url
-                # JS-based challenge pages (Cloudflare "Just a moment...") clear
-                # themselves and redirect to real content after a few seconds.
-                # Wait it out and re-read instead of capturing the interstitial.
-                if _looks_like_challenge(html):
-                    print("    [Playwright] Security challenge detected, waiting for it to clear...")
-                    for _ in range(3):
-                        page.wait_for_timeout(3500)
-                        html = page.content()
-                        final_url = page.url
-                        if not _looks_like_challenge(html):
-                            print("    [Playwright] Challenge cleared.")
-                            break
+                # JS-based challenge pages (Cloudflare "Just a moment...") clear on
+                # a 5-10s timer and only then redirect to real content. Wait it out
+                # patiently — nudging like a human — instead of grabbing the wall.
+                if _looks_like_challenge(html) or len(_extract_text_from_html(html)) < _MIN_REAL_TEXT:
+                    budget = _challenge_wait_budget_ms()
+                    print(f"    [Playwright] Challenge/thin page — waiting up to {budget // 1000}s for it to clear...")
+                    html, final_url = _wait_for_real_content(page, budget)
+                    if not _looks_like_challenge(html):
+                        print("    [Playwright] Challenge cleared / content loaded.")
             except PlaywrightTimeout:
                 browser.close()
                 return ExtractionResult(url=url, context_text="", pages_crawled=[],
@@ -212,9 +276,14 @@ def crawl_with_playwright(
             # than passing the bot-verification text downstream as "content".
             if _looks_like_challenge(html):
                 browser.close()
+                hint = (
+                    "" if _headful_requested()
+                    else " — retry with PIPELINE_BROWSER_HEADFUL=1 (a visible window "
+                         "clears most of these), or paste the page content manually"
+                )
                 return ExtractionResult(
                     url=url, context_text="", pages_crawled=[],
-                    error="Blocked by bot/security challenge (CAPTCHA wall)",
+                    error=f"Blocked by bot/security challenge (CAPTCHA wall){hint}",
                 )
 
             homepage_text = _extract_text_from_html(html)

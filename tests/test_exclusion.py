@@ -77,6 +77,9 @@ _BASE_RECORD = {
     "_llm_exclusion_rationale": "",
     "_url_valid": True,
     "_context_text": "some content",
+    # A confirmed signal so CLEAR records have evidence; without any "yes" a
+    # record is Manual Review, not a fit tier.
+    "signals": [{"signal_id": "S-base", "signal_state": "yes"}],
 }
 
 _BASE_CONFIG = {

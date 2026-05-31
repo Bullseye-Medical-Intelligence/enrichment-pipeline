@@ -30,6 +30,7 @@ class RunStatus(BaseModel):
     bullseye_count: int = 0
     needs_verification_count: int = 0
     contender_count: int = 0
+    manual_review_count: int = 0
     excluded_count: int = 0
     error_count: int = 0
     pipeline_version: str = "v1.0"
@@ -53,6 +54,7 @@ class RunSummary(BaseModel):
     records_input: int
     bullseye_count: int
     contender_count: int
+    manual_review_count: int = 0
     excluded_count: int
     error_count: int
     created_at: str

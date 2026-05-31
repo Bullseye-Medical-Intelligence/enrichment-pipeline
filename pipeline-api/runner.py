@@ -715,6 +715,7 @@ def _recompute_counts_from_records(records: list[dict]) -> dict:
         "needs_verification_count": sum(
             1 for r in records if r.get("target_tier") == "Needs Verification"),
         "contender_count": sum(1 for r in records if r.get("target_tier") == "Contender"),
+        "manual_review_count": sum(1 for r in records if r.get("target_tier") == "Manual Review"),
         "excluded_count": sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED"),
         "error_count": sum(1 for r in records if r.get("enrichment_status") == "failed"),
     }
@@ -927,6 +928,9 @@ def _read_completion_counts(run_id: str) -> dict:
             )
             counts["contender_count"] = sum(
                 1 for r in records if r.get("target_tier") == "Contender"
+            )
+            counts["manual_review_count"] = sum(
+                1 for r in records if r.get("target_tier") == "Manual Review"
             )
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(

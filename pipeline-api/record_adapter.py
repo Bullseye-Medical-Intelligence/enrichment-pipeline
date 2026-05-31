@@ -66,6 +66,7 @@ _TIER_QUEUE_RANK = {
     "bullseye": 3,
     "needs verification": 2,
     "contender": 1,
+    "manual review": 0,
     "excluded": 0,
 }
 _TIER_QUEUE_RANK_DEFAULT = 1
