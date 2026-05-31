@@ -320,6 +320,21 @@
                 {% if record.exclusion_reason %}
                 <h4>Exclusion Rationale</h4>
                 <p class="exclusion-reason">{{ record.exclusion_reason }}</p>
+                {% if status.status == "complete" %}
+                <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
+                      style="margin-top:0.6em;"
+                      onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+                  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="url" name="website_url"
+                           value="{{ record.website_url }}"
+                           placeholder="https://practice-website.com"
+                           style="flex:1; min-width:180px; padding:4px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.82em;">
+                    <button type="submit" class="btn btn-secondary" style="padding:4px 10px; font-size:0.82em; white-space:nowrap;">
+                      Re-crawl with Browser
+                    </button>
+                  </div>
+                </form>
+                {% endif %}
                 {% endif %}
 
                 <h4>Scores</h4>

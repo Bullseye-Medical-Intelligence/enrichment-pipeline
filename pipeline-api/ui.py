@@ -833,6 +833,31 @@ async def export_retry_crawl(run_id: str, username: str = Depends(auth.require_s
     )
 
 
+@router.post("/runs/{run_id}/records/{record_id}/recrawl")
+async def recrawl_single_record(
+    run_id: str,
+    record_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    website_url: str = Form(""),
+    username: str = Depends(auth.require_session),
+):
+    """Start a Playwright re-crawl for a single practice, optionally with a new URL."""
+    try:
+        new_run_id, _ = await runner.orchestrate_single_recrawl(
+            source_run_id=run_id,
+            record_id=record_id,
+            website_url_override=website_url,
+            operator=username,
+            background_tasks=background_tasks,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+
+
 @router.post("/runs/{run_id}/retry-with-browser")
 async def retry_with_browser(
     run_id: str,
