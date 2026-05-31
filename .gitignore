@@ -9,6 +9,11 @@
 /output/runs/
 /output/projects/
 
+# Runtime directories that appear when server CWD is repo root
+/icp_profiles/
+/runs/
+/projects/
+
 # Python
 __pycache__/
 *.py[cod]
