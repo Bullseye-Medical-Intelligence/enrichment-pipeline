@@ -495,6 +495,7 @@ async def icp_save(
         "icp_id": icp_id.strip(),
         "name": icp_name.strip(),
         "version": version.strip() or "1.0",
+        "default_specialty": specialty.strip(),
         "description": icp_description.strip(),
         "hypothesis": hypothesis,
         "demo_accounts": demo_accounts,

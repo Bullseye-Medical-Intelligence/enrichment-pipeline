@@ -36,7 +36,6 @@
   <input type="hidden" name="product_name"       value="{{ product_name }}">
   <input type="hidden" name="product_type"       value="{{ product_type | default('') }}">
   <input type="hidden" name="product_url"        value="{{ product_url | default('') }}">
-  <input type="hidden" name="specialty"          value="{{ specialty }}">
   <input type="hidden" name="demo_accounts_json" value="{{ demo_accounts | default([]) | tojson | e }}">
   <input type="hidden" name="product_brief_json" value="{{ product_brief_json | default('') | e }}">
   <input type="hidden" name="is_edit"            value="{{ '1' if is_edit else '' }}">
@@ -46,7 +45,18 @@
   {# ------------------------------------------------------------------ #}
   <div class="card" style="margin-bottom: 16px;">
     <p class="eyebrow">ICP Summary</p>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="hyp-label">Target Specialty</label>
+      <input type="text" name="specialty" value="{{ specialty | default('') }}"
+             style="width:100%; font-size:13px;"
+             placeholder="e.g. Psychiatry, primary care  (comma-separated for multiple)">
+      <p class="form-hint" style="margin-top:4px;">
+        Used as the <code>target_specialty</code> default for new runs. Comma-separate multiple values (e.g. <code>Psychiatry, Mental Health</code>).
+        Practices whose specialty does not match any token are excluded as wrong-specialty.
+      </p>
+    </div>
     <div class="form-group" style="margin-bottom:0;">
+      <label class="hyp-label">Description</label>
       <textarea name="icp_description" rows="2" style="width:100%; font-size:13px;"
                 placeholder="One-paragraph description of this ICP (auto-generated, editable).">{{ icp_description | default('') }}</textarea>
     </div>
