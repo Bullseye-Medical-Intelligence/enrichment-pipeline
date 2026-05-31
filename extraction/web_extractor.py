@@ -260,7 +260,8 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
 
 def batch_extract(records: list[dict], timeout: int = 15,
                    retries: int = 3, max_pages: int = 5,
-                   keywords: list[str] = None, max_workers: int = 1) -> list[dict]:
+                   keywords: list[str] = None, max_workers: int = 1,
+                   use_playwright: bool = False) -> list[dict]:
     """
     Run web extraction across all records with a valid URL.
     Updates each record in-place with extracted text and metadata.
@@ -275,6 +276,7 @@ def batch_extract(records: list[dict], timeout: int = 15,
         max_pages: Maximum pages per practice.
         keywords: Subpage-relevance keywords (defaults to generic set).
         max_workers: Concurrent extraction workers (1 = sequential).
+        use_playwright: If True, use headless Chromium instead of requests.
 
     Returns:
         The same records list with extraction fields added.
@@ -291,12 +293,26 @@ def batch_extract(records: list[dict], timeout: int = 15,
         else:
             to_crawl.append(record)
 
+    if use_playwright:
+        try:
+            from playwright_extractor import crawl_with_playwright
+        except ImportError:
+            from extraction.playwright_extractor import crawl_with_playwright
+
     def _extract(record):
         try:
-            result = extract_practice_text(
-                url=record.get("website_url", ""), timeout=timeout,
-                retries=retries, max_pages=max_pages, keywords=keywords,
-            )
+            if use_playwright:
+                result = crawl_with_playwright(
+                    url=record.get("website_url", ""),
+                    max_pages=max_pages,
+                    keywords=keywords,
+                    timeout_ms=timeout * 1000,
+                )
+            else:
+                result = extract_practice_text(
+                    url=record.get("website_url", ""), timeout=timeout,
+                    retries=retries, max_pages=max_pages, keywords=keywords,
+                )
             return record, result, None
         except Exception as e:  # isolate per-record failure
             return record, None, str(e)

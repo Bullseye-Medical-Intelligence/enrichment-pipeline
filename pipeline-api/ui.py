@@ -801,6 +801,46 @@ async def export_excluded(run_id: str, username: str = Depends(auth.require_sess
     )
 
 
+@router.get("/runs/{run_id}/export/retry-crawl")
+async def export_retry_crawl(run_id: str, username: str = Depends(auth.require_session)):
+    """Download a manual-format CSV of records that failed to crawl, ready for re-upload."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(status_code=425,
+            detail=f"Run is not complete (status: {status.status}).")
+    buf = exports.build_retry_csv(run_id, runs.run_dir(run_id))
+    if not buf.getvalue():
+        raise HTTPException(status_code=404, detail="No failed-crawl records found in this run.")
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_retry_crawl.csv"'},
+    )
+
+
+@router.post("/runs/{run_id}/retry-with-browser")
+async def retry_with_browser(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Start a Playwright re-crawl run for records that failed web extraction."""
+    try:
+        new_run_id, row_count = await runner.orchestrate_playwright_retry(
+            source_run_id=run_id,
+            operator=username,
+            background_tasks=background_tasks,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+
+
 @router.get("/runs/{run_id}/client-package")
 async def client_package(run_id: str, username: str = Depends(auth.require_session)):
     """Download a client deliverable ZIP for a completed, fully-reviewed run."""
