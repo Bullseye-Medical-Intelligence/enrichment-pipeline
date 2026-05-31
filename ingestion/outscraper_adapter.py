@@ -67,6 +67,12 @@ OUTSCRAPER_FIELD_MAP = {
     "owner_name": "_owner_name_raw",
     "description": "_description_raw",
     "subtypes": "_subtypes_raw",
+    # Additional URL column names seen in different Outscraper export formats:
+    "website_url": "website_url",
+    "url": "website_url",
+    "web": "website_url",
+    "web_url": "website_url",
+    "website_address": "website_url",
 }
 
 # Specialty keywords for matching Outscraper "type" to canonical specialty
@@ -138,15 +144,30 @@ def infer_specialty(type_raw: str, practice_name: str = "") -> str:
     return "Unknown"
 
 
+# Common placeholder strings that mean "no website" in export tools
+_URL_PLACEHOLDERS = frozenset({
+    "n/a", "na", "none", "null", "-", "--", "no website",
+    "no url", "not available", "not applicable", "#n/a",
+})
+
+
 def _normalize_url(url: str) -> str:
-    """Normalize to homepage: decode percent-encoding, strip query/fragment/path."""
+    """Normalize to homepage: decode percent-encoding, strip query/fragment/path.
+
+    Returns empty string for blank/placeholder values and malformed URLs with no netloc.
+    """
     if not url:
         return ""
     url = urllib.parse.unquote(url.strip())
+    if url.lower() in _URL_PLACEHOLDERS:
+        return ""
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     parsed = urllib.parse.urlparse(url)
-    # Keep only scheme + netloc — strips UTM params, tracking paths, fragments
+    # Keep only scheme + netloc — strips UTM params, tracking paths, fragments.
+    # Reject URLs that have no netloc after parsing (malformed input).
+    if not parsed.netloc:
+        return ""
     return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
 
 
@@ -205,8 +226,17 @@ def _map_row(row: dict, row_num: int) -> dict:
     address_city = (row.get("city") or "").strip()
     address_zip = (row.get("postal_code") or "").strip()
     phone = _clean_phone(row.get("phone") or "")
-    # Handle both "site" and "website" column names
-    website_url = _normalize_url(row.get("site") or row.get("website") or "")
+    # Check every URL column name seen across different Outscraper export formats
+    website_url = _normalize_url(
+        row.get("site")
+        or row.get("website")
+        or row.get("website_url")
+        or row.get("url")
+        or row.get("web")
+        or row.get("web_url")
+        or row.get("website_address")
+        or ""
+    )
     type_raw = (row.get("type") or "").strip()
     npi = (row.get("npi") or "").strip() or None
 
