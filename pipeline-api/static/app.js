@@ -102,7 +102,7 @@ function _setActiveFilter(btn) {
 }
 
 function _applyFilter(predicate) {
-  document.querySelectorAll('.record-row').forEach(function(row) {
+  document.querySelectorAll('#results-table .record-row').forEach(function(row) {
     var recordId = row.querySelector('.expand-icon') &&
                    row.querySelector('.expand-icon').id &&
                    row.querySelector('.expand-icon').id.replace('icon-', '');

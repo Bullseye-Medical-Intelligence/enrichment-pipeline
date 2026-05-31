@@ -176,13 +176,13 @@
 </div>
 {% elif readiness.state == "no_approved" %}
 <div class="alert alert-warning">
-  <strong>No approved targets yet.</strong>
-  Review records below and approve your selections before exporting.
+  <strong>No reviewed targets yet.</strong>
+  Review records below and mark your selections before exporting.
 </div>
 {% elif readiness.state == "ready" %}
 <div class="alert alert-success">
   <strong>Package ready.</strong>
-  {{ readiness.approved_count }} approved target{{ "s" if readiness.approved_count != 1 }}.
+  {{ readiness.approved_count }} reviewed target{{ "s" if readiness.approved_count != 1 }}.
   Download includes a branded PDF report for Bullseye accounts, plus CSVs for Bullseye and Contender accounts.
 </div>
 {% endif %}
@@ -192,10 +192,10 @@
 {% if not is_ingested %}
 {# ── Reviewer guidance ────────────────────────────────────────────── #}
 <div class="alert alert-info review-guidance">
-  <strong>Before you approve:</strong>
+  <strong>Before marking reviewed:</strong>
   Review the evidence for each record. Overrides require a reason.
-  Excluded records appear in a separate CSV. To include a pipeline-excluded record
-  in the approved export, set an override tier AND approve it — otherwise the exclusion stands.
+  Excluded records appear in a separate section below and in a separate CSV. To include a pipeline-excluded record
+  in the approved export, set an override tier AND mark it reviewed — otherwise the exclusion stands.
 </div>
 {% endif %}
 
@@ -227,31 +227,15 @@
   <button class="filter-btn" onclick="filterRecords('needs-verification', this)">Needs Verification</button>
   <button class="filter-btn" onclick="filterRecords('contender', this)">Contender</button>
   <button class="filter-btn" onclick="filterRecords('manual-review', this)">Manual Review</button>
-  <button class="filter-btn" onclick="filterRecords('excluded', this)">Excluded</button>
   <span class="filter-sep">|</span>
   <button class="filter-btn" onclick="filterByQC('pending', this)">Pending Review</button>
-  <button class="filter-btn" onclick="filterByQC('approved', this)">Approved</button>
+  <button class="filter-btn" onclick="filterByQC('approved', this)">Reviewed</button>
   <button class="filter-btn" onclick="filterByQC('rejected', this)">Rejected</button>
 </div>
 {% endif %}
 
-{# ── Records table ────────────────────────────────────────────────── #}
-<div class="card table-card">
-  <div class="table-scroll">
-  <table class="data-table results-table" id="results-table">
-    <thead>
-      <tr>
-        <th></th>
-        <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
-        <th class="sortable" onclick="sortRecords('location', this)">Location</th>
-        <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
-        <th class="sortable" onclick="sortRecords('score', this)">Score</th>
-        <th class="sortable" onclick="sortRecords('qc', this)">QC</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for record in records %}
-      {% set rid = record.record_id | default("") %}
+{% macro record_rows(record, run_id, status) %}
+{% set rid = record.record_id | default("") %}
       {% set review = record.review %}
       {% set displayed = record.displayed_tier | default("") %}
       {% set _city = record.address_city or "" %}
@@ -292,7 +276,7 @@
         </td>
         <td>{{ record.bullseye_score | default("—") }}</td>
         <td>
-          <span class="badge badge-qc-{{ review.qc_status }}">{{ review.qc_status }}</span>
+          <span class="badge badge-qc-{{ review.qc_status }}">{{ 'Reviewed' if review.qc_status == 'approved' else review.qc_status | title }}</span>
         </td>
       </tr>
 
@@ -508,7 +492,7 @@
                   <label>QC Status</label>
                   <div class="qc-buttons">
                     <button class="btn btn-sm qc-btn {% if review.qc_status == 'approved' %}btn-qc-active-approved{% endif %}"
-                            onclick="setQC('{{ rid }}', 'approved')">✓ Approve</button>
+                            onclick="setQC('{{ rid }}', 'approved')">✓ Mark Reviewed</button>
                     <button class="btn btn-sm qc-btn {% if review.qc_status == 'rejected' %}btn-qc-active-rejected{% endif %}"
                             onclick="setQC('{{ rid }}', 'rejected')">✗ Reject</button>
                     <button class="btn btn-sm qc-btn {% if review.qc_status == 'pending' %}btn-qc-active-pending{% endif %}"
@@ -536,11 +520,61 @@
           </div>
         </td>
       </tr>
+{% endmacro %}
+
+{# ── Records table ────────────────────────────────────────────────── #}
+<div class="card table-card">
+  <div class="table-scroll">
+  <table class="data-table results-table" id="results-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
+        <th class="sortable" onclick="sortRecords('location', this)">Location</th>
+        <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
+        <th class="sortable" onclick="sortRecords('score', this)">Score</th>
+        <th class="sortable" onclick="sortRecords('qc', this)">QC</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in records if record.exclusion_status != 'EXCLUDED' %}
+      {{ record_rows(record, run_id, status) }}
       {% endfor %}
     </tbody>
   </table>
   </div>
 </div>
+
+{% set excluded_records = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list %}
+{% if excluded_records and not is_ingested %}
+<div style="margin: 2em 0 0.5em; display:flex; align-items:center; gap:0.75em;">
+  <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">
+    Excluded Records
+  </h3>
+  <span class="badge badge-tier-excluded" style="font-size:0.8em;">{{ excluded_records | length }}</span>
+</div>
+<div class="card table-card">
+  <div class="table-scroll">
+  <table class="data-table" id="excluded-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Practice</th>
+        <th>Location</th>
+        <th>Tier</th>
+        <th>Score</th>
+        <th>QC</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in excluded_records %}
+      {{ record_rows(record, run_id, status) }}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
 
 {% elif status.status == "complete" %}
 <div class="card empty-state">
