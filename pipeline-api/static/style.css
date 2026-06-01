@@ -344,7 +344,6 @@ th.sortable.sort-desc::after { content: " \2193"; opacity: 1; }
 .practice-url            { display: block; max-width: 260px; overflow: hidden;
                            text-overflow: ellipsis; white-space: nowrap; }
 .override-indicator      { color: var(--accent); font-size: 13px; margin-left: 4px; }
-.tier-cap-hint           { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); cursor: help; white-space: nowrap; }
 .spinner {
   display: inline-block;
   width: 10px; height: 10px;

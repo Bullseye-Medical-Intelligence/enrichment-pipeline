@@ -270,9 +270,6 @@
           {% if review.override_tier %}
           <span class="override-indicator" title="Analyst override">✎</span>
           {% endif %}
-          {% if record.tier_cap_reason and not review.override_tier %}
-          <span class="tier-cap-hint" title="{{ record.tier_cap_reason }}">ⓘ why not Bullseye?</span>
-          {% endif %}
           {% endif %}
         </td>
         <td>{{ record.bullseye_score | default("—") }}</td>
