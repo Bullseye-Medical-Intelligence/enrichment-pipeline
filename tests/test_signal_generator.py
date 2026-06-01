@@ -23,7 +23,7 @@ def _signal(signal_id, label, prompt, positive_weight):
     }
 
 
-def test_drops_insurance_only_signal_when_direct_payment_signal_exists():
+def test_drops_inverse_billing_signal_even_with_cash_pay_signal_present():
     signals = [
         _signal(
             "S-001",
@@ -33,7 +33,7 @@ def test_drops_insurance_only_signal_when_direct_payment_signal_exists():
         ),
         _signal(
             "S-002",
-            "Insurance-only billing model",
+            "Payer-restricted billing model",
             "Does the website indicate that the practice only accepts insurance billing?",
             -10,
         ),
@@ -44,7 +44,7 @@ def test_drops_insurance_only_signal_when_direct_payment_signal_exists():
     assert [s["signal_id"] for s in filtered] == ["S-001"]
 
 
-def test_keeps_insurance_only_signal_when_no_direct_payment_signal_exists():
+def test_drops_inverse_billing_signal_without_cash_pay_signal_present():
     signals = [
         _signal(
             "S-001",
@@ -54,7 +54,7 @@ def test_keeps_insurance_only_signal_when_no_direct_payment_signal_exists():
         ),
         _signal(
             "S-002",
-            "Insurance-only billing model",
+            "Payer-restricted billing model",
             "Does the website indicate that the practice only accepts insurance billing?",
             -10,
         ),
@@ -62,4 +62,4 @@ def test_keeps_insurance_only_signal_when_no_direct_payment_signal_exists():
 
     filtered = _drop_redundant_billing_inverse_signals(signals)
 
-    assert [s["signal_id"] for s in filtered] == ["S-001", "S-002"]
+    assert [s["signal_id"] for s in filtered] == ["S-001"]
