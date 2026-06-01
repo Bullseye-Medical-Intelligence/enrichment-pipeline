@@ -272,15 +272,19 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   automatic exclusion when the analyst also approves it. Without an explicit
   override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
   approved set.
-- **Client-safe only.** The ZIP contains `Executive_Target_Report.pdf`,
-  `bullseye_accounts.csv`, `contender_accounts.csv`, `excluded_targets.csv`, and
-  `run_metadata.json`. It never includes `run_log.json`, `reviews.json`, or the
-  raw `enriched_targets.json`. Client-facing CSVs and the report show tier +
-  confidence band only — numeric scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
-- **PDF generation.** `reports/pdf_report.py` renders `reports/templates/executive_target_report.html`
-  via WeasyPrint. Requires `weasyprint>=60.0`. On failure, a minimal stub PDF is
-  returned so the ZIP is never corrupt. Bullseye accounts get one page each;
-  Contender accounts appear in CSV only.
+- **Client-safe only.** The ZIP contains `Executive_Target_Report.html`,
+  `Sales_Handoff.html`, `bullseye_accounts.csv`, `contender_accounts.csv`,
+  `excluded_targets.csv`, and `run_metadata.json`. It never includes
+  `run_log.json`, `reviews.json`, or the raw `enriched_targets.json`.
+  Client-facing CSVs and the report show tier + confidence band only — numeric
+  scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
+- **Report generation.** `reports/pdf_report.py::build_executive_report_html`
+  renders `reports/templates/executive_target_report.html` to a self-contained
+  HTML file (embedded CSS, logo inlined as a data URI — no external assets, no
+  native dependencies, opens in any browser). The template keeps `@page` /
+  page-break rules so a client can print to PDF from the browser. On failure a
+  visible HTML error page is returned so the ZIP is never corrupt. Bullseye
+  accounts each get a section; Contender accounts appear in CSV only.
 
 ---
 

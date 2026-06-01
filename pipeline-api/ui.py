@@ -645,21 +645,21 @@ async def icp_demo_brief_page(
     return _render("icp_demo_brief.html", username=username, profile=profile, pdf_mode=False)
 
 
-@router.get("/icp-profiles/{icp_id}/demo.pdf")
-async def icp_demo_brief_pdf(
+@router.get("/icp-profiles/{icp_id}/demo.html")
+async def icp_demo_brief_download(
     request: Request, icp_id: str, username: str = Depends(auth.require_session)
 ):
-    """Return a WeasyPrint PDF of the demo brief for a saved ICP profile."""
+    """Return a self-contained HTML download of the demo brief for a saved ICP profile."""
     try:
         profile = icp_profiles.get_icp_profile(icp_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    pdf_bytes = _build_demo_brief_pdf(profile)
+    html_bytes = _build_demo_brief_html(profile)
     safe_id = re.sub(r"[^A-Za-z0-9_-]", "", icp_id)
-    filename = f"bemi-demo-brief-{safe_id}.pdf"
+    filename = f"bemi-demo-brief-{safe_id}.html"
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
+        content=html_bytes,
+        media_type="text/html",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -1711,18 +1711,21 @@ def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
         return ""
 
 
-def _build_demo_brief_pdf(profile: dict) -> bytes:
-    """Render the PDF-specific demo brief template and convert via WeasyPrint.
+def _build_demo_brief_html(profile: dict) -> bytes:
+    """Render the print-styled demo brief template to self-contained HTML bytes.
 
-    Falls back to a minimal stub on failure so the download never 500s.
+    Falls back to a minimal error page on failure so the download never 500s.
     """
-    import weasyprint
     try:
         rendered = _jinja_env.get_template("icp_demo_brief_pdf.html").render(profile=profile)
-        return weasyprint.HTML(string=rendered).write_pdf()
+        return rendered.encode("utf-8")
     except Exception as exc:
-        logger.error("Demo brief PDF generation failed: %s", exc)
-        return b"%PDF-1.4\n%%EOF\n"
+        logger.error("Demo brief HTML generation failed: %s", exc)
+        import html as _html
+        return (
+            f"<html><body><p><strong>Demo brief generation failed:</strong> "
+            f"{_html.escape(type(exc).__name__)}: {_html.escape(str(exc)[:180])}</p></body></html>"
+        ).encode("utf-8")
 
 
 def _calculate_stats(records: list[dict]) -> dict:

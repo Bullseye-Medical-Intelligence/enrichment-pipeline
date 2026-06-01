@@ -186,7 +186,7 @@ FastAPI server at `pipeline-api/`. Server-rendered HTML UI for internal operator
 - **ICP Profile builder:** AI-assisted signal generation via Claude. Three-stage: crawl client site → generate hypothesis → generate signal checklist. Operator reviews and approves before saving. Draft signals require human review — the builder is a starting point, not a source of truth.
 - **Run launch:** operator uploads CSV, selects project + ICP profile, launches pipeline as subprocess.
 - **QC review:** operator reviews every record, labels each (approve / exclude / override tier). Download locked until all records labeled.
-- **Client package export:** ZIP containing Executive Target Report PDF, Bullseye HTML report, bullseye_accounts.csv, warm_accounts.csv, excluded_targets.csv, run_metadata.json.
+- **Client package export:** ZIP containing Executive Target Report (self-contained HTML), Sales Handoff (HTML), bullseye_accounts.csv, contender_accounts.csv, excluded_targets.csv, run_metadata.json.
 
 ---
 

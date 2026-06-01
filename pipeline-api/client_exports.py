@@ -3,7 +3,8 @@ client_exports.py
 Client deliverable package generation for a completed run.
 
 Builds an in-memory ZIP containing:
-  Executive_Target_Report.pdf   — branded PDF (WeasyPrint)
+  Executive_Target_Report.html  — branded self-contained HTML report
+  Sales_Handoff.html            — rep-facing sales handoff (handoff_renderer)
   bullseye_accounts.csv         — Bullseye-tier approved records
   contender_accounts.csv        — Contender-tier approved records
   excluded_targets.csv          — all excluded records
@@ -68,7 +69,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     contender_csv = exports.build_contender_csv(run_id, run_directory, records, all_reviews).getvalue()
     excluded_csv = exports.build_excluded_csv(run_id, run_directory, records, all_reviews).getvalue()
 
-    pdf_bytes = _build_pdf(
+    report_bytes = _build_executive_report(
         run_id, status, project, icp,
         approved, all_reviews,
         len(records), excluded_count,
@@ -81,7 +82,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     )
 
     files = {
-        "Executive_Target_Report.pdf": pdf_bytes,
+        "Executive_Target_Report.html": report_bytes,
         "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,
         "contender_accounts.csv": contender_csv,
@@ -122,50 +123,27 @@ def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# PDF + metadata builders
+# Report + metadata builders
 # ---------------------------------------------------------------------------
 
-def _error_pdf(message: str) -> bytes:
-    """Build a minimal but valid one-page PDF that visibly states an error.
+def _error_html(title: str, exc: Exception) -> bytes:
+    """Build a minimal HTML page that visibly states a generation error.
 
-    Used when the executive report fails to render. A visible error page keeps
-    the client ZIP non-corrupt (the documented guarantee) while making the
-    failure obvious, instead of a blank document that looks like a successful
-    export. Uses raw PDF bytes so it works even when WeasyPrint is the cause of
-    the failure.
+    A visible error page keeps the client ZIP non-corrupt (the documented
+    guarantee) while making the failure obvious, instead of an empty file that
+    looks like a successful export.
     """
-    safe = message.replace("\\", "").replace("(", "[").replace(")", "]")
-    content = (
-        f"BT /F1 16 Tf 72 720 Td (Executive Target Report) Tj ET\n"
-        f"BT /F1 11 Tf 72 690 Td ({safe}) Tj ET"
-    ).encode("latin-1", "replace")
-
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream",
-    ]
-
-    pdf = bytearray(b"%PDF-1.4\n")
-    offsets = []
-    for i, obj in enumerate(objects, start=1):
-        offsets.append(len(pdf))
-        pdf += str(i).encode() + b" 0 obj\n" + obj + b"\nendobj\n"
-
-    xref_pos = len(pdf)
-    pdf += b"xref\n0 " + str(len(objects) + 1).encode() + b"\n"
-    pdf += b"0000000000 65535 f \n"
-    for off in offsets:
-        pdf += ("%010d 00000 n \n" % off).encode()
-    pdf += (b"trailer\n<< /Size " + str(len(objects) + 1).encode() +
-            b" /Root 1 0 R >>\nstartxref\n" + str(xref_pos).encode() + b"\n%%EOF\n")
-    return bytes(pdf)
+    import html as _html
+    return (
+        f"<html><body>"
+        f"<p><strong>{_html.escape(title)}:</strong> "
+        f"{_html.escape(type(exc).__name__)}: {_html.escape(str(exc)[:180])}</p>"
+        f"<p>Please contact the operations team.</p>"
+        f"</body></html>"
+    ).encode("utf-8")
 
 
-def _build_pdf(
+def _build_executive_report(
     run_id: str,
     status,
     project: dict,
@@ -175,10 +153,10 @@ def _build_pdf(
     screened: int,
     excluded_count: int,
 ) -> bytes:
-    """Render the Executive Target Report PDF; return raw bytes."""
+    """Render the Executive Target Report HTML; return UTF-8 bytes."""
     try:
         from reports import pdf_report
-        return pdf_report.build_executive_report(
+        return pdf_report.build_executive_report_html(
             run_id=run_id,
             status=status,
             project=project,
@@ -189,14 +167,8 @@ def _build_pdf(
             excluded_count=excluded_count,
         )
     except Exception as exc:
-        logger.exception("PDF generation failed for run %s; returning error-page PDF", run_id)
-        # Visible error page, not a blank stub — keeps the ZIP non-corrupt while
-        # making the failure obvious to whoever opens the deliverable.
-        return _error_pdf(
-            f"Report generation failed for run {run_id}. "
-            f"{type(exc).__name__}: {str(exc)[:180]}. "
-            f"Please contact the operations team."
-        )
+        logger.exception("Executive report generation failed for run %s; returning error page", run_id)
+        return _error_html(f"Executive Target Report generation failed for run {run_id}", exc)
 
 
 def _build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
@@ -205,14 +177,7 @@ def _build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
         return sales_export.build_sales_handoff(run_id, run_directory, status)
     except Exception as exc:
         logger.exception("Sales Handoff HTML generation failed for run %s", run_id)
-        import html as _html
-        return (
-            f"<html><body>"
-            f"<p><strong>Sales Handoff generation failed:</strong> "
-            f"{_html.escape(type(exc).__name__)}: {_html.escape(str(exc))}</p>"
-            f"<p>Please contact the operations team.</p>"
-            f"</body></html>"
-        ).encode("utf-8")
+        return _error_html("Sales Handoff generation failed", exc)
 
 
 def _run_metadata(

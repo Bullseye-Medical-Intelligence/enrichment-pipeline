@@ -1,8 +1,13 @@
 """
 reports/pdf_report.py
-Render the Executive Target Report PDF via WeasyPrint.
+Render the Executive Target Report as a self-contained HTML file.
 
-Entry point: build_executive_report() — returns raw PDF bytes.
+The report template embeds its own CSS and inlines the logo as a data URI, so
+the rendered HTML opens in any browser with no external assets and no native
+dependencies. Clients who want a PDF can print from the browser; the template
+carries @page / page-break rules for that path.
+
+Entry point: build_executive_report_html() — returns UTF-8 HTML bytes.
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ _jinja_env = Environment(
 )
 
 
-def build_executive_report(
+def build_executive_report_html(
     run_id: str,
     status,
     project: dict,
@@ -37,7 +42,7 @@ def build_executive_report(
     screened: int,
     excluded_count: int,
 ) -> bytes:
-    """Render the Executive Target Report to PDF bytes.
+    """Render the Executive Target Report to self-contained HTML bytes.
 
     approved_records should already be filtered (qc_status=approved, non-excluded)
     and sorted by score desc. all_reviews is the full review map {record_id: review}.
@@ -87,14 +92,11 @@ def build_executive_report(
 
     template = _jinja_env.get_template("executive_target_report.html")
     html_str = template.render(**ctx)
-
-    from weasyprint import HTML  # lazy — requires GTK native libs (not bundled on Windows)
-    pdf_bytes = HTML(string=html_str, base_url=str(_STATIC_DIR)).write_pdf()
     logger.info(
-        "Generated PDF for run %s: %d bullseye, %d contender, %d bytes",
-        run_id, len(bullseye), len(contender), len(pdf_bytes),
+        "Generated Executive Target Report HTML for run %s: %d bullseye, %d contender, %d bytes",
+        run_id, len(bullseye), len(contender), len(html_str),
     )
-    return pdf_bytes
+    return html_str.encode("utf-8")
 
 
 def build_bullseye_cards_html(
