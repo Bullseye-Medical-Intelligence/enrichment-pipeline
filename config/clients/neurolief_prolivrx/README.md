@@ -22,10 +22,12 @@ The ideal target therefore has BOTH:
 2. A demonstrated ability to collect cash directly from patients without an
    insurer in the loop (the wedge).
 
-A practice that only bills TMS through insurance has the patients but not the
-payment muscle. A practice running TMS plus cash-pay lines (IV ketamine,
-self-pay packages, concierge membership) has both. That second practice is the
-Bullseye.
+A practice with TMS but no observable direct-pay service line has the patients
+but not the payment muscle. A practice running TMS plus cash-pay lines (IV
+ketamine, self-pay packages, concierge membership) has both. That second
+practice is the Bullseye. Do not create a separate inverse billing signal; the
+cash-pay/out-of-network signal is the single source of truth for payment
+readiness.
 
 ## Profiles
 
