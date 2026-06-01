@@ -117,7 +117,7 @@
     <div class="form-group">
       <label for="exclusion_notes">Practices to Exclude</label>
       <textarea id="exclusion_notes" name="exclusion_notes" rows="2"
-                placeholder="Types of practices that are NOT a good fit (e.g. hospital-employed, academic centers, insurance-only).">{{ form.exclusion_notes | default('') }}</textarea>
+                placeholder="Types of practices that are NOT a good fit (e.g. hospital-employed, academic centers, wrong specialty).">{{ form.exclusion_notes | default('') }}</textarea>
       <p class="form-hint">Optional. Claude will generate negative-weight signals for these.</p>
     </div>
 
