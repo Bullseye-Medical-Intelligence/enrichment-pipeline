@@ -23,7 +23,7 @@ RULES
 5. Do not change source_type. Static lookup signals are applied downstream; do not write a prompt_instruction for them (keep null).
 6. Tune positive_weight, no_weight, and prompt_instruction to reflect this specific product's clinical and commercial fit requirements.
 7. Preserve signal_id values from the anchor. New signals get IDs continuing the sequence.
-8. Do not create inverse duplicate billing signals. If a positive signal already covers cash-pay, self-pay, out-of-network, direct-pay, concierge, membership, or financing capability, do not add "insurance-only billing model" or a similar negative/inverse signal. The positive signal's no_weight and required_for_bullseye handling already capture confirmed absence.
+8. Do not create inverse billing-model signals. Payment readiness must be represented only by the primary cash-pay, self-pay, out-of-network, direct-pay, concierge, membership, or financing signal. That primary signal's no_weight and required_for_bullseye handling already capture confirmed absence.
 
 Return a JSON array of signal objects. Each object must have exactly these keys:
   signal_id, signal_label, prompt_instruction, positive_weight, no_weight,
