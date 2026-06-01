@@ -237,6 +237,50 @@ def test_icp_path_rejects_traversal(store):
         icp_profiles.icp_profile_path("../../secret")
 
 
+def test_save_icp_profile_overwrites_readonly_destination(store):
+    """Importing over a read-only seeded profile must succeed, not raise.
+
+    Regression: on Windows, os.replace cannot overwrite a read-only file (a
+    seeded profile inherits the repo file's read-only bit via shutil.copy2),
+    which surfaced as a 500 on the import route. _replace_atomic clears the bit.
+    """
+    import stat as _stat
+
+    icp_profiles.save_icp_profile(dict(_VALID_ICP), overwrite=True)
+    dest = store["icp"] / "test-icp.json"
+    dest.chmod(_stat.S_IREAD)  # simulate the seeded read-only destination
+
+    updated = dict(_VALID_ICP, name="Renamed ICP")
+    icp_profiles.save_icp_profile(updated, overwrite=True)
+
+    assert icp_profiles.get_icp_profile("test-icp")["name"] == "Renamed ICP"
+
+
+def test_replace_atomic_recovers_from_transient_permission_error(tmp_path, monkeypatch):
+    """_replace_atomic retries a PermissionError (Windows lock) and then succeeds."""
+    src = tmp_path / "src.tmp"
+    dest = tmp_path / "dest.json"
+    src.write_text("new")
+    dest.write_text("old")
+
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(a, b):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("WinError 5")
+        return real_replace(a, b)
+
+    monkeypatch.setattr(icp_profiles.os, "replace", flaky_replace)
+    monkeypatch.setattr(icp_profiles.time, "sleep", lambda *_: None)
+
+    icp_profiles._replace_atomic(src, dest)
+
+    assert calls["n"] == 2
+    assert dest.read_text() == "new"
+
+
 def _icp_with_signal(**signal_extra):
     base = {
         "signal_id": "S-1", "signal_label": "x",

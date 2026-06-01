@@ -11,12 +11,21 @@ import json
 import logging
 import os
 import re
+import stat
+import time
 from pathlib import Path
 from typing import Optional
 
 import config
 
 logger = logging.getLogger(__name__)
+
+# Atomic-replace retry budget. On Windows, os.replace (MoveFileEx) cannot
+# overwrite a read-only destination and raises PermissionError if the target is
+# briefly locked by another process (antivirus / search indexer). We clear the
+# read-only bit and retry with a short backoff before giving up.
+_REPLACE_RETRIES = 5
+_REPLACE_BACKOFF_SECONDS = 0.1
 
 # icp_id becomes a filename, so it is guarded against path traversal.
 _ICP_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -214,6 +223,29 @@ def list_icp_profiles() -> list[dict]:
     return profiles
 
 
+def _replace_atomic(tmp: Path, dest: Path) -> None:
+    """Rename tmp onto dest atomically, hardened for Windows.
+
+    Unix rename overwrites any destination. Windows MoveFileEx refuses a
+    read-only destination (a seeded profile copied by shutil.copy2 inherits the
+    repo file's read-only bit) and raises PermissionError on a transient lock.
+    Clear the read-only attribute and retry with a short backoff before failing.
+    """
+    for attempt in range(_REPLACE_RETRIES):
+        try:
+            os.replace(tmp, dest)
+            return
+        except PermissionError:
+            if dest.exists():
+                try:
+                    os.chmod(dest, stat.S_IWRITE | stat.S_IREAD)
+                except OSError:
+                    pass
+            if attempt == _REPLACE_RETRIES - 1:
+                raise
+            time.sleep(_REPLACE_BACKOFF_SECONDS)
+
+
 def save_icp_profile(data: dict, overwrite: bool = False) -> None:
     """
     Validate and write an ICP profile to ICP_PROFILES_PATH/{icp_id}.json.
@@ -234,7 +266,7 @@ def save_icp_profile(data: dict, overwrite: bool = False) -> None:
     tmp = path.with_suffix(".tmp")
     try:
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
+        _replace_atomic(tmp, path)
     except Exception:
         tmp.unlink(missing_ok=True)
         raise

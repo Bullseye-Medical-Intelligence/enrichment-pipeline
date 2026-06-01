@@ -594,6 +594,12 @@ async def icp_import(
             f"/icp-profiles?import_error={urllib.parse.quote(str(exc))}",
             status_code=303,
         )
+    except OSError as exc:
+        logger.error("Failed to write imported ICP profile %r: %s", data.get("icp_id"), exc)
+        return RedirectResponse(
+            f"/icp-profiles?import_error={urllib.parse.quote(f'Could not save profile: {exc}')}",
+            status_code=303,
+        )
 
     return RedirectResponse("/icp-profiles", status_code=303)
 
