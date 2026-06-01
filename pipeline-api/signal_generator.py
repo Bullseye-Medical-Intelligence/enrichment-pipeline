@@ -27,7 +27,7 @@ _PROMPT_TEMPLATE = _PROMPT_PATH.read_text(encoding="utf-8")
 
 _TEMPLATES_DIR = Path(__file__).parent / "icp_templates"
 
-# Keyword → template file mapping. Matched against the lowercased specialty string.
+# Keyword -> template file mapping. Matched against the lowercased specialty string.
 _SPECIALTY_MAP: list[tuple[tuple[str, ...], str]] = [
     (("ob", "gyn", "fertility", "reproductive", "rei", "infertil"), "obgyn_fertility"),
     (("aesthet", "cosmetic", "dermatol"), "aesthetics"),
@@ -41,6 +41,23 @@ _REQUIRED_SIGNAL_FIELDS = frozenset({
     "required_for_bullseye", "source_type",
 })
 
+_DIRECT_PAYMENT_TERMS = (
+    "cash pay",
+    "self pay",
+    "out of network",
+    "direct pay",
+    "private pay",
+    "concierge",
+    "membership",
+)
+
+_INSURANCE_ONLY_TERMS = (
+    "insurance only",
+    "insurance based only",
+    "only accepts insurance",
+    "insurance exclusive",
+)
+
 
 class SignalSet(BaseModel):
     """Output of Stage 2: the adjusted signal list for this product."""
@@ -52,7 +69,7 @@ class SignalSet(BaseModel):
 def _resolve_template(specialty: str) -> dict:
     """Return the anchor template dict for the given specialty string.
 
-    Falls back to an empty template if no match — Stage 2 will generate from
+    Falls back to an empty template if no match - Stage 2 will generate from
     the product brief alone, which is still better than the old monolithic call.
     """
     slug = specialty.lower()
@@ -112,9 +129,63 @@ def generate_signals(brief: ProductBrief, specialty: str) -> SignalSet:
     if not isinstance(signals, list):
         raise ValueError("Signal generator must return a JSON array.")
 
+    signals = _drop_redundant_billing_inverse_signals(signals)
     _validate_signals(signals)
     logger.info("Generated %d signals for '%s' / '%s'.", len(signals), brief.product_name, specialty)
     return SignalSet(specialty=template.get("specialty", specialty), signals=signals)
+
+
+def _drop_redundant_billing_inverse_signals(signals: list[dict]) -> list[dict]:
+    """Remove inverse billing signals already covered by direct-pay requirements.
+
+    If the profile already contains a direct-payment signal, an "insurance-only"
+    signal double-penalizes the same commercial fact. The direct-payment signal's
+    no_weight / not_found handling is the single source of truth.
+    """
+    has_direct_payment_requirement = any(_is_direct_payment_signal(sig) for sig in signals)
+    if not has_direct_payment_requirement:
+        return signals
+
+    filtered = []
+    for sig in signals:
+        if _is_insurance_only_billing_signal(sig):
+            logger.info(
+                "Dropped redundant insurance-only billing signal '%s'.",
+                sig.get("signal_id", sig.get("signal_label", "unknown")),
+            )
+            continue
+        filtered.append(sig)
+    return filtered
+
+
+def _is_direct_payment_signal(signal: dict) -> bool:
+    """Return True when a positive signal already captures direct-payment readiness."""
+    if not isinstance(signal.get("positive_weight"), (int, float)):
+        return False
+    if signal["positive_weight"] <= 0:
+        return False
+    text = _normalized_signal_text(signal)
+    return any(term in text for term in _DIRECT_PAYMENT_TERMS)
+
+
+def _is_insurance_only_billing_signal(signal: dict) -> bool:
+    """Return True for the redundant inverse of direct-payment readiness."""
+    text = _normalized_signal_text(signal)
+    if not any(term in text for term in _INSURANCE_ONLY_TERMS):
+        return False
+    return any(term in text for term in ("billing", "model", "payer", "payor", "insurance"))
+
+
+def _normalized_signal_text(signal: dict) -> str:
+    """Combine human-facing signal fields into normalized text for classifiers."""
+    parts = [
+        signal.get("signal_label"),
+        signal.get("prompt_instruction"),
+        signal.get("notes"),
+        signal.get("note"),
+    ]
+    text = " ".join(str(p) for p in parts if p is not None).lower()
+    return re.sub(r"[-_/]+", " ", text)
 
 
 def _validate_signals(signals: list[dict]) -> None:
