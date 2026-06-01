@@ -37,7 +37,11 @@
           {% else %}{{ p.target_geography | default("—") }}{% endif %}
         </td>
         <td>{{ p.icp_profile_id | default("—") }}</td>
-        <td><a href="/upload?project_id={{ p.project_id }}" class="link-subtle">Start Run →</a></td>
+        <td style="white-space:nowrap;">
+          <a href="/upload?project_id={{ p.project_id }}" class="link-subtle">Start Run →</a>
+          &nbsp;·&nbsp;
+          <a href="/projects/{{ p.project_id }}/edit" class="link-subtle">Edit</a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
