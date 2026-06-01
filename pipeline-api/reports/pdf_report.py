@@ -151,9 +151,54 @@ def build_bullseye_cards_html(
     return html_str.encode("utf-8")
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
+def build_sales_handoff_html(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    grouped_records: dict,
+    all_reviews: dict,
+    screened: int,
+) -> bytes:
+    """Render the internal Sales Handoff as a self-contained HTML file.
+
+    grouped_records is a {tier: [record, ...]} dict ordered by _TIER_ORDER.
+    Returns UTF-8 encoded bytes. Internal-audience only — includes analyst notes
+    and all tiers. Never goes in the client ZIP.
+    """
+    geography = status.target_geography or project.get("target_geography") or []
+    if isinstance(geography, list):
+        geography = ", ".join(geography)
+
+    prepared_groups = {}
+    for tier, recs in grouped_records.items():
+        prepared_groups[tier] = [
+            _prepare_sales_record(r, all_reviews.get(record_adapter.get_record_id(r), {}))
+            for r in recs
+        ]
+
+    ctx = {
+        "run_id": run_id,
+        "client_name": status.client_name or project.get("client_name") or "—",
+        "product_name": status.product_name or project.get("product_name") or "—",
+        "target_specialty": status.target_specialty or project.get("target_specialty") or "—",
+        "geography": geography or "—",
+        "icp_name": status.icp_profile_name or icp.get("name") or "—",
+        "icp_version": status.icp_profile_version or icp.get("version") or "—",
+        "generated_date": datetime.now(timezone.utc).strftime("%B %d, %Y"),
+        "screened": screened,
+        "grouped_records": prepared_groups,
+        "tier_order": ["Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"],
+    }
+
+    template = _jinja_env.get_template("sales_handoff.html")
+    html_str = template.render(**ctx)
+    total = sum(len(v) for v in grouped_records.values())
+    logger.info(
+        "Generated Sales Handoff HTML for run %s: %d records, %d bytes",
+        run_id, total, len(html_str),
+    )
+    return html_str.encode("utf-8")
 
 def _prepare_record(rec: dict, review: dict) -> dict:
     """Map a raw enriched record + review to a template-ready dict."""
@@ -257,6 +302,63 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         "exclusion_risk_pct": exclusion_risk_pct,
         "analyst_note": review.get("analyst_note") or "",
         "override_reason": review.get("override_reason") or "",
+        "reviewed_by": review.get("reviewed_by") or "",
+    }
+
+
+def _prepare_sales_record(rec: dict, review: dict) -> dict:
+    """Map a raw enriched record + review to a sales-handoff template dict.
+
+    Internal-audience counterpart to _prepare_record. Includes analyst notes,
+    call brief detail (opening line, objection, discovery question), and tier
+    context for all tiers. No numeric scores or raw evidence text.
+    """
+    city = rec.get("address_city") or ""
+    state = rec.get("address_state") or ""
+    location = ", ".join(p for p in (city, state) if p) or "—"
+
+    phone_raw = rec.get("phone") or rec.get("phone_number") or ""
+    phone_formatted = _format_phone(phone_raw)
+
+    signals = rec.get("signals") or []
+    confirmed_signals = []
+    for sig in signals:
+        label = sig.get("signal_label") or sig.get("label") or ""
+        state_val = sig.get("signal_state", "")
+        inferred = bool(sig.get("state_inferred", False))
+        if (state_val == "yes" or inferred) and label:
+            confirmed_signals.append({"label": label, "inferred": inferred})
+
+    sales_angles = rec.get("sales_angle") or []
+    if isinstance(sales_angles, str):
+        sales_angles = [sales_angles]
+
+    brief = rec.get("call_brief") or {}
+
+    confidence_band = rec.get("confidence_band") or "—"
+    tier = record_adapter.displayed_tier(rec, review)
+
+    return {
+        "name": rec.get("practice_name") or rec.get("name") or "Unknown Practice",
+        "specialty": rec.get("specialty") or rec.get("target_specialty") or "—",
+        "location": location,
+        "phone_formatted": phone_formatted,
+        "website": rec.get("website_url") or rec.get("website") or "",
+        "tier": tier,
+        "confidence_band": confidence_band,
+        "tier_cap_reason": rec.get("tier_cap_reason") or "",
+        "exclusion_reason": rec.get("exclusion_reason") or "",
+        "confirmed_signals": confirmed_signals,
+        "sales_angles": sales_angles,
+        "why_contact": brief.get("why_contact") or "",
+        "opening_line": brief.get("opening_line") or "",
+        "likely_objection": brief.get("likely_objection") or "",
+        "discovery_question": brief.get("discovery_question") or "",
+        "hours_of_operation": brief.get("hours_of_operation") or "",
+        "analyst_note": review.get("analyst_note") or "",
+        "override_reason": review.get("override_reason") or "",
+        "override_tier": review.get("override_tier") or "",
+        "qc_status": review.get("qc_status") or "pending",
         "reviewed_by": review.get("reviewed_by") or "",
     }
 

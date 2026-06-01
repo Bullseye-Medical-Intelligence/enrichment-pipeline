@@ -20,6 +20,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
 import client_exports
+import sales_export
 import config
 import exports
 import icp_profiles
@@ -1246,6 +1247,35 @@ async def client_package(run_id: str, username: str = Depends(auth.require_sessi
         buf,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{run_id}_client_package.zip"'},
+    )
+
+
+@router.get("/runs/{run_id}/download/sales-html")
+async def download_sales_html(run_id: str, username: str = Depends(auth.require_session)):
+    """Download the internal Sales Handoff HTML for a completed, fully-reviewed run."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(
+            status_code=425,
+            detail=f"Run '{run_id}' has not completed (current status: {status.status}).",
+        )
+    run_directory = runs.run_dir(run_id)
+    pending = _pending_review_count(run_id, run_directory)
+    if pending > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{pending} record{'s' if pending != 1 else ''} still pending review. "
+                "Complete labeling before downloading the sales handoff."
+            ),
+        )
+    html_bytes = sales_export.build_sales_handoff(run_id, run_directory, status)
+    return Response(
+        content=html_bytes,
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_sales_handoff.html"'},
     )
 
 

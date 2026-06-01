@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Handoff — {{ client_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0a0a0a;
+  color: #f7f6f4;
+  font-family: 'DM Sans', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 40px 32px 60px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 32px;
+  border-bottom: 1px solid rgba(247,246,244,0.12);
+  margin-bottom: 40px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 28px; height: 28px;
+  background: #c84b2f;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #fff; font-weight: 700;
+}
+.brand-name {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 18px;
+  color: #f7f6f4;
+  letter-spacing: 0.04em;
+}
+.report-meta { text-align: right; }
+.report-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c84b2f;
+  margin-bottom: 4px;
+}
+.report-subtitle { font-size: 12px; color: rgba(247,246,244,0.5); }
+.internal-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  background: rgba(200,75,47,0.15);
+  border: 1px solid rgba(200,75,47,0.3);
+  border-radius: 100px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c84b2f;
+}
+
+/* ── Run summary strip ───────────────────────────────────────────────────── */
+.run-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin-bottom: 40px;
+  padding: 18px 24px;
+  background: rgba(247,246,244,0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(247,246,244,0.08);
+}
+.summary-item { display: flex; flex-direction: column; gap: 2px; }
+.summary-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.4);
+}
+.summary-value { font-size: 15px; font-weight: 500; }
+
+/* ── Tier section header ─────────────────────────────────────────────────── */
+.tier-section { margin-bottom: 48px; }
+.tier-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(247,246,244,0.1);
+}
+.tier-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.tier-count {
+  font-size: 11px;
+  color: rgba(247,246,244,0.4);
+  background: rgba(247,246,244,0.07);
+  border-radius: 100px;
+  padding: 2px 9px;
+}
+/* Tier color accents */
+.tier-label-bullseye { color: #4caf6e; }
+.tier-label-needs-verification { color: #e6a83a; }
+.tier-label-contender { color: #7ea9d4; }
+.tier-label-manual-review { color: rgba(247,246,244,0.4); }
+.tier-label-excluded { color: #c84b2f; }
+
+/* ── Account card ────────────────────────────────────────────────────────── */
+.account-card {
+  display: flex;
+  gap: 0;
+  background: #161616;
+  border-radius: 14px;
+  border: 1px solid rgba(247,246,244,0.1);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.account-card.tier-bullseye { border-left: 3px solid #4caf6e; }
+.account-card.tier-needs-verification { border-left: 3px solid #e6a83a; }
+.account-card.tier-contender { border-left: 3px solid #7ea9d4; }
+.account-card.tier-manual-review { border-left: 3px solid rgba(247,246,244,0.2); }
+.account-card.tier-excluded { border-left: 3px solid rgba(200,75,47,0.5); opacity: 0.75; }
+
+.card-main {
+  flex: 1;
+  padding: 28px 32px;
+  border-right: 1px solid rgba(247,246,244,0.07);
+}
+.card-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Practice identity ───────────────────────────────────────────────────── */
+.practice-name {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 26px;
+  line-height: 1.2;
+  color: #f7f6f4;
+  margin-bottom: 6px;
+}
+.practice-meta {
+  font-size: 12px;
+  color: rgba(247,246,244,0.45);
+  margin-bottom: 20px;
+}
+.practice-meta span { margin: 0 5px; color: rgba(247,246,244,0.2); }
+.practice-meta a { color: rgba(247,246,244,0.45); text-decoration: none; }
+
+.card-divider {
+  border: none;
+  border-top: 1px solid rgba(247,246,244,0.07);
+  margin: 16px 0;
+}
+
+/* ── Section labels ─────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.35);
+  margin-bottom: 10px;
+}
+
+/* ── Signal pills ───────────────────────────────────────────────────────── */
+.signals-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 20px;
+}
+.signal-pill {
+  font-size: 12px;
+  font-weight: 500;
+  color: #f7f6f4;
+  background: rgba(247,246,244,0.06);
+  border: 1px solid rgba(247,246,244,0.14);
+  border-radius: 100px;
+  padding: 4px 12px;
+}
+.signal-pill.inferred {
+  color: rgba(247,246,244,0.55);
+  border-style: dashed;
+}
+.no-signals {
+  font-size: 12px;
+  color: rgba(247,246,244,0.25);
+  font-style: italic;
+  margin-bottom: 20px;
+}
+
+/* ── Call brief ─────────────────────────────────────────────────────────── */
+.call-brief {
+  background: rgba(200,75,47,0.08);
+  border: 1px solid rgba(200,75,47,0.18);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.call-brief-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c84b2f;
+  margin-bottom: 10px;
+}
+.brief-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.brief-row:last-child { margin-bottom: 0; }
+.brief-key {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.35);
+}
+.brief-val {
+  font-size: 12px;
+  color: rgba(247,246,244,0.85);
+  line-height: 1.55;
+}
+
+/* ── Sales angles ───────────────────────────────────────────────────────── */
+.angles-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 16px;
+}
+.angles-list li {
+  font-size: 12px;
+  color: rgba(247,246,244,0.7);
+  padding-left: 14px;
+  position: relative;
+}
+.angles-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: #c84b2f;
+}
+
+/* ── Reason block (Excluded / Manual Review) ─────────────────────────────── */
+.reason-block {
+  background: rgba(247,246,244,0.03);
+  border: 1px solid rgba(247,246,244,0.08);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.reason-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.3);
+  margin-bottom: 5px;
+}
+.reason-text {
+  font-size: 12px;
+  color: rgba(247,246,244,0.6);
+  line-height: 1.5;
+}
+
+/* ── Sidebar: tier + metadata ────────────────────────────────────────────── */
+.sidebar-tier {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sidebar-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.3);
+  margin-bottom: 3px;
+}
+.sidebar-value {
+  font-size: 12px;
+  color: rgba(247,246,244,0.8);
+}
+
+/* ── Analyst note ────────────────────────────────────────────────────────── */
+.analyst-block {
+  background: rgba(247,246,244,0.04);
+  border: 1px solid rgba(247,246,244,0.08);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.analyst-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.35);
+  margin-bottom: 5px;
+}
+.analyst-note-text {
+  font-size: 12px;
+  color: rgba(247,246,244,0.75);
+  line-height: 1.5;
+}
+.analyst-override {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #c84b2f;
+}
+
+/* ── QC status ───────────────────────────────────────────────────────────── */
+.qc-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.qc-pending  { background: rgba(247,246,244,0.08); color: rgba(247,246,244,0.4); }
+.qc-approved { background: rgba(76,175,110,0.15); color: #4caf6e; }
+.qc-rejected { background: rgba(200,75,47,0.15); color: #c84b2f; }
+
+/* ── Empty tier section ──────────────────────────────────────────────────── */
+.tier-empty {
+  font-size: 12px;
+  color: rgba(247,246,244,0.25);
+  font-style: italic;
+  padding: 12px 0 4px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.report-footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(247,246,244,0.1);
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(247,246,244,0.25);
+}
+</style>
+</head>
+<body>
+
+{# ── Macros ────────────────────────────────────────────────────────────────── #}
+{% macro tier_cls(tier) -%}
+  {%- if tier == 'Bullseye' -%}tier-bullseye
+  {%- elif tier == 'Needs Verification' -%}tier-needs-verification
+  {%- elif tier == 'Contender' -%}tier-contender
+  {%- elif tier == 'Manual Review' -%}tier-manual-review
+  {%- else -%}tier-excluded
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro tier_label_cls(tier) -%}
+  {%- if tier == 'Bullseye' -%}tier-label-bullseye
+  {%- elif tier == 'Needs Verification' -%}tier-label-needs-verification
+  {%- elif tier == 'Contender' -%}tier-label-contender
+  {%- elif tier == 'Manual Review' -%}tier-label-manual-review
+  {%- else -%}tier-label-excluded
+  {%- endif -%}
+{%- endmacro %}
+
+{# ── Header ────────────────────────────────────────────────────────────────── #}
+<header class="report-header">
+  <div class="brand">
+    <div class="brand-mark">B</div>
+    <span class="brand-name">BEMI</span>
+  </div>
+  <div class="report-meta">
+    <div class="report-title">Sales Handoff</div>
+    <div class="report-subtitle">
+      {{ client_name }}{% if product_name and product_name != '—' %} &nbsp;·&nbsp; {{ product_name }}{% endif %}
+      &nbsp;·&nbsp; {{ generated_date }}
+    </div>
+    <span class="internal-badge">Internal — Sales Team Use Only</span>
+  </div>
+</header>
+
+{# ── Run summary strip ─────────────────────────────────────────────────────── #}
+<div class="run-summary">
+  {% if target_specialty and target_specialty != '—' %}
+  <div class="summary-item">
+    <span class="summary-label">Specialty</span>
+    <span class="summary-value">{{ target_specialty }}</span>
+  </div>
+  {% endif %}
+  {% if geography and geography != '—' %}
+  <div class="summary-item">
+    <span class="summary-label">Geography</span>
+    <span class="summary-value">{{ geography }}</span>
+  </div>
+  {% endif %}
+  <div class="summary-item">
+    <span class="summary-label">Practices Screened</span>
+    <span class="summary-value">{{ screened }}</span>
+  </div>
+  {% for tier in tier_order %}
+  {% set recs = grouped_records[tier] %}
+  {% if recs %}
+  <div class="summary-item">
+    <span class="summary-label">{{ tier }}</span>
+    <span class="summary-value">{{ recs | length }}</span>
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% if icp_name and icp_name != '—' %}
+  <div class="summary-item">
+    <span class="summary-label">ICP Profile</span>
+    <span class="summary-value">{{ icp_name }}{% if icp_version and icp_version != '—' %} v{{ icp_version }}{% endif %}</span>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Tier sections ─────────────────────────────────────────────────────────── #}
+{% for tier in tier_order %}
+{% set recs = grouped_records[tier] %}
+{% if recs %}
+<div class="tier-section">
+  <div class="tier-section-header">
+    <span class="tier-section-label {{ tier_label_cls(tier) }}">{{ tier }}</span>
+    <span class="tier-count">{{ recs | length }} account{{ 's' if recs | length != 1 else '' }}</span>
+  </div>
+
+  {% for rec in recs %}
+  {% set is_inactive = tier in ('Manual Review', 'Excluded') %}
+  <div class="account-card {{ tier_cls(tier) }}">
+
+    {# Left / main panel #}
+    <div class="card-main">
+      <div class="practice-name">{{ rec.name }}</div>
+      <div class="practice-meta">
+        {{ rec.specialty }}
+        {% if rec.location and rec.location != '—' %}<span>·</span> {{ rec.location }}{% endif %}
+        {% if rec.phone_formatted and rec.phone_formatted != '—' %}<span>·</span> {{ rec.phone_formatted }}{% endif %}
+        {% if rec.website %}<span>·</span> <a href="{{ rec.website }}" target="_blank" rel="noopener noreferrer">{{ rec.website | replace('https://','') | replace('http://','') }}</a>{% endif %}
+      </div>
+
+      {# Exclusion / cap reason for non-callable tiers #}
+      {% if is_inactive %}
+        {% set reason = rec.exclusion_reason or rec.tier_cap_reason %}
+        {% if reason %}
+        <div class="reason-block">
+          <div class="reason-label">{% if tier == 'Excluded' %}Exclusion Reason{% else %}Why Not Promoted{% endif %}</div>
+          <div class="reason-text">{{ reason }}</div>
+        </div>
+        {% endif %}
+      {% endif %}
+
+      {# Confirmed signals #}
+      <div class="section-label">Confirmed Signals</div>
+      {% if rec.confirmed_signals %}
+      <div class="signals-pills">
+        {% for sig in rec.confirmed_signals %}
+        <span class="signal-pill{% if sig.inferred %} inferred{% endif %}">{{ sig.label }}</span>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="no-signals">No confirmed signals.</p>
+      {% endif %}
+
+      {# Call brief — only for actionable tiers #}
+      {% if not is_inactive and (rec.why_contact or rec.opening_line or rec.likely_objection or rec.discovery_question) %}
+      <div class="call-brief">
+        <div class="call-brief-label">Rep Call Brief</div>
+        {% if rec.why_contact %}
+        <div class="brief-row">
+          <span class="brief-key">Why Contact</span>
+          <span class="brief-val">{{ rec.why_contact }}</span>
+        </div>
+        {% endif %}
+        {% if rec.opening_line %}
+        <div class="brief-row">
+          <span class="brief-key">Opening Line</span>
+          <span class="brief-val">"{{ rec.opening_line }}"</span>
+        </div>
+        {% endif %}
+        {% if rec.likely_objection %}
+        <div class="brief-row">
+          <span class="brief-key">Likely Objection</span>
+          <span class="brief-val">{{ rec.likely_objection }}</span>
+        </div>
+        {% endif %}
+        {% if rec.discovery_question %}
+        <div class="brief-row">
+          <span class="brief-key">Discovery Question</span>
+          <span class="brief-val">{{ rec.discovery_question }}</span>
+        </div>
+        {% endif %}
+        {% if rec.hours_of_operation %}
+        <div class="brief-row">
+          <span class="brief-key">Hours</span>
+          <span class="brief-val">{{ rec.hours_of_operation }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# Sales angles — only for actionable tiers #}
+      {% if not is_inactive and rec.sales_angles %}
+      <div class="section-label">Sales Angles</div>
+      <ul class="angles-list">
+        {% for angle in rec.sales_angles %}
+        <li>{{ angle }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>{# /card-main #}
+
+    {# Sidebar #}
+    <div class="card-sidebar">
+
+      <div>
+        <div class="sidebar-label">Tier</div>
+        <div class="sidebar-tier {{ tier_label_cls(rec.tier) }}">{{ rec.tier }}</div>
+        {% if rec.override_tier %}
+        <div style="font-size:10px; color:rgba(247,246,244,0.35); margin-top:3px;">Override from pipeline</div>
+        {% endif %}
+      </div>
+
+      {% if rec.confidence_band and rec.confidence_band != '—' and not is_inactive %}
+      <div>
+        <div class="sidebar-label">Confidence</div>
+        <div class="sidebar-value">{{ rec.confidence_band }}</div>
+      </div>
+      {% endif %}
+
+      <div>
+        <div class="sidebar-label">QC Status</div>
+        <span class="qc-badge qc-{{ rec.qc_status }}">
+          {%- if rec.qc_status == 'approved' -%}Reviewed
+          {%- elif rec.qc_status == 'rejected' -%}Rejected
+          {%- else -%}Pending
+          {%- endif -%}
+        </span>
+        {% if rec.reviewed_by %}
+        <div style="font-size:10px; color:rgba(247,246,244,0.3); margin-top:4px;">by {{ rec.reviewed_by }}</div>
+        {% endif %}
+      </div>
+
+      {# Analyst note #}
+      {% if rec.analyst_note or rec.override_reason %}
+      <div class="analyst-block">
+        <div class="analyst-label">Analyst Note</div>
+        {% if rec.analyst_note %}
+        <div class="analyst-note-text">{{ rec.analyst_note }}</div>
+        {% endif %}
+        {% if rec.override_reason %}
+        <div class="analyst-override">Override: {{ rec.override_reason }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+    </div>{# /card-sidebar #}
+
+  </div>{# /account-card #}
+  {% endfor %}
+
+</div>{# /tier-section #}
+{% endif %}
+{% endfor %}
+
+{# ── Footer ────────────────────────────────────────────────────────────────── #}
+<footer class="report-footer">
+  <span>Internal — Sales Team Use Only. Not for client distribution.</span>
+  <span>Based on publicly available signals only. No PHI or patient data used.</span>
+</footer>
+
+</body>
+</html>
