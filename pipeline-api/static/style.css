@@ -121,7 +121,7 @@ ul, ol { padding-left: 1.4em; }
   line-height: 1.2;
 }
 .page-subtitle  { color: var(--muted); font-size: 13px; margin-top: 5px; }
-.header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ── Cards ────────────────────────────────────────────────────────── */
 .card {

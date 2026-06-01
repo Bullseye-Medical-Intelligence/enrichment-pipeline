@@ -31,15 +31,14 @@
     {% if status.status == "complete" %}
     {% if readiness and readiness.state == 'ready' %}
     <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
-    <a href="/runs/{{ run_id }}/download/sales-html" class="btn btn-secondary" title="Internal handoff — all tiers, analyst notes, call briefs">Sales HTML</a>
+    <a href="/runs/{{ run_id }}/download/sales-html" class="btn btn-secondary" title="Standalone sales handoff HTML — ready to share with the sales team">Sales HTML</a>
     {% else %}
     {% set pending_title = readiness.pending_count ~ ' record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Complete labeling before downloading' %}
-    <span class="btn btn-secondary" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
+    <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
     <span class="btn btn-secondary" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Sales HTML</span>
     {% endif %}
     <a href="/runs/{{ run_id }}/export/approved" class="btn btn-secondary">Export Approved</a>
     <a href="/runs/{{ run_id }}/export/excluded" class="btn btn-secondary">Export Excluded</a>
-    <a href="/runs/{{ run_id }}/export/retry-crawl" class="btn btn-secondary" title="Download records that failed to crawl, ready to re-upload as a new run">Export Failed Crawls</a>
     {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
     {% if limited_count > 0 %}
     <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
@@ -48,7 +47,7 @@
       </button>
     </form>
     {% endif %}
-    <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary">Full JSON</a>
+    <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary" title="Full internal pipeline output — scores, signals, all fields. Not for client distribution.">Full JSON</a>
     <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
     {% endif %}
     <a href="/dashboard" class="btn btn-secondary">← All Runs</a>

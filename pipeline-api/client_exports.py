@@ -25,6 +25,7 @@ import icp_profiles
 import projects
 import record_adapter
 import reviews
+import sales_export
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
         approved, all_reviews,
         len(records), excluded_count,
     )
-    html_bytes = _build_bullseye_html(
-        run_id, status, project, icp,
-        approved, all_reviews,
-        len(records), excluded_count,
-    )
+    handoff_bytes = _build_sales_handoff(run_id, run_directory, status)
 
     metadata = _run_metadata(
         run_id, status, project, icp,
@@ -85,7 +82,7 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
 
     files = {
         "Executive_Target_Report.pdf": pdf_bytes,
-        "Bullseye_Target_Report.html": html_bytes,
+        "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,
         "contender_accounts.csv": contender_csv,
         "excluded_targets.csv": excluded_csv,
@@ -202,35 +199,16 @@ def _build_pdf(
         )
 
 
-def _build_bullseye_html(
-    run_id: str,
-    status,
-    project: dict,
-    icp: dict,
-    approved: list[dict],
-    all_reviews: dict,
-    screened: int,
-    excluded_count: int,
-) -> bytes:
-    """Render the Bullseye cards HTML report; return UTF-8 bytes."""
+def _build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
+    """Render the Sales Handoff HTML for the client ZIP; return UTF-8 bytes."""
     try:
-        from reports import pdf_report
-        return pdf_report.build_bullseye_cards_html(
-            run_id=run_id,
-            status=status,
-            project=project,
-            icp=icp,
-            approved_records=approved,
-            all_reviews=all_reviews,
-            screened=screened,
-            excluded_count=excluded_count,
-        )
+        return sales_export.build_sales_handoff(run_id, run_directory, status)
     except Exception as exc:
-        logger.exception("HTML report generation failed for run %s", run_id)
+        logger.exception("Sales Handoff HTML generation failed for run %s", run_id)
         import html as _html
         return (
             f"<html><body>"
-            f"<p><strong>Report generation failed:</strong> "
+            f"<p><strong>Sales Handoff generation failed:</strong> "
             f"{_html.escape(type(exc).__name__)}: {_html.escape(str(exc))}</p>"
             f"<p>Please contact the operations team.</p>"
             f"</body></html>"
