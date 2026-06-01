@@ -10,7 +10,7 @@ Target practice traits: {target_practice_traits}
 
 ANCHOR SIGNAL TEMPLATE
 ----------------------
-The signals below are the standard starting set for the {specialty_label} specialty. Your job is to ADJUST them for this specific product — tune weights, sharpen prompt instructions, add a signal only if this product clearly demands one not already covered, remove a signal only if it is genuinely irrelevant to this product. Do not generate signals from scratch.
+The signals below are the standard starting set for the {specialty_label} specialty. Your job is to ADJUST them for this specific product - tune weights, sharpen prompt instructions, add a signal only if this product clearly demands one not already covered, remove a signal only if it is genuinely irrelevant to this product. Do not generate signals from scratch.
 
 {anchor_signals_json}
 
@@ -19,10 +19,11 @@ RULES
 1. Return all signals from the anchor template unless a signal is completely irrelevant to this product (explain in notes if you remove one).
 2. You may add at most 2 new signals if this product has a clear fit indicator not in the anchor.
 3. Every signal must have no_weight set to a non-zero integer if the signal is a core fit requirement (confirmed absent should cost points). Setting no_weight to 0 for a positive-weight required signal is a generation failure.
-4. Every signal must have required_for_bullseye set — true only for signals where confirmed absence means the practice is definitively not a fast-close target.
+4. Every signal must have required_for_bullseye set - true only for signals where confirmed absence means the practice is definitively not a fast-close target.
 5. Do not change source_type. Static lookup signals are applied downstream; do not write a prompt_instruction for them (keep null).
 6. Tune positive_weight, no_weight, and prompt_instruction to reflect this specific product's clinical and commercial fit requirements.
 7. Preserve signal_id values from the anchor. New signals get IDs continuing the sequence.
+8. Do not create inverse duplicate billing signals. If a positive signal already covers cash-pay, self-pay, out-of-network, direct-pay, concierge, membership, or financing capability, do not add "insurance-only billing model" or a similar negative/inverse signal. The positive signal's no_weight and required_for_bullseye handling already capture confirmed absence.
 
 Return a JSON array of signal objects. Each object must have exactly these keys:
   signal_id, signal_label, prompt_instruction, positive_weight, no_weight,
