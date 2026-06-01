@@ -185,6 +185,42 @@ def test_contender_csv_empty_when_no_contender_records(tmp_path):
     assert "T-2" not in contender
 
 
+def test_handoff_account_mapping_for_rep_fields():
+    """Why It Matters carries the sales angle (no internal score); opener, verify,
+    and landmine map to opener / not_found signals / objection respectively."""
+    import sales_export
+    rec = {
+        "practice_name": "Austin Womens Health",
+        "website_url": "https://austinwh.example",
+        "confidence_band": "High", "bullseye_score": 91, "target_tier": "Bullseye",
+        "sales_angle": ["Offers in-office IUD placement.", "Independent ownership."],
+        "signals": [
+            {"signal_label": "IUD", "signal_state": "yes", "positive_weight": 20},
+            {"signal_label": "Referral Reach", "signal_state": "not_found", "positive_weight": 10},
+        ],
+        "call_brief": {
+            "why_contact": "OBGYN practice: IUD + Cash Pay (fit 84).",
+            "opening_line": "Saw you offer in-office IUD placement.",
+            "likely_objection": "We already have a device vendor.",
+            "discovery_question": "How do you source IUD inventory?",
+            "missing_to_verify": [],
+            "disqualifier_risk": [],
+        },
+    }
+    acct = sales_export._record_to_account(rec, "Bullseye")
+    # Why It Matters = sales angle, and the internal fit score never leaks.
+    assert acct.why_it_matters == "Offers in-office IUD placement. Independent ownership."
+    assert "84" not in (acct.why_it_matters or "")
+    assert "fit 84" not in (acct.why_it_matters or "")
+    # Example opener carries the LLM opener, not the verify list.
+    assert acct.wedge == "Saw you offer in-office IUD placement."
+    # Verify lists the not_found desirable signal to uncover, not the scripted question.
+    assert acct.verify == ["Referral Reach"]
+    assert "How do you source" not in acct.verify
+    # Landmine surfaces the likely objection (and never crashes on a list input).
+    assert acct.landmine and "We already have a device vendor" in acct.landmine
+
+
 # ---------------------------------------------------------------------------
 # Route: requires a complete run
 # ---------------------------------------------------------------------------

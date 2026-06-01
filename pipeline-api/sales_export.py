@@ -148,16 +148,29 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
     ]
 
     brief = rec.get("call_brief") or {}
-    verify = _coerce_list(brief.get("missing_to_verify"))
-    # missing_to_verify is only populated for verification_required signals that are
-    # not_found. For fully-confirmed records it's empty, so fall back to the
-    # discovery question so reps always get at least one actionable prompt.
-    if not verify:
-        disc = (brief.get("discovery_question") or "").strip()
-        if disc:
-            verify = [disc]
+
+    # Why It Matters: the rep-facing value proposition (the sales angle / wedge).
+    # The pipeline's why_contact string embeds the internal fit score, so it is
+    # deliberately NOT used here — internal ranking data never reaches the client.
     sales_angles = _coerce_list(rec.get("sales_angle"))
-    wedge = sales_angles[0] if sales_angles else (brief.get("opening_line") or None)
+    why_it_matters = " ".join(sales_angles) or None
+
+    # Example opener: the LLM opener (or discovery question) a rep can use to
+    # approach the account. Kept out of Verify, which lists what to uncover.
+    opener = (brief.get("opening_line") or "").strip() or (brief.get("discovery_question") or "").strip()
+
+    # Verify: grounded bullets on what to uncover — unconfirmed required signals
+    # plus any desirable signal we looked for but could not confirm (not_found).
+    verify = _coerce_list(brief.get("missing_to_verify"))
+    for sig in signals:
+        if sig.get("signal_state") != "not_found":
+            continue
+        weight = sig.get("positive_weight", 0)
+        if isinstance(weight, bool):
+            weight = 0
+        label = sig.get("signal_label") or sig.get("label")
+        if label and isinstance(weight, (int, float)) and weight > 0 and label not in verify:
+            verify.append(label)
 
     return Account(
         name=rec.get("practice_name") or rec.get("name") or "Unknown Practice",
@@ -170,11 +183,11 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         internal_score=int(rec.get("bullseye_score") or 0),
         flags=[],  # practice-level flags not yet in pipeline schema
         # Non-excluded content
-        why_it_matters=brief.get("why_contact") or None,
-        wedge=wedge or None,
+        why_it_matters=why_it_matters,
+        wedge=opener or None,
         confirmed_signals=confirmed_signals,
         verify=verify,
-        landmine=brief.get("disqualifier_risk") or None,
+        landmine=_build_landmine(brief),
         # Excluded content
         gate_fired=rec.get("exclusion_reason") or None,
         evidence=_extract_domain(rec.get("website_url") or rec.get("website") or "") or None,
@@ -239,6 +252,20 @@ def _extract_domain(url: str) -> str:
         return host.removeprefix("www.")
     except Exception:
         return url
+
+
+def _build_landmine(brief: dict) -> str | None:
+    """Combine confirmed friction risks and the likely objection into one line.
+
+    disqualifier_risk is a list of grounded friction descriptions; likely_objection
+    is the LLM-generated push-back a rep should be ready for. Returns None when
+    neither is present so the section is omitted.
+    """
+    parts = _coerce_list(brief.get("disqualifier_risk"))
+    objection = (brief.get("likely_objection") or "").strip()
+    if objection:
+        parts.append(f"Likely objection: {objection}")
+    return "  ·  ".join(parts) if parts else None
 
 
 def _coerce_list(value) -> list[str]:

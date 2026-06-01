@@ -207,7 +207,6 @@
       <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by {{ acct.qc_reviewer }}</b></div>
       {% else %}
       {% if acct.why_it_matters %}<div class="fld"><div class="ey">Why It Matters</div><div class="why">{{ acct.why_it_matters | bold_md }}</div></div>{% endif %}
-      {% if acct.wedge %}<div class="fld"><div class="ey">Wedge</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
       <div class="twocol">
         <div class="fld">
           <div class="ey">Confirmed Signals</div>
@@ -222,7 +221,8 @@
           </ul>
         </div>
       </div>
-      {% if acct.landmine %}<div class="fld"><div class="ey">Landmine</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
+      {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
+      {% if acct.landmine %}<div class="fld"><div class="ey">Landmine / Objection</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
       <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b> &nbsp;&middot;&nbsp; Tier <b>{{ acct.tier_info.pill }}</b> / Confidence <b>{{ acct.conf_label }}</b></div>
       {% endif %}
     </div>
