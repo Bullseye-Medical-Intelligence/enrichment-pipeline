@@ -169,7 +169,12 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         if isinstance(weight, bool):
             weight = 0
         label = sig.get("signal_label") or sig.get("label")
-        if label and isinstance(weight, (int, float)) and weight > 0 and label not in verify:
+        if not label or not isinstance(weight, (int, float)) or weight <= 0:
+            continue
+        label_lower = label.lower()
+        if "concierge" in label_lower or "membership" in label_lower:
+            continue
+        if label not in verify:
             verify.append(label)
 
     return Account(

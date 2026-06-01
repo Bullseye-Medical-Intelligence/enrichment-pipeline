@@ -90,6 +90,7 @@
   .wedge{font-family:'Inter','DM Sans',sans-serif;font-style:normal;font-weight:600;font-size:15px;line-height:1.4;color:#f4f1ed;}
   .landmine{font-size:13px;line-height:1.55;color:var(--txt);border-left:2px solid var(--acc);padding-left:12px;}
   .landmine b{color:#f2efeb;}
+  .landmine-counter{margin-top:7px;font-size:11.5px;line-height:1.5;color:var(--mut);font-style:italic;}
   .sigrow{display:flex;flex-wrap:wrap;gap:7px;}
   .sigpill{font-size:11.5px;color:var(--txt);background:rgba(247,246,244,0.05);border-radius:6px;padding:5px 11px;}
   .sigpill::before{content:"+ ";color:rgba(95,169,120,0.8);font-weight:600;}
@@ -222,7 +223,7 @@
         </div>
       </div>
       {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
-      {% if acct.landmine %}<div class="fld"><div class="ey">Landmine / Objection</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
+      {% if acct.landmine %}<div class="fld"><div class="ey">Landmine</div><div class="landmine">{{ acct.landmine | bold_md }}</div><div class="landmine-counter">Most reps hear some version of this. Stay curious — ask what would have to change for them to look at it differently, then let them talk. The shift happens when they hear themselves reason through it.</div></div>{% endif %}
       <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b> &nbsp;&middot;&nbsp; Tier <b>{{ acct.tier_info.pill }}</b> / Confidence <b>{{ acct.conf_label }}</b></div>
       {% endif %}
     </div>
