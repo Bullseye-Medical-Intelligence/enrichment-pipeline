@@ -142,6 +142,13 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
 
     brief = rec.get("call_brief") or {}
     verify = _coerce_list(brief.get("missing_to_verify"))
+    # missing_to_verify is only populated for verification_required signals that are
+    # not_found. For fully-confirmed records it's empty, so fall back to the
+    # discovery question so reps always get at least one actionable prompt.
+    if not verify:
+        disc = (brief.get("discovery_question") or "").strip()
+        if disc:
+            verify = [disc]
     sales_angles = _coerce_list(rec.get("sales_angle"))
     wedge = sales_angles[0] if sales_angles else (brief.get("opening_line") or None)
 

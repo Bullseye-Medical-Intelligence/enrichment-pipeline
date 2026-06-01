@@ -199,10 +199,10 @@
     <div class="body">
       {% if section.tier == Tier.EXCLUDED %}
       <div class="exgrid">
-        <div class="c"><div class="l">Gate fired</div><div class="v">{{ acct.gate_fired or '&mdash;' }}</div></div>
-        <div class="c"><div class="l">Evidence</div><div class="v">{{ acct.evidence or '&mdash;' }}</div></div>
-        <div class="c"><div class="l">Reason to suppress</div><div class="v">{{ acct.suppress_reason or '&mdash;' }}</div></div>
-        <div class="c"><div class="l">Revisit if</div><div class="v">{{ acct.revisit_if or '&mdash;' }}</div></div>
+        <div class="c"><div class="l">Gate fired</div><div class="v">{{ acct.gate_fired or '—' }}</div></div>
+        <div class="c"><div class="l">Evidence</div><div class="v">{{ acct.evidence or '—' }}</div></div>
+        <div class="c"><div class="l">Reason to suppress</div><div class="v">{{ acct.suppress_reason or '—' }}</div></div>
+        <div class="c"><div class="l">Revisit if</div><div class="v">{{ acct.revisit_if or '—' }}</div></div>
       </div>
       <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by {{ acct.qc_reviewer }}</b></div>
       {% else %}
