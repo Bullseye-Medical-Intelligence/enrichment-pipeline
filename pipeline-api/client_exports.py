@@ -192,7 +192,7 @@ def _build_executive_report(
 def _build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
     """Render the Sales Handoff HTML for the client ZIP; return UTF-8 bytes."""
     try:
-        return sales_export.build_sales_handoff(run_id, run_directory, status)
+        return sales_export._build_client_handoff_html(run_id, run_directory, status)
     except Exception as exc:
         logger.exception("Sales Handoff HTML generation failed for run %s", run_id)
         return _error_html("Sales Handoff generation failed", exc)

@@ -153,6 +153,114 @@ def build_bullseye_cards_html(
     return html_str.encode("utf-8")
 
 
+def _prepare_sales_record(rec: dict, review: dict) -> dict:
+    """Map a raw enriched record + review to a sales-handoff template dict.
+
+    Internal-only: includes analyst notes, full call brief, tier/exclusion context.
+    No numeric scores, no raw evidence text.
+    """
+    city = rec.get("address_city") or ""
+    state = rec.get("address_state") or ""
+    location = ", ".join(p for p in (city, state) if p) or "—"
+
+    phone_formatted = _format_phone(rec.get("phone") or rec.get("phone_number") or "")
+
+    signals = rec.get("signals") or []
+    confirmed_signals = []
+    for sig in signals:
+        label = sig.get("signal_label") or sig.get("label") or ""
+        state_val = sig.get("signal_state", "")
+        inferred = bool(sig.get("state_inferred", False))
+        if (state_val == "yes" or inferred) and label:
+            confirmed_signals.append({"label": label, "inferred": inferred})
+
+    brief = rec.get("call_brief") or {}
+    sales_angles = rec.get("sales_angle") or []
+    if isinstance(sales_angles, str):
+        sales_angles = [sales_angles]
+
+    tier = review.get("override_tier") or rec.get("target_tier", "—")
+    if tier == "Watchlist":
+        tier = "Contender"
+
+    return {
+        "name": rec.get("practice_name") or rec.get("name") or "Unknown Practice",
+        "specialty": rec.get("specialty") or rec.get("target_specialty") or "—",
+        "location": location,
+        "phone_formatted": phone_formatted,
+        "website": rec.get("website_url") or rec.get("website") or "",
+        "tier": tier,
+        "confidence_band": rec.get("confidence_band") or "—",
+        "tier_cap_reason": rec.get("tier_cap_reason") or "",
+        "exclusion_reason": rec.get("exclusion_reason") or "",
+        "confirmed_signals": confirmed_signals,
+        "why_contact": brief.get("why_contact") or "",
+        "opening_line": brief.get("opening_line") or "",
+        "likely_objection": brief.get("likely_objection") or "",
+        "discovery_question": brief.get("discovery_question") or "",
+        "hours_of_operation": brief.get("hours_of_operation") or "",
+        "sales_angles": sales_angles,
+        "analyst_note": review.get("analyst_note") or "",
+        "override_reason": review.get("override_reason") or "",
+        "override_tier": review.get("override_tier") or "",
+        "qc_status": review.get("qc_status") or "",
+        "reviewed_by": review.get("reviewed_by") or "",
+    }
+
+
+def build_sales_handoff_html(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    grouped_records: dict,
+    screened: int,
+) -> bytes:
+    """Render the internal Sales Handoff report to self-contained HTML bytes.
+
+    grouped_records maps tier_name -> list of (rec, review) pairs. All five
+    tiers, analyst notes, full call brief. Internal-only.
+    """
+    _TIER_ORDER = ["Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"]
+
+    geography = status.target_geography or project.get("target_geography") or []
+    if isinstance(geography, list):
+        geography = ", ".join(geography)
+
+    tier_sections = []
+    for tier_name in _TIER_ORDER:
+        pairs = grouped_records.get(tier_name, [])
+        if not pairs:
+            continue
+        tier_sections.append({
+            "tier": tier_name,
+            "count": len(pairs),
+            "records": [_prepare_sales_record(rec, review) for rec, review in pairs],
+        })
+
+    ctx = {
+        "run_id": run_id,
+        "client_name": status.client_name or project.get("client_name") or "—",
+        "product_name": status.product_name or project.get("product_name") or "—",
+        "target_specialty": status.target_specialty or project.get("target_specialty") or "—",
+        "geography": geography or "—",
+        "icp_name": status.icp_profile_name or icp.get("name") or "—",
+        "icp_version": status.icp_profile_version or icp.get("version") or "—",
+        "generated_date": datetime.now(timezone.utc).strftime("%B %d, %Y"),
+        "screened": screened,
+        "tier_sections": tier_sections,
+        "logo_light": _logo_data_uri("light"),
+    }
+
+    template = _jinja_env.get_template("sales_handoff.html")
+    html_str = template.render(**ctx)
+    logger.info(
+        "Generated Sales Handoff HTML for run %s: %d tier sections, %d bytes",
+        run_id, len(tier_sections), len(html_str),
+    )
+    return html_str.encode("utf-8")
+
+
 def _prepare_record(rec: dict, review: dict) -> dict:
     """Map a raw enriched record + review to a template-ready dict."""
     city = rec.get("address_city") or ""

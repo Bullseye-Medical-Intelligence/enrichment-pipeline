@@ -2,13 +2,18 @@
 sales_export.py
 Sales Handoff HTML generation for a completed, fully-reviewed run.
 
-Produces the Bullseye Sales Handoff — the primary client deliverable:
-a single self-contained HTML file using the reference design (Call First /
-Validate / Suppress, three-tier format, no internal scores).
+Two builds serve different audiences:
 
-Used by:
-  - /runs/{run_id}/download/sales-html  (operator download button)
-  - client_exports.build_client_package (included in client ZIP)
+  build_sales_handoff()          Internal-only. All 5 tiers, analyst notes,
+                                 full call brief with coaching framing.
+                                 Served by the operator "Download Sales HTML"
+                                 button. NOT included in the client package ZIP.
+
+  _build_client_handoff_html()   Client-facing via handoff_renderer. Three
+                                 actionable tiers (Bullseye, Contender,
+                                 Excluded), no analyst notes, no internal
+                                 scores. Called by client_exports when
+                                 assembling the client ZIP.
 """
 
 import json
@@ -39,6 +44,8 @@ from handoff_renderer import Account, Confidence, HandoffRun, Tier, render_hando
 # are not shipped until an analyst confirms them with an override).
 _CLIENT_TIERS = {"Bullseye", "Contender", "Excluded"}
 
+_TIER_ORDER = ["Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"]
+
 _TIER_MAP = {
     "Bullseye": Tier.BULLSEYE,
     "Contender": Tier.CONTENDER,
@@ -53,11 +60,34 @@ _CONFIDENCE_MAP = {
 
 
 def build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
-    """Build the Sales Handoff HTML and return UTF-8 bytes.
+    """Build the internal Sales Handoff HTML and return UTF-8 bytes.
 
-    Produces the reference-format client deliverable (Call First / Validate /
-    Suppress). No internal scores, no analyst notes. Safe to include in the
-    client ZIP and to share with the client's sales team.
+    Internal-only: all 5 tiers, analyst notes, full call brief with coaching
+    framing. NOT included in the client package ZIP.
+    """
+    from reports import pdf_report  # lazy import — avoids circular dependency
+
+    records = _load_records(run_directory)
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    project = projects.read_config_snapshot(run_directory) or {}
+    icp = icp_profiles.read_snapshot(run_directory) or {}
+
+    grouped = _group_by_tier(records, all_reviews)
+    return pdf_report.build_sales_handoff_html(
+        run_id=run_id,
+        status=status,
+        project=project,
+        icp=icp,
+        grouped_records=grouped,
+        screened=len(records),
+    )
+
+
+def _build_client_handoff_html(run_id: str, run_directory: Path, status) -> bytes:
+    """Build the client-facing Sales Handoff HTML for the client package ZIP.
+
+    Three actionable tiers (Bullseye, Contender, Excluded), no analyst notes,
+    no internal scores. Uses handoff_renderer with client_facing=True.
     """
     records = _load_records(run_directory)
     all_reviews = reviews.get_reviews(run_id, run_directory)
@@ -67,14 +97,41 @@ def build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
     handoff_run = _build_handoff_run(run_id, status, project, icp, records, all_reviews)
     html_str = render_handoff(handoff_run, client_facing=True)
     logger.info(
-        "Generated Sales Handoff HTML for run %s: %d accounts, %d bytes",
+        "Built client Sales Handoff HTML for run %s: %d accounts, %d bytes",
         run_id, len(handoff_run.accounts), len(html_str),
     )
     return html_str.encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
-# Internal builders
+# Tier grouping helper (for internal handoff)
+# ---------------------------------------------------------------------------
+
+def _group_by_tier(
+    records: list[dict],
+    all_reviews: dict,
+) -> dict[str, list[tuple[dict, dict]]]:
+    """Group records by effective tier, sorted by bullseye_score desc within each tier."""
+    groups: dict[str, list] = {t: [] for t in _TIER_ORDER}
+
+    for rec in records:
+        rec_id = record_adapter.get_record_id(rec)
+        review = all_reviews.get(rec_id, {})
+        tier = record_adapter.effective_tier(rec, review)
+        if tier == "Watchlist":
+            tier = "Contender"
+        groups[tier if tier in groups else "Manual Review"].append((rec, review))
+
+    for tier_name in _TIER_ORDER:
+        groups[tier_name].sort(
+            key=lambda pair: pair[0].get("bullseye_score") or 0,
+            reverse=True,
+        )
+    return groups
+
+
+# ---------------------------------------------------------------------------
+# Internal builders (client-facing handoff helpers)
 # ---------------------------------------------------------------------------
 
 def _load_records(run_directory: Path) -> list[dict]:

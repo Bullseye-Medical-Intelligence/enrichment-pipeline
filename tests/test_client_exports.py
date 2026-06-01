@@ -254,9 +254,10 @@ def test_rejected_bullseye_absent_from_handoff(tmp_path):
     (tmp_path / "icp_snapshot.json").write_text(json.dumps({"icp_id": "i", "name": "N", "version": "1", "signals": []}))
 
     import sales_export
-    html = sales_export.build_sales_handoff("RUN-test", tmp_path, _status()).decode("utf-8")
+    # Client-facing handoff must filter rejected records; internal handoff shows all.
+    html = sales_export._build_client_handoff_html("RUN-test", tmp_path, _status()).decode("utf-8")
     assert "Alpha Clinic" in html       # approved Bullseye → present
-    assert "Beta Clinic" not in html    # rejected Bullseye → absent
+    assert "Beta Clinic" not in html    # rejected Bullseye → absent from client handoff
 
 
 # ---------------------------------------------------------------------------
