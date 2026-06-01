@@ -33,7 +33,6 @@ _EXPECTED_FILES = {
     "bullseye_accounts.csv",
     "contender_accounts.csv",
     "excluded_targets.csv",
-    "run_metadata.json",
 }
 
 
@@ -146,9 +145,8 @@ def test_approved_csv_blocks_excluded_without_override(tmp_path):
 
 def test_run_metadata_has_context(tmp_path):
     _build_run(tmp_path)
-    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
-    with zipfile.ZipFile(buf) as zf:
-        meta = json.loads(zf.read("run_metadata.json").decode("utf-8"))
+    manifest = client_exports.build_run_manifest("RUN-20260527-143000-aaaa", tmp_path, _status())
+    meta = json.loads(manifest.decode("utf-8"))
     assert meta["client_name"] == "Femasys"
     assert meta["project_id"] == "femasys-socal-obgyn"
     assert meta["product_name"] == "FemaSeed"
@@ -157,11 +155,18 @@ def test_run_metadata_has_context(tmp_path):
     assert meta["records_approved"] == 2  # T-1 (CLEAR) + T-2 (EXCLUDED+override)
 
 
-def test_metadata_methodology_excludes_phi_language(tmp_path):
+def test_run_manifest_is_internal_only(tmp_path):
+    """The run manifest is built on demand and must NOT be in the client package."""
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
-        meta = json.loads(zf.read("run_metadata.json").decode("utf-8"))
+        assert "run_metadata.json" not in zf.namelist()
+
+
+def test_manifest_methodology_excludes_phi_language(tmp_path):
+    _build_run(tmp_path)
+    manifest = client_exports.build_run_manifest("RUN-20260527-143000-aaaa", tmp_path, _status())
+    meta = json.loads(manifest.decode("utf-8"))
     assert "does not use PHI" in meta["methodology"]
 
 

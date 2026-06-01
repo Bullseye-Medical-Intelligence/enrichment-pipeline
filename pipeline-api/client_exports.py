@@ -8,10 +8,10 @@ Builds an in-memory ZIP containing:
   bullseye_accounts.csv         — Bullseye-tier approved records
   contender_accounts.csv        — Contender-tier approved records
   excluded_targets.csv          — all excluded records
-  run_metadata.json             — machine-readable run summary
 
 No internal/debug artifacts (run_log.json, reviews.json, raw enriched JSON) are
-included in the package.
+included in the package. The run manifest (build_run_manifest) is an
+internal-only provenance summary and is deliberately NOT shipped to the client.
 """
 
 import io
@@ -76,18 +76,12 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     )
     handoff_bytes = _build_sales_handoff(run_id, run_directory, status)
 
-    metadata = _run_metadata(
-        run_id, status, project, icp,
-        len(records), len(approved), excluded_count,
-    )
-
     files = {
         "Executive_Target_Report.html": report_bytes,
         "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,
         "contender_accounts.csv": contender_csv,
         "excluded_targets.csv": excluded_csv,
-        "run_metadata.json": json.dumps(metadata, indent=2).encode("utf-8"),
     }
 
     buf = io.BytesIO()
@@ -97,6 +91,30 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     buf.seek(0)
     logger.info("Built client package for run %s (%d approved)", run_id, len(approved))
     return buf
+
+
+def build_run_manifest(run_id: str, run_directory: Path, status) -> bytes:
+    """Build the internal run manifest JSON and return UTF-8 bytes.
+
+    Internal-only provenance summary (scope, ICP version, counts, methodology).
+    Deliberately NOT included in the client package — it is for operator audit
+    and reconciliation, exposed via the operator download route.
+    """
+    records = _load_records(run_directory)
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    project = projects.read_config_snapshot(run_directory) or {}
+    icp = icp_profiles.read_snapshot(run_directory) or {}
+
+    approved = _approved_records(records, all_reviews)
+    excluded_count = sum(
+        1 for r in records
+        if record_adapter.effective_tier(r, all_reviews).lower() == "excluded"
+    )
+    metadata = _run_metadata(
+        run_id, status, project, icp,
+        len(records), len(approved), excluded_count,
+    )
+    return json.dumps(metadata, indent=2).encode("utf-8")
 
 
 # ---------------------------------------------------------------------------

@@ -1279,6 +1279,28 @@ async def download_sales_html(run_id: str, username: str = Depends(auth.require_
     )
 
 
+@router.get("/runs/{run_id}/download/manifest")
+async def download_manifest(run_id: str, username: str = Depends(auth.require_session)):
+    """Download the internal run manifest (provenance summary) for a complete run.
+
+    Internal-only: this manifest is not part of the client package.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(
+            status_code=425,
+            detail=f"Run '{run_id}' has not completed (current status: {status.status}).",
+        )
+    manifest_bytes = client_exports.build_run_manifest(run_id, runs.run_dir(run_id), status)
+    return Response(
+        content=manifest_bytes,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_run_manifest.json"'},
+    )
+
+
 @router.post("/api/ui/runs")
 async def ui_create_run(
     background_tasks: BackgroundTasks,

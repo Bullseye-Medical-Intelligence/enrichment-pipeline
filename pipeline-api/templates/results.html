@@ -49,6 +49,7 @@
     {% endif %}
     <a href="/runs/{{ run_id }}/download/json" class="btn btn-secondary" title="Full internal pipeline output — scores, signals, all fields. Not for client distribution.">Full JSON</a>
     <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
+    <a href="/runs/{{ run_id }}/download/manifest" class="btn btn-secondary" title="Internal run manifest — scope, ICP version, counts, methodology. Not included in the client package.">Run Manifest</a>
     {% endif %}
     <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
   </div>

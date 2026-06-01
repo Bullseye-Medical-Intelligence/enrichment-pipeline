@@ -219,6 +219,7 @@ GET    /dashboard/{run_id}                       Results + inline review
 GET    /dashboard/{run_id}/queue                 Contact Queue (rep call sheet, sorted by priority)
 GET    /runs/{run_id}/download/json              Full enriched_targets.json download
 GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
+GET    /runs/{run_id}/download/manifest          Internal run manifest JSON (not in client package)
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
 GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs)
@@ -273,11 +274,13 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
   approved set.
 - **Client-safe only.** The ZIP contains `Executive_Target_Report.html`,
-  `Sales_Handoff.html`, `bullseye_accounts.csv`, `contender_accounts.csv`,
-  `excluded_targets.csv`, and `run_metadata.json`. It never includes
-  `run_log.json`, `reviews.json`, or the raw `enriched_targets.json`.
-  Client-facing CSVs and the report show tier + confidence band only — numeric
-  scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
+  `Sales_Handoff.html`, `bullseye_accounts.csv`, `contender_accounts.csv`, and
+  `excluded_targets.csv`. It never includes `run_log.json`, `reviews.json`, or
+  the raw `enriched_targets.json`. Client-facing CSVs and the report show tier +
+  confidence band only — numeric scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
+- **Run manifest is internal-only.** `build_run_manifest` produces a provenance
+  summary (scope, ICP version, counts, methodology). It is NOT in the client
+  package; operators pull it via `GET /runs/{run_id}/download/manifest`.
 - **Report generation.** `reports/pdf_report.py::build_executive_report_html`
   renders `reports/templates/executive_target_report.html` to a self-contained
   HTML file (embedded CSS, logo inlined as a data URI — no external assets, no
