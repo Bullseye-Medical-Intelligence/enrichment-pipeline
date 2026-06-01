@@ -41,17 +41,7 @@ _REQUIRED_SIGNAL_FIELDS = frozenset({
     "required_for_bullseye", "source_type",
 })
 
-_DIRECT_PAYMENT_TERMS = (
-    "cash pay",
-    "self pay",
-    "out of network",
-    "direct pay",
-    "private pay",
-    "concierge",
-    "membership",
-)
-
-_INSURANCE_ONLY_TERMS = (
+_INVERSE_BILLING_TERMS = (
     "insurance only",
     "insurance based only",
     "only accepts insurance",
@@ -136,21 +126,17 @@ def generate_signals(brief: ProductBrief, specialty: str) -> SignalSet:
 
 
 def _drop_redundant_billing_inverse_signals(signals: list[dict]) -> list[dict]:
-    """Remove inverse billing signals already covered by direct-pay requirements.
+    """Remove standalone inverse billing signals from ICP drafts.
 
-    If the profile already contains a direct-payment signal, an "insurance-only"
-    signal double-penalizes the same commercial fact. The direct-payment signal's
-    no_weight / not_found handling is the single source of truth.
+    Payment readiness belongs in the primary cash-pay / out-of-network signal.
+    A separate inverse payer-model row is redundant and double-counts the same
+    commercial fact.
     """
-    has_direct_payment_requirement = any(_is_direct_payment_signal(sig) for sig in signals)
-    if not has_direct_payment_requirement:
-        return signals
-
     filtered = []
     for sig in signals:
-        if _is_insurance_only_billing_signal(sig):
+        if _is_redundant_billing_inverse_signal(sig):
             logger.info(
-                "Dropped redundant insurance-only billing signal '%s'.",
+                "Dropped redundant inverse billing signal '%s'.",
                 sig.get("signal_id", sig.get("signal_label", "unknown")),
             )
             continue
@@ -158,20 +144,10 @@ def _drop_redundant_billing_inverse_signals(signals: list[dict]) -> list[dict]:
     return filtered
 
 
-def _is_direct_payment_signal(signal: dict) -> bool:
-    """Return True when a positive signal already captures direct-payment readiness."""
-    if not isinstance(signal.get("positive_weight"), (int, float)):
-        return False
-    if signal["positive_weight"] <= 0:
-        return False
+def _is_redundant_billing_inverse_signal(signal: dict) -> bool:
+    """Return True for payer-model inverse signals that should not be standalone."""
     text = _normalized_signal_text(signal)
-    return any(term in text for term in _DIRECT_PAYMENT_TERMS)
-
-
-def _is_insurance_only_billing_signal(signal: dict) -> bool:
-    """Return True for the redundant inverse of direct-payment readiness."""
-    text = _normalized_signal_text(signal)
-    if not any(term in text for term in _INSURANCE_ONLY_TERMS):
+    if not any(term in text for term in _INVERSE_BILLING_TERMS):
         return False
     return any(term in text for term in ("billing", "model", "payer", "payor", "insurance"))
 
