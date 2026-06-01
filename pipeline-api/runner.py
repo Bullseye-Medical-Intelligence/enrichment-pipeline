@@ -84,6 +84,7 @@ def spawn_pipeline(
         "--output-dir", str(run_dir),
         "--config", str(config_path),
         "--icp", str(icp_path),
+        "--run-id", run_id,
     ]
     if extra_flags:
         cmd.extend(extra_flags)

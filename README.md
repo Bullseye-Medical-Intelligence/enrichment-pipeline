@@ -229,8 +229,10 @@ See `config/clients/obgyn_femasys/` for a complete reference implementation.
   for the QC workflow.
 - **No live database.** All state is in files. There is no running server, database,
   or background job queue in the MVP pipeline.
-- **No browser automation.** JavaScript-heavy sites may not extract correctly (Playwright
-  support is planned for Phase 2).
+- **Browser automation is opt-in.** The default crawler is HTTP-only (`requests`).
+  Bot-gated / JS-heavy sites are handled by headless Chromium (Playwright) via
+  `--playwright` (whole run) or `--auto-browser-retry` (re-crawl only the blocked
+  subset). See CLAUDE.md "The 8 Steps" for the auto browser-retry flow.
 
 ---
 

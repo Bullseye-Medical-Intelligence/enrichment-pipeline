@@ -60,7 +60,11 @@ def is_approved(rec: dict, rev: dict) -> bool:
     if not rev.get("override_tier"):
         if rec.get("exclusion_status") == "EXCLUDED":
             return False
-        if rec.get("target_tier") in ("Needs Verification", "Manual Review"):
+        # Use the normalized displayed tier, not raw target_tier: a low-score
+        # enriched Contender is promoted to "Manual Review" by displayed_tier,
+        # and must not slip into approved exports just because the stored tier
+        # still reads "Contender".
+        if record_adapter.displayed_tier(rec, rev) in ("Needs Verification", "Manual Review"):
             return False
     return True
 

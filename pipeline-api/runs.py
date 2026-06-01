@@ -6,9 +6,11 @@ All run state lives on the filesystem. No in-memory state.
 
 import json
 import logging
+import os
 import re
 import secrets
 import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -278,7 +280,20 @@ def read_progress(run_id: str) -> Optional[dict]:
 
 
 def _write_status(run_id: str, status: RunStatus) -> None:
-    """Write status.json to disk, overwriting any existing file."""
+    """Write status.json atomically (temp file + os.replace).
+
+    A process crash mid-write must never leave a truncated status.json — a
+    half-written file breaks the run listing for every page that reads it.
+    """
     status_path = run_dir(run_id) / STATUS_FILENAME
-    with open(status_path, "w", encoding="utf-8") as f:
-        json.dump(status.model_dump(), f, indent=2)
+    fd, tmp_path = tempfile.mkstemp(dir=status_path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(status.model_dump(), f, indent=2)
+        os.replace(tmp_path, status_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise

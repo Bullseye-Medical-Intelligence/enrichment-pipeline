@@ -9,7 +9,9 @@ All project state lives on the filesystem under config.PROJECTS_PATH. No DB.
 
 import json
 import logging
+import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -202,6 +204,19 @@ def read_config_snapshot(run_directory: Path) -> Optional[dict]:
 
 
 def _write_config(path: Path, cfg: dict) -> None:
-    """Write a project_config.json to disk."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    """Write a project_config.json atomically (temp file + os.replace).
+
+    A crash mid-write must never leave a truncated config — it doubles as the
+    pipeline's run config and a corrupt file would break every run for the project.
+    """
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise

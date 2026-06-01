@@ -94,7 +94,7 @@ If a data source requires authentication to access, it is not approved for the M
 | LLM — primary | Anthropic Claude API (Sonnet) | Main signal extraction and enrichment across all records |
 | LLM — verification | OpenAI GPT-4.1 or successor (see note) | Second-opinion verification for Bullseye-tier assignments |
 | Web extraction | `requests` + `BeautifulSoup4` | Lightweight, sufficient for static HTML MVP |
-| JS site handling | Playwright (Phase 2) | For practices with JS-heavy sites; too complex for MVP |
+| JS site handling | Playwright (headless Chromium) | Opt-in for bot-gated / JS-heavy sites via `--playwright` or `--auto-browser-retry` |
 | CSV parsing | `csv` (stdlib) | No extra dependency needed |
 | JSON output | `json` (stdlib) | No extra dependency needed |
 | HTTP retry | `tenacity` | Clean retry logic with exponential backoff |

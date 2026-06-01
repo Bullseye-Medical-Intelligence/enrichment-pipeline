@@ -61,3 +61,22 @@ def test_manual_review_not_eligible_without_override():
 def test_manual_review_eligible_when_overridden_to_positive_tier():
     rec = {"target_tier": "Manual Review", "exclusion_status": "CLEAR"}
     assert exports.is_approved(rec, _rev(override="Contender")) is True
+
+
+def test_low_score_enriched_contender_blocked_as_displayed_manual_review():
+    """A Contender promoted to Manual Review by displayed_tier (low score, enriched)
+    must NOT pass the approved gate even though raw target_tier reads 'Contender'."""
+    rec = {
+        "target_tier": "Contender", "exclusion_status": "CLEAR",
+        "bullseye_score": 30, "enrichment_status": "enriched",
+    }
+    assert exports.is_approved(rec, _rev()) is False
+
+
+def test_high_score_enriched_contender_still_eligible():
+    """A Contender that stays Contender (score above the Manual Review floor) is eligible."""
+    rec = {
+        "target_tier": "Contender", "exclusion_status": "CLEAR",
+        "bullseye_score": 70, "enrichment_status": "enriched",
+    }
+    assert exports.is_approved(rec, _rev()) is True

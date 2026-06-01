@@ -272,7 +272,8 @@ def run_pipeline(input_file: str, source_type: str,
                   use_playwright: bool = False,
                   auto_browser_retry: bool = False,
                   manual_content_path: list[str] = None,
-                  ingest_only: bool = False) -> dict:
+                  ingest_only: bool = False,
+                  run_id: str = None) -> dict:
     """
     Run the full enrichment pipeline.
 
@@ -296,11 +297,14 @@ def run_pipeline(input_file: str, source_type: str,
         ingest_only: If True, ingest + normalize + structural exclusions only,
             then write the roster with every record marked "not_enriched" and
             exit before any crawl or LLM call. Enrichment is triggered later.
+        run_id: If set, use this run identifier instead of generating one. The
+            API passes its own run_id so the ID in the output files matches the
+            run directory it tracks; a bare CLI invocation generates its own.
 
     Returns:
         Dict with run summary metrics.
     """
-    run_id = _generate_run_id()
+    run_id = run_id or _generate_run_id()
     start_time = time.time()
 
     print(f"\n{'='*60}")
@@ -874,6 +878,12 @@ Examples:
         help="Ingest + normalize + structural exclusions only; write the roster "
              "(all records 'not_enriched') and exit before any crawl or LLM call",
     )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Use this run identifier instead of generating one (the API passes "
+             "its own so output files match the tracked run directory)",
+    )
 
     args = parser.parse_args()
 
@@ -900,6 +910,7 @@ Examples:
         auto_browser_retry=args.auto_browser_retry,
         manual_content_path=args.manual_content_path,
         ingest_only=args.ingest_only,
+        run_id=args.run_id,
     )
 
     sys.exit(0)

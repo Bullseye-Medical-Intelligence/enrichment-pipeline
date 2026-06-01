@@ -6,9 +6,11 @@ validator, projects, icp_profiles). This module handles only: request parsing,
 template rendering, redirects, and simple orchestration calls.
 """
 
+import ipaddress
 import json
 import logging
 import re
+import socket
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -1711,12 +1713,33 @@ def _parse_demo_accounts(demo_accounts_json: str) -> list:
         return []
 
 
+def _is_safe_public_url(url: str) -> bool:
+    """Return True only for http(s) URLs whose host resolves to a public IP.
+
+    Blocks SSRF vectors an operator could paste into the ICP builder: non-http
+    schemes (file://, gopher://), and hosts that resolve to loopback, private,
+    link-local (cloud metadata 169.254.169.254), or otherwise non-global ranges.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        for info in socket.getaddrinfo(parsed.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if not ip.is_global:
+                return False
+        return True
+    except (ValueError, socket.gaierror, UnicodeError):
+        return False
+
+
 def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
     """Fetch a URL and return stripped plain text, truncated to max_chars.
 
-    Uses stdlib only (urllib + html.parser). Returns empty string on any error.
+    Uses stdlib only (urllib + html.parser). Returns empty string on any error
+    or when the URL fails the public-host SSRF guard.
     """
-    if not url:
+    if not url or not _is_safe_public_url(url):
         return ""
     try:
         req = urllib.request.Request(
