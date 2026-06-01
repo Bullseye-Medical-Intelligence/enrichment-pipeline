@@ -94,9 +94,13 @@ def _call_gpt(prompt: str, client: openai.OpenAI, model: str,
             time.sleep(wait)
 
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
+            # o-series reasoning models (o1, o3, o4-*) require max_completion_tokens
+            # and do not accept temperature. Standard chat models accept both param
+            # names; max_completion_tokens is the current preferred form.
+            is_reasoning = model.startswith("o1") or model.startswith("o3") or model.startswith("o4")
+            kwargs: dict = {
+                "model": model,
+                "messages": [
                     {
                         "role": "system",
                         "content": (
@@ -106,10 +110,12 @@ def _call_gpt(prompt: str, client: openai.OpenAI, model: str,
                     },
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=2048,
-                temperature=0.2,
-                timeout=REQUEST_TIMEOUT_SECONDS,
-            )
+                "max_completion_tokens": 2048,
+                "timeout": REQUEST_TIMEOUT_SECONDS,
+            }
+            if not is_reasoning:
+                kwargs["temperature"] = 0.2
+            response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
 
         except openai.RateLimitError as e:
