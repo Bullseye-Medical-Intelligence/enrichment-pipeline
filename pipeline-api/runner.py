@@ -14,8 +14,6 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 import icp_profiles
 import projects
 import record_adapter
@@ -32,9 +30,6 @@ from config import (
     PROJECT_CONFIG_SNAPSHOT_FILENAME,
     PYTHON_EXECUTABLE,
 )
-
-if TYPE_CHECKING:
-    from fastapi import BackgroundTasks, UploadFile
 
 logger = logging.getLogger(__name__)
 

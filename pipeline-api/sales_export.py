@@ -44,8 +44,6 @@ from handoff_renderer import Account, Confidence, HandoffRun, Tier, render_hando
 # are not shipped until an analyst confirms them with an override).
 _CLIENT_TIERS = {"Bullseye", "Contender", "Excluded"}
 
-_TIER_ORDER = ["Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"]
-
 _TIER_MAP = {
     "Bullseye": Tier.BULLSEYE,
     "Contender": Tier.CONTENDER,
@@ -112,17 +110,15 @@ def _group_by_tier(
     all_reviews: dict,
 ) -> dict[str, list[tuple[dict, dict]]]:
     """Group records by effective tier, sorted by bullseye_score desc within each tier."""
-    groups: dict[str, list] = {t: [] for t in _TIER_ORDER}
+    groups: dict[str, list] = {t: [] for t in record_adapter.TIER_ORDER}
 
     for rec in records:
         rec_id = record_adapter.get_record_id(rec)
         review = all_reviews.get(rec_id, {})
         tier = record_adapter.effective_tier(rec, review)
-        if tier == "Watchlist":
-            tier = "Contender"
         groups[tier if tier in groups else "Manual Review"].append((rec, review))
 
-    for tier_name in _TIER_ORDER:
+    for tier_name in record_adapter.TIER_ORDER:
         groups[tier_name].sort(
             key=lambda pair: pair[0].get("bullseye_score") or 0,
             reverse=True,
@@ -237,7 +233,7 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
     return Account(
         name=rec.get("practice_name") or rec.get("name") or "Unknown Practice",
         city=_format_city(rec),
-        phone=_format_phone(rec.get("phone") or rec.get("phone_number") or ""),
+        phone=record_adapter.format_phone(rec.get("phone") or rec.get("phone_number") or ""),
         website=_extract_domain(rec.get("website_url") or rec.get("website") or ""),
         evidence_domain=_extract_domain(rec.get("website_url") or rec.get("website") or ""),
         tier=tier,
@@ -293,15 +289,6 @@ def _format_city(rec: dict) -> str:
         return f"{city} ({zip_code}), {state}" if city else f"({zip_code}), {state}"
     return f"{city}, {state}" if city else state
 
-
-def _format_phone(raw: str) -> str:
-    """Format a phone number string to (NXX) NXX-XXXX."""
-    digits = "".join(c for c in raw if c.isdigit())
-    if len(digits) == 10:
-        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
-    if len(digits) == 11 and digits[0] == "1":
-        return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
-    return raw or "—"
 
 
 def _extract_domain(url: str) -> str:

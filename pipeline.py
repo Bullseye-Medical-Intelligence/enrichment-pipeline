@@ -627,8 +627,6 @@ def run_pipeline(input_file: str, source_type: str,
             for s in (r.get("signals") or [])
         )
     ]
-    bullseye_ids = {r.get("id") or r.get("record_id") for r in bullseye_records}
-
     print(f"\n{'-'*40}")
     print("STEP 5: GPT SECOND PASS")
     print(f"{'-'*40}")

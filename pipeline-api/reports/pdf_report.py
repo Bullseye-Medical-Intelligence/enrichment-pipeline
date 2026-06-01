@@ -153,47 +153,51 @@ def build_bullseye_cards_html(
     return html_str.encode("utf-8")
 
 
+def _format_location(rec: dict) -> str:
+    """Return 'City, ST' from address fields, or '—' if both are absent."""
+    city = rec.get("address_city") or ""
+    state = rec.get("address_state") or ""
+    return ", ".join(p for p in (city, state) if p) or "—"
+
+
+def _extract_confirmed_signals(signals: list) -> list[dict]:
+    """Return [{label, inferred}] for every confirmed or inferred signal."""
+    result = []
+    for sig in signals:
+        label = sig.get("signal_label") or sig.get("label") or ""
+        inferred = bool(sig.get("state_inferred", False))
+        if (sig.get("signal_state") == "yes" or inferred) and label:
+            result.append({"label": label, "inferred": inferred})
+    return result
+
+
 def _prepare_sales_record(rec: dict, review: dict) -> dict:
     """Map a raw enriched record + review to a sales-handoff template dict.
 
     Internal-only: includes analyst notes, full call brief, tier/exclusion context.
     No numeric scores, no raw evidence text.
     """
-    city = rec.get("address_city") or ""
-    state = rec.get("address_state") or ""
-    location = ", ".join(p for p in (city, state) if p) or "—"
-
-    phone_formatted = _format_phone(rec.get("phone") or rec.get("phone_number") or "")
-
     signals = rec.get("signals") or []
-    confirmed_signals = []
-    for sig in signals:
-        label = sig.get("signal_label") or sig.get("label") or ""
-        state_val = sig.get("signal_state", "")
-        inferred = bool(sig.get("state_inferred", False))
-        if (state_val == "yes" or inferred) and label:
-            confirmed_signals.append({"label": label, "inferred": inferred})
-
     brief = rec.get("call_brief") or {}
     sales_angles = rec.get("sales_angle") or []
     if isinstance(sales_angles, str):
         sales_angles = [sales_angles]
 
-    tier = review.get("override_tier") or rec.get("target_tier", "—")
-    if tier == "Watchlist":
-        tier = "Contender"
-
     return {
         "name": rec.get("practice_name") or rec.get("name") or "Unknown Practice",
         "specialty": rec.get("specialty") or rec.get("target_specialty") or "—",
-        "location": location,
-        "phone_formatted": phone_formatted,
+        "location": _format_location(rec),
+        "phone_formatted": record_adapter.format_phone(
+            rec.get("phone") or rec.get("phone_number") or ""
+        ),
         "website": rec.get("website_url") or rec.get("website") or "",
-        "tier": tier,
+        # Use displayed_tier so low-score Contenders promoted to Manual Review
+        # carry the correct label on their card, matching the section they're in.
+        "tier": record_adapter.displayed_tier(rec, review),
         "confidence_band": rec.get("confidence_band") or "—",
         "tier_cap_reason": rec.get("tier_cap_reason") or "",
         "exclusion_reason": rec.get("exclusion_reason") or "",
-        "confirmed_signals": confirmed_signals,
+        "confirmed_signals": _extract_confirmed_signals(signals),
         "why_contact": brief.get("why_contact") or "",
         "opening_line": brief.get("opening_line") or "",
         "likely_objection": brief.get("likely_objection") or "",
@@ -221,14 +225,12 @@ def build_sales_handoff_html(
     grouped_records maps tier_name -> list of (rec, review) pairs. All five
     tiers, analyst notes, full call brief. Internal-only.
     """
-    _TIER_ORDER = ["Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"]
-
     geography = status.target_geography or project.get("target_geography") or []
     if isinstance(geography, list):
         geography = ", ".join(geography)
 
     tier_sections = []
-    for tier_name in _TIER_ORDER:
+    for tier_name in record_adapter.TIER_ORDER:
         pairs = grouped_records.get(tier_name, [])
         if not pairs:
             continue
@@ -263,23 +265,19 @@ def build_sales_handoff_html(
 
 def _prepare_record(rec: dict, review: dict) -> dict:
     """Map a raw enriched record + review to a template-ready dict."""
-    city = rec.get("address_city") or ""
-    state = rec.get("address_state") or ""
-    location = ", ".join(p for p in (city, state) if p) or "—"
+    location = _format_location(rec)
 
     phone_raw = rec.get("phone") or rec.get("phone_number") or ""
     phone_digits = "".join(c for c in phone_raw if c.isdigit() or c in "+()")
-    phone_formatted = _format_phone(phone_raw)
+    phone_formatted = record_adapter.format_phone(phone_raw)
 
     signals = rec.get("signals") or []
     signals_with_evidence = []
     signal_labels = []
-    confirmed_signals = []
 
     for sig in signals:
         label = sig.get("signal_label") or sig.get("label") or ""
         state_val = sig.get("signal_state", "")
-        inferred = bool(sig.get("state_inferred", False))
 
         if label:
             signal_labels.append(label)
@@ -293,8 +291,7 @@ def _prepare_record(rec: dict, review: dict) -> dict:
                 "source_url": source,
             })
 
-        if (state_val == "yes" or inferred) and label:
-            confirmed_signals.append({"label": label, "inferred": inferred})
+    confirmed_signals = _extract_confirmed_signals(signals)
 
     # Signal coverage: % of confirmed/inferred out of total evaluated signals
     total_signals = len(signals)
@@ -366,14 +363,6 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         "reviewed_by": review.get("reviewed_by") or "",
     }
 
-
-def _format_phone(raw: str) -> str:
-    digits = "".join(c for c in raw if c.isdigit())
-    if len(digits) == 10:
-        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
-    if len(digits) == 11 and digits[0] == "1":
-        return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
-    return raw or "—"
 
 
 def _logo_data_uri(variant: str) -> str:

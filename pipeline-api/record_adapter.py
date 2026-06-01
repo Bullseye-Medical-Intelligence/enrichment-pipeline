@@ -161,3 +161,20 @@ def contact_priority_rank(record: dict, review: dict) -> int:
     """Return the queue sort rank for a record's tier (higher = call sooner)."""
     tier = displayed_tier(record, review).strip().lower()
     return _TIER_QUEUE_RANK.get(tier, _TIER_QUEUE_RANK_DEFAULT)
+
+
+# Ordered tier list used by report renderers and the internal sales handoff.
+# Defines the canonical display order: call-first tiers first, suppressed last.
+TIER_ORDER: list[str] = [
+    "Bullseye", "Needs Verification", "Contender", "Manual Review", "Excluded"
+]
+
+
+def format_phone(raw: str) -> str:
+    """Format a phone number string to (NXX) NXX-XXXX or +1 (NXX) NXX-XXXX."""
+    digits = "".join(c for c in raw if c.isdigit())
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    if len(digits) == 11 and digits[0] == "1":
+        return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+    return raw or "—"
