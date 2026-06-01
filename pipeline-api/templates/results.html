@@ -248,6 +248,7 @@
       {% set _blocked = record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
       <tr class="record-row"
           data-rid="{{ rid }}"
+          data-pipeline-excluded="{{ 'true' if record.exclusion_status == 'EXCLUDED' else 'false' }}"
           data-tier="{{ displayed | lower | replace(' ', '-') }}"
           data-qc="{{ review.qc_status }}"
           data-sort-practice="{{ record.practice_name | default('') | lower }}"
@@ -553,7 +554,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for record in records if record.exclusion_status != 'EXCLUDED' %}
+      {% for record in records if record.exclusion_status != 'EXCLUDED' and record.displayed_tier != 'Excluded' %}
       {{ record_rows(record, run_id, status) }}
       {% endfor %}
     </tbody>
@@ -561,23 +562,22 @@
   </div>
 </div>
 
-{% set excluded_records = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list %}
+{% set _pipeline_excluded = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list %}
+{% set _analyst_excluded = records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | selectattr('displayed_tier', 'equalto', 'Excluded') | list %}
+{% set excluded_records = _pipeline_excluded + _analyst_excluded %}
+{% if is_ingested %}
 {% if excluded_records %}
 <div style="margin: 2em 0 0.5em; display:flex; align-items:center; gap:0.75em;">
-  <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">
-    {% if is_ingested %}Pre-Excluded Records{% else %}Excluded Records{% endif %}
-  </h3>
+  <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">Pre-Excluded Records</h3>
   <span class="badge badge-tier-excluded" style="font-size:0.8em;">{{ excluded_records | length }}</span>
-  {% if is_ingested %}
   <span style="font-size:0.8em; color:var(--text-muted,#888);">These were auto-excluded by specialty/geography rules and cost no tokens — but you can still delete them to clean up the roster.</span>
-  {% endif %}
 </div>
 <div class="card table-card">
   <div class="table-scroll">
   <table class="data-table" id="excluded-table">
     <thead>
       <tr>
-        <th style="width:2em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-excl-cb" onclick="toggleSelectAll(this, 'excl')" title="Select all pre-excluded">{% endif %}</th>
+        <th style="width:2em; text-align:center;"><input type="checkbox" id="select-all-excl-cb" onclick="toggleSelectAll(this, 'excl')" title="Select all pre-excluded"></th>
         <th>Practice</th>
         <th>Location</th>
         <th>Tier</th>
@@ -592,6 +592,35 @@
     </tbody>
   </table>
   </div>
+</div>
+{% endif %}
+{% else %}
+<div id="excluded-section"{% if not excluded_records %} style="display:none"{% endif %}>
+<div style="margin: 2em 0 0.5em; display:flex; align-items:center; gap:0.75em;">
+  <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">Excluded Records</h3>
+  <span id="excluded-count-badge" class="badge badge-tier-excluded" style="font-size:0.8em;">{{ excluded_records | length }}</span>
+</div>
+<div class="card table-card">
+  <div class="table-scroll">
+  <table class="data-table" id="excluded-table">
+    <thead>
+      <tr>
+        <th style="width:2em;"></th>
+        <th>Practice</th>
+        <th>Location</th>
+        <th>Tier</th>
+        <th>Score</th>
+        <th>QC</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in excluded_records %}
+      {{ record_rows(record, run_id, status) }}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 </div>
 {% endif %}
 

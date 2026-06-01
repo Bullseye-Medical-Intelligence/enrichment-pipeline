@@ -327,5 +327,53 @@ function _updateRowBadges(recordId, overrideTier, qcStatus) {
       }
     }
   });
+  if (overrideTier !== undefined) {
+    _reconcileRecordTable(recordId, overrideTier);
+  }
+}
+
+function _reconcileRecordTable(recordId, overrideTier) {
+  var row = document.querySelector('.record-row[data-rid="' + recordId + '"]');
+  if (!row) return;
+  var currentTable = row.closest('table');
+  if (!currentTable) return;
+  var inExcluded = currentTable.id === 'excluded-table';
+  var pipelineExcluded = row.dataset.pipelineExcluded === 'true';
+  var wantExcluded = overrideTier && overrideTier.toLowerCase() === 'excluded';
+  /* never move a pipeline-excluded record back to the main table */
+  var wantMain = !pipelineExcluded && !wantExcluded;
+  if (wantExcluded && !inExcluded) {
+    _moveRecord(recordId, true);
+  } else if (wantMain && inExcluded) {
+    _moveRecord(recordId, false);
+  }
+}
+
+function _moveRecord(recordId, toExcluded) {
+  var row = document.querySelector('.record-row[data-rid="' + recordId + '"]');
+  var detail = document.getElementById('detail-' + recordId);
+  if (!row) return;
+  var targetId = toExcluded ? 'excluded-table' : 'results-table';
+  var targetTbody = document.querySelector('#' + targetId + ' tbody');
+  if (!targetTbody) return;
+  /* collapse the detail panel before moving so it doesn't flash open */
+  if (detail && detail.style.display !== 'none') {
+    detail.style.display = 'none';
+    var icon = document.getElementById('icon-' + recordId);
+    if (icon) icon.textContent = '▶';
+  }
+  targetTbody.appendChild(row);
+  if (detail) targetTbody.appendChild(detail);
+  /* show/hide the excluded section container */
+  var section = document.getElementById('excluded-section');
+  var excBody = document.querySelector('#excluded-table tbody');
+  if (section) {
+    section.style.display = (excBody && excBody.querySelector('.record-row')) ? '' : 'none';
+  }
+  /* update the count badge */
+  var badge = document.getElementById('excluded-count-badge');
+  if (badge && excBody) {
+    badge.textContent = excBody.querySelectorAll('.record-row').length;
+  }
 }
 
