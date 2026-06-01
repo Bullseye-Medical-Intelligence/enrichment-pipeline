@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
 
 import record_adapter
 
@@ -89,6 +88,7 @@ def build_executive_report(
     template = _jinja_env.get_template("executive_target_report.html")
     html_str = template.render(**ctx)
 
+    from weasyprint import HTML  # lazy — requires GTK native libs (not bundled on Windows)
     pdf_bytes = HTML(string=html_str, base_url=str(_STATIC_DIR)).write_pdf()
     logger.info(
         "Generated PDF for run %s: %d bullseye, %d contender, %d bytes",
