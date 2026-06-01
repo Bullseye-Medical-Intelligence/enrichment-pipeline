@@ -41,3 +41,6 @@ build/
 
 # Data directory — raw input CSVs may contain client data
 /data/*.csv
+
+# Generated renderer output (sample_run.py artifact)
+sample_output.html
