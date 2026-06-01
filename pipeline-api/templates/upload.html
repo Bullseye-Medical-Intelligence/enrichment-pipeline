@@ -3,8 +3,8 @@
 
 {% block content %}
 <div class="page-header">
-  <h2>Start New Enrichment Run</h2>
-  <p class="page-subtitle">Upload an Outscraper CSV export to begin enrichment.</p>
+  <h2>Upload Prospect List</h2>
+  <p class="page-subtitle">Upload an Outscraper CSV to load the roster. You review the list first, then start enrichment.</p>
 </div>
 
 {% if error %}
@@ -90,7 +90,7 @@
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn btn-submit" {% if not projects %}disabled{% endif %}>Upload and Start Enrichment</button>
+      <button type="submit" class="btn btn-submit" {% if not projects %}disabled{% endif %}>Upload and Load List</button>
       <a href="/" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
@@ -102,7 +102,7 @@
     <h3 id="preview-title">Ready to import</h3>
     <div id="preview-body"></div>
     <div class="modal-actions">
-      <button type="button" class="btn btn-submit" id="preview-confirm">Start Enrichment</button>
+      <button type="button" class="btn btn-submit" id="preview-confirm">Load List</button>
       <button type="button" class="btn btn-secondary" id="preview-cancel">Cancel</button>
     </div>
   </div>
@@ -121,7 +121,7 @@
 
   function closeModal() {
     overlay.style.display = 'none';
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Start Enrichment'; }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Load List'; }
   }
 
   cancel.addEventListener('click', closeModal);
@@ -129,7 +129,7 @@
 
   confirm.addEventListener('click', function () {
     confirm.disabled = true;
-    confirm.textContent = 'Starting…';
+    confirm.textContent = 'Loading…';
     form.removeEventListener('submit', interceptSubmit);
     form.submit();
   });
@@ -179,7 +179,7 @@
         }
       }
     } else {
-      html += '<p style="font-size:13px;color:#6b7280;">No duplicates detected. Ready to start.</p>';
+      html += '<p style="font-size:13px;color:#6b7280;">No duplicates detected. Ready to import.</p>';
     }
     return html;
   }
@@ -199,10 +199,10 @@
           data.importable + ' record' + (data.importable === 1 ? '' : 's') + ' ready to import';
         body.innerHTML = buildModalContent(data);
         overlay.style.display = 'flex';
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Start Enrichment'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Load List'; }
       })
       .catch(function (err) {
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Start Enrichment'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload and Load List'; }
         alert('Preview failed: ' + err.message);
       });
   }
@@ -214,9 +214,9 @@
 <div class="card info-card">
   <h4>What happens after you upload</h4>
   <ol class="step-list">
-    <li>Your CSV is validated and saved.</li>
-    <li>The enrichment pipeline starts automatically in the background.</li>
-    <li>You are taken to the run status page. Results appear when the run completes.</li>
+    <li>Your CSV is validated and the roster is loaded. No crawl or LLM spend yet.</li>
+    <li>You are taken to the roster, where you review the list and pre-excluded records.</li>
+    <li>When ready, click <strong>Enrich All</strong> to start the pipeline. Results appear as the run completes.</li>
     <li>Enrichment takes roughly 2-4 minutes for 10 records, 10-20 minutes for 50 records, and 45-90 minutes for 200 records.</li>
   </ol>
 </div>

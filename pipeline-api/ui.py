@@ -318,6 +318,9 @@ async def icp_generate(
             description=description,
             company_page_text=company_page_text,
             product_page_text=product_page_text,
+            product_type=product_type,
+            focus_areas=focus_areas,
+            exclusion_notes=exclusion_notes,
         )
         signal_set = generate_signals(brief=brief, specialty=specialty)
     except Exception as exc:
@@ -819,9 +822,16 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
 async def results_page(
     request: Request,
     run_id: str,
+    notice: str = "",
+    notice_type: str = "info",
     username: str = Depends(auth.require_session),
 ):
-    """Render enriched records for a run with inline review controls."""
+    """Render enriched records for a run with inline review controls.
+
+    `notice`/`notice_type` carry a one-shot flash message set by a redirect (e.g.
+    the outcome of a single-record re-crawl) so an operator sees why a record did
+    or did not change.
+    """
     status = runs.get_run(run_id)
     if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
@@ -836,6 +846,11 @@ async def results_page(
     has_checkpoint = runs.has_step4_checkpoint(run_id)
     checkpoint_count = runs.step4_checkpoint_count(run_id) if has_checkpoint else 0
 
+    flash = None
+    if notice:
+        flash_type = notice_type if notice_type in ("info", "error") else "info"
+        flash = {"type": flash_type, "message": notice[:300]}
+
     return _render(
         "results.html",
         username=username,
@@ -849,6 +864,7 @@ async def results_page(
         friendly_error=_friendly_error(status.error_summary),
         has_checkpoint=has_checkpoint,
         checkpoint_count=checkpoint_count,
+        flash=flash,
     )
 
 
@@ -1004,6 +1020,16 @@ async def export_retry_crawl(run_id: str, username: str = Depends(auth.require_s
     )
 
 
+def _inplace_redirect(run_id: str, record_id: str, result) -> RedirectResponse:
+    """Redirect back to the run, carrying the in-place update outcome as a flash."""
+    params = urllib.parse.urlencode({
+        "scrollto": record_id,
+        "notice": result.message,
+        "notice_type": "info" if result.ok else "error",
+    })
+    return RedirectResponse(url=f"/dashboard/{run_id}?{params}", status_code=303)
+
+
 @router.post("/runs/{run_id}/records/{record_id}/recrawl")
 async def recrawl_single_record(
     run_id: str,
@@ -1014,7 +1040,7 @@ async def recrawl_single_record(
 ):
     """Re-crawl one practice with a headless browser and update its run in place."""
     try:
-        await runner.orchestrate_single_recrawl(
+        result = await runner.orchestrate_single_recrawl(
             source_run_id=run_id,
             record_id=record_id,
             website_url_override=website_url,
@@ -1024,7 +1050,7 @@ async def recrawl_single_record(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
+    return _inplace_redirect(run_id, record_id, result)
 
 
 @router.post("/runs/{run_id}/records/{record_id}/re-enrich")
@@ -1043,7 +1069,7 @@ async def reenrich_excluded_record(
     actual signals. LLM-detected exclusions still apply.
     """
     try:
-        await runner.orchestrate_excluded_reenrich(
+        result = await runner.orchestrate_excluded_reenrich(
             source_run_id=run_id,
             record_id=record_id,
             website_url_override=website_url,
@@ -1053,7 +1079,7 @@ async def reenrich_excluded_record(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
+    return _inplace_redirect(run_id, record_id, result)
 
 
 @router.get("/runs/{run_id}/recrawl-progress")
@@ -1135,7 +1161,7 @@ async def manual_content_recrawl(
             detail="Provide an HTML file or paste page content.",
         )
     try:
-        await runner.orchestrate_manual_content_recrawl(
+        result = await runner.orchestrate_manual_content_recrawl(
             source_run_id=run_id,
             record_id=record_id,
             contents=contents,
@@ -1145,7 +1171,7 @@ async def manual_content_recrawl(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{run_id}?scrollto={record_id}", status_code=303)
+    return _inplace_redirect(run_id, record_id, result)
 
 
 @router.post("/runs/{run_id}/retry-with-browser")
@@ -1554,9 +1580,11 @@ def _parse_signals_from_form(form_data: dict, signal_count: int) -> list[dict]:
     """Extract and normalize signal rows from a review form submission.
 
     Rows whose signal_id is blank are skipped — that is how the Edit flow removes
-    a signal (its row is cleared client-side). Optional tiering fields the visible
-    form does not expose (cap_tier, exclude_if_yes, reinforces, verification_required)
-    ride along as hidden inputs so editing one signal never strips another's config.
+    a signal (its row is cleared client-side). Optional scoring/tiering fields the
+    visible form does not expose (cap_tier, exclude_if_yes, reinforces,
+    verification_required, not_found_weight, floor_tier, source_type, note) ride
+    along as hidden inputs so editing one signal never strips another's config or
+    silently changes the scoring model the operator approved.
     """
     signals = []
     for i in range(signal_count):
@@ -1588,6 +1616,26 @@ def _parse_signals_from_form(form_data: dict, signal_count: int) -> list[dict]:
             sig["reinforces"] = reinforces
         if (form_data.get(f"verification_required_{i}") or "").strip().lower() in ("1", "true", "on"):
             sig["verification_required"] = True
+        # Scoring fields the scorer reads (not_found_weight, floor_tier) plus
+        # source_type and note — preserved verbatim so a save never weakens the
+        # approved scoring model. not_found_weight may legitimately be 0 or
+        # negative, so the presence of the field (not truthiness) is the gate.
+        raw_nf_weight = (form_data.get(f"not_found_weight_{i}") or "").strip()
+        if raw_nf_weight:
+            try:
+                num = float(raw_nf_weight)
+                sig["not_found_weight"] = int(num) if num.is_integer() else num
+            except ValueError:
+                pass
+        floor_tier = (form_data.get(f"floor_tier_{i}") or "").strip()
+        if floor_tier:
+            sig["floor_tier"] = floor_tier
+        source_type = (form_data.get(f"source_type_{i}") or "").strip()
+        if source_type:
+            sig["source_type"] = source_type
+        note = (form_data.get(f"note_{i}") or "").strip()
+        if note:
+            sig["note"] = note
         signals.append(sig)
     return signals
 

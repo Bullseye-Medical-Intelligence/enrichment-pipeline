@@ -78,7 +78,9 @@ REQUIRED_ICP_FIELDS: tuple[str, ...] = ("icp_id", "name", "version", "signals")
 # Generic defaults applied to a new project. No specialty-specific values here:
 # exclusion rules are practice-structure rules and crawl keywords are generic
 # site sections, not condition/specialty terms.
-DEFAULT_BULLSEYE_MIN_SCORE: int = 75
+# Bullseye threshold matches the pipeline's enrichment/constants.DEFAULT_BULLSEYE_MIN_SCORE
+# (90) so a UI-created project scores identically to a CLI run — one source of truth.
+DEFAULT_BULLSEYE_MIN_SCORE: int = 90
 DEFAULT_MAX_PAGES_PER_PRACTICE: int = 5
 DEFAULT_REQUEST_TIMEOUT_SECONDS: int = 60
 DEFAULT_REQUEST_RETRIES: int = 3

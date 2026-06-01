@@ -207,6 +207,12 @@
             <input type="hidden" name="exclude_if_yes_{{ n }}" value="{{ '1' if sig.exclude_if_yes else '' }}">
             <input type="hidden" name="reinforces_{{ n }}" value="{{ sig.reinforces | default('') }}">
             <input type="hidden" name="verification_required_{{ n }}" value="{{ '1' if sig.verification_required else '' }}">
+            {# Scoring fields the scorer reads but the visible form does not edit —
+               drop them and the saved profile silently scores differently. #}
+            <input type="hidden" name="not_found_weight_{{ n }}" value="{{ sig.not_found_weight if sig.not_found_weight is defined else '' }}">
+            <input type="hidden" name="floor_tier_{{ n }}" value="{{ sig.floor_tier | default('') }}">
+            <input type="hidden" name="source_type_{{ n }}" value="{{ sig.source_type | default('') }}">
+            <input type="hidden" name="note_{{ n }}" value="{{ (sig.note if sig.note is defined else sig.notes) | default('') | e }}">
           </td>
         </tr>
         {% endfor %}

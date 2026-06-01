@@ -69,7 +69,7 @@
     {% set tier_cls = 'tier-bullseye' if acct.tier == 'Bullseye' else ('tier-contender' if acct.tier == 'Contender' else 'tier-excluded') %}
     <div class="demo-acct-card {{ tier_cls }}">
       <div class="demo-acct-header">
-        <span class="badge badge-{{ acct.tier | lower | replace(' ', '-') }}">{{ acct.tier }}</span>
+        <span class="badge badge-tier-{{ acct.tier | lower | replace(' ', '-') }}">{{ acct.tier }}</span>
         <span class="demo-score">~{{ acct.score_estimate | default('—') }}</span>
       </div>
       <p class="demo-acct-name">{{ acct.practice_name | default('') }}</p>

@@ -44,16 +44,26 @@ def compress_crawl(
     description: str,
     company_page_text: str,
     product_page_text: str,
+    product_type: str = "",
+    focus_areas: str = "",
+    exclusion_notes: str = "",
 ) -> ProductBrief:
     """Call Claude to compress raw crawl text into a structured product brief.
+
+    product_type, focus_areas, and exclusion_notes are operator-provided steering
+    inputs from the ICP builder form; they shape target_practice_traits so the
+    builder's visible fields actually influence the draft.
 
     Raises ValueError on API error or unparseable response.
     """
     prompt = _PROMPT_TEMPLATE.format(
         company_name=company_name or "Not specified",
         product_name=product_name,
+        product_type=product_type or "Not specified",
         specialty=specialty,
         description=description or "Not provided",
+        focus_areas=focus_areas or "None provided",
+        exclusion_notes=exclusion_notes or "None provided",
         company_page_text=company_page_text or "Not available",
         product_page_text=product_page_text or "Not available",
     )

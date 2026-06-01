@@ -1563,6 +1563,30 @@ class TestChallengeDetection:
     def test_empty_html_not_flagged(self):
         assert self._detect("") is False
 
+    def _web_mod(self):
+        import importlib, sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "extraction"))
+        return importlib.import_module("web_extractor")
+
+    def test_requests_path_shares_detector(self):
+        """web_extractor exposes the same challenge detector the browser path uses."""
+        mod = self._web_mod()
+        assert mod.looks_like_challenge("<title>Just a moment...</title>") is True
+        assert mod.looks_like_challenge("<body>Real clinic content here.</body>") is False
+
+    def test_requests_crawl_treats_challenge_as_blocked(self, monkeypatch):
+        """A challenge page (HTTP 200 with body) is a blocked crawl, not content."""
+        mod = self._web_mod()
+        challenge_html = "<html><title>Just a moment...</title><body>Checking your browser</body></html>"
+        monkeypatch.setattr(
+            mod, "_fetch_html",
+            lambda url, timeout=15, retries=3: (challenge_html, url, ""),
+        )
+        result = mod.extract_practice_text("https://blocked.example.com")
+        assert result.success is False
+        assert result.context_text == ""
+        assert "challenge" in result.error.lower()
+
 
 class TestBrowserChallengeKnobs:
     """Env-driven knobs for the patient browser challenge handling."""

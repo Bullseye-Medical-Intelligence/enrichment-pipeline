@@ -25,6 +25,7 @@ from web_extractor import (  # noqa: E402
     MAX_COMBINED_CHARS,
     DEFAULT_SUBPAGE_KEYWORDS,
     _find_relevant_subpages,
+    looks_like_challenge,
 )
 
 
@@ -90,28 +91,10 @@ def launch_browser(pw):
     raise last_error
 
 
-# Phrases that mark a bot/security interstitial rather than real site content.
-_CHALLENGE_MARKERS = (
-    "just a moment",
-    "checking your browser",
-    "verify you are human",
-    "verifying you are human",
-    "enable javascript and cookies to continue",
-    "attention required",
-    "cf-browser-verification",
-    "cf-challenge",
-    "ddos protection by",
-    "please verify you are a human",
-    "ray id",
-)
-
-
-def _looks_like_challenge(html: str) -> bool:
-    """True when the HTML is a bot/security verification page, not site content."""
-    if not html:
-        return False
-    sample = html[:4000].lower()
-    return any(marker in sample for marker in _CHALLENGE_MARKERS)
+# Bot-interstitial detection (markers + looks_like_challenge) is shared with the
+# requests crawler in web_extractor so both paths classify a challenge wall the
+# same way; imported above. _looks_like_challenge keeps the module-local name.
+_looks_like_challenge = looks_like_challenge
 
 
 # Minimum rendered text (chars) that counts as "real content has loaded" — used

@@ -2,7 +2,14 @@ You are a senior medical device sales strategist. Your job is to read raw websit
 
 Company: {company_name}
 Product: {product_name}
+Product category: {product_type}
 Target Specialty: {specialty}
+
+Operator focus areas (qualities or capabilities to emphasize when describing the ideal target practice):
+{focus_areas}
+
+Operator exclusion notes (practice characteristics that disqualify a target — reflect these as traits to avoid):
+{exclusion_notes}
 
 Company website text:
 ---
@@ -32,6 +39,6 @@ Return a single JSON object with exactly these keys:
   One sentence. How the company positions the product commercially — cost, efficiency, outcome, or access argument.
 
 "target_practice_traits"
-  A list of 4-6 short phrases (3-8 words each) describing the observable characteristics of the ideal target practice. These must be concrete and checkable from a practice website — not abstract qualities like "innovative" or "forward-thinking". Examples: "offers IUI in-office", "independent single-location practice", "lists cash-pay fertility options".
+  A list of 4-6 short phrases (3-8 words each) describing the observable characteristics of the ideal target practice. These must be concrete and checkable from a practice website — not abstract qualities like "innovative" or "forward-thinking". Weight the operator focus areas and exclusion notes above when present. Examples: "offers IUI in-office", "independent single-location practice", "lists cash-pay fertility options".
 
 Return ONLY a valid JSON object. No prose, no markdown, no code fences. Total output must not exceed 200 words.

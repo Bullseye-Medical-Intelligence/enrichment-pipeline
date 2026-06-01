@@ -41,9 +41,9 @@ Return a single JSON object with exactly three top-level keys:
 
 "demo_accounts"
   An array of exactly 3 synthetic (realistic but fabricated) example practices that illustrate
-  how the scoring works. One per tier in this order: Bullseye, Watchlist, Excluded.
+  how the scoring works. One per tier in this order: Bullseye, Contender, Excluded.
   Each object must have:
-  - tier: "Bullseye", "Watchlist", or "Excluded"
+  - tier: "Bullseye", "Contender", or "Excluded"
   - practice_name: realistic-sounding practice name
   - location: "City, ST"
   - practice_type: 1 sentence describing the practice
@@ -54,7 +54,7 @@ Return a single JSON object with exactly three top-level keys:
     must-have or friction signals by name
 
 The Bullseye account must satisfy all must-have signals and have no friction signals confirmed.
-The Watchlist account must either fail a must-have or trigger a friction signal — state which one.
+The Contender account must either fail a must-have or trigger a friction signal — state which one.
 The Excluded account must trigger an exclusion-level disqualifier or fail multiple must-haves.
 
 Return ONLY a valid JSON object. No prose, no markdown, no code fences.

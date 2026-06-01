@@ -11,6 +11,7 @@ import os
 import secrets
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,6 +37,19 @@ if TYPE_CHECKING:
     from fastapi import BackgroundTasks, UploadFile
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class InplaceUpdateResult:
+    """Outcome of a single-record in-place re-enrich, surfaced to the operator.
+
+    ok is False when the scratch run crashed or produced nothing mergeable, so
+    the route can tell the operator why the record did not change instead of
+    redirecting as if it had worked.
+    """
+
+    ok: bool
+    message: str
 
 
 def spawn_pipeline(
@@ -579,7 +593,7 @@ async def orchestrate_single_recrawl(
     record_id: str,
     website_url_override: str,
     operator: str,
-) -> str:
+) -> InplaceUpdateResult:
     """Re-crawl one record with a headless browser and update its run in place.
 
     Runs the single record through the pipeline (--playwright) in a hidden
@@ -588,7 +602,7 @@ async def orchestrate_single_recrawl(
     new run appears in the dashboard. Blocks until the merge is done so the
     operator returns to fresh data.
 
-    Returns the source_run_id (the same run, now updated).
+    Returns an InplaceUpdateResult describing whether the record changed.
 
     Raises:
         FileNotFoundError if run/record not found.
@@ -615,8 +629,9 @@ async def orchestrate_single_recrawl(
         "In-place browser re-crawl of record %s in run %s started by '%s' (url=%s)",
         record_id, source_run_id, operator, url,
     )
-    await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "browser re-crawl")
-    return source_run_id
+    return await _run_inplace_update(
+        source_run_id, scratch_dir, record_id, process, "browser re-crawl"
+    )
 
 
 async def orchestrate_excluded_reenrich(
@@ -624,7 +639,7 @@ async def orchestrate_excluded_reenrich(
     record_id: str,
     website_url_override: str,
     operator: str,
-) -> str:
+) -> InplaceUpdateResult:
     """Re-enrich a pre-excluded record, bypassing structural specialty/geography filters.
 
     Pre-excluded records were never crawled or scored — structural exclusions fired
@@ -633,7 +648,7 @@ async def orchestrate_excluded_reenrich(
     target_geography cleared so the structural pre-filter does not fire a second
     time. LLM-detected exclusions (hospital_owned, etc.) still apply normally.
 
-    Returns the source_run_id (same run, record updated in place).
+    Returns an InplaceUpdateResult describing whether the record changed.
     """
     source_dir, record, scratch_dir, config_src, icp_src = _prepare_single_record_job(
         source_run_id, record_id
@@ -664,8 +679,9 @@ async def orchestrate_excluded_reenrich(
         "Excluded record re-enrich for %s in run %s started by '%s' (url=%s)",
         record_id, source_run_id, operator, url,
     )
-    await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "excluded re-enrich")
-    return source_run_id
+    return await _run_inplace_update(
+        source_run_id, scratch_dir, record_id, process, "excluded re-enrich"
+    )
 
 
 async def orchestrate_manual_content_recrawl(
@@ -673,7 +689,7 @@ async def orchestrate_manual_content_recrawl(
     record_id: str,
     contents: list[tuple[bytes, str]],
     operator: str,
-) -> str:
+) -> InplaceUpdateResult:
     """Enrich one record from operator-provided page content, updating in place.
 
     For a site behind a hard CAPTCHA wall the crawler cannot clear, the operator
@@ -684,7 +700,7 @@ async def orchestrate_manual_content_recrawl(
 
     contents is a list of (content_bytes, content_filename) pairs, one per page.
 
-    Returns the source_run_id.
+    Returns an InplaceUpdateResult describing whether the record changed.
 
     Raises:
         FileNotFoundError if run/record not found.
@@ -735,8 +751,9 @@ async def orchestrate_manual_content_recrawl(
         "In-place manual-content enrich of record %s in run %s started by '%s' (%d page(s), %d bytes)",
         record_id, source_run_id, operator, len(usable), total_bytes,
     )
-    await _run_inplace_update(source_run_id, scratch_dir, record_id, process, "manual content")
-    return source_run_id
+    return await _run_inplace_update(
+        source_run_id, scratch_dir, record_id, process, "manual content"
+    )
 
 
 async def _run_inplace_update(
@@ -745,11 +762,13 @@ async def _run_inplace_update(
     record_id: str,
     process: subprocess.Popen,
     kind: str,
-) -> None:
+) -> InplaceUpdateResult:
     """Wait for a single-record pipeline run, then merge its result in place.
 
     On a clean exit, merges the updated record into the source run; on any
     failure, leaves the source run untouched. The scratch dir is always removed.
+    Returns an InplaceUpdateResult so the caller can surface success or the
+    specific failure reason to the operator (RULE 7: fail loudly).
     """
     loop = asyncio.get_event_loop()
     try:
@@ -760,8 +779,12 @@ async def _run_inplace_update(
                 "In-place %s of record %s in run %s failed (exit %d): %.500s",
                 kind, record_id, source_run_id, process.returncode, error_text,
             )
-            return
-        _merge_recrawled_record(source_run_id, scratch_dir, record_id, kind)
+            return InplaceUpdateResult(
+                ok=False,
+                message=f"The {kind} did not complete — the pipeline exited with an error. "
+                        "The record was left unchanged.",
+            )
+        return _merge_recrawled_record(source_run_id, scratch_dir, record_id, kind)
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
@@ -789,13 +812,15 @@ def _merge_recrawled_record(
     scratch_dir: Path,
     record_id: str,
     kind: str,
-) -> None:
+) -> InplaceUpdateResult:
     """Merge a re-enriched single record back into its source run, in place.
 
     Validates the scratch output, replaces the matching record (by stable id) in
     the source enriched_targets.json via an atomic write, stamps the analyst
     review note, and recomputes the source run's status counts. The source run
-    stays 'complete'. On any error the source run is left untouched.
+    stays 'complete'. On any error the source run is left untouched. Returns an
+    InplaceUpdateResult describing the outcome so the operator gets a concrete
+    reason rather than a silent no-op.
     """
     failure = _validate_output_dir(scratch_dir)
     if failure:
@@ -803,7 +828,11 @@ def _merge_recrawled_record(
             "In-place %s of record %s in run %s: scratch output invalid: %s",
             kind, record_id, source_run_id, failure,
         )
-        return
+        return InplaceUpdateResult(
+            ok=False,
+            message=f"The {kind} produced no usable output ({failure}). "
+                    "The record was left unchanged.",
+        )
 
     try:
         with open(scratch_dir / "enriched_targets.json", "r", encoding="utf-8") as f:
@@ -817,7 +846,10 @@ def _merge_recrawled_record(
                 "In-place %s of record %s in run %s: scratch produced no record.",
                 kind, record_id, source_run_id,
             )
-            return
+            return InplaceUpdateResult(
+                ok=False,
+                message=f"The {kind} produced no record. The record was left unchanged.",
+            )
 
         source_dir = runs.run_dir(source_run_id)
         enriched_path = source_dir / "enriched_targets.json"
@@ -834,7 +866,10 @@ def _merge_recrawled_record(
                 "In-place %s: record %s vanished from run %s; leaving run untouched.",
                 kind, record_id, source_run_id,
             )
-            return
+            return InplaceUpdateResult(
+                ok=False,
+                message=f"Could not find record {record_id} in this run to update.",
+            )
 
         records[idx] = updated
 
@@ -856,15 +891,37 @@ def _merge_recrawled_record(
         counts = _recompute_counts_from_records(records)
         runs.update_run_status(source_run_id, status="complete", **counts)
 
+        tier = updated.get("target_tier")
         logger.info(
             "In-place %s merged: record %s updated in run %s (tier now %s, score %s).",
-            kind, record_id, source_run_id,
-            updated.get("target_tier"), updated.get("bullseye_score"),
+            kind, record_id, source_run_id, tier, updated.get("bullseye_score"),
+        )
+
+        # The merge succeeded, but if the site is still blocked/thin the record is
+        # back at Manual Review with no signals — tell the operator that the
+        # re-crawl ran but the page still could not be read, so a no-change result
+        # is explained rather than mysterious.
+        if (updated.get("source_confidence") in ("limited", "failed")
+                or not [s for s in updated.get("signals") or []
+                        if s.get("signal_state") == "yes"]):
+            return InplaceUpdateResult(
+                ok=True,
+                message=f"The {kind} ran, but the site still could not be read for "
+                        "usable signals. The record stays in Manual Review — try "
+                        "browser re-crawl or pasting the page content.",
+            )
+        return InplaceUpdateResult(
+            ok=True,
+            message=f"Record updated — now {tier}.",
         )
     except Exception:
         logger.exception(
             "In-place %s of record %s in run %s failed during merge; run untouched.",
             kind, record_id, source_run_id,
+        )
+        return InplaceUpdateResult(
+            ok=False,
+            message=f"The {kind} failed while saving the result. The record was left unchanged.",
         )
 
 

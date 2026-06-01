@@ -166,6 +166,12 @@ def get_icp_profile(icp_profile_id: str) -> dict:
         for field in ("cap_tier", "floor_tier"):
             if field in sig:
                 sig[field] = _normalize_tier_value(sig[field])
+    # Demo-account tiers are operator-facing in the ICP brief; upgrade legacy
+    # "Watchlist" labels so a profile saved before the rename renders the correct
+    # tier name and styling instead of an undefined badge class.
+    for acct in profile.get("demo_accounts") or []:
+        if isinstance(acct, dict) and "tier" in acct:
+            acct["tier"] = _normalize_tier_value(acct["tier"])
     if "hypothesis" in profile:
         profile["hypothesis"] = _normalize_hypothesis(profile["hypothesis"])
     validate_icp_profile(profile)

@@ -300,91 +300,10 @@ function _escHtml(s) {
   return d.innerHTML;
 }
 
-/* ── Upload pre-flight preview modal ────────────────────────── */
-document.addEventListener('DOMContentLoaded', _initUploadPreview);
-
-function _initUploadPreview() {
-  var form = document.getElementById('upload-form');
-  if (!form) return;
-  var overlay = document.getElementById('preview-overlay');
-
-  form.addEventListener('submit', function(e) {
-    if (form.dataset.confirmed === '1') return;  /* confirmed: let it submit */
-    e.preventDefault();
-    var fileInput = document.getElementById('file');
-    if (!fileInput || !fileInput.files.length) return;
-
-    var btn = form.querySelector('button[type="submit"]');
-    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Checking file…'; }
-
-    var fd = new FormData();
-    fd.append('file', fileInput.files[0]);
-    fd.append('source_type', document.getElementById('source_type').value);
-
-    fetch('/api/ui/runs/preview', { method: 'POST', body: fd })
-      .then(function(res) { return res.json().then(function(d) { return { ok: res.ok, data: d }; }); })
-      .then(function(r) {
-        _restoreSubmit(btn);
-        if (!r.ok) { _previewError((r.data && r.data.detail) || 'Could not read the file.', overlay); return; }
-        _previewShow(r.data, overlay);
-      })
-      .catch(function() { _restoreSubmit(btn); _previewError('Network error. Try again.', overlay); });
-  });
-
-  var confirmBtn = document.getElementById('preview-confirm');
-  if (confirmBtn) confirmBtn.addEventListener('click', function() {
-    form.dataset.confirmed = '1';
-    form.submit();  /* native submit bypasses the listener above */
-  });
-
-  var cancelBtn = document.getElementById('preview-cancel');
-  if (cancelBtn) cancelBtn.addEventListener('click', function() {
-    if (overlay) overlay.style.display = 'none';
-  });
-}
-
-function _restoreSubmit(btn) {
-  if (btn) { btn.disabled = false; if (btn.dataset.label) btn.textContent = btn.dataset.label; }
-}
-
-function _previewShow(summary, overlay) {
-  var body = document.getElementById('preview-body');
-  var confirmBtn = document.getElementById('preview-confirm');
-  var title = document.getElementById('preview-title');
-  if (confirmBtn) confirmBtn.style.display = '';
-  if (title) title.textContent = 'Ready to import';
-  if (!body) return;
-
-  var html = '<p class="preview-count"><strong>' + summary.importable +
-             '</strong> record(s) will be imported';
-  if (summary.row_count !== summary.importable) {
-    html += ' of ' + summary.row_count + ' in the file';
-  }
-  html += '.</p>';
-  if (summary.warnings && summary.warnings.length) {
-    html += '<ul class="preview-warnings">';
-    summary.warnings.forEach(function(w) { html += '<li>' + _escapeHtml(w) + '</li>'; });
-    html += '</ul>';
-  }
-  body.innerHTML = html;
-  if (overlay) overlay.style.display = 'flex';
-}
-
-function _previewError(msg, overlay) {
-  var body = document.getElementById('preview-body');
-  var confirmBtn = document.getElementById('preview-confirm');
-  var title = document.getElementById('preview-title');
-  if (title) title.textContent = 'File could not be imported';
-  if (confirmBtn) confirmBtn.style.display = 'none';
-  if (body) body.innerHTML = '<p class="preview-error">' + _escapeHtml(msg) + '</p>';
-  if (overlay) overlay.style.display = 'flex';
-}
-
-function _escapeHtml(s) {
-  var d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
+/* The upload pre-flight preview modal is driven by the page-local script in
+   templates/upload.html, which renders full EXACT/SIMILAR duplicate detail. It
+   lived here too and double-bound the submit handler (two preview fetches per
+   submit); removed to leave a single owner. */
 
 function _updateRowBadges(recordId, overrideTier, qcStatus) {
   var rows = document.querySelectorAll('.record-row');

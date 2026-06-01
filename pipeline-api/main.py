@@ -60,11 +60,27 @@ def _log_pipeline_python() -> None:
         logger.warning("Could not probe browser availability: %s", str(e)[:160])
 
 
-def _seed_icp_profiles() -> None:
-    """Copy bundled seed ICP profiles to ICP_PROFILES_PATH on first run.
+def _seed_version(path: Path) -> str:
+    """Return the 'version' string of an ICP profile JSON, or '' if unreadable."""
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("version", ""))
+    except Exception:
+        return ""
 
-    Only seeds when the profiles directory has no JSON files yet, so operator
-    edits and imported profiles are never overwritten by a restart.
+
+def _seed_icp_profiles() -> None:
+    """Upsert bundled seed ICP profiles into ICP_PROFILES_PATH on startup.
+
+    Per-file, version-aware: a seed is copied when its destination is missing or
+    when the bundled seed's `version` differs from the installed copy's. This lets
+    a corrected seed (e.g. one with a redundant inverse signal removed) propagate
+    to deployments by bumping its version, without the all-or-nothing "only when
+    empty" gate that left stale seeds in place.
+
+    Only filenames present in the seed bundle are ever touched. Operator-authored
+    and imported profiles use their own icp_id and are never overwritten — to
+    customize a seeded profile, save it under a new icp_id rather than editing the
+    managed seed in place.
     """
     import shutil
     from config import ICP_PROFILES_PATH
@@ -73,13 +89,13 @@ def _seed_icp_profiles() -> None:
     if not seeds_dir.exists():
         return
     ICP_PROFILES_PATH.mkdir(parents=True, exist_ok=True)
-    existing = list(ICP_PROFILES_PATH.glob("*.json"))
-    if existing:
-        return
     for seed in seeds_dir.glob("*.json"):
         dest = ICP_PROFILES_PATH / seed.name
+        if dest.exists() and _seed_version(dest) == _seed_version(seed):
+            continue
+        action = "Updated" if dest.exists() else "Seeded"
         shutil.copy2(seed, dest)
-        logger.info("Seeded ICP profile: %s", seed.name)
+        logger.info("%s ICP profile from seed: %s", action, seed.name)
 
 
 @asynccontextmanager

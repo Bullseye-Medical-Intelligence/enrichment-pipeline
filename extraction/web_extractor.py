@@ -59,6 +59,34 @@ SKIP_TAGS = {
     "link", "button", "input", "select", "textarea",
 }
 
+# Phrases that mark a bot/security interstitial (Cloudflare, Turnstile, DDoS
+# protection) rather than real site content. Shared with playwright_extractor so
+# both the requests path and the browser path classify a challenge wall the same
+# way — a challenge page returns HTTP 200 with body text, so without this check
+# the requests crawler would extract "Just a moment..." as if it were content and
+# send it to the LLM as junk.
+CHALLENGE_MARKERS = (
+    "just a moment",
+    "checking your browser",
+    "verify you are human",
+    "verifying you are human",
+    "enable javascript and cookies to continue",
+    "attention required",
+    "cf-browser-verification",
+    "cf-challenge",
+    "ddos protection by",
+    "please verify you are a human",
+    "ray id",
+)
+
+
+def looks_like_challenge(html: str) -> bool:
+    """True when the HTML is a bot/security verification page, not site content."""
+    if not html:
+        return False
+    sample = html[:4000].lower()
+    return any(marker in sample for marker in CHALLENGE_MARKERS)
+
 
 class ExtractionResult:
     """Result of web text extraction for a single practice."""
@@ -270,6 +298,18 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
             error=fetch_error or "Could not fetch homepage HTML",
         )
 
+    # A bot/security interstitial returns HTTP 200 with body text. Treat it as a
+    # blocked crawl (no content) instead of extracting the challenge copy — that
+    # keeps junk out of the LLM and leaves source_confidence low so the auto
+    # browser-retry targets this record for a headless re-crawl.
+    if looks_like_challenge(html):
+        return ExtractionResult(
+            url=url,
+            context_text="",
+            pages_crawled=[],
+            error="Blocked by bot/security challenge (CAPTCHA wall); requests crawler cannot clear it",
+        )
+
     homepage_text = _extract_visible_text(html)
     if homepage_text:
         all_text_blocks.append(f"[Source: {final_url}]\n{homepage_text}")
@@ -374,8 +414,12 @@ def batch_extract(records: list[dict], timeout: int = 15,
                     keywords=keywords,
                     timeout_ms=timeout * 1000,
                 )
-                # If playwright returned empty, fall back to requests for this record
-                if not result.success:
+                # If playwright returned empty, fall back to requests for this
+                # record — UNLESS the browser already diagnosed a bot-challenge
+                # wall. The weaker requests path cannot clear a challenge the
+                # browser couldn't, and falling back would overwrite the useful
+                # "blocked by challenge" diagnosis with a generic requests error.
+                if not result.success and "challenge" not in (result.error or "").lower():
                     print(f"    [Playwright->requests fallback] {record.get('practice_name', '')}: {result.error}")
                     result = extract_practice_text(
                         url=record.get("website_url", ""), timeout=timeout,
