@@ -57,7 +57,7 @@ From the menu, click **ICP Profiles → Build New Profile**.
 | **Target Specialty** | Medical specialty of the target buyer | `OBGYN` |
 | **Product Description** | What the product does, who buys it, deal size, sales cycle | *(see below)* |
 | **Key Services / Focus Areas** | Procedures the ideal practice offers (one per line) | `IUD insertion` / `Infertility workup` |
-| **Practices to Exclude** | Types of practices that are NOT a fit | `Hospital-employed, academic centers, insurance-only` |
+| **Practices to Exclude** | Types of practices that are NOT a fit | `Hospital-employed, academic centers, wrong specialty` |
 
 **Writing a good Product Description:** Answer these four questions in 2–3 sentences:
 - What does this product do in plain English?
