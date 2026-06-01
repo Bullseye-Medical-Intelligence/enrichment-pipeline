@@ -155,6 +155,12 @@ def validate_and_finalize(record: dict) -> dict:
     if record.get("internal_notes") is None:
         record["internal_notes"] = ""
 
+    # tier_cap_reason: operator-facing explanation of why the tier landed below
+    # Bullseye (set by _assign_tier). Always present as a string; "" for Bullseye,
+    # excluded, or not-yet-enriched records.
+    if not isinstance(record.get("tier_cap_reason"), str):
+        record["tier_cap_reason"] = ""
+
     # Pipeline output fields always null
     record["analyst_override_classification"] = None
     record["override_reason"] = None

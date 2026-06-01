@@ -52,6 +52,11 @@ def _canonical_tier(value: str) -> str:
     return _LEGACY_TIER_ALIAS.get(value, value)
 
 
+def _signal_name(sig: dict) -> str:
+    """Human-readable name for a signal in operator-facing cap explanations."""
+    return sig.get("signal_label") or sig.get("signal_id") or "a required signal"
+
+
 def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     """Assign a CLEAR record's tier from its score, signal caps, and verification flags.
 
@@ -65,8 +70,15 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
 
     A confirmed "yes" signal with floor_tier guarantees a minimum tier — it
     overrides the low-score Manual Review gate for that signal's own evidence.
+
+    Side effect: writes `record["tier_cap_reason"]`, an operator-facing string
+    explaining why the tier landed below Bullseye (which must-have signal failed,
+    a cap_tier signal, thin crawl, etc.), or "" when the record is Bullseye or the
+    tier was set purely by score. Tier and score now answer different questions —
+    this field makes the gap legible without the operator reverse-engineering it.
     """
     signals = record.get("signals") or []
+    record["tier_cap_reason"] = ""
 
     # Not-yet-enriched roster rows (ingest-only) have no signals by definition and
     # are not a Manual Review finding — skip the evidence gate for them.
@@ -88,6 +100,12 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
             default=-1,
         )
         if (not has_evidence or score < LOW_SCORE_MANUAL_REVIEW_THRESHOLD) and floor_rank < 0:
+            record["tier_cap_reason"] = (
+                "No confirmed signals on the site — manual review required before calling."
+                if not has_evidence
+                else f"Score {score} is below the {LOW_SCORE_MANUAL_REVIEW_THRESHOLD}-point "
+                     "evidence floor — too thin to call without review."
+            )
             return "Manual Review"
 
     # When the ICP defines must-have signals and every one is confirmed (or inferred),
@@ -109,15 +127,23 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     if floor_rank > rank:
         rank = floor_rank
 
+    # Collect every constraint that pulls the ceiling below Bullseye as (rank, reason).
+    # The final tier is the lowest; the reasons explain it to the operator.
+    caps: list[tuple[int, str]] = []
+
     for sig in signals:
         cap = _canonical_tier(sig.get("cap_tier"))
         if cap and cap in TIER_RANK and sig.get("signal_state") == "yes":
-            rank = min(rank, TIER_RANK[cap])
+            caps.append((TIER_RANK[cap], f"{_signal_name(sig)} confirmed → capped at {cap}."))
 
     # Source confidence gate: a record whose website could not be reliably
     # crawled cannot be scored — send it to Manual Review so the operator
     # can trigger a browser re-crawl rather than auto-promoting to Contender.
     if enriched and record.get("source_confidence") in ("limited", "failed"):
+        record["tier_cap_reason"] = (
+            "Website could not be reliably crawled — re-crawl with browser or "
+            "paste page content before calling."
+        )
         return "Manual Review"
 
     # Must-have gate: a required_for_bullseye signal must be confirmed present
@@ -129,23 +155,40 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
             continue
         state = sig.get("signal_state")
         if state == "no":
-            rank = min(rank, TIER_RANK["Contender"])
+            caps.append((TIER_RANK["Contender"],
+                         f"Must-have '{_signal_name(sig)}' confirmed absent → capped at Contender."))
         elif state == "not_found":
-            rank = min(rank, TIER_RANK["Needs Verification"])
+            caps.append((TIER_RANK["Needs Verification"],
+                         f"Must-have '{_signal_name(sig)}' not found on the site → needs verification."))
 
     # A verification_required signal that is not confirmed forces verification —
     # unless its presence was inferred from a reinforcing signal (state_inferred),
     # in which case it counts as confirmed-by-inference and the gate does not fire.
-    needs_verification = any(
-        sig.get("verification_required")
-        and sig.get("signal_state") == "not_found"
-        and not sig.get("state_inferred")
-        for sig in signals
-    )
-    if needs_verification:
-        rank = min(rank, TIER_RANK["Needs Verification"])
+    for sig in signals:
+        if (sig.get("verification_required")
+                and sig.get("signal_state") == "not_found"
+                and not sig.get("state_inferred")):
+            caps.append((TIER_RANK["Needs Verification"],
+                         f"'{_signal_name(sig)}' needs verification before Bullseye."))
 
-    return _RANK_TO_TIER[rank]
+    final_rank = rank
+    for cap_rank, _reason in caps:
+        final_rank = min(final_rank, cap_rank)
+
+    # Explain the gap to Bullseye: list every constraint that kept it down, most
+    # severe first. When nothing capped it but score alone fell short (no must-haves
+    # defined), say so plainly instead of leaving the operator guessing.
+    if final_rank < TIER_RANK["Bullseye"]:
+        reasons = [reason for _cap_rank, reason in sorted(caps, key=lambda c: c[0])]
+        if reasons:
+            record["tier_cap_reason"] = " ".join(reasons)
+        elif not required_sigs and score < bullseye_min:
+            record["tier_cap_reason"] = (
+                f"Score {score} is below the Bullseye threshold ({bullseye_min}); "
+                "no must-have signals are defined for this ICP."
+            )
+
+    return _RANK_TO_TIER[final_rank]
 
 
 _SPECIALTY_PREFIX_LEN = 7

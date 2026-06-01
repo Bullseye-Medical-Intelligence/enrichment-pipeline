@@ -544,6 +544,43 @@ class TestTierAssignment:
         # the NV cap on cash can only pull DOWN from Bullseye, not further below Contender
         assert _assign_tier(self._record_with_signals(signals), 73, 90) == "Contender"
 
+    def test_bullseye_has_empty_cap_reason(self):
+        """A clean Bullseye record carries no tier_cap_reason."""
+        rec = self._record_with_signals([])
+        _assign_tier(rec, 90, 75)
+        assert rec["tier_cap_reason"] == ""
+
+    def test_must_have_no_sets_cap_reason(self):
+        """A confirmed-absent must-have names itself in tier_cap_reason."""
+        signals = [{"signal_id": "S-tms", "signal_label": "TMS services offered",
+                    "signal_state": "no", "required_for_bullseye": True, "cap_tier": ""}]
+        rec = self._record_with_signals(signals)
+        assert _assign_tier(rec, 95, 90) == "Contender"
+        assert "TMS services offered" in rec["tier_cap_reason"]
+        assert "Contender" in rec["tier_cap_reason"]
+
+    def test_must_have_not_found_sets_cap_reason(self):
+        """A not-found must-have explains the Needs Verification cap."""
+        signals = [{"signal_id": "S-cash", "signal_label": "Cash pay accepted",
+                    "signal_state": "not_found", "required_for_bullseye": True, "cap_tier": ""}]
+        rec = self._record_with_signals(signals)
+        assert _assign_tier(rec, 95, 90) == "Needs Verification"
+        assert "Cash pay accepted" in rec["tier_cap_reason"]
+
+    def test_thin_crawl_sets_cap_reason(self):
+        """A limited-confidence crawl explains the Manual Review tier."""
+        rec = self._record_with_signals([])
+        rec["source_confidence"] = "limited"
+        assert _assign_tier(rec, 90, 75) == "Manual Review"
+        assert "crawl" in rec["tier_cap_reason"].lower()
+
+    def test_no_evidence_sets_cap_reason(self):
+        """A record with no confirmed signal explains its Manual Review tier."""
+        rec = _clear_record(score=90)
+        rec["signals"] = [{"signal_id": "S-1", "signal_state": "not_found"}]
+        assert _assign_tier(rec, 90, 75) == "Manual Review"
+        assert "No confirmed signals" in rec["tier_cap_reason"]
+
     def test_apply_exclusions_sets_needs_verification_tier(self):
         """End to end: a CLEAR record with evidence + an unconfirmed required signal is NV."""
         rec = _clear_record(score=90, specialty="OBGYN")

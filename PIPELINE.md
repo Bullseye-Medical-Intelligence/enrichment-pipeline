@@ -308,6 +308,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "exclusion_reason": null,
 
   "target_tier": "Bullseye",
+  "tier_cap_reason": "",
 
   "signals": [
     {
@@ -392,6 +393,8 @@ field.
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 
 **target_tier:** `"Bullseye"`, `"Needs Verification"`, `"Contender"`, `"Manual Review"`, or `"Excluded"` only (call-tier rank order, highest first: Bullseye > Needs Verification > Contender). `"Needs Verification"` is a CLEAR record that scored as a candidate but has an unconfirmed `verification_required`/must-have signal, or whose crawl evidence was thin (call to confirm before shipping). `"Contender"` is a solid-fit CLEAR record a notch below Bullseye. `"Manual Review"` is a CLEAR record with **zero confirmed evidence** (no `"yes"` signal and nothing inferred — e.g. a blocked or empty crawl): it is *not* a fit verdict, is kept out of the call queue and client exports, and waits for an operator to act. `"Excluded"` appears if and only if `exclusion_status == "EXCLUDED"`. (The Contender tier was formerly named "Watchlist".)
+
+**tier_cap_reason:** Operator-facing string explaining why `target_tier` landed **below Bullseye**, set by `_assign_tier`. Because tier (the must-have gate) and `bullseye_score` (breadth/strength of all signals) now answer different questions, a high-scoring record can be a Contender; this field names the binding constraint — which must-have signal was absent/not-found, a `cap_tier` signal, or a thin crawl — so the operator does not reverse-engineer the gap. `""` when the record is Bullseye, Excluded, or not-yet-enriched. Internal/operator-facing only; not part of client exports.
 
 **confidence_band:** `"High"`, `"Moderate"`, or `"Low"` — a qualitative band derived from `confidence_score` (`>= 65` High, `>= 45` Moderate, else Low; boundaries in `constants.py`). Client-facing surfaces show this band, never the numeric scores. The numeric `bullseye_score` / `fit_signal_score` / `confidence_score` remain in this internal record but are stripped from all client-facing output (PDF, HTML report, client CSVs, ZIP).
 

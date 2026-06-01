@@ -272,6 +272,9 @@
           {% if review.override_tier %}
           <span class="override-indicator" title="Analyst override">✎</span>
           {% endif %}
+          {% if record.tier_cap_reason and not review.override_tier %}
+          <span class="tier-cap-hint" title="{{ record.tier_cap_reason }}">ⓘ why not Bullseye?</span>
+          {% endif %}
           {% endif %}
         </td>
         <td>{{ record.bullseye_score | default("—") }}</td>
@@ -450,6 +453,12 @@
                   Original pipeline tier:
                   <strong>{{ record.target_tier | default("—") }}</strong>
                 </p>
+
+                {% if record.tier_cap_reason %}
+                <p class="tier-cap-reason small" style="margin:0 0 0.8em; padding:6px 8px; background:var(--amber-bg); border-left:3px solid #d97706; border-radius:4px; color:#92400e;">
+                  <strong>Why not Bullseye:</strong> {{ record.tier_cap_reason }}
+                </p>
+                {% endif %}
 
                 <div class="form-group">
                   <label>Analyst Note</label>
