@@ -1229,6 +1229,62 @@ async def enrich_all(
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
+@router.post("/runs/{run_id}/roster/delete")
+async def roster_delete(
+    run_id: str,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Remove selected records from an ingested roster before enrichment.
+
+    Accepts {"record_ids": [...]} JSON. Removes those records from
+    enriched_targets.json and decrements status.records_input. Only available
+    on ingested runs — once enrichment starts the roster is immutable.
+    Returns {"removed": N, "remaining": M}.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "ingested":
+        raise HTTPException(
+            status_code=409,
+            detail="Roster pruning is only available before enrichment starts",
+        )
+
+    body = await request.json()
+    ids_to_remove = set(body.get("record_ids") or [])
+    if not ids_to_remove:
+        raise HTTPException(status_code=422, detail="No record_ids provided")
+
+    run_directory = runs.run_dir(run_id)
+    enriched_path = run_directory / "enriched_targets.json"
+    if not enriched_path.exists():
+        raise HTTPException(status_code=409, detail="No roster file found for this run")
+
+    with open(enriched_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    records = record_adapter.normalize_records_payload(payload)
+    before = len(records)
+    records = [r for r in records if record_adapter.get_record_id(r) not in ids_to_remove]
+    removed = before - len(records)
+
+    if removed > 0:
+        if isinstance(payload, dict):
+            payload["records"] = records
+            payload["record_count"] = len(records)
+        else:
+            payload = records
+        reviews._atomic_write(enriched_path, payload)
+        runs.update_run_status(run_id, records_input=len(records))
+        logger.info(
+            "Roster pruned for run %s by %s: removed %d, %d remaining",
+            run_id, username, removed, len(records),
+        )
+
+    return {"removed": removed, "remaining": len(records)}
+
+
 @router.get("/runs/{run_id}/client-package")
 async def client_package(run_id: str, username: str = Depends(auth.require_session)):
     """Download a client deliverable ZIP for a completed, fully-reviewed run."""

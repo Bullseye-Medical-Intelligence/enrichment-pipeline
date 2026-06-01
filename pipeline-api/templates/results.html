@@ -14,6 +14,11 @@
   </div>
   <div class="header-actions">
     {% if is_ingested %}
+    <button id="delete-btn" class="btn btn-secondary" disabled
+            onclick="deleteSelected('{{ run_id }}')"
+            title="Remove checked records from the roster before enrichment — saves crawl and LLM budget">
+      Delete Selected (<span id="delete-count">0</span>)
+    </button>
     <form method="post" action="/runs/{{ run_id }}/enrich-all"
           style="display:inline-flex; align-items:center; gap:10px;"
           onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
@@ -252,7 +257,13 @@
           data-sort-qc="{{ review.qc_status }}"
           onclick="toggleDetail('{{ rid }}')"
           style="cursor:pointer">
+        {% if status.status == 'ingested' %}
+        <td style="text-align:center;" onclick="event.stopPropagation()">
+          <input type="checkbox" class="roster-cb" data-rid="{{ rid }}" onchange="updateDeleteCount()">
+        </td>
+        {% else %}
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
+        {% endif %}
         <td class="practice-cell">
           <strong>{{ record.practice_name | default("—") }}</strong>
           {% if _blocked %}
@@ -533,7 +544,7 @@
   <table class="data-table results-table" id="results-table">
     <thead>
       <tr>
-        <th></th>
+        <th style="width:2em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-cb" onclick="toggleSelectAll(this)" title="Select all">{% endif %}</th>
         <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
         <th class="sortable" onclick="sortRecords('location', this)">Location</th>
         <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
@@ -551,19 +562,22 @@
 </div>
 
 {% set excluded_records = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list %}
-{% if excluded_records and not is_ingested %}
+{% if excluded_records %}
 <div style="margin: 2em 0 0.5em; display:flex; align-items:center; gap:0.75em;">
   <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">
-    Excluded Records
+    {% if is_ingested %}Pre-Excluded Records{% else %}Excluded Records{% endif %}
   </h3>
   <span class="badge badge-tier-excluded" style="font-size:0.8em;">{{ excluded_records | length }}</span>
+  {% if is_ingested %}
+  <span style="font-size:0.8em; color:var(--text-muted,#888);">These were auto-excluded by specialty/geography rules and cost no tokens — but you can still delete them to clean up the roster.</span>
+  {% endif %}
 </div>
 <div class="card table-card">
   <div class="table-scroll">
   <table class="data-table" id="excluded-table">
     <thead>
       <tr>
-        <th></th>
+        <th style="width:2em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-excl-cb" onclick="toggleSelectAll(this, 'excl')" title="Select all pre-excluded">{% endif %}</th>
         <th>Practice</th>
         <th>Location</th>
         <th>Tier</th>
@@ -596,5 +610,50 @@ document.querySelectorAll('.override-tier-select').forEach(function(sel) {
     warn.style.display = (v && v !== 'excluded') ? '' : 'none';
   });
 });
+
+{% if is_ingested %}
+function updateDeleteCount() {
+  var n = document.querySelectorAll('.roster-cb:checked').length;
+  var countEl = document.getElementById('delete-count');
+  var btn = document.getElementById('delete-btn');
+  if (countEl) countEl.textContent = n;
+  if (btn) btn.disabled = (n === 0);
+}
+
+function toggleSelectAll(masterCb, scope) {
+  var cbs = scope === 'excl'
+    ? document.querySelectorAll('#excluded-table .roster-cb')
+    : document.querySelectorAll('#results-table .roster-cb');
+  cbs.forEach(function(cb) { cb.checked = masterCb.checked; });
+  updateDeleteCount();
+}
+
+function deleteSelected(runId) {
+  var checked = document.querySelectorAll('.roster-cb:checked');
+  var ids = Array.from(checked).map(function(cb) { return cb.dataset.rid; });
+  if (!ids.length) return;
+  if (!confirm('Remove ' + ids.length + ' record' + (ids.length === 1 ? '' : 's') + ' from the roster? This cannot be undone.')) return;
+  var btn = document.getElementById('delete-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Removing…'; }
+  fetch('/runs/' + runId + '/roster/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ record_ids: ids }),
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+  .then(function(result) {
+    if (result.ok) {
+      window.location.reload();
+    } else {
+      alert('Delete failed: ' + (result.data.detail || 'unknown error'));
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Delete Selected (<span id="delete-count">' + ids.length + '</span>)'; }
+    }
+  })
+  .catch(function(err) {
+    alert('Delete failed: ' + err);
+    if (btn) { btn.disabled = false; }
+  });
+}
+{% endif %}
 </script>
 {% endblock %}

@@ -287,3 +287,112 @@ def test_client_package_route_404_for_missing_run():
         # Authenticated, but the run does not exist → 404, not a 200 ZIP.
         r = client.get("/runs/RUN-20260527-143000-zzzz/client-package")
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Roster delete route
+# ---------------------------------------------------------------------------
+
+def _write_ingested_run(tmp_path, monkeypatch):
+    """Write a minimal ingested run (pre-enrichment roster) and point the API at it."""
+    import runs
+    import record_adapter
+    import reviews
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(runs, "OUTPUT_RUNS_PATH", runs_dir)
+
+    run_id = "RUN-20260601-120000"
+    run_d = runs_dir / run_id
+    run_d.mkdir()
+
+    records = [
+        {"record_id": "R-1", "practice_name": "Miami OB", "address_city": "Miami",
+         "address_state": "FL", "target_tier": "", "enrichment_status": "not_enriched",
+         "exclusion_status": "CLEAR"},
+        {"record_id": "R-2", "practice_name": "Tampa OB", "address_city": "Tampa",
+         "address_state": "FL", "target_tier": "", "enrichment_status": "not_enriched",
+         "exclusion_status": "CLEAR"},
+        {"record_id": "R-3", "practice_name": "Orlando OB", "address_city": "Orlando",
+         "address_state": "FL", "target_tier": "", "enrichment_status": "not_enriched",
+         "exclusion_status": "CLEAR"},
+    ]
+    payload = {"run_id": run_id, "generated_at": "2026-06-01T12:00:00Z",
+               "record_count": len(records), "records": records}
+    reviews._atomic_write(run_d / "enriched_targets.json", payload)
+
+    status = RunStatus(
+        run_id=run_id, project_id="p-001", source_type="outscraper",
+        input_filename="test.csv", status="ingested", created_at="2026-06-01T12:00:00Z",
+        operator="tester", records_input=len(records),
+    )
+    reviews._atomic_write(run_d / "status.json", status.model_dump())
+    return run_id, run_d
+
+
+def test_roster_delete_removes_records(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+
+    run_id, run_d = _write_ingested_run(tmp_path, monkeypatch)
+
+    with TestClient(main.app) as client:
+        client.post("/login", data={"username": "tester", "password": "secret-pw"})
+        r = client.post(
+            f"/runs/{run_id}/roster/delete",
+            json={"record_ids": ["R-1", "R-3"]},
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["removed"] == 2
+    assert body["remaining"] == 1
+
+    import record_adapter, json
+    with open(run_d / "enriched_targets.json") as f:
+        remaining = record_adapter.normalize_records_payload(json.load(f))
+    assert len(remaining) == 1
+    assert remaining[0]["record_id"] == "R-2"
+
+
+def test_roster_delete_rejects_non_ingested_run(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+    import runs, reviews
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    monkeypatch.setattr(runs, "OUTPUT_RUNS_PATH", runs_dir)
+
+    run_id = "RUN-20260601-130000"
+    run_d = runs_dir / run_id
+    run_d.mkdir()
+    status = RunStatus(
+        run_id=run_id, project_id="p-001", source_type="outscraper",
+        input_filename="test.csv", status="complete", created_at="2026-06-01T13:00:00Z",
+        operator="tester", records_input=3,
+    )
+    reviews._atomic_write(run_d / "status.json", status.model_dump())
+
+    with TestClient(main.app) as client:
+        client.post("/login", data={"username": "tester", "password": "secret-pw"})
+        r = client.post(
+            f"/runs/{run_id}/roster/delete",
+            json={"record_ids": ["R-1"]},
+        )
+
+    assert r.status_code == 409
+
+
+def test_roster_delete_rejects_empty_ids(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+
+    run_id, _ = _write_ingested_run(tmp_path, monkeypatch)
+
+    with TestClient(main.app) as client:
+        client.post("/login", data={"username": "tester", "password": "secret-pw"})
+        r = client.post(f"/runs/{run_id}/roster/delete", json={"record_ids": []})
+
+    assert r.status_code == 422
