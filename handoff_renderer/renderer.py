@@ -85,8 +85,11 @@ _jinja_env = _make_jinja_env()
 
 
 def _sorted_accounts(accounts: list[Account]) -> list[Account]:
-    """Sort by confidence HIGH > MEDIUM > LOW, stable within each level."""
-    return sorted(accounts, key=lambda a: _CONFIDENCE_ORDER[a.confidence])
+    """Sort by confidence HIGH > MEDIUM > LOW, then by internal_score descending."""
+    return sorted(accounts, key=lambda a: (
+        _CONFIDENCE_ORDER[a.confidence],
+        -(a.internal_score or 0),
+    ))
 
 
 def _format_date(d) -> str:

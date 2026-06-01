@@ -107,7 +107,9 @@ VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})
 OUTSCRAPER_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {"name", "phone"}
 )
-OUTSCRAPER_URL_COLUMNS: frozenset[str] = frozenset({"site", "website"})
+OUTSCRAPER_URL_COLUMNS: frozenset[str] = frozenset({
+    "site", "website", "website_url", "url", "web", "web_url", "website_address",
+})
 MANUAL_REQUIRED_COLUMNS: frozenset[str] = frozenset({"practice_name"})
 
 REQUIRED_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {

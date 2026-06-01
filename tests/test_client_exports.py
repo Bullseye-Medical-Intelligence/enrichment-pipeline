@@ -189,6 +189,37 @@ def test_contender_csv_empty_when_no_contender_records(tmp_path):
 # Route: requires a complete run
 # ---------------------------------------------------------------------------
 
+def test_rejected_bullseye_absent_from_handoff(tmp_path):
+    """A Bullseye record explicitly rejected by the analyst must not appear in the handoff."""
+    records = [
+        {"record_id": "T-OK", "practice_name": "Alpha Clinic",
+         "target_tier": "Bullseye", "bullseye_score": 88,
+         "exclusion_status": "CLEAR"},
+        {"record_id": "T-REJ", "practice_name": "Beta Clinic",
+         "target_tier": "Bullseye", "bullseye_score": 82,
+         "exclusion_status": "CLEAR"},
+    ]
+    reviews_map = {
+        "T-OK":  {"override_tier": None, "override_reason": None, "qc_status": "approved",
+                  "analyst_note": "", "reviewed_by": "t", "reviewed_at": "now"},
+        "T-REJ": {"override_tier": None, "override_reason": None, "qc_status": "rejected",
+                  "analyst_note": "Not a fit.", "reviewed_by": "t", "reviewed_at": "now"},
+    }
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+    (tmp_path / "project_config_snapshot.json").write_text(json.dumps({"project_id": "p"}))
+    (tmp_path / "icp_snapshot.json").write_text(json.dumps({"icp_id": "i", "name": "N", "version": "1", "signals": []}))
+
+    import sales_export
+    html = sales_export.build_sales_handoff("RUN-test", tmp_path, _status()).decode("utf-8")
+    assert "Alpha Clinic" in html       # approved Bullseye → present
+    assert "Beta Clinic" not in html    # rejected Bullseye → absent
+
+
+# ---------------------------------------------------------------------------
+# Route: requires a complete run
+# ---------------------------------------------------------------------------
+
 def test_client_package_route_requires_auth():
     from fastapi.testclient import TestClient
     import main

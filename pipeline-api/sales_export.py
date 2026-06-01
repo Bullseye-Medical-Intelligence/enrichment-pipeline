@@ -19,6 +19,7 @@ from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+import exports
 import icp_profiles
 import projects
 import record_adapter
@@ -109,8 +110,14 @@ def _build_handoff_run(
 
     accounts = []
     for rec in records:
-        tier_str = record_adapter.effective_tier(rec, all_reviews.get(record_adapter.get_record_id(rec), {}))
+        rec_id = record_adapter.get_record_id(rec)
+        review = all_reviews.get(rec_id, {})
+        tier_str = record_adapter.effective_tier(rec, review)
         if tier_str not in _CLIENT_TIERS:
+            continue
+        # Bullseye and Contender require analyst approval — rejected records must
+        # not appear in the handoff even though the run gate only checks for pending.
+        if tier_str in ("Bullseye", "Contender") and not exports.is_approved(rec, review):
             continue
         accounts.append(_record_to_account(rec, tier_str))
 

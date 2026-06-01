@@ -123,8 +123,7 @@
       "no_weight": -15,
       "not_found_weight": 0,
       "required_for_bullseye": false,
-      "source_type": "static_lookup",
-      "notes": "Applied downstream from a static state-law lookup. NOT scraped from the practice website. Practices in states with infertility insurance mandates face formulary and reimbursement scrutiny that adds procurement friction. Non-mandate states have fewer barriers to a direct purchase decision."
+      "notes": "State-law context. Practices in states with infertility insurance mandates face formulary and reimbursement scrutiny that adds procurement friction. Non-mandate states have fewer barriers to a direct purchase decision. Look for any mention of insurance acceptance or billing model on the site."
     }
   ]
 }

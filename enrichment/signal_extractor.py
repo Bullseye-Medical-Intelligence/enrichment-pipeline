@@ -83,6 +83,12 @@ def _build_signal_checklist(signals: list[dict]) -> str:
     """Format ICP signal definitions for insertion into the prompt."""
     lines = []
     for s in signals:
+        if s.get("source_type") == "static_lookup":
+            print(
+                f"    [WARN] Signal {s['signal_id']!r} has source_type=static_lookup, "
+                "which is not yet implemented. It will be evaluated against website "
+                "text instead. Remove source_type from the ICP profile to silence this warning."
+            )
         note = f" [{s['note']}]" if s.get("note") else ""
         lines.append(
             f"- signal_id: {s['signal_id']}\n"
