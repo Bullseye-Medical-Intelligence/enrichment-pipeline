@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEMI Intelligence Brief{% if specialty %} — {{ specialty }}{% endif %}</title>
+  <style>
+    :root {
+      --ink: #0a0a0a;
+      --surface: #f7f6f4;
+      --accent: #c84b2f;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #fff;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .page { max-width: 860px; margin: 0 auto; padding: 3em 2em; }
+
+    /* Header */
+    .brief-header {
+      border-bottom: 3px solid var(--ink);
+      padding-bottom: 1.5em;
+      margin-bottom: 2.5em;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1em;
+      flex-wrap: wrap;
+    }
+    .brief-wordmark {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 2.2em;
+      font-weight: 400;
+      letter-spacing: 0.05em;
+    }
+    .brief-tagline {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      font-weight: 600;
+      margin-top: 0.2em;
+    }
+    .brief-meta {
+      text-align: right;
+      font-size: 0.82em;
+      color: #666;
+      line-height: 1.7;
+    }
+
+    /* Methodology block */
+    .methodology {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 1.75em;
+      margin-bottom: 2.5em;
+    }
+    .eyebrow {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.6em;
+    }
+    .methodology h2 {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.2em;
+      font-weight: 400;
+      margin-bottom: 0.6em;
+    }
+    .methodology p { font-size: 0.88em; color: #444; margin-bottom: 1.2em; }
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1em;
+      margin-top: 0.5em;
+    }
+    .tier-cell { font-size: 0.84em; }
+    .tier-pill {
+      display: inline-block;
+      padding: 0.22em 0.9em;
+      border-radius: 100px;
+      font-size: 0.72em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.5em;
+    }
+    .pill-bullseye  { background: #0a0a0a; color: #f7f6f4; }
+    .pill-contender { background: #3b4a9e; color: #fff; }
+    .pill-excluded  { background: #c84b2f; color: #fff; }
+    .tier-cell p { color: #555; line-height: 1.5; }
+
+    /* Account card */
+    .account-section { margin-bottom: 2.5em; }
+    .account-section .eyebrow { margin-bottom: 0.5em; }
+    .account-card {
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 1.5em;
+      page-break-inside: avoid;
+    }
+    .account-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1em;
+      margin-bottom: 1.2em;
+      flex-wrap: wrap;
+    }
+    .account-name {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.2em;
+      font-weight: 400;
+    }
+    .account-detail {
+      font-size: 0.84em;
+      color: #666;
+      margin-top: 0.25em;
+      line-height: 1.5;
+    }
+    .account-detail a { color: #2563eb; text-decoration: none; }
+    .account-badges { display: flex; gap: 0.5em; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+    .conf-badge {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.22em 0.7em;
+      border-radius: 100px;
+      border: 1.5px solid;
+    }
+    .conf-high     { border-color: #2d6a4f; color: #2d6a4f; }
+    .conf-moderate { border-color: #d97706; color: #d97706; }
+    .conf-low      { border-color: #999; color: #999; }
+
+    /* Section divider within card */
+    .card-section { margin-top: 1em; }
+    .card-section-label {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      color: #888;
+      margin-bottom: 0.4em;
+    }
+
+    /* Signals */
+    .signal-list { display: flex; flex-direction: column; gap: 0.2em; }
+    .signal-item {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5em;
+      font-size: 0.87em;
+      color: #333;
+    }
+    .signal-icon-yes    { color: #2d6a4f; font-weight: 700; flex-shrink: 0; }
+    .signal-icon-no     { color: #c84b2f; flex-shrink: 0; }
+    .signal-icon-nf     { color: #999; flex-shrink: 0; }
+
+    /* Sales angle */
+    .angle-list { padding-left: 1.2em; display: flex; flex-direction: column; gap: 0.4em; }
+    .angle-list li { font-size: 0.87em; color: #333; }
+
+    /* Verify items */
+    .verify-list { display: flex; flex-direction: column; gap: 0.2em; }
+    .verify-item { font-size: 0.87em; color: #555; padding: 0.2em 0.6em; background: #fffbeb; border-left: 2px solid #d97706; border-radius: 0 4px 4px 0; }
+
+    /* Exclusion */
+    .exclusion-box {
+      background: #fef2ef;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      padding: 0.75em 1em;
+      font-size: 0.88em;
+      color: #7a2318;
+      margin-top: 0.25em;
+    }
+
+    /* Footer */
+    .brief-footer {
+      margin-top: 3em;
+      padding-top: 1.5em;
+      border-top: 1px solid #e0e0e0;
+      font-size: 0.78em;
+      color: #aaa;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      .tier-grid { grid-template-columns: 1fr; }
+      .brief-header { flex-direction: column; align-items: flex-start; }
+      .brief-meta { text-align: left; }
+    }
+    @media print {
+      .page { padding: 1em; }
+      .account-card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  {# ── Header ────────────────────────────────────────────────────────── #}
+  <div class="brief-header">
+    <div>
+      <div class="brief-wordmark">BEMI</div>
+      <div class="brief-tagline">Bullseye Medical Intelligence</div>
+    </div>
+    <div class="brief-meta">
+      {% if specialty %}Specialty: <strong>{{ specialty }}</strong><br>{% endif %}
+      {% if metro %}Territory: {{ metro }}<br>{% endif %}
+      {{ run_date }}<br>
+      Run: {{ run_id }}
+    </div>
+  </div>
+
+  {# ── Methodology ────────────────────────────────────────────────────── #}
+  <div class="methodology">
+    <div class="eyebrow">How We Rank Targets</div>
+    <h2>Scoring Methodology</h2>
+    <p>
+      Every account is evaluated against a structured ICP signal checklist drawn entirely from publicly
+      available web data. Each signal requires a direct textual anchor — no assumptions, no inferred
+      data. The result is a two-axis verdict: <strong>tier</strong> (the call priority) and
+      <strong>confidence band</strong> (the evidence depth). Internal numeric scores stay in the
+      data layer and are never included in client-facing output.
+    </p>
+    <div class="tier-grid">
+      <div class="tier-cell">
+        <div class="tier-pill pill-bullseye">Bullseye</div>
+        <p>All must-have signals confirmed. Highest-priority accounts with strong clinical and commercial fit. Ready for outreach.</p>
+      </div>
+      <div class="tier-cell">
+        <div class="tier-pill pill-contender">Contender</div>
+        <p>Solid fit with one or more unverified items. Worth calling, but a discovery question may shift the priority. Good for pipeline building.</p>
+      </div>
+      <div class="tier-cell">
+        <div class="tier-pill pill-excluded">Excluded</div>
+        <p>Disqualified by a structural rule before any enrichment spend. Excluded accounts are shown here so the decision logic is transparent.</p>
+      </div>
+    </div>
+  </div>
+
+  {# ── Bullseye example ───────────────────────────────────────────────── #}
+  {% if bullseye %}
+  <div class="account-section">
+    <div class="eyebrow">Bullseye Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">{{ bullseye.practice_name | default("—") }}</div>
+          <div class="account-detail">
+            {% if bullseye.address_city %}{{ bullseye.address_city }}{% if bullseye.address_state %}, {{ bullseye.address_state }}{% endif %}{% if bullseye.address_zip %} {{ bullseye.address_zip }}{% endif %}{% endif %}
+            {% if bullseye.website_url %}<br><a href="{{ bullseye.website_url }}">{{ bullseye.website_url }}</a>{% endif %}
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-bullseye">Bullseye</span>
+          {% if bullseye.confidence_band %}
+          <span class="conf-badge conf-{{ bullseye.confidence_band | lower }}">{{ bullseye.confidence_band }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% set _yes_signals = [] %}
+      {% if bullseye.signals %}
+      {% for sig in bullseye.signals if sig.signal_state == 'yes' and sig.positive_weight | default(0) | float > 0 %}
+      {% if _yes_signals.append(sig) %}{% endif %}
+      {% endfor %}
+      {% endif %}
+      {% if _yes_signals %}
+      <div class="card-section">
+        <div class="card-section-label">Confirmed Signals</div>
+        <div class="signal-list">
+          {% for sig in _yes_signals %}
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>{{ sig.signal_label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if bullseye.sales_angle %}
+      <div class="card-section">
+        <div class="card-section-label">Why This Account</div>
+        <ul class="angle-list">
+          {% for angle in bullseye.sales_angle %}
+          <li>{{ angle }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Contender example ──────────────────────────────────────────────── #}
+  {% if contender %}
+  <div class="account-section">
+    <div class="eyebrow">Contender Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">{{ contender.practice_name | default("—") }}</div>
+          <div class="account-detail">
+            {% if contender.address_city %}{{ contender.address_city }}{% if contender.address_state %}, {{ contender.address_state }}{% endif %}{% if contender.address_zip %} {{ contender.address_zip }}{% endif %}{% endif %}
+            {% if contender.website_url %}<br><a href="{{ contender.website_url }}">{{ contender.website_url }}</a>{% endif %}
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-contender">Contender</span>
+          {% if contender.confidence_band %}
+          <span class="conf-badge conf-{{ contender.confidence_band | lower }}">{{ contender.confidence_band }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% set _c_yes = [] %}{% set _c_no = [] %}
+      {% if contender.signals %}
+      {% for sig in contender.signals %}
+        {% if sig.signal_state == 'yes' and sig.positive_weight | default(0) | float > 0 %}{% if _c_yes.append(sig) %}{% endif %}
+        {% elif sig.signal_state == 'no' and sig.positive_weight | default(0) | float > 0 %}{% if _c_no.append(sig) %}{% endif %}
+        {% endif %}
+      {% endfor %}
+      {% endif %}
+      {% if _c_yes or _c_no %}
+      <div class="card-section">
+        <div class="card-section-label">Signals</div>
+        <div class="signal-list">
+          {% for sig in _c_yes %}
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>{{ sig.signal_label }}</span></div>
+          {% endfor %}
+          {% for sig in _c_no %}
+          <div class="signal-item"><span class="signal-icon-no">✗</span><span>{{ sig.signal_label }}</span></div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if contender.call_brief and contender.call_brief.missing_to_verify %}
+      <div class="card-section">
+        <div class="card-section-label">To Verify on Call</div>
+        <div class="verify-list">
+          {% for item in contender.call_brief.missing_to_verify %}
+          <div class="verify-item">{{ item }}</div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if contender.sales_angle %}
+      <div class="card-section">
+        <div class="card-section-label">Why This Account</div>
+        <ul class="angle-list">
+          {% for angle in contender.sales_angle %}
+          <li>{{ angle }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Excluded example ───────────────────────────────────────────────── #}
+  {% if excluded %}
+  <div class="account-section">
+    <div class="eyebrow">Excluded Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">{{ excluded.practice_name | default("—") }}</div>
+          <div class="account-detail">
+            {% if excluded.address_city %}{{ excluded.address_city }}{% if excluded.address_state %}, {{ excluded.address_state }}{% endif %}{% if excluded.address_zip %} {{ excluded.address_zip }}{% endif %}{% endif %}
+            {% if excluded.website_url %}<br><a href="{{ excluded.website_url }}">{{ excluded.website_url }}</a>{% endif %}
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-excluded">Excluded</span>
+        </div>
+      </div>
+
+      {% if excluded.exclusion_reason %}
+      <div class="card-section">
+        <div class="card-section-label">Exclusion Reason</div>
+        <div class="exclusion-box">{{ excluded.exclusion_reason }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Footer ─────────────────────────────────────────────────────────── #}
+  <div class="brief-footer">
+    Generated by BEMI (Bullseye Medical Intelligence) &nbsp;&middot;&nbsp; Run: {{ run_id }} &nbsp;&middot;&nbsp; {{ run_date }}<br>
+    Internal ranking data, numeric scores, and analyst notes are not included in this brief.
+    Tier verdicts and confidence bands are derived from publicly available web data only.
+  </div>
+
+</div>
+</body>
+</html>

@@ -36,12 +36,11 @@
     {% if status.status == "complete" %}
     {% if readiness and readiness.state == 'ready' %}
     <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
-    <a href="/runs/{{ run_id }}/download/sales-html" class="btn btn-secondary" title="Standalone sales handoff HTML — ready to share with the sales team">Sales HTML</a>
     {% else %}
-    {% set pending_title = readiness.pending_count ~ ' record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Complete labeling before downloading' %}
+    {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
     <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
-    <span class="btn btn-secondary" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Sales HTML</span>
     {% endif %}
+    <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate a prospect-facing methodology brief — select 1 Bullseye, 1 Contender, 1 Excluded">Sales Brief</button>
     {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
     {% if limited_count > 0 %}
     <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
@@ -172,19 +171,18 @@
 {% if readiness %}
 {% if readiness.state == "needs_review" %}
 <div class="alert alert-warning">
-  <strong>{{ readiness.pending_count }} record{{ "s" if readiness.pending_count != 1 }} still need review</strong>
-  before this package is ready to send. Scroll down to review them.
+  <strong>{{ readiness.pending_count }} Bullseye record{{ "s" if readiness.pending_count != 1 }} still need review</strong>
+  before the client package is ready. Contender records can be reviewed by the external sales team.
 </div>
 {% elif readiness.state == "no_approved" %}
 <div class="alert alert-warning">
-  <strong>No reviewed targets yet.</strong>
-  Review records below and mark your selections before exporting.
+  <strong>No Bullseye records reviewed yet.</strong>
+  Review Bullseye records below and mark them before exporting. Contender records do not block the package.
 </div>
 {% elif readiness.state == "ready" %}
 <div class="alert alert-success">
   <strong>Package ready.</strong>
-  {{ readiness.approved_count }} reviewed target{{ "s" if readiness.approved_count != 1 }}.
-  Download includes a branded PDF report for Bullseye accounts, plus CSVs for Bullseye and Contender accounts.
+  {{ readiness.approved_count }} Bullseye record{{ "s" if readiness.approved_count != 1 }} reviewed. Contender accounts will be reviewed by the sales team.
 </div>
 {% endif %}
 {% endif %}
@@ -231,7 +229,6 @@
   <span class="filter-sep">|</span>
   <button class="filter-btn" onclick="filterByQC('pending', this)">Pending Review</button>
   <button class="filter-btn" onclick="filterByQC('approved', this)">Reviewed</button>
-  <button class="filter-btn" onclick="filterByQC('rejected', this)">Rejected</button>
 </div>
 {% endif %}
 
@@ -284,7 +281,7 @@
         </td>
         <td>{{ record.bullseye_score | default("—") }}</td>
         <td>
-          <span class="badge badge-qc-{{ review.qc_status }}">{{ 'Reviewed' if review.qc_status == 'approved' else review.qc_status | title }}</span>
+          <span class="badge badge-qc-{{ review.qc_status }}">{{ 'Reviewed' if review.qc_status in ('approved', 'rejected') else review.qc_status | title }}</span>
         </td>
       </tr>
 
@@ -551,7 +548,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for record in records if record.exclusion_status != 'EXCLUDED' and record.displayed_tier != 'Excluded' %}
+      {% for record in records if record.exclusion_status != 'EXCLUDED' and record.displayed_tier != 'Excluded' and record.review.qc_status != 'rejected' %}
       {{ record_rows(record, run_id, status) }}
       {% endfor %}
     </tbody>
@@ -627,6 +624,94 @@
 </div>
 {% endif %}
 
+{# ── Rejected Records section ──────────────────────────────────────────── #}
+{% if not is_ingested and status.status == "complete" %}
+{% set _ns = namespace(rejected=[]) %}
+{% for r in records %}{% if r.review.qc_status == 'rejected' %}{% set _ns.rejected = _ns.rejected + [r] %}{% endif %}{% endfor %}
+{% if _ns.rejected %}
+<div id="rejected-section" style="margin-top:2em;">
+  <div style="margin-bottom:0.5em; display:flex; align-items:center; gap:0.75em;">
+    <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">Rejected Records</h3>
+    <span class="badge badge-qc-rejected" style="font-size:0.8em;">{{ _ns.rejected | length }}</span>
+    <span style="font-size:0.8em; color:var(--text-muted,#888);">Operator-reviewed and rejected. Expand any record to change its status and restore it to the main list.</span>
+  </div>
+  <div class="card table-card">
+    <div class="table-scroll">
+    <table class="data-table" id="rejected-table">
+      <thead>
+        <tr>
+          <th style="width:2em;"></th>
+          <th>Practice</th>
+          <th>Location</th>
+          <th>Tier</th>
+          <th>Score</th>
+          <th>QC</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in _ns.rejected %}
+        {{ record_rows(record, run_id, status) }}
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+{# ── Sales Brief selection modal ───────────────────────────────────────── #}
+{% if status.status == "complete" %}
+<div id="sales-brief-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; overflow:auto; padding:2em 1em;">
+  <div style="background:#fff; margin:0 auto; max-width:520px; border-radius:12px; padding:2em; position:relative; box-shadow:0 8px 40px rgba(0,0,0,0.18);">
+    <button onclick="closeSalesBriefModal()" aria-label="Close" style="position:absolute; top:1em; right:1em; background:none; border:none; font-size:1.5em; cursor:pointer; color:#888; line-height:1;">×</button>
+    <p class="eyebrow" style="font-size:0.72em; text-transform:uppercase; letter-spacing:0.12em; font-weight:600; color:var(--accent,#c84b2f); margin:0 0 0.3em;">Prospect Brief</p>
+    <h3 style="margin:0 0 0.4em; font-family:'Instrument Serif',Georgia,serif; font-size:1.4em; font-weight:400;">Generate Sales Brief</h3>
+    <p style="color:#666; font-size:0.88em; margin:0 0 1.5em; line-height:1.5;">Select one account from each tier. The brief shows your prospect how BEMI ranks targets — the methodology, the evidence, and the reasoning behind each classification.</p>
+
+    <div style="margin-bottom:1em;">
+      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Bullseye Account</label>
+      <select id="brief-bullseye-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
+        <option value="">— Select a Bullseye account —</option>
+        {% for r in records if r.displayed_tier == 'Bullseye' and r.review.qc_status != 'rejected' %}
+        <option value="{{ r.record_id }}">{{ r.practice_name | default('—') }}{% if r.address_city %} — {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}</option>
+        {% else %}
+        <option value="" disabled>No Bullseye records available</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="margin-bottom:1em;">
+      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Contender Account</label>
+      <select id="brief-contender-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
+        <option value="">— Select a Contender account —</option>
+        {% for r in records if r.displayed_tier == 'Contender' and r.review.qc_status != 'rejected' %}
+        <option value="{{ r.record_id }}">{{ r.practice_name | default('—') }}{% if r.address_city %} — {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}</option>
+        {% else %}
+        <option value="" disabled>No Contender records available</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="margin-bottom:1.5em;">
+      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Excluded Account</label>
+      <select id="brief-excluded-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
+        <option value="">— Select an Excluded account —</option>
+        {% for r in records if r.displayed_tier == 'Excluded' or r.exclusion_status == 'EXCLUDED' %}
+        <option value="{{ r.record_id }}">{{ r.practice_name | default('—') }}{% if r.address_city %} — {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}{% if r.exclusion_reason %} ({{ r.exclusion_reason[:60] }}{% if r.exclusion_reason | length > 60 %}…{% endif %}){% endif %}</option>
+        {% else %}
+        <option value="" disabled>No Excluded records available</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div id="brief-error" style="display:none; color:var(--accent,#c84b2f); font-size:0.85em; margin-bottom:1em; padding:0.5em 0.75em; background:#fef2ef; border-radius:6px;"></div>
+
+    <button class="btn btn-submit" onclick="generateSalesBrief('{{ run_id }}')">Generate Sales Brief</button>
+  </div>
+</div>
+{% endif %}
+
 <script>
 document.querySelectorAll('.override-tier-select').forEach(function(sel) {
   sel.addEventListener('change', function() {
@@ -636,6 +721,38 @@ document.querySelectorAll('.override-tier-select').forEach(function(sel) {
     warn.style.display = (v && v !== 'excluded') ? '' : 'none';
   });
 });
+
+function openSalesBriefModal() {
+  document.getElementById('sales-brief-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function closeSalesBriefModal() {
+  document.getElementById('sales-brief-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+function generateSalesBrief(runId) {
+  var bId = document.getElementById('brief-bullseye-id').value;
+  var cId = document.getElementById('brief-contender-id').value;
+  var eId = document.getElementById('brief-excluded-id').value;
+  var errEl = document.getElementById('brief-error');
+  if (!bId || !cId || !eId) {
+    errEl.textContent = 'Select one account from each tier before generating.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  window.location.href = '/runs/' + runId + '/download/sales-brief' +
+    '?bullseye_id=' + encodeURIComponent(bId) +
+    '&contender_id=' + encodeURIComponent(cId) +
+    '&excluded_id=' + encodeURIComponent(eId);
+}
+(function() {
+  var modal = document.getElementById('sales-brief-modal');
+  if (modal) {
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeSalesBriefModal(); });
+  }
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSalesBriefModal(); });
+})();
 
 {% if is_ingested %}
 function updateDeleteCount() {

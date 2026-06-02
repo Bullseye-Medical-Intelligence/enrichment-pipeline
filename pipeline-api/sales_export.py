@@ -24,6 +24,8 @@ from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 import exports
 import icp_profiles
 import projects
@@ -31,6 +33,13 @@ import record_adapter
 import reviews
 
 logger = logging.getLogger(__name__)
+
+# Jinja2 env for standalone templates (sales_brief.html) that don't extend base.html.
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+_brief_env = Environment(
+    loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+    autoescape=select_autoescape(["html"]),
+)
 
 # Add the repo root to sys.path so we can import the handoff_renderer module.
 # pipeline-api/ is one level below the repo root; __file__ is inside pipeline-api/.
@@ -79,6 +88,63 @@ def build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
         grouped_records=grouped,
         screened=len(records),
     )
+
+
+def build_sales_brief(
+    run_id: str,
+    run_directory: Path,
+    status,
+    bullseye_id: str,
+    contender_id: str,
+    excluded_id: str,
+) -> bytes:
+    """Build a prospect-facing methodology brief for 3 operator-selected accounts.
+
+    Renders a self-contained HTML document showing BEMI's ranking methodology
+    illustrated with one Bullseye, one Contender, and one Excluded account.
+    No internal numeric scores or analyst notes are included.
+    """
+    records = _load_records(run_directory)
+    project = projects.read_config_snapshot(run_directory) or {}
+    record_index = {record_adapter.get_record_id(r): r for r in records}
+
+    bullseye_rec = record_index.get(bullseye_id)
+    contender_rec = record_index.get(contender_id)
+    excluded_rec = record_index.get(excluded_id)
+
+    if not all([bullseye_rec, contender_rec, excluded_rec]):
+        missing = [
+            name for name, rec in [
+                ("bullseye_id", bullseye_rec),
+                ("contender_id", contender_rec),
+                ("excluded_id", excluded_rec),
+            ]
+            if not rec
+        ]
+        raise ValueError(f"Records not found for: {', '.join(missing)}")
+
+    run_date = _parse_run_date(status)
+    specialty = (
+        getattr(status, "target_specialty", None)
+        or project.get("target_specialty")
+        or ""
+    )
+    metro = _metro_label(status, project)
+
+    html_str = _brief_env.get_template("sales_brief.html").render(
+        run_id=run_id,
+        run_date=str(run_date),
+        specialty=specialty,
+        metro=metro,
+        bullseye=bullseye_rec,
+        contender=contender_rec,
+        excluded=excluded_rec,
+    )
+    logger.info(
+        "Built Sales Brief for run %s: bullseye=%s contender=%s excluded=%s (%d bytes)",
+        run_id, bullseye_id, contender_id, excluded_id, len(html_str),
+    )
+    return html_str.encode("utf-8")
 
 
 def _build_client_handoff_html(run_id: str, run_directory: Path, status) -> bytes:

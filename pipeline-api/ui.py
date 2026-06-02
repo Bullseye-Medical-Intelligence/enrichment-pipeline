@@ -1343,6 +1343,48 @@ async def download_sales_html(run_id: str, username: str = Depends(auth.require_
     )
 
 
+@router.get("/runs/{run_id}/download/sales-brief")
+async def download_sales_brief(
+    run_id: str,
+    bullseye_id: str = "",
+    contender_id: str = "",
+    excluded_id: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Generate a prospect-facing methodology brief for 3 operator-selected accounts.
+
+    Returns a self-contained HTML document showing BEMI's ranking methodology
+    illustrated with one Bullseye, one Contender, and one Excluded account.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(
+            status_code=425,
+            detail=f"Run '{run_id}' has not completed (current status: {status.status}).",
+        )
+    if not all([bullseye_id, contender_id, excluded_id]):
+        raise HTTPException(
+            status_code=422,
+            detail="bullseye_id, contender_id, and excluded_id are all required.",
+        )
+    run_directory = runs.run_dir(run_id)
+    html_bytes = sales_export.build_sales_brief(
+        run_id=run_id,
+        run_directory=run_directory,
+        status=status,
+        bullseye_id=bullseye_id,
+        contender_id=contender_id,
+        excluded_id=excluded_id,
+    )
+    return Response(
+        content=html_bytes,
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}_sales_brief.html"'},
+    )
+
+
 @router.get("/runs/{run_id}/download/manifest")
 async def download_manifest(run_id: str, username: str = Depends(auth.require_session)):
     """Download the internal run manifest (provenance summary) for a complete run.
@@ -1610,11 +1652,11 @@ def _friendly_error(raw: str | None) -> str | None:
 
 
 def _pending_review_count(run_id: str, run_directory: Path) -> int:
-    """Count Bullseye/Contender records still pending QC.
+    """Count Bullseye records still pending QC.
 
-    Only the client-shipped tiers require sign-off (same scope as
-    _compute_readiness). Needs Verification / Manual Review / Excluded never block
-    the client-package download — operators audit those ad hoc.
+    Only Bullseye requires operator sign-off before the client package ships.
+    Contender records can be reviewed by the external sales team and never block
+    the download. Needs Verification / Manual Review / Excluded are also exempt.
     """
     results_path = run_directory / "enriched_targets.json"
     if not results_path.exists():
@@ -1622,11 +1664,10 @@ def _pending_review_count(run_id: str, run_directory: Path) -> int:
     with open(results_path, "r", encoding="utf-8") as f:
         all_records = record_adapter.normalize_records_payload(json.load(f))
     all_reviews = reviews.get_reviews(run_id, run_directory)
-    _qc_required = {"bullseye", "contender"}
     pending = 0
     for r in all_records:
         review = all_reviews.get(record_adapter.get_record_id(r), {})
-        if record_adapter.displayed_tier(r, review).strip().lower() not in _qc_required:
+        if record_adapter.displayed_tier(r, review).strip().lower() != "bullseye":
             continue
         if review.get("qc_status", "pending") == "pending":
             pending += 1
@@ -1636,24 +1677,23 @@ def _pending_review_count(run_id: str, run_directory: Path) -> int:
 def _compute_readiness(merged_records: list) -> dict:
     """Compute client package readiness from the merged records list.
 
-    Only Bullseye and Contender records require QC sign-off — they are the tiers
-    that ship to the client. Needs Verification / Manual Review / Excluded never
-    block readiness; operators audit those ad hoc.
+    Only Bullseye records require operator QC sign-off. Contender records can be
+    reviewed by the external sales team and never block readiness. Needs
+    Verification / Manual Review / Excluded never block readiness either.
 
     Returns a dict with keys: state ('needs_review'|'no_approved'|'ready'),
     pending_count, approved_count.
     """
-    _qc_required = {"bullseye", "contender"}
-    qc_records = [
+    bullseye_records = [
         r for r in merged_records
-        if r.get("displayed_tier", "").lower() in _qc_required
+        if r.get("displayed_tier", "").lower() == "bullseye"
     ]
     pending = sum(
-        1 for r in qc_records
+        1 for r in bullseye_records
         if r.get("review", {}).get("qc_status", "pending") == "pending"
     )
     approved = sum(
-        1 for r in qc_records
+        1 for r in bullseye_records
         if r.get("review", {}).get("qc_status") == "approved"
     )
     if pending > 0:
