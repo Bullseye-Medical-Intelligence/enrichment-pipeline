@@ -3,7 +3,8 @@ client_exports.py
 Client deliverable package generation for a completed run.
 
 Builds an in-memory ZIP containing:
-  Executive_Target_Report.html  — branded self-contained HTML report
+  Executive_Target_Report.html  — branded self-contained HTML report (exec summary)
+  Bullseye_Target_Report.html   — per-account intelligence briefs for Bullseye tier
   Sales_Handoff.html            — rep-facing sales handoff (handoff_renderer)
   bullseye_accounts.csv         — Bullseye-tier approved records
   contender_accounts.csv        — Contender-tier approved records
@@ -74,10 +75,14 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
         approved, all_reviews,
         len(records), excluded_count,
     )
+    bullseye_cards_bytes = _build_bullseye_cards(
+        run_id, status, project, icp, approved, all_reviews, len(records), excluded_count,
+    )
     handoff_bytes = _build_sales_handoff(run_id, run_directory, status)
 
     files = {
         "Executive_Target_Report.html": report_bytes,
+        "Bullseye_Target_Report.html": bullseye_cards_bytes,
         "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,
         "contender_accounts.csv": contender_csv,
@@ -187,6 +192,34 @@ def _build_executive_report(
     except Exception as exc:
         logger.exception("Executive report generation failed for run %s; returning error page", run_id)
         return _error_html(f"Executive Target Report generation failed for run {run_id}", exc)
+
+
+def _build_bullseye_cards(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    approved: list[dict],
+    all_reviews: dict,
+    screened: int,
+    excluded_count: int,
+) -> bytes:
+    """Render the Bullseye Target Report (per-account cards) HTML; return UTF-8 bytes."""
+    try:
+        from reports import pdf_report
+        return pdf_report.build_bullseye_cards_html(
+            run_id=run_id,
+            status=status,
+            project=project,
+            icp=icp,
+            approved_records=approved,
+            all_reviews=all_reviews,
+            screened=screened,
+            excluded_count=excluded_count,
+        )
+    except Exception as exc:
+        logger.exception("Bullseye cards generation failed for run %s", run_id)
+        return _error_html("Bullseye Target Report generation failed", exc)
 
 
 def _build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:

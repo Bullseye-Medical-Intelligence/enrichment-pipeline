@@ -96,6 +96,11 @@ def validate_icp_profile(data: dict) -> None:
         for field in _REQUIRED_SIGNAL_FIELDS:
             if field not in signal:
                 raise ValueError(f"ICP signal #{i + 1} is missing '{field}'.")
+        if not signal.get("prompt_instruction"):
+            raise ValueError(
+                f"ICP signal #{i + 1} ({signal.get('signal_id', '?')}) "
+                f"'prompt_instruction' must be a non-empty string."
+            )
         if not isinstance(signal["positive_weight"], (int, float)) or isinstance(
             signal["positive_weight"], bool
         ):

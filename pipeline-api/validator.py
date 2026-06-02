@@ -146,9 +146,10 @@ def _validate_columns(fieldnames: list[str], source_type: str) -> None:
             f"{sorted(missing)}"
         )
     if source_type == "outscraper" and not (OUTSCRAPER_URL_COLUMNS & actual):
+        accepted = ", ".join(sorted(OUTSCRAPER_URL_COLUMNS))
         raise ValueError(
-            "CSV is missing a website URL column for source 'outscraper'. "
-            "Include either 'site' or 'website'."
+            f"CSV is missing a website URL column for source 'outscraper'. "
+            f"Accepted column names: {accepted}."
         )
 
 
@@ -187,7 +188,7 @@ _FUZZY_MAX_ROWS = 500   # skip fuzzy pass on very large files to stay fast
 def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> dict:
     """Summarize a parsed CSV: importable count, duplicates, and similar-name pairs."""
     name_cols = ("name", "practice_name")
-    url_cols = ("site", "website", "website_url")
+    url_cols = tuple(OUTSCRAPER_URL_COLUMNS)
     state_cols = ("state", "address_state")
 
     seen_urls: dict[str, int] = {}          # url -> first_row number (1-based, header=1)

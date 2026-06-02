@@ -29,6 +29,7 @@ from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
     "Executive_Target_Report.html",
+    "Bullseye_Target_Report.html",
     "Sales_Handoff.html",
     "bullseye_accounts.csv",
     "contender_accounts.csv",
@@ -179,6 +180,56 @@ def test_executive_report_present_and_not_empty(tmp_path):
     # Self-contained HTML report (not a WeasyPrint PDF, not an error page).
     assert "<html" in report.lower()
     assert "generation failed" not in report.lower()
+
+
+def test_hidden_columns_absent_from_client_csv(tmp_path):
+    """Hidden internal fields must not appear in any client-facing CSV."""
+    records = [
+        {
+            "record_id": "T-H1",
+            "practice_name": "Hidden Field Clinic",
+            "target_tier": "Bullseye",
+            "exclusion_status": "CLEAR",
+            "bullseye_score": 90,
+            "fit_signal_score": 85,
+            "confidence_score": 88,
+            "fit_confidence_status": "high",
+            "llm_model_used": "claude-sonnet-4-6",
+            "llm_prompt_version": "v2.1",
+            "raw_input": "raw csv row text here",
+        }
+    ]
+    reviews_map = {
+        "T-H1": {"override_tier": None, "override_reason": None, "qc_status": "approved",
+                 "analyst_note": "", "reviewed_by": "t", "reviewed_at": "now"},
+    }
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+    (tmp_path / "project_config_snapshot.json").write_text(json.dumps({
+        "project_id": "p", "client_name": "C", "target_specialty": "OBGYN",
+        "target_geography": ["TX"], "icp_profile_id": "icp",
+    }))
+    (tmp_path / "icp_snapshot.json").write_text(json.dumps({
+        "icp_id": "icp", "name": "ICP", "version": "1.0",
+        "signals": [{"signal_id": "S-1", "signal_label": "x",
+                     "prompt_instruction": "y", "positive_weight": 10}],
+    }))
+
+    hidden = {"bullseye_score", "fit_signal_score", "confidence_score",
+              "fit_confidence_status", "llm_model_used", "llm_prompt_version", "raw_input"}
+
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    import csv as csv_mod
+    with zipfile.ZipFile(buf) as zf:
+        for csv_name in ("bullseye_accounts.csv", "contender_accounts.csv", "excluded_targets.csv"):
+            content = zf.read(csv_name).decode("utf-8")
+            if not content.strip():
+                continue
+            dr = csv_mod.DictReader(io.StringIO(content))
+            fieldnames = dr.fieldnames or []
+            for field in hidden:
+                assert field not in fieldnames, \
+                    f"Internal field '{field}' leaked into client CSV '{csv_name}'"
 
 
 def test_contender_csv_empty_when_no_contender_records(tmp_path):

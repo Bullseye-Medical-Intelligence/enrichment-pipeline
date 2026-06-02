@@ -565,12 +565,14 @@ def _write_single_record_csv(scratch_dir: Path, record: dict, website_url: str) 
     import csv
     import io
 
-    fieldnames = ["practice_name", "website_url", "phone",
-                  "address_city", "address_state", "address_zip", "specialty"]
+    fieldnames = ["id", "practice_name", "website_url", "phone",
+                  "address_city", "address_state", "address_zip", "specialty",
+                  "npi_optional"]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerow({
+        "id": record.get("id") or record.get("record_id") or "",
         "practice_name": record.get("practice_name", ""),
         "website_url": website_url,
         "phone": record.get("phone", ""),
@@ -578,6 +580,7 @@ def _write_single_record_csv(scratch_dir: Path, record: dict, website_url: str) 
         "address_state": record.get("address_state", ""),
         "address_zip": record.get("address_zip", ""),
         "specialty": record.get("specialty", ""),
+        "npi_optional": record.get("npi_optional") or record.get("npi") or "",
     })
     input_path = scratch_dir / "input.csv"
     input_path.write_bytes(buf.getvalue().encode("utf-8"))
