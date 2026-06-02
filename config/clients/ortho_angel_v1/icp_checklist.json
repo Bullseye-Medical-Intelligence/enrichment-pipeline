@@ -1,0 +1,138 @@
+{
+  "version": "ortho-angel-v1",
+  "signals": [
+    {
+      "signal_id": "S-OA-001",
+      "signal_label": "Clear aligners offered",
+      "prompt_instruction": "Does this practice explicitly list clear aligner treatment (any brand) as a service offered on their website?",
+      "positive_weight": 35,
+      "required_for_bullseye": true,
+      "note": "Primary clinical-fit gate. A 'yes' is required for Bullseye. Confirmed 'no' caps at Contender; not_found caps at Needs Verification."
+    },
+    {
+      "signal_id": "S-OA-002",
+      "signal_label": "Intraoral scanner present",
+      "prompt_instruction": "Does this practice's website name an intraoral scanner — iTero, 3Shape Trios, Primescan, or Medit — as equipment they use?",
+      "positive_weight": 28,
+      "note": "Digital-readiness signal. Angel Aligner workflows are fully digital; scanner presence confirms compatibility. No penalty for absence (not_found is neutral)."
+    },
+    {
+      "signal_id": "S-OA-003",
+      "signal_label": "Patient financing visible",
+      "prompt_instruction": "Does this practice's website explicitly mention patient financing, payment plans, or third-party financing partners such as CareCredit, LendingClub, or similar?",
+      "positive_weight": 22,
+      "note": "Value-tier consult-capture signal. Financing visibility indicates the practice actively converts cost-sensitive patients — Angel's core margin argument lands here."
+    },
+    {
+      "signal_id": "S-OA-004",
+      "signal_label": "Treats adults",
+      "prompt_instruction": "Does this practice explicitly list adult orthodontic treatment or show messaging directed at adult patients seeking braces or aligners?",
+      "positive_weight": 15,
+      "note": "Adult aligner market. The majority of Angel's addressable consult volume is adult cash-pay."
+    },
+    {
+      "signal_id": "S-OA-005",
+      "signal_label": "Independent practice",
+      "prompt_instruction": "Does this appear to be an independently owned orthodontic practice — not part of a DSO, not hospital-owned, and not affiliated with a dental school?",
+      "positive_weight": 10,
+      "note": "THE WEDGE. Independence means direct budget authority, faster device adoption, and no committee purchasing layer."
+    },
+    {
+      "signal_id": "S-OA-006",
+      "signal_label": "Invisalign high-tier lock",
+      "prompt_instruction": "Does this practice's website explicitly display or state an Invisalign Diamond, Diamond Plus, or Top 1% provider badge or tier designation?",
+      "positive_weight": 0,
+      "cap_tier": "Contender",
+      "note": "COMPETITIVE CONTEXT — caps tier at Contender. Does NOT reduce clinical fit score. High-tier Align badge indicates deep switching resistance; sales angle shifts from direct replacement to dual-brand positioning for price-sensitive and cash-pay consults. # CONFIRM: 2026-06-02 — 'switching_resistance' is not a schema field; cap_tier: Contender is the routing mechanism. Context surfaced via tier_cap_reason and sales_angle."
+    },
+    {
+      "signal_id": "S-OA-007",
+      "signal_label": "DSO corporate buyer",
+      "prompt_instruction": "Does this practice's website or any named affiliation identify it as part of a Dental Service Organization (DSO) or corporate dental group?",
+      "positive_weight": 0,
+      "cap_tier": "Contender",
+      "note": "ROUTING FLAG — not a hard exclusion. Caps tier at Contender; buying authority sits at corporate level, not the individual office. Per Decision 2 default: route to corporate procurement, not Excluded. # CONFIRM: 2026-06-02 — 'buying_authority: corporate' is not a schema field; context is surfaced via tier_cap_reason and sales_angle."
+    },
+    {
+      "signal_id": "S-OA-008",
+      "signal_label": "General dentist only",
+      "prompt_instruction": "Does this practice appear to offer only general dentistry with no orthodontic specialty — no mention of braces, clear aligners, orthodontist on staff, or orthodontic credentials?",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "Hard exclusion for V1 per Decision 3 default: hard-gate to orthodontic specialty. # CONFIRM: 2026-06-02 — Relaxable flag for future GP channel: add 'general_dentist_gate_active' to run_config when GP expansion is approved."
+    },
+    {
+      "signal_id": "S-OA-009",
+      "signal_label": "Hospital-employed orthodontist",
+      "prompt_instruction": "Is this orthodontic practice part of a hospital outpatient department or is the orthodontist listed as a hospital-employed provider?",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "Hard exclusion. Hospital procurement cycles and committee-based purchasing make device adoption impractical within a commercial engagement timeline."
+    },
+    {
+      "signal_id": "S-OA-010",
+      "signal_label": "Angel Aligner already provider",
+      "prompt_instruction": "Does this practice explicitly identify itself as an Angel Aligner or Angelalign Technology provider or partner?",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "Hard exclusion for new-logo acquisition per Decision 4 default. # CONFIRM: 2026-06-02 — If upsell campaign is needed, build as a separate ICP tier rather than modifying this flag."
+    },
+    {
+      "signal_id": "S-OA-011",
+      "signal_label": "Academic institution affiliated",
+      "prompt_instruction": "Is this practice affiliated with a dental school, orthodontic residency program, or academic medical center?",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "Hard exclusion. Academic procurement structures, teaching mission, and resident supervision make commercial device contracts impractical."
+    },
+    {
+      "signal_id": "S-OA-012",
+      "signal_label": "Invisalign offered",
+      "prompt_instruction": "Does this practice explicitly list Invisalign as an offered treatment option?",
+      "positive_weight": 0,
+      "note": "Contextual capture — existing aligner experience. Invisalign users understand digital workflows; sales angle focuses on margin differential and Angel lab-fee savings (~$1,000 per case on comparable outcomes). Does not affect fit score."
+    },
+    {
+      "signal_id": "S-OA-013",
+      "signal_label": "Competing aligner brands listed",
+      "prompt_instruction": "Does this practice list any clear aligner brands other than Invisalign — such as ClearCorrect, Spark, Reveal, or SureSmile — as offered treatments?",
+      "positive_weight": 0,
+      "note": "Contextual capture — multi-brand aligner presence is the lowest-friction adoption signal for Angel. A practice already stocking multiple brands is unlikely to resist adding Angel for cost-sensitive cases."
+    },
+    {
+      "signal_id": "S-OA-014",
+      "signal_label": "Complex case capability",
+      "prompt_instruction": "Does this practice's website explicitly list surgical orthodontics, Class II or Class III correction, extraction cases, or mandibular advancement as case types they treat?",
+      "positive_weight": 0,
+      "note": "Contextual capture — maps to Angel Pro and A6 Mandibular Advancement product lines."
+    },
+    {
+      "signal_id": "S-OA-015",
+      "signal_label": "Treats teens and adolescents",
+      "prompt_instruction": "Does this practice explicitly list teen or adolescent orthodontic treatment as a service?",
+      "positive_weight": 0,
+      "note": "Contextual capture — teen aligner market and Angel Aligner teen product line considerations."
+    },
+    {
+      "signal_id": "S-OA-016",
+      "signal_label": "Treats children (interceptive)",
+      "prompt_instruction": "Does this practice explicitly list Phase 1 orthodontics, interceptive orthodontic treatment, or early orthodontic care for children?",
+      "positive_weight": 0,
+      "note": "Contextual capture — maps to Angel KiD and angelHook product lines."
+    },
+    {
+      "signal_id": "S-OA-017",
+      "signal_label": "Markets aligners actively",
+      "prompt_instruction": "Does this practice appear to actively market clear aligners — through dedicated aligner landing pages, before/after aligner case galleries, or aligner-specific call-to-action messaging?",
+      "positive_weight": 0,
+      "note": "Contextual capture — active aligner marketing signals high patient demand and openness to expanding the aligner product offering."
+    },
+    {
+      "signal_id": "S-OA-018",
+      "signal_label": "Aligner brand mentioned in reviews",
+      "prompt_instruction": "Do patient reviews on this site mention a specific clear aligner brand by name?",
+      "positive_weight": 0,
+      "note": "Contextual capture — review mentions confirm active aligner use in clinical practice, independent of website marketing claims."
+    }
+  ]
+}

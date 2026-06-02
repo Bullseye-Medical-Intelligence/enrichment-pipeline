@@ -36,9 +36,11 @@ For each signal, determine:
 - confidence: "high" = direct explicit text, word-for-word or near-verbatim; "medium" = clearly implied by a specific passage in the text; "low" = weak or indirect hint — use "not_found" instead when unsure
 
 After evaluating signals, generate:
-1. sales_angle: 3-5 suggested angles that help a rep prepare, written about the practice in the third person as observations and recommended directions. These support the rep's own judgment; they are not a script to read aloud. Be specific to what you found on the site. Never write in the first person and never put words in the rep's mouth.
+1. sales_angle: 3-5 suggested angles that help a rep prepare, written about the practice in the third person as observations about what was found. Operators use these to review and categorize the account — they are analytical notes, not rep scripts. Every bullet must describe what the PRACTICE does or is, never what the rep should say or do.
+   BAD (first person / rep script): "I noticed they offer Invisalign and we could pitch our lower lab fees." | "You should mention that their competitor down the street uses our product."
+   GOOD (third-person observation): "The practice lists Invisalign alongside ClearCorrect, indicating multi-brand aligner openness — lowest-friction entry point for Angel." | "Independent single-location practice with direct budget authority; no DSO or hospital procurement layer."
 2. call_brief: a short rep preparation block with exactly these three fields:
-   - opening_line: a suggested direction for opening the call, phrased as guidance to the rep (e.g. "Open by referencing their listed service and how peers streamline that workflow"), grounded in a specific service or fact observed on the site. Do not write a verbatim first-person script.
+   - opening_line: a suggested direction for opening the call, phrased as third-person guidance to the rep (e.g. "Open by referencing their active aligner marketing and how peers are expanding that with a lower-cost option"), grounded in a specific service or fact observed on the site. Do not write a first-person script ("I noticed...", "I wanted to reach out because...", "We offer..."). The rep will rephrase this in their own voice — give them the angle, not the words.
    - likely_objection: one sentence naming the most likely objection this practice would raise.
    - discovery_question: one open question that would advance the conversation.
    - hours_of_operation: brief string of office hours if stated on the site (e.g. "Mon-Fri 8am-5pm"), or empty string if not found.
@@ -80,7 +82,8 @@ CRITICAL RULES:
 - When in doubt between "yes" and "not_found", use "not_found". False negatives are recoverable; false positives waste a rep's time.
 - Use "no" ONLY when the website contains an explicit contradiction or statement of absence (e.g. "we do not offer X", "not available here"). Absence of a service from a page is "not_found", not "no".
 - Do not invent or assume information not present in the website text
-- sales_angle points and the opening_line must be written as third-person suggestions that support the rep's judgment, never as a first-person script ("I noticed...", "I wanted to...") and never words for the rep to read verbatim
+- sales_angle bullets MUST be third-person observations about the practice ("The practice lists...", "Independent ownership means...", "Site shows active aligner marketing..."). NEVER first-person ("I noticed...", "I wanted to...", "We could...", "You should..."). NEVER second-person to the rep. Every bullet is an analyst observation, not a call script.
+- opening_line MUST be phrased as rep guidance describing the angle ("Open by referencing X", "Lead with Y angle"), never as a first-person sentence the rep would read verbatim
 - call_brief opening_line, likely_objection, discovery_question must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption; hours_of_operation is a short factual string or empty string
 - exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "rei_on_staff", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]
 - If no exclusions apply, exclusion_triggers must be an empty list []
