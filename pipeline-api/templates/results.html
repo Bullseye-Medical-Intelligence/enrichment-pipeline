@@ -517,10 +517,11 @@
                     Save
                   </button>
                   <span class="save-status" id="save-status-{{ rid }}"></span>
-                  <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
+                  <form method="post"
+                        action="/runs/{{ run_id }}/records/{{ rid }}/{% if record.exclusion_status == 'EXCLUDED' %}re-enrich{% else %}recrawl{% endif %}"
                         class="recrawl-form" style="display:inline; margin-left:0.5em;">
                     <button type="submit" class="btn btn-sm btn-secondary"
-                            title="Re-crawl this record and re-run enrichment">
+                            title="{% if record.exclusion_status == 'EXCLUDED' %}Re-enrich this record, bypassing structural exclusion filters{% else %}Re-crawl this record and re-run enrichment{% endif %}">
                       ↺ Re-crawl
                     </button>
                   </form>
