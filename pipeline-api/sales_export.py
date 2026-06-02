@@ -136,9 +136,9 @@ def build_sales_brief(
         run_date=str(run_date),
         specialty=specialty,
         metro=metro,
-        bullseye=bullseye_rec,
-        contender=contender_rec,
-        excluded=excluded_rec,
+        bullseye=_sanitize_sales_angles(bullseye_rec),
+        contender=_sanitize_sales_angles(contender_rec),
+        excluded=_sanitize_sales_angles(excluded_rec),
     )
     logger.info(
         "Built Sales Brief for run %s: bullseye=%s contender=%s excluded=%s (%d bytes)",
@@ -390,3 +390,35 @@ def _coerce_list(value) -> list[str]:
     if isinstance(value, list):
         return [str(v) for v in value if v]
     return [str(value)]
+
+
+# Phrases that betray first-person or second-person framing in stored sales angles.
+# Matched case-insensitively at the start of a bullet or anywhere in the text.
+_FIRST_PERSON_MARKERS = (
+    "i noticed", "i wanted", "i see", "i found", "i recommend",
+    "we could", "we offer", "we can", "we should",
+    "you should", "you could", "you can", "you might",
+    "our product", "our solution", "our team",
+)
+
+
+def _is_first_person_angle(text: str) -> bool:
+    """Return True if the angle text contains first- or second-person framing."""
+    lower = text.lower()
+    return any(marker in lower for marker in _FIRST_PERSON_MARKERS)
+
+
+def _sanitize_sales_angles(record: dict) -> dict:
+    """Return a shallow copy of the record with first-person sales angles stripped.
+
+    Angles that slip through old prompt versions are removed rather than displayed.
+    Third-person angles are kept unchanged.
+    """
+    angles = _coerce_list(record.get("sales_angle"))
+    clean = [a for a in angles if not _is_first_person_angle(a)]
+    if len(clean) == len(angles):
+        return record  # nothing to strip, return original
+    import copy
+    out = copy.copy(record)
+    out["sales_angle"] = clean
+    return out
