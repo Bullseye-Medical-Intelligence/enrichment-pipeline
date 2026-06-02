@@ -21,13 +21,18 @@ logger = logging.getLogger(__name__)
 # it is not picked up by the scalar-field column scan).
 _BRIEF_COLUMNS = ["why_contact"]
 
-# Numeric scores are internal-only. Client-facing exports carry the qualitative
-# confidence_band and the tier, never the raw fit/confidence/bullseye numbers.
+# Internal-only columns stripped from every client-facing CSV export.
+# Numeric scores: qualitative tier + confidence_band are sufficient for CRM import.
+# Pipeline internals: llm_model_used, llm_prompt_version, raw_input are not
+# meaningful to the sales team and should never appear in client deliverables.
 _HIDDEN_SCORE_COLUMNS = {
     "bullseye_score",
     "fit_signal_score",
     "confidence_score",
     "fit_confidence_status",
+    "llm_model_used",
+    "llm_prompt_version",
+    "raw_input",
 }
 
 # Review-overlay columns appended to every export row
