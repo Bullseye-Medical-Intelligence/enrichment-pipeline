@@ -517,6 +517,13 @@
                     Save
                   </button>
                   <span class="save-status" id="save-status-{{ rid }}"></span>
+                  <form method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
+                        class="recrawl-form" style="display:inline; margin-left:0.5em;">
+                    <button type="submit" class="btn btn-sm btn-secondary"
+                            title="Re-crawl this record and re-run enrichment">
+                      ↺ Re-crawl
+                    </button>
+                  </form>
                 </div>
 
                 {% if review.reviewed_by %}
@@ -741,6 +748,7 @@ function generateSalesBrief(runId) {
     return;
   }
   errEl.style.display = 'none';
+  closeSalesBriefModal();
   window.location.href = '/runs/' + runId + '/download/sales-brief' +
     '?bullseye_id=' + encodeURIComponent(bId) +
     '&contender_id=' + encodeURIComponent(cId) +

@@ -70,18 +70,12 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     contender_csv = exports.build_contender_csv(run_id, run_directory, records, all_reviews).getvalue()
     excluded_csv = exports.build_excluded_csv(run_id, run_directory, records, all_reviews).getvalue()
 
-    report_bytes = _build_executive_report(
-        run_id, status, project, icp,
-        approved, all_reviews,
-        len(records), excluded_count,
-    )
     bullseye_cards_bytes = _build_bullseye_cards(
         run_id, status, project, icp, approved, all_reviews, len(records), excluded_count,
     )
     handoff_bytes = _build_sales_handoff(run_id, run_directory, status)
 
     files = {
-        "Executive_Target_Report.html": report_bytes,
         "Bullseye_Target_Report.html": bullseye_cards_bytes,
         "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,
@@ -164,34 +158,6 @@ def _error_html(title: str, exc: Exception) -> bytes:
         f"<p>Please contact the operations team.</p>"
         f"</body></html>"
     ).encode("utf-8")
-
-
-def _build_executive_report(
-    run_id: str,
-    status,
-    project: dict,
-    icp: dict,
-    approved: list[dict],
-    all_reviews: dict,
-    screened: int,
-    excluded_count: int,
-) -> bytes:
-    """Render the Executive Target Report HTML; return UTF-8 bytes."""
-    try:
-        from reports import pdf_report
-        return pdf_report.build_executive_report_html(
-            run_id=run_id,
-            status=status,
-            project=project,
-            icp=icp,
-            approved_records=approved,
-            all_reviews=all_reviews,
-            screened=screened,
-            excluded_count=excluded_count,
-        )
-    except Exception as exc:
-        logger.exception("Executive report generation failed for run %s; returning error page", run_id)
-        return _error_html(f"Executive Target Report generation failed for run {run_id}", exc)
 
 
 def _build_bullseye_cards(

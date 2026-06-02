@@ -228,10 +228,7 @@ function saveReview(runId, recordId) {
       _updateRowBadges(recordId, payload.override_tier, qcStatus);
       /* collapse the detail row after a brief pause so the analyst can see the confirmation */
       setTimeout(function() {
-        var detail = document.getElementById('detail-' + recordId);
-        if (detail && detail.style.display !== 'none') {
-          toggleDetail(recordId);
-        }
+        window.location.reload();
       }, 900);
     } else {
       var msg = (result.data && result.data.detail) || 'Save failed.';
