@@ -136,9 +136,10 @@
 
               {# Sales angles + scores #}
               <div class="detail-section">
-                {% if record.sales_angle %}
+                {% set _angles = record.sales_angle | clean_angles %}
+                {% if _angles %}
                 <h4>Sales Angles</h4>
-                <ul class="sales-list">{% for angle in record.sales_angle %}<li>{{ angle }}</li>{% endfor %}</ul>
+                <ul class="sales-list">{% for angle in _angles %}<li>{{ angle }}</li>{% endfor %}</ul>
                 {% endif %}
 
                 <h4>Classification</h4>
