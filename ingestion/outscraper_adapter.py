@@ -86,6 +86,7 @@ SPECIALTY_KEYWORD_MAP = {
     "Urology": ["urol"],
     "Dermatology": ["dermatol"],
     "Cardiology": ["cardiolog"],
+    "Orthodontics": ["orthodont"],
     "Orthopedics": ["orthoped", "orthopaed"],
     "Internal Medicine": ["internal medicine"],
     "Family Medicine": ["family medicine", "family practice"],
