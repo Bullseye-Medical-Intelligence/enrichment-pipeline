@@ -88,6 +88,7 @@ SPECIALTY_KEYWORD_MAP = {
     "Cardiology": ["cardiolog"],
     "Orthodontics": ["orthodont"],
     "Orthopedics": ["orthoped", "orthopaed"],
+    "Geriatric Medicine": ["geriatric medicine", "geriatrics", "geriatric"],
     "Internal Medicine": ["internal medicine"],
     "Family Medicine": ["family medicine", "family practice"],
 }
@@ -118,7 +119,7 @@ def _parse_full_address(full_address: str) -> dict:
 
     # Match "City, ST 12345", "City, ST", or "City, Texas" — zip is optional,
     # state is 2–20 letters (handles both abbreviations and full names).
-    pattern = r"([A-Za-z][A-Za-z\s\.]+?),\s*([A-Za-z]{2,20})(?:\s+(\d{5}(?:-\d{4})?))?"
+    pattern = r"([A-Za-z][A-Za-z\s\.]+?),\s*([A-Za-z]{2,20})(?:\s+(\d{5}(?:-\d{4})?))?" 
     match = re.search(pattern, full_address)
     if match:
         result["address_city"] = match.group(1).strip()
