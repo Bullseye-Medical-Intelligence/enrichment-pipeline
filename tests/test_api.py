@@ -275,6 +275,7 @@ def test_friendly_error_fallback_truncates():
 # ---------------------------------------------------------------------------
 
 def test_compute_readiness_needs_review():
+    """Pending Bullseye blocks readiness; Contender-approved does not count toward Bullseye total."""
     records = [
         {"review": {"qc_status": "pending"}, "displayed_tier": "Bullseye"},
         {"review": {"qc_status": "approved"}, "displayed_tier": "Contender"},
@@ -282,17 +283,18 @@ def test_compute_readiness_needs_review():
     r = _compute_readiness(records)
     assert r["state"] == "needs_review"
     assert r["pending_count"] == 1
-    assert r["approved_count"] == 1
+    assert r["approved_count"] == 0  # only Bullseye-approved counts
 
 
 def test_compute_readiness_ready():
+    """Ready when all Bullseye are approved; Contender does not affect state."""
     records = [
         {"review": {"qc_status": "approved"}, "displayed_tier": "Bullseye"},
         {"review": {"qc_status": "approved"}, "displayed_tier": "Contender"},
     ]
     r = _compute_readiness(records)
     assert r["state"] == "ready"
-    assert r["approved_count"] == 2
+    assert r["approved_count"] == 1  # only Bullseye-approved counts
 
 
 def test_compute_readiness_no_approved():
@@ -326,8 +328,8 @@ def test_compute_readiness_excluded_not_counted():
     assert r["approved_count"] == 0
 
 
-def test_pending_review_count_only_counts_bullseye_and_contender(tmp_path):
-    """The client-package gate ignores pending NV / Manual Review / Excluded."""
+def test_pending_review_count_only_counts_bullseye(tmp_path):
+    """The client-package gate counts only pending Bullseye; Contender/NV/MR/Excluded are exempt."""
     records = [
         {"record_id": "T-1", "target_tier": "Bullseye", "exclusion_status": "CLEAR"},
         {"record_id": "T-2", "target_tier": "Contender", "exclusion_status": "CLEAR"},
@@ -336,8 +338,8 @@ def test_pending_review_count_only_counts_bullseye_and_contender(tmp_path):
         {"record_id": "T-5", "target_tier": "Excluded", "exclusion_status": "EXCLUDED"},
     ]
     _write_run(tmp_path, records, {})  # all pending by default
-    # Only T-1 + T-2 (Bullseye/Contender) count toward the gate.
-    assert _pending_review_count("RUN-20260527-143000-aaaa", tmp_path) == 2
+    # Only T-1 (Bullseye) counts toward the gate.
+    assert _pending_review_count("RUN-20260527-143000-aaaa", tmp_path) == 1
 
 
 def test_parse_signals_skips_blank_and_preserves_hidden_fields():
