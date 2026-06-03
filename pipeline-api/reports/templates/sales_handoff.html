@@ -388,6 +388,47 @@ body {
   .account-card { background: #f9f9f9; border-color: #ddd; page-break-inside: avoid; }
 }
 @page { margin: 20mm; }
+
+@media (max-width: 640px) {
+  body { padding: 20px 16px 48px; }
+
+  .report-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .report-meta { text-align: left; }
+
+  .run-summary { gap: 18px; padding: 14px 16px; }
+
+  .card-header { padding: 16px 18px 14px; }
+  .provider-name { font-size: 19px; }
+
+  /* Card body is hidden by default on mobile; toggled open by JS */
+  .card-body {
+    display: none;
+    grid-template-columns: 1fr;
+    padding: 16px 18px;
+  }
+  .account-card.expanded .card-body { display: grid; }
+
+  /* Visual affordance: show a chevron on the card header */
+  .card-header::after {
+    content: "expand";
+    display: block;
+    margin-top: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(247,246,244,0.3);
+  }
+  .account-card.expanded .card-header::after { content: "collapse"; }
+  .card-header { cursor: pointer; user-select: none; }
+
+  /* Suppressed cards: no toggle needed, body is absent */
+  .account-card.suppressed .card-header::after { display: none; }
+  .account-card.suppressed .card-header { cursor: default; }
+}
 </style>
 </head>
 <body>
@@ -570,5 +611,21 @@ body {
   <div>Generated {{ generated_date }} &middot; {{ run_id }} &middot; Not for client distribution</div>
 </div>
 
+<script>
+(function() {
+  function isMobile() { return window.innerWidth <= 640; }
+
+  function attachToggle(card) {
+    var header = card.querySelector('.card-header');
+    if (!header || card.classList.contains('suppressed')) return;
+    header.addEventListener('click', function() {
+      if (!isMobile()) return;
+      card.classList.toggle('expanded');
+    });
+  }
+
+  document.querySelectorAll('.account-card').forEach(attachToggle);
+})();
+</script>
 </body>
 </html>
