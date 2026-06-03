@@ -272,7 +272,7 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
     # The pipeline's why_contact string embeds the internal fit score, so it is
     # deliberately NOT used here — internal ranking data never reaches the client.
     sales_angles = _coerce_list(rec.get("sales_angle"))
-    why_it_matters = " ".join(sales_angles) or None
+    why_it_matters = sales_angles or None
 
     # Example opener: the LLM opener (or discovery question) a rep can use to
     # approach the account. Kept out of Verify, which lists what to uncover.

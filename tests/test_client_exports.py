@@ -267,9 +267,8 @@ def test_handoff_account_mapping_for_rep_fields():
     }
     acct = sales_export._record_to_account(rec, "Bullseye")
     # Why It Matters = sales angle, and the internal fit score never leaks.
-    assert acct.why_it_matters == "Offers in-office IUD placement. Independent ownership."
-    assert "84" not in (acct.why_it_matters or "")
-    assert "fit 84" not in (acct.why_it_matters or "")
+    assert acct.why_it_matters == ["Offers in-office IUD placement.", "Independent ownership."]
+    assert all("84" not in item for item in (acct.why_it_matters or []))
     # Example opener carries the LLM opener, not the verify list.
     assert acct.wedge == "Saw you offer in-office IUD placement."
     # Verify lists the not_found desirable signal to uncover, not the scripted question.

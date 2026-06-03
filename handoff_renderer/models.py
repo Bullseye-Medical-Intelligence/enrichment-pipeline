@@ -41,7 +41,7 @@ class Account:
     flags: list[str] = field(default_factory=list)  # e.g. ["Multi-site — buying may be central"]
 
     # Populated for BULLSEYE and CONTENDER
-    why_it_matters: Optional[str] = None
+    why_it_matters: Optional[list[str]] = None
     wedge: Optional[str] = None
     confirmed_signals: list[str] = field(default_factory=list)
     verify: list[str] = field(default_factory=list)

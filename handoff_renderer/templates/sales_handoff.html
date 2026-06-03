@@ -14,7 +14,7 @@
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--ink);color:var(--warm);font-family:'Inter','DM Sans',sans-serif;
     font-size:14px;line-height:1.5;padding:40px 28px 92px;max-width:1080px;margin:0 auto;
-    -webkit-font-smoothing:antialiased;}
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
   .rhead{display:flex;justify-content:space-between;align-items:flex-start;
     padding-bottom:26px;border-bottom:1px solid var(--line);margin-bottom:22px;}
@@ -88,6 +88,9 @@
   .fld{margin-top:22px;}
   .ey{font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(247,246,244,0.34);font-weight:600;margin-bottom:7px;}
   .why{font-size:14px;line-height:1.5;color:#f2efeb;}
+  .whylist{list-style:none;padding:0;margin:0;}
+  .whylist li{font-size:14px;line-height:1.55;color:#f2efeb;padding:5px 0 5px 20px;position:relative;}
+  .whylist li::before{content:"→";position:absolute;left:0;color:var(--acc);font-size:11px;top:7px;}
   .wedge{font-family:'Inter','DM Sans',sans-serif;font-style:normal;font-weight:600;font-size:15px;line-height:1.4;color:#f4f1ed;}
   .landmine{font-size:13px;line-height:1.55;color:var(--txt);border-left:2px solid var(--acc);padding-left:12px;}
   .landmine b{color:#f2efeb;}
@@ -105,7 +108,7 @@
   .exgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:6px;}
   .exgrid .c{font-size:12px;}
   .exgrid .l{font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--lbl);font-weight:600;margin-bottom:4px;}
-  .exgrid .v{color:var(--txt);line-height:1.45;}
+  .exgrid .v{color:var(--txt);line-height:1.45;overflow-wrap:break-word;word-break:break-word;}
 
   .foot{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,0.96);backdrop-filter:blur(8px);
     border-top:1px solid var(--line);padding:11px 28px;font-size:11px;color:var(--mut);text-align:center;line-height:1.5;}
@@ -208,7 +211,7 @@
       </div>
       <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by {{ acct.qc_reviewer }}</b></div>
       {% else %}
-      {% if acct.why_it_matters %}<div class="fld"><div class="ey">Why It Matters</div><div class="why">{{ acct.why_it_matters | bold_md }}</div></div>{% endif %}
+      {% if acct.why_it_matters %}<div class="fld"><div class="ey">Why It Matters</div><ul class="whylist">{% for point in acct.why_it_matters %}<li>{{ point | bold_md }}</li>{% endfor %}</ul></div>{% endif %}
       <div class="twocol">
         <div class="fld">
           <div class="ey">Confirmed Signals</div>
@@ -245,11 +248,17 @@
     var allOpen=[].every.call(accts,function(a){return a.classList.contains('open');});
     accts.forEach(function(a){a.classList.toggle('open',!allOpen);});
   }
-  document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',function(){
-    document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));this.classList.add('on');
-    const f=this.dataset.f;
-    document.querySelectorAll('.tsection').forEach(s=>{s.style.display=(f==='all'||s.dataset.tier===f)?'block':'none';});
-  }));
+  document.querySelectorAll('.chip').forEach(function(c){
+    function activate(e){
+      if(e.type==='touchend') e.preventDefault();
+      document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+      c.classList.add('on');
+      var f=c.dataset.f;
+      document.querySelectorAll('.tsection').forEach(function(s){s.style.display=(f==='all'||s.dataset.tier===f)?'block':'none';});
+    }
+    c.addEventListener('click',activate);
+    c.addEventListener('touchend',activate);
+  });
 </script>
 </body>
 </html>

@@ -22,7 +22,7 @@ def _make_account(
         phone="(214) 555-0100",
         website="testpractice.com",
         evidence_domain="testpractice.com",
-        why_it_matters="Strong fit.",
+        why_it_matters=["Strong fit."],
         wedge="Clear entry.",
         confirmed_signals=["TMS offered"],
         verify=["Volume"],

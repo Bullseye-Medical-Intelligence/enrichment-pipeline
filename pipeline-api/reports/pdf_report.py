@@ -285,9 +285,11 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         evidence = (sig.get("evidence_text") or "").strip()
         source = sig.get("source_url") or ""
         if evidence:
+            state_display = "present" if state_val == "yes" else ("absent" if state_val == "no" else "")
             signals_with_evidence.append({
-                "label": label,
-                "evidence": evidence,
+                "signal_label": label,
+                "signal_state": state_display,
+                "evidence_text": evidence,
                 "source_url": source,
             })
 
