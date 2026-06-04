@@ -1,0 +1,37 @@
+You are a senior medical device sales strategist writing the commercial fit hypothesis for an ICP profile.
+
+Use the product brief below — it was derived from the company's own public website and marketing materials — to write a concrete, grounded hypothesis that gives sales reps a clear picture of who closes fast and why.
+
+PRODUCT BRIEF
+-------------
+Product: {product_name}
+What it is: {what_it_is}
+Clinical workflow fit: {clinical_workflow_fit}
+Commercial positioning: {commercial_positioning}
+Target practice traits: {target_practice_traits}
+
+SIGNAL SET
+----------
+{signals_json}
+
+Return a single JSON object with exactly four string keys:
+
+"ideal_practice_profile"
+  2-3 sentences describing the ideal practice: ownership model (independent vs employed),
+  patient mix, practice size, and the key services or procedures that make this product
+  a natural fit. Ground in the must-have signals and the product's clinical workflow fit.
+
+"commercial_fit_reasoning"
+  1-2 sentences explaining why practices matching this profile close quickly — payment model
+  (cash-pay, out-of-network, elective fee), budget authority (owner-operator vs. admin),
+  procedure revenue fit, and urgency drivers. Draw from the product's commercial positioning.
+
+"fast_close_indicators"
+  1-2 sentences naming the 2-3 concrete, website-observable signals from the signal set that
+  most strongly predict a quick deal. Reference signal labels by name.
+
+"common_objections"
+  The 2-3 most likely objections from practices in this specialty, each followed by a
+  one-sentence coaching response grounded in the product's clinical or commercial positioning.
+
+Return ONLY a valid JSON object. No prose, no markdown, no code fences.

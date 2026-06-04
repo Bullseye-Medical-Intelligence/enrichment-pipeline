@@ -34,7 +34,7 @@ import runner
 import runs
 import validator
 from crawl_compressor import compress_crawl
-from narrative_generator import generate_narrative
+from narrative_generator import generate_narrative, generate_hypothesis
 from schema import ReviewEdit
 from signal_generator import generate_signals
 
@@ -351,12 +351,17 @@ async def icp_generate(
         return _render("icp_build.html", username=username, error=(
             "Signal generation failed. Try again, or adjust your description."
         ), form=form)
+    try:
+        hypothesis = generate_hypothesis(brief=brief, signals=signal_set.signals)
+    except Exception as exc:
+        logger.warning("Hypothesis generation failed (non-fatal): %s", exc)
+        hypothesis = {}
     return _render(
         "icp_review.html",
         username=username,
         error=None,
         signals=signal_set.signals,
-        hypothesis={},
+        hypothesis=hypothesis,
         icp_description="",
         demo_accounts=[],
         crawl_notes=crawl_notes,
@@ -412,12 +417,17 @@ async def icp_regenerate_signals(
             product_name=product_name, product_type=product_type,
             product_url=product_url, specialty=specialty,
         )
+    try:
+        hypothesis = generate_hypothesis(brief=brief, signals=signal_set.signals)
+    except Exception as exc:
+        logger.warning("Hypothesis regeneration failed (non-fatal): %s", exc)
+        hypothesis = _parse_hypothesis_from_form(form_data)
     return _render(
         "icp_review.html",
         username=username,
         error=None,
         signals=signal_set.signals,
-        hypothesis=_parse_hypothesis_from_form(form_data),
+        hypothesis=hypothesis,
         icp_description=(form_data.get("icp_description") or "").strip(),
         demo_accounts=_parse_demo_accounts(demo_accounts_json),
         crawl_notes=["Signals regenerated from cached product brief. No re-crawl."],
@@ -458,7 +468,7 @@ async def icp_approve(
         return _render(
             "icp_review.html",
             username=username,
-            error="Demo brief generation failed. Try again.",
+            error=f"Demo brief generation failed: {exc}",
             signals=approved_signals,
             hypothesis=_parse_hypothesis_from_form(form_data),
             icp_description=icp_description.strip(),
