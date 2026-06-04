@@ -3,7 +3,6 @@ client_exports.py
 Client deliverable package generation for a completed run.
 
 Builds an in-memory ZIP containing:
-  Executive_Target_Report.html  — branded self-contained HTML report (exec summary)
   Bullseye_Target_Report.html   — per-account intelligence briefs for Bullseye tier
   Sales_Handoff.html            — rep-facing sales handoff (handoff_renderer)
   bullseye_accounts.csv         — Bullseye-tier approved records
@@ -70,18 +69,12 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
     contender_csv = exports.build_contender_csv(run_id, run_directory, records, all_reviews).getvalue()
     excluded_csv = exports.build_excluded_csv(run_id, run_directory, records, all_reviews).getvalue()
 
-    report_bytes = _build_executive_report(
-        run_id, status, project, icp,
-        approved, all_reviews,
-        len(records), excluded_count,
-    )
     bullseye_cards_bytes = _build_bullseye_cards(
         run_id, status, project, icp, approved, all_reviews, len(records), excluded_count,
     )
     handoff_bytes = _build_sales_handoff(run_id, run_directory, status)
 
     files = {
-        "Executive_Target_Report.html": report_bytes,
         "Bullseye_Target_Report.html": bullseye_cards_bytes,
         "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,

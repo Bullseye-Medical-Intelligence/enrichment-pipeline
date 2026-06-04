@@ -28,7 +28,6 @@ import config  # noqa: E402
 from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
-    "Executive_Target_Report.html",
     "Bullseye_Target_Report.html",
     "Sales_Handoff.html",
     "bullseye_accounts.csv",
@@ -170,16 +169,6 @@ def test_manifest_methodology_excludes_phi_language(tmp_path):
     meta = json.loads(manifest.decode("utf-8"))
     assert "does not use PHI" in meta["methodology"]
 
-
-def test_executive_report_present_and_not_empty(tmp_path):
-    _build_run(tmp_path)
-    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
-    with zipfile.ZipFile(buf) as zf:
-        report = zf.read("Executive_Target_Report.html").decode("utf-8")
-    assert len(report) > 0
-    # Self-contained HTML report (not a WeasyPrint PDF, not an error page).
-    assert "<html" in report.lower()
-    assert "generation failed" not in report.lower()
 
 
 def test_hidden_columns_absent_from_client_csv(tmp_path):
