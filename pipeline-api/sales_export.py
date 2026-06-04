@@ -40,7 +40,30 @@ _brief_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),
 )
+import re as _re
+
 _brief_env.filters["humanize"] = lambda s: s.replace("_", " ").title() if "_" in s else s
+
+
+def _format_exclusion_parts(reason: str) -> list:
+    """Split a pipe-delimited exclusion_reason into bullet-ready sentences.
+
+    Converts any embedded snake_case identifiers (signal names that fell back
+    to signal_id) to Title Case readable words, leaving normal prose unchanged.
+    """
+    parts = [p.strip() for p in reason.split(" | ") if p.strip()]
+    cleaned = []
+    for part in parts:
+        part = _re.sub(
+            r'\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b',
+            lambda m: m.group(0).replace("_", " ").title(),
+            part,
+        )
+        cleaned.append(part)
+    return cleaned
+
+
+_brief_env.filters["format_exclusion"] = _format_exclusion_parts
 
 # Add the repo root to sys.path so we can import the handoff_renderer module.
 # pipeline-api/ is one level below the repo root; __file__ is inside pipeline-api/.

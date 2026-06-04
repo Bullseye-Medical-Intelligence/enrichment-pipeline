@@ -172,14 +172,22 @@
     .verify-item { font-size: 0.87em; color: #555; padding: 0.2em 0.6em; background: #fffbeb; border-left: 2px solid #d97706; border-radius: 0 4px 4px 0; }
 
     /* Exclusion */
-    .exclusion-box {
+    .exclusion-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.25em 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4em;
+    }
+    .exclusion-list li {
       background: #fef2ef;
       border-left: 3px solid var(--accent);
       border-radius: 0 6px 6px 0;
-      padding: 0.75em 1em;
-      font-size: 0.88em;
+      padding: 0.55em 0.9em;
+      font-size: 0.87em;
       color: #7a2318;
-      margin-top: 0.25em;
+      line-height: 1.45;
     }
 
     /* Footer */
@@ -401,8 +409,12 @@
 
       {% if excluded.exclusion_reason %}
       <div class="card-section">
-        <div class="card-section-label">Exclusion Reason</div>
-        <div class="exclusion-box">{{ excluded.exclusion_reason }}</div>
+        <div class="card-section-label">Why Excluded</div>
+        <ul class="exclusion-list">
+          {% for reason in excluded.exclusion_reason | format_exclusion %}
+          <li>{{ reason }}</li>
+          {% endfor %}
+        </ul>
       </div>
       {% endif %}
     </div>
