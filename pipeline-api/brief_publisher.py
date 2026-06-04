@@ -162,28 +162,43 @@ def _sftp_makedirs(sftp, remote_dir: str) -> None:
 
 
 def _ftp_upload(data: bytes, remote_path: str) -> None:
-    """Upload via plain FTP (stdlib ftplib). Creates parent directories as needed."""
+    """Upload via plain FTP (stdlib ftplib). Creates parent directories as needed.
+
+    Hostinger FTP is chrooted to the account home directory, so absolute paths
+    like /home/u353003312/domains/... must be relativised against the FTP root
+    before use — otherwise the path is doubled up and the file lands in the wrong
+    place.
+    """
     import ftplib
     import io
 
-    ftp_port = config.HOSTINGER_FTP_PORT
     with ftplib.FTP() as ftp:
-        ftp.connect(config.HOSTINGER_SFTP_HOST, ftp_port)
+        ftp.connect(config.HOSTINGER_SFTP_HOST, config.HOSTINGER_FTP_PORT)
         ftp.login(config.HOSTINGER_SFTP_USER, config.HOSTINGER_SFTP_PASSWORD)
-        _ftp_makedirs(ftp, str(PurePosixPath(remote_path).parent))
-        ftp.storbinary(f"STOR {remote_path}", io.BytesIO(data))
+
+        # Relativise against the FTP chroot so absolute config paths work correctly.
+        ftp_root = ftp.pwd()
+        rel_path = _ftp_rel_path(remote_path, ftp_root)
+
+        _ftp_makedirs(ftp, str(PurePosixPath(rel_path).parent))
+        ftp.storbinary(f"STOR {rel_path}", io.BytesIO(data))
+
+
+def _ftp_rel_path(remote_path: str, ftp_root: str) -> str:
+    """Return remote_path relative to ftp_root, stripping the chroot prefix."""
+    try:
+        return str(PurePosixPath(remote_path).relative_to(ftp_root))
+    except ValueError:
+        return remote_path.lstrip("/")
 
 
 def _ftp_makedirs(ftp, remote_dir: str) -> None:
-    """Recursively create remote_dir and all missing parents via FTP."""
+    """Recursively create remote_dir (relative) and all missing parents via FTP."""
     import ftplib
 
-    parts = PurePosixPath(remote_dir).parts
-    current = ""
-    for part in parts:
-        current = str(PurePosixPath(current) / part) if current else part
+    for part in PurePosixPath(remote_dir).parts:
         try:
-            ftp.cwd(current)
+            ftp.cwd(part)
         except ftplib.error_perm:
-            ftp.mkd(current)
-            ftp.cwd(current)
+            ftp.mkd(part)
+            ftp.cwd(part)
