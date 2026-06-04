@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys",
   "name": "Femasys — OBGYN Office-Based Procedures",
-  "version": "obgyn-femasys-v4",
+  "version": "obgyn-femasys-v5",
   "default_specialty": "OBGYN",
   "default_geography": ["TX", "FL", "GA"],
   "default_exclusion_rules": ["rei_on_staff", "wrong_specialty", "outside_geography", "no_web_presence"],
@@ -52,7 +52,8 @@
       "signal_label": "Hormone therapy / PCOS listed",
       "prompt_instruction": "Does this practice list hormone therapy, PCOS management, or hormone-related services?",
       "positive_weight": 12,
-      "note": "Broadens the office-based women's-health service line."
+      "reinforces": "S-ICP-009",
+      "note": "Broadens the office-based women's-health service line. Hormone/PCOS treatments are frequently out-of-pocket, making this a proxy for cash-pay capability when S-ICP-009 is not directly stated."
     },
     {
       "signal_id": "S-ICP-007",

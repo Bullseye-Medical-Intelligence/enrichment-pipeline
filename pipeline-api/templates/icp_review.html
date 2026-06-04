@@ -160,7 +160,8 @@
           <th style="width:68px; text-align:center;">Weight</th>
           <th style="width:72px; text-align:center;">No Penalty</th>
           <th style="width:72px; text-align:center;">Must-Have</th>
-          <th style="width:120px; text-align:center;">Cap Tier</th>
+          <th style="width:110px; text-align:center;">Cap Tier</th>
+          <th style="width:110px; text-align:center;" title="When this signal is YES and the target is not_found, treat the target as inferred (indirect evidence).">Reinforces</th>
           <th style="width:70px; text-align:center;"></th>
         </tr>
       </thead>
@@ -208,11 +209,23 @@
             </select>
           </td>
           <td style="text-align:center;">
+            {# When this signal is YES and the named target is not_found, the target is inferred. #}
+            <select name="reinforces_{{ n }}" style="width:100%;"
+                    title="When confirmed YES, infer the target signal as present if it is not found.">
+              <option value="">—</option>
+              {% for other_sig in signals %}
+              {% if loop.index0 != n %}
+              <option value="{{ other_sig.signal_id }}"
+                      {% if sig.reinforces == other_sig.signal_id %}selected{% endif %}>{{ other_sig.signal_id }}</option>
+              {% endif %}
+              {% endfor %}
+            </select>
+          </td>
+          <td style="text-align:center;">
             <button type="button" class="btn btn-secondary btn-sm" title="Remove this signal"
                     onclick="removeSignalRow(this)">Remove</button>
             {# Preserve tiering fields the visible form does not edit. #}
             <input type="hidden" name="exclude_if_yes_{{ n }}" value="{{ '1' if sig.exclude_if_yes else '' }}">
-            <input type="hidden" name="reinforces_{{ n }}" value="{{ sig.reinforces | default('') }}">
             <input type="hidden" name="verification_required_{{ n }}" value="{{ '1' if sig.verification_required else '' }}">
             {# Scoring fields the scorer reads but the visible form does not edit —
                drop them and the saved profile silently scores differently. #}
@@ -232,6 +245,7 @@
       <strong>No Penalty:</strong> point deduction when a positive-weight signal is confirmed absent (e.g. -15).
       <strong>Must-Have:</strong> confirmed absent locks tier to Contender; unconfirmed locks to Needs Verification.
       <strong>Cap Tier:</strong> when signal is confirmed YES, hard-cap tier at this ceiling — use only on friction/disqualifier signals.
+      <strong>Reinforces:</strong> when confirmed YES and the target signal is not found on the site, the target is inferred present (earns partial credit, bypasses its verification gate).
     </p>
   </div>
 
@@ -310,6 +324,21 @@ function removeSignalRow(btn) {
   row.style.display = 'none';
 }
 
+/* Build <option> elements for the Reinforces select from the signal IDs
+   currently visible in the form, excluding the row at excludeIdx. */
+function _reinforcesOptions(excludeIdx) {
+  var opts = '<option value="">—</option>';
+  document.querySelectorAll('[name^="signal_id_"]').forEach(function(el) {
+    if (el.disabled) return;
+    var idx = parseInt(el.name.replace('signal_id_', ''), 10);
+    if (idx !== excludeIdx && el.value.trim()) {
+      var v = el.value.trim();
+      opts += '<option value="' + v + '">' + v + '</option>';
+    }
+  });
+  return opts;
+}
+
 /* Add a blank signal row. Updates the signal_count hidden field so the backend
    parser picks up the new row on submit. Also appends a simulator row. */
 function addSignalRow() {
@@ -332,10 +361,12 @@ function addSignalRow() {
       '<option value="Contender">Contender</option>' +
       '<option value="Needs Verification">Needs Verification</option>' +
     '</select></td>' +
+    '<td style="text-align:center;"><select name="reinforces_' + n + '" style="width:100%;" title="When confirmed YES, infer the target signal as present if it is not found.">' +
+      _reinforcesOptions(n) +
+    '</select></td>' +
     '<td style="text-align:center;">' +
       '<button type="button" class="btn btn-secondary btn-sm" title="Remove this signal" onclick="removeSignalRow(this)">Remove</button>' +
       '<input type="hidden" name="exclude_if_yes_' + n + '" value="">' +
-      '<input type="hidden" name="reinforces_' + n + '" value="">' +
       '<input type="hidden" name="verification_required_' + n + '" value="">' +
       '<input type="hidden" name="not_found_weight_' + n + '" value="">' +
       '<input type="hidden" name="floor_tier_' + n + '" value="">' +
@@ -392,6 +423,7 @@ function runIcpSimulation(btn) {
     sig.required_for_bullseye = !!(reqEl && reqEl.checked);
     sig.verification_required = field('verification_required', n) === '1';
     var ct = field('cap_tier', n); if (ct) sig.cap_tier = ct;
+    var rein = field('reinforces', n); if (rein) sig.reinforces = rein;
     var ft = field('floor_tier', n); if (ft) sig.floor_tier = ft;
 
     icpSignals.push(sig);
