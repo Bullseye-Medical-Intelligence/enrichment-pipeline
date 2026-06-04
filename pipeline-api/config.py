@@ -161,6 +161,7 @@ def get_valid_users() -> dict[str, str]:
 
 HOSTINGER_SFTP_HOST: str = os.environ.get("HOSTINGER_SFTP_HOST", "")
 HOSTINGER_SFTP_PORT: int = int(os.environ.get("HOSTINGER_SFTP_PORT", "22"))
+HOSTINGER_FTP_PORT: int = int(os.environ.get("HOSTINGER_FTP_PORT", "21"))
 HOSTINGER_SFTP_USER: str = os.environ.get("HOSTINGER_SFTP_USER", "")
 HOSTINGER_SFTP_PASSWORD: str = os.environ.get("HOSTINGER_SFTP_PASSWORD", "")
 HOSTINGER_BRIEFS_REMOTE_ROOT: str = os.environ.get("HOSTINGER_BRIEFS_REMOTE_ROOT", "")

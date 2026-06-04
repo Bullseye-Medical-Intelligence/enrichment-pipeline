@@ -1,7 +1,10 @@
 """
 brief_publisher.py
-Upload a generated HTML brief to the Hostinger SFTP server and return
-a public URL. Also manages the per-run published_briefs.json record.
+Upload a generated HTML brief to Hostinger and return a public URL.
+Also manages the per-run published_briefs.json record.
+
+Tries SFTP (paramiko) first; if paramiko is not installed or the SFTP
+connection is refused, falls back to plain FTP (ftplib, stdlib).
 
 Public API:
   publish_brief(html_bytes, client_slug, brief_type) -> dict
@@ -55,7 +58,7 @@ def publish_brief(html_bytes: bytes, client_slug: str, brief_type: str) -> dict:
     )
     public_url = f"{config.BRIEFS_PUBLIC_BASE_URL.rstrip('/')}/{relative_path}"
 
-    _sftp_upload(html_bytes, remote_path)
+    _upload(html_bytes, remote_path)
 
     published_at = datetime.now(timezone.utc).isoformat()
     logger.info("Published %s brief for %s: %s", brief_type, client_slug, public_url)
@@ -98,15 +101,32 @@ def save_published_brief(run_directory: Path, brief_type: str, result: dict) -> 
     os.replace(tmp, path)
 
 
+def _upload(data: bytes, remote_path: str) -> None:
+    """Upload data to remote_path, trying SFTP first and falling back to FTP."""
+    sftp_err = None
+    try:
+        _sftp_upload(data, remote_path)
+        return
+    except RuntimeError as exc:
+        # paramiko not installed or SFTP connection refused — fall through to FTP
+        sftp_err = exc
+
+    logger.warning("SFTP unavailable (%s); retrying via FTP.", sftp_err)
+    try:
+        _ftp_upload(data, remote_path)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Both SFTP and FTP upload failed. "
+            f"SFTP error: {sftp_err}. FTP error: {exc}"
+        ) from exc
+
+
 def _sftp_upload(data: bytes, remote_path: str) -> None:
-    """Connect to Hostinger SFTP, create parent directories, and upload data."""
+    """Upload via SFTP (paramiko). Raises RuntimeError on any failure."""
     try:
         import paramiko
     except ImportError as exc:
-        raise RuntimeError(
-            "paramiko is required for brief publishing. "
-            "Install with: pip install paramiko"
-        ) from exc
+        raise RuntimeError("paramiko not installed; falling back to FTP") from exc
 
     transport = paramiko.Transport((config.HOSTINGER_SFTP_HOST, config.HOSTINGER_SFTP_PORT))
     try:
@@ -124,13 +144,13 @@ def _sftp_upload(data: bytes, remote_path: str) -> None:
     except paramiko.AuthenticationException as exc:
         raise RuntimeError(f"SFTP authentication failed: {exc}") from exc
     except Exception as exc:
-        raise RuntimeError(f"SFTP upload to {remote_path} failed: {exc}") from exc
+        raise RuntimeError(f"SFTP upload failed: {exc}") from exc
     finally:
         transport.close()
 
 
 def _sftp_makedirs(sftp, remote_dir: str) -> None:
-    """Recursively create remote_dir and all missing parents."""
+    """Recursively create remote_dir and all missing parents via SFTP."""
     parts = PurePosixPath(remote_dir).parts
     current = ""
     for part in parts:
@@ -139,3 +159,31 @@ def _sftp_makedirs(sftp, remote_dir: str) -> None:
             sftp.stat(current)
         except FileNotFoundError:
             sftp.mkdir(current)
+
+
+def _ftp_upload(data: bytes, remote_path: str) -> None:
+    """Upload via plain FTP (stdlib ftplib). Creates parent directories as needed."""
+    import ftplib
+    import io
+
+    ftp_port = config.HOSTINGER_FTP_PORT
+    with ftplib.FTP() as ftp:
+        ftp.connect(config.HOSTINGER_SFTP_HOST, ftp_port)
+        ftp.login(config.HOSTINGER_SFTP_USER, config.HOSTINGER_SFTP_PASSWORD)
+        _ftp_makedirs(ftp, str(PurePosixPath(remote_path).parent))
+        ftp.storbinary(f"STOR {remote_path}", io.BytesIO(data))
+
+
+def _ftp_makedirs(ftp, remote_dir: str) -> None:
+    """Recursively create remote_dir and all missing parents via FTP."""
+    import ftplib
+
+    parts = PurePosixPath(remote_dir).parts
+    current = ""
+    for part in parts:
+        current = str(PurePosixPath(current) / part) if current else part
+        try:
+            ftp.cwd(current)
+        except ftplib.error_perm:
+            ftp.mkd(current)
+            ftp.cwd(current)
