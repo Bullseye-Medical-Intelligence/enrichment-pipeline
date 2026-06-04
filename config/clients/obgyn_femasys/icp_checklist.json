@@ -11,9 +11,9 @@
       "signal_id": "S-ICP-002",
       "signal_label": "REI on staff",
       "prompt_instruction": "Is there a reproductive endocrinologist (REI) listed as a provider on staff at this practice?",
-      "positive_weight": -20,
-      "cap_tier": "Contender",
-      "note": "Friction signal — hard caps at Contender; REI presence indicates specialized fertility center, not office-based OBGYN profile"
+      "positive_weight": 0,
+      "cap_tier": "Needs Verification",
+      "note": "Disqualifier gate — caps at Needs Verification; REI presence indicates a specialized fertility center, not the office-based OBGYN profile Femasys fits. Operator must confirm before the record proceeds."
     },
     {
       "signal_id": "S-ICP-003",

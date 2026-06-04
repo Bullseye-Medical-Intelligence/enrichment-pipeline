@@ -354,7 +354,7 @@ function runIcpSimulation(btn) {
     var d = r.data;
     var tierClass = d.tier.toLowerCase().replace(/ /g, '-');
     out.innerHTML =
-      '<span class="badge badge-' + tierClass + '">' + d.tier + '</span> ' +
+      '<span class="badge badge-tier-' + tierClass + '">' + d.tier + '</span> ' +
       '<strong>Score ' + d.bullseye_score + '</strong> ' +
       '<span class="text-muted">(fit ' + d.fit_signal_score + ' · confidence ' + d.confidence_score + ')</span>' +
       (d.tier_cap_reason ? '<br><span class="text-muted">' + d.tier_cap_reason + '</span>' : '');

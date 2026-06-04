@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys",
   "name": "Femasys — OBGYN Office-Based Procedures",
-  "version": "obgyn-femasys-v3",
+  "version": "obgyn-femasys-v4",
   "default_specialty": "OBGYN",
   "default_geography": ["TX", "FL", "GA"],
   "default_exclusion_rules": ["rei_on_staff", "wrong_specialty", "outside_geography", "no_web_presence"],
@@ -21,9 +21,9 @@
       "signal_id": "S-ICP-002",
       "signal_label": "REI on staff",
       "prompt_instruction": "Is there a reproductive endocrinologist (REI) listed as a provider on staff at this practice?",
-      "positive_weight": -20,
-      "cap_tier": "Contender",
-      "note": "Friction signal — hard caps at Contender. REI presence indicates a specialized fertility center rather than the general-OBGYN office-procedure profile Femasys fits."
+      "positive_weight": 0,
+      "cap_tier": "Needs Verification",
+      "note": "Disqualifier gate — caps at Needs Verification. REI presence indicates a specialized fertility center, not the office-based OBGYN profile Femasys fits. Operator must confirm before the record proceeds."
     },
     {
       "signal_id": "S-ICP-003",
