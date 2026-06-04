@@ -74,9 +74,11 @@ def stamp_reenriched(run_id: str, record_id: str, run_directory: Path, kind: str
     all_reviews = get_reviews(run_id, run_directory)
     entry = dict(all_reviews.get(record_id) or default_review())
 
+    now = datetime.now(timezone.utc).isoformat()
     stamp = f"Re-enriched on {datetime.now(timezone.utc).date().isoformat()} ({kind})."
     existing = (entry.get("analyst_note") or "").rstrip()
     entry["analyst_note"] = f"{existing}\n{stamp}".strip() if existing else stamp
+    entry["reviewed_at"] = now
 
     all_reviews[record_id] = entry
     _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
