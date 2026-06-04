@@ -179,6 +179,7 @@ def _ftp_upload(data: bytes, remote_path: str) -> None:
         # Relativise against the FTP chroot so absolute config paths work correctly.
         ftp_root = ftp.pwd()
         rel_path = _ftp_rel_path(remote_path, ftp_root)
+        logger.info("FTP upload: root=%r configured=%r rel=%r", ftp_root, remote_path, rel_path)
 
         _ftp_makedirs(ftp, str(PurePosixPath(rel_path).parent))
         ftp.storbinary(f"STOR {rel_path}", io.BytesIO(data))
