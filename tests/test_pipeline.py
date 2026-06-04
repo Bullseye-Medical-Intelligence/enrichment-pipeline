@@ -28,6 +28,7 @@ from enrichment.signal_extractor import (
     _build_call_brief,
     _build_empty_signals,
     _parse_providers,
+    _parse_primary_contact,
     _format_key_contact,
 )
 from enrichment.constants import empty_call_brief
@@ -1800,23 +1801,36 @@ class TestProviderExtraction:
         providers, _ = _parse_providers(raw)
         assert len(providers) == 8
 
-    def test_key_contact_single(self):
-        providers = [{"name": "Dr. Jane Smith", "title": "MD"}]
-        assert _format_key_contact(providers) == "Ask for Dr. Jane Smith"
+    def test_primary_contact_valid_pick(self):
+        providers = [{"name": "Dr. Jane Smith", "title": "MD"}, {"name": "Sarah Lee", "title": "NP"}]
+        raw = {"name": "Dr. Jane Smith", "title": "MD", "reason": "performs in-office procedures"}
+        result = _parse_primary_contact(raw, providers)
+        assert result["name"] == "Dr. Jane Smith"
+        assert result["reason"] == "performs in-office procedures"
 
-    def test_key_contact_two(self):
-        providers = [{"name": "Dr. Jane Smith", "title": "MD"}, {"name": "Dr. Patel", "title": "DO"}]
-        assert _format_key_contact(providers) == "Ask for Dr. Jane Smith or Dr. Patel"
+    def test_primary_contact_falls_back_to_first_provider_on_bad_pick(self):
+        providers = [{"name": "Dr. Chen", "title": "DO"}, {"name": "Sarah Lee", "title": "NP"}]
+        raw = {"name": "Dr. Nobody", "title": "MD", "reason": "not in list"}
+        result = _parse_primary_contact(raw, providers)
+        assert result["name"] == "Dr. Chen"
+        assert result["reason"] == ""
 
-    def test_key_contact_three_or_more(self):
-        providers = [
-            {"name": "Dr. A", "title": "MD"},
-            {"name": "Dr. B", "title": "DO"},
-            {"name": "Dr. C", "title": "NP"},
-            {"name": "Dr. D", "title": "PA"},
-        ]
-        result = _format_key_contact(providers)
-        assert result == "Ask for Dr. A, Dr. B, or Dr. C"
+    def test_primary_contact_none_when_no_providers(self):
+        assert _parse_primary_contact(None, []) is None
+        assert _parse_primary_contact({"name": "Dr. X"}, []) is None
 
-    def test_key_contact_empty(self):
-        assert _format_key_contact([]) == ""
+    def test_primary_contact_null_raw_falls_back_to_first(self):
+        providers = [{"name": "Dr. Patel", "title": "MD"}]
+        result = _parse_primary_contact(None, providers)
+        assert result["name"] == "Dr. Patel"
+
+    def test_key_contact_with_reason(self):
+        primary = {"name": "Dr. Jane Smith", "title": "MD", "reason": "lead OBGYN"}
+        assert _format_key_contact(primary) == "Ask for Dr. Jane Smith — lead OBGYN"
+
+    def test_key_contact_without_reason(self):
+        primary = {"name": "Dr. Patel", "title": "DO", "reason": ""}
+        assert _format_key_contact(primary) == "Ask for Dr. Patel"
+
+    def test_key_contact_none(self):
+        assert _format_key_contact(None) == ""

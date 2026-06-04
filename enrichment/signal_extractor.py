@@ -524,20 +524,41 @@ def _parse_providers(raw: list) -> tuple[list[dict], list[str]]:
     return validated, provider_names
 
 
-def _format_key_contact(providers: list[dict]) -> str:
-    """Format a rep-friendly 'Ask for ...' string from the providers list."""
+def _parse_primary_contact(raw: dict | None, providers: list[dict]) -> dict | None:
+    """Validate the LLM's primary_contact pick against the extracted providers list.
+
+    Returns a {name, title, reason} dict if the pick is valid, falls back to
+    providers[0] if the pick is missing or unrecognisable, returns None when
+    no providers were found at all.
+    """
     if not providers:
+        return None
+    if isinstance(raw, dict):
+        name = (raw.get("name") or "").strip()
+        title = (raw.get("title") or "").strip()
+        reason = (raw.get("reason") or "").strip()
+        # Verify the name appears in the providers list (case-insensitive substring).
+        name_lower = name.lower()
+        if name and any(name_lower in p["name"].lower() for p in providers):
+            return {"name": name, "title": title, "reason": reason}
+    # Fall back to first provider with no reason.
+    first = providers[0]
+    return {"name": first["name"], "title": first["title"], "reason": ""}
+
+
+def _format_key_contact(primary: dict | None) -> str:
+    """Format a rep-friendly 'Ask for ...' string from the primary contact."""
+    if not primary:
         return ""
-    names = [p["name"] for p in providers[:3]]
-    if len(names) == 1:
-        return f"Ask for {names[0]}"
-    if len(names) == 2:
-        return f"Ask for {names[0]} or {names[1]}"
-    return f"Ask for {names[0]}, {names[1]}, or {names[2]}"
+    name = primary.get("name") or ""
+    reason = primary.get("reason") or ""
+    if not name:
+        return ""
+    return f"Ask for {name} — {reason}" if reason else f"Ask for {name}"
 
 
 def _build_call_brief(signals: list[dict], scores: dict, record: dict,
-                       generated: dict, providers: list[dict] | None = None) -> dict:
+                       generated: dict, primary_contact: dict | None = None) -> dict:
     """
     Assemble a rep call brief from already-validated signals and scores.
 
@@ -603,7 +624,7 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
     brief = empty_call_brief()
     brief.update({
         "why_contact": why_contact,
-        "key_contact": _format_key_contact(providers or []),
+        "key_contact": _format_key_contact(primary_contact),
         "opening_line": str(generated.get("opening_line") or "").strip(),
         "likely_objection": str(generated.get("likely_objection") or "").strip(),
         "discovery_question": str(generated.get("discovery_question") or "").strip(),
@@ -716,12 +737,13 @@ def extract_signals(record: dict, icp_signals: list[dict],
 
         # Provider extraction
         validated_providers, provider_names = _parse_providers(parsed.get("providers", []))
+        primary_contact = _parse_primary_contact(parsed.get("primary_contact"), validated_providers)
 
         # Rep call brief: grounded fields derived from signals, prep lines from LLM
         generated_brief = parsed.get("call_brief") or {}
         if not isinstance(generated_brief, dict):
             generated_brief = {}
-        call_brief = _build_call_brief(signals, scores, record, generated_brief, validated_providers)
+        call_brief = _build_call_brief(signals, scores, record, generated_brief, primary_contact)
 
         # Gate sales_angle: only serve bullets when confirmed evidence exists.
         # When top_evidence is empty, the integrity gate already cleared the
