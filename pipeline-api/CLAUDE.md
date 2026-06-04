@@ -205,17 +205,6 @@ Never iterate `data` directly — it will iterate dict keys, not records.
 
 ## Locked API Surface
 
-Bearer-auth JSON API (main.py):
-```
-POST   /runs                            Upload CSV, start pipeline, return run_id
-GET    /runs                            List all runs (newest first, max 50)
-GET    /runs/{run_id}                   Full status.json for a run
-GET    /runs/{run_id}/log               run_log.json (run must have exited)
-GET    /runs/{run_id}/results           enriched_targets.json wrapper (run must be complete)
-GET    /runs/{run_id}/export/approved   CSV of approved non-excluded records
-GET    /runs/{run_id}/export/excluded   CSV of excluded records
-```
-
 Session-auth HTML UI (ui.py):
 ```
 GET    /login                                    Login form
@@ -457,7 +446,7 @@ All UI in this repo must match the BEMI Dashboard identity. These rules are perm
 - Web scraping or HTTP calls to external sites (except passing paths to pipeline)
 - A database or any persistent state beyond filesystem JSON
 - A task queue (Celery, RQ, etc.)
-- A second auth system — Bearer token (API) and session cookie (UI) are the two auth models, nothing more
+- A second auth system — session cookie is the one auth model; do not add Bearer tokens, API keys, OAuth, or any other scheme
 - Direct imports from the pipeline repo (subprocess only, no shared code)
 - Re-implementation of any logic that exists in the pipeline repo
 - Hardcoded client, product, specialty, or campaign names

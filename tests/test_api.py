@@ -210,23 +210,6 @@ def test_validate_credentials_unknown_user():
     assert auth.validate_credentials("ghost", "secret-pw") is False
 
 
-# ---------------------------------------------------------------------------
-# route wiring (auth enforcement)
-# ---------------------------------------------------------------------------
-
-def test_runs_endpoint_requires_auth(tmp_path, monkeypatch):
-    monkeypatch.setenv("OUTPUT_RUNS_PATH", str(tmp_path))
-    from fastapi.testclient import TestClient
-    import main
-
-    with TestClient(main.app) as client:
-        unauth = client.get("/runs")
-        assert unauth.status_code in (401, 403)
-
-        ok = client.get("/runs", headers={"Authorization": "Bearer test-api-key"})
-        assert ok.status_code == 200
-        assert "runs" in ok.json()
-
 import sys as _sys  # noqa: E402 (re-import to avoid name collision)
 from ui import _friendly_error, _compute_readiness, _pending_review_count, _parse_signals_from_form  # noqa: E402
 

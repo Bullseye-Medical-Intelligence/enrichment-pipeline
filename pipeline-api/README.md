@@ -56,17 +56,7 @@ The API will be available at `http://localhost:8000`. Interactive documentation 
 
 ## 5. API Endpoints
 
-Bearer-auth JSON API (`main.py`):
-
-| Method | Path | Description | Auth Required |
-|--------|------|-------------|---------------|
-| POST | `/runs` | Upload CSV and start an enrichment run | Yes |
-| GET | `/runs` | List all runs, newest first (max 50) | Yes |
-| GET | `/runs/{run_id}` | Get full status for a single run | Yes |
-| GET | `/runs/{run_id}/log` | Get the run log (run must have exited) | Yes |
-| GET | `/runs/{run_id}/results` | Get enriched targets (run must be complete) | Yes |
-
-Session-auth HTML UI (`ui.py`) adds project/ICP management:
+Session-auth HTML UI (`ui.py`):
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -79,28 +69,7 @@ Session-auth HTML UI (`ui.py`) adds project/ICP management:
 | GET | `/runs/{run_id}/export/excluded` | Excluded targets CSV |
 | GET | `/runs/{run_id}/client-package` | Client deliverable ZIP (complete runs) |
 
-`POST /runs` requires a `project_id` that names an existing project; the project
-determines which ICP profile and config the pipeline uses.
-
-## 6. Authentication
-
-Every request must include a Bearer token in the `Authorization` header:
-
-```
-Authorization: Bearer your-secret-api-key-here
-```
-
-The token must exactly match the `PIPELINE_API_KEY` value in your `.env` file.
-
-To generate a secure key:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-Requests without a valid token receive a `401 Unauthorized` response.
-
-## 7. Run Directory Structure
+## 6. Run Directory Structure
 
 Each run creates a directory at `{OUTPUT_RUNS_PATH}/{run_id}/` containing:
 
@@ -118,7 +87,7 @@ RUN-20260527-143000/
 The two snapshots are frozen at run start, so editing a project later never
 changes what a past run was enriched against.
 
-## 8. How to Inspect a Failed Run
+## 7. How to Inspect a Failed Run
 
 1. Find the run ID from `GET /runs` — look for runs with `"status": "failed"`.
 2. Call `GET /runs/{run_id}` to see the `error_summary` field.
@@ -127,7 +96,7 @@ changes what a past run was enriched against.
 5. If `run_log.json` exists, open it — the `errors` array shows per-record failures.
 6. If neither file has a clear error, check the server logs for the full traceback.
 
-## 9. Environment Variables
+## 8. Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -146,14 +115,14 @@ changes what a past run was enriched against.
 `PROJECTS_PATH` and `ICP_PROFILES_PATH` default to siblings of `OUTPUT_RUNS_PATH`
 (`{output}/projects` and `{output}/icp_profiles`).
 
-## 10. Projects, ICP Profiles, and Running a Pilot
+## 9. Projects, ICP Profiles, and Running a Pilot
 
 An enrichment run is always tied to a **project**. A project pins a client
 config and an **ICP profile** (the signal checklist the pipeline scores
 against). This keeps every run reproducible and stops operators from typing ad
 hoc config paths.
 
-### 10.1 ICP profile file format
+### 9.1 ICP profile file format
 
 ICP profiles are plain JSON files dropped into `ICP_PROFILES_PATH`, one file per
 profile, named `{icp_id}.json`. There is no visual builder yet. Each file must
@@ -183,7 +152,7 @@ To load it: copy it into `ICP_PROFILES_PATH`, rename the file to `{icp_id}.json`
 set a matching `icp_id`, and replace the signals for your client/specialty. Example
 files are never loaded automatically.
 
-### 10.2 Create a project
+### 9.2 Create a project
 
 1. Sign in and go to **Projects → New Project**.
 2. Enter a `project_id` (letters, digits, `-`, `_`; no spaces — it becomes a
@@ -192,7 +161,7 @@ files are never loaded automatically.
 4. Save. This writes `{PROJECTS_PATH}/{project_id}/project_config.json` with
    generic scoring defaults (`bullseye_min_score`, structural exclusion rules).
 
-### 10.3 Start from an Outscraper CSV
+### 9.3 Start from an Outscraper CSV
 
 1. Export your lead list from Outscraper as CSV. It must include the columns
    `name`, `full_address`, `phone`, `site`, `type` (max 10,000 rows, 50 MB).
@@ -201,7 +170,7 @@ files are never loaded automatically.
    and ICP into the run folder, and launches the pipeline with
    `--config {run}/project_config_snapshot.json --icp {run}/icp_snapshot.json`.
 
-### 10.4 Review records (junior-operator safe)
+### 9.4 Review records (junior-operator safe)
 
 On the results page each record expands to show its signals, evidence, scores,
 and sales angles. Reviewers set QC status (approve / reject / reset) and may
@@ -218,7 +187,7 @@ override the tier — an override requires a reason. Guidance shown on the page:
 Reviews are saved to `reviews.json` (additive metadata); `enriched_targets.json`
 is never modified.
 
-### 10.5 Export the client deliverable
+### 9.5 Export the client deliverable
 
 From a completed run, **Download Client Package** produces a ZIP built from the
 immutable enriched output plus the review overlay:
@@ -234,7 +203,7 @@ The package never includes `run_log.json`, `reviews.json`, or the raw
 `enriched_targets.json`. The individual **Export Approved** / **Export Excluded**
 CSV buttons remain available.
 
-### 10.6 Run a pilot
+### 9.6 Run a pilot
 
 1. Create an ICP profile for the specialty and drop it in `ICP_PROFILES_PATH`.
 2. Create a project pointing at that profile.
@@ -242,7 +211,7 @@ CSV buttons remain available.
    coverage and timing before processing a full batch.
 4. QC the results, then download the client package for the handoff.
 
-### 10.7 Still out of scope
+### 9.7 Still out of scope
 
 - No visual ICP builder — profiles are hand-authored JSON files.
 - No database, task queue, or Redis — state stays on the filesystem.
@@ -251,7 +220,7 @@ CSV buttons remain available.
 - The pipeline itself is unchanged; this layer only selects and snapshots its
   inputs and packages its outputs.
 
-## 11. What Phase 2 Will Add
+## 10. What Phase 2 Will Add
 
 - `POST /runs/{run_id}/cancel` — interrupt a running pipeline process
 - WebSocket endpoint for real-time run progress streaming

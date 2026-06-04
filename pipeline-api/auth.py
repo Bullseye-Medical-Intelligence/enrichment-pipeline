@@ -1,52 +1,20 @@
 """
 auth.py
-Authentication for both API routes (Bearer token) and UI routes (session cookie).
-These two auth paths are entirely separate — no coupling between them.
+Session-cookie authentication for all UI routes.
 """
 
 import hmac
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from config import PIPELINE_API_KEY, SESSION_MAX_AGE_HOURS, SESSION_SECRET_KEY, get_valid_users
+from config import SESSION_MAX_AGE_HOURS, SESSION_SECRET_KEY, get_valid_users
 
 logger = logging.getLogger(__name__)
 
-_bearer = HTTPBearer()
 _COOKIE_NAME = "bemi_session"
-
-
-# ---------------------------------------------------------------------------
-# API key auth (Bearer token) — used by all /runs/* API routes
-# ---------------------------------------------------------------------------
-
-def verify_api_key(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-) -> None:
-    """
-    Validate the Bearer token against PIPELINE_API_KEY.
-
-    Raises HTTP 401 if missing or incorrect.
-    Logs every failed attempt with timestamp and client IP.
-    """
-    if not PIPELINE_API_KEY:
-        logger.error("PIPELINE_API_KEY is not configured — all requests will be rejected")
-        raise HTTPException(status_code=500, detail="API key not configured on server")
-
-    if not hmac.compare_digest(credentials.credentials, PIPELINE_API_KEY):
-        client_ip = request.client.host if request.client else "unknown"
-        logger.warning(
-            "Auth failure from %s at %s",
-            client_ip,
-            datetime.now(timezone.utc).isoformat(),
-        )
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # ---------------------------------------------------------------------------
