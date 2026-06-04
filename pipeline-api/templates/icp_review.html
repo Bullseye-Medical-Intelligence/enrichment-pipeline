@@ -160,6 +160,7 @@
           <th style="width:68px; text-align:center;">Weight</th>
           <th style="width:72px; text-align:center;">No Penalty</th>
           <th style="width:72px; text-align:center;">Must-Have</th>
+          <th style="width:120px; text-align:center;">Cap Tier</th>
           <th style="width:70px; text-align:center;"></th>
         </tr>
       </thead>
@@ -199,11 +200,17 @@
                    title="Required for Bullseye: confirmed absent caps tier at Contender; not found caps at Needs Verification.">
           </td>
           <td style="text-align:center;">
+            <select name="cap_tier_{{ n }}" style="width:100%;"
+                    title="When this signal is confirmed YES, hard-cap the tier at this level. Leave None for positive-weight signals.">
+              <option value="">None</option>
+              <option value="Contender" {% if sig.cap_tier == 'Contender' %}selected{% endif %}>Contender</option>
+              <option value="Needs Verification" {% if sig.cap_tier == 'Needs Verification' %}selected{% endif %}>Needs Verification</option>
+            </select>
+          </td>
+          <td style="text-align:center;">
             <button type="button" class="btn btn-secondary btn-sm" title="Remove this signal"
                     onclick="removeSignalRow(this)">Remove</button>
-            {# Preserve tiering fields the visible form does not edit, so saving
-               keeps each signal's full config (e.g. a cap_tier disqualifier). #}
-            <input type="hidden" name="cap_tier_{{ n }}" value="{{ sig.cap_tier | default('') }}">
+            {# Preserve tiering fields the visible form does not edit. #}
             <input type="hidden" name="exclude_if_yes_{{ n }}" value="{{ '1' if sig.exclude_if_yes else '' }}">
             <input type="hidden" name="reinforces_{{ n }}" value="{{ sig.reinforces | default('') }}">
             <input type="hidden" name="verification_required_{{ n }}" value="{{ '1' if sig.verification_required else '' }}">
@@ -218,9 +225,13 @@
         {% endfor %}
       </tbody>
     </table>
+    <div style="margin-top:10px;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addSignalRow()">+ Add Signal</button>
+    </div>
     <p class="form-hint" style="margin-top:8px;">
       <strong>No Penalty:</strong> point deduction when a positive-weight signal is confirmed absent (e.g. -15).
       <strong>Must-Have:</strong> confirmed absent locks tier to Contender; unconfirmed locks to Needs Verification.
+      <strong>Cap Tier:</strong> when signal is confirmed YES, hard-cap tier at this ceiling — use only on friction/disqualifier signals.
     </p>
   </div>
 
@@ -297,6 +308,58 @@ function removeSignalRow(btn) {
   if (!row) return;
   row.querySelectorAll('input, textarea, select').forEach(function (el) { el.disabled = true; });
   row.style.display = 'none';
+}
+
+/* Add a blank signal row. Updates the signal_count hidden field so the backend
+   parser picks up the new row on submit. Also appends a simulator row. */
+function addSignalRow() {
+  var countEl = document.querySelector('[name="signal_count"]');
+  var n = parseInt(countEl.value, 10);
+  var pad = String(n + 1).padStart(3, '0');
+
+  // Signal table row
+  var tbody = document.querySelector('.icp-signal-table tbody');
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input type="text" name="signal_id_' + n + '" value="S-' + pad + '" style="width:68px" required></td>' +
+    '<td><input type="text" name="signal_label_' + n + '" value="" style="width:100%" required></td>' +
+    '<td><textarea name="prompt_instruction_' + n + '" rows="2" style="width:100%" required></textarea></td>' +
+    '<td style="text-align:center;"><input type="number" name="positive_weight_' + n + '" value="10" min="-99" max="99" style="width:58px" required></td>' +
+    '<td style="text-align:center;"><input type="number" name="no_weight_' + n + '" min="-99" max="0" style="width:58px" placeholder="0" title="Point penalty when confirmed absent (0 or negative). Leave blank for no penalty."></td>' +
+    '<td style="text-align:center;"><input type="checkbox" name="required_for_bullseye_' + n + '" title="Required for Bullseye: confirmed absent caps tier at Contender; not found caps at Needs Verification."></td>' +
+    '<td style="text-align:center;"><select name="cap_tier_' + n + '" style="width:100%;" title="When confirmed YES, hard-cap the tier at this level.">' +
+      '<option value="">None</option>' +
+      '<option value="Contender">Contender</option>' +
+      '<option value="Needs Verification">Needs Verification</option>' +
+    '</select></td>' +
+    '<td style="text-align:center;">' +
+      '<button type="button" class="btn btn-secondary btn-sm" title="Remove this signal" onclick="removeSignalRow(this)">Remove</button>' +
+      '<input type="hidden" name="exclude_if_yes_' + n + '" value="">' +
+      '<input type="hidden" name="reinforces_' + n + '" value="">' +
+      '<input type="hidden" name="verification_required_' + n + '" value="">' +
+      '<input type="hidden" name="not_found_weight_' + n + '" value="">' +
+      '<input type="hidden" name="floor_tier_' + n + '" value="">' +
+      '<input type="hidden" name="source_type_' + n + '" value="">' +
+      '<input type="hidden" name="note_' + n + '" value="">' +
+    '</td>';
+  tbody.appendChild(tr);
+
+  // Simulator table row — the JS reads signal_label_N from the form at sim time
+  var simTbodies = document.querySelectorAll('.data-table:not(.icp-signal-table) tbody');
+  if (simTbodies.length) {
+    var simTr = document.createElement('tr');
+    simTr.innerHTML =
+      '<td><span id="sim-label-' + n + '">S-' + pad + '</span></td>' +
+      '<td><select class="sim-state" data-sim-index="' + n + '" style="width:100%;">' +
+        '<option value="yes">Yes — confirmed present</option>' +
+        '<option value="not_found" selected>Not found</option>' +
+        '<option value="no">No — confirmed absent</option>' +
+      '</select></td>';
+    simTbodies[0].appendChild(simTr);
+  }
+
+  countEl.value = n + 1;
+  tr.querySelector('[name="signal_label_' + n + '"]').focus();
 }
 
 /* Score simulator: read the live signal definitions from the form, pair each
