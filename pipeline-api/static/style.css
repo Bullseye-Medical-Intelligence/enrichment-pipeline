@@ -121,7 +121,7 @@ ul, ol { padding-left: 1.4em; }
   line-height: 1.2;
 }
 .page-subtitle  { color: var(--muted); font-size: 13px; margin-top: 5px; }
-.header-actions { flex-shrink: 0; }
+.header-actions { display: block; }
 .header-row-primary   { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .header-row-secondary { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; margin-top: 6px; }
 .header-row-secondary .btn { font-size: 12px; padding: 5px 12px; opacity: 0.65; }
