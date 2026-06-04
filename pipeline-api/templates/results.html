@@ -40,6 +40,10 @@
     <div class="header-row-primary">
       {% if readiness and readiness.state == 'ready' %}
       <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
+      {% else %}
+      {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
+      <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
+      {% endif %}
       <div class="dropdown">
         <button class="btn btn-secondary" onclick="toggleDropdown(this)">Sales Handoff ▾</button>
         <div class="dropdown-menu">
@@ -65,10 +69,6 @@
       </div>
       {% else %}
       <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate and publish a prospect-facing methodology brief">Sales Brief</button>
-      {% endif %}
-      {% else %}
-      {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
-      <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
       {% endif %}
     </div>
     <div class="header-row-secondary">

@@ -303,12 +303,23 @@ def test_compute_readiness_ignores_pending_non_call_tiers():
 
 
 def test_compute_readiness_excluded_not_counted():
+    """Zero Bullseye records means nothing to gate — run is ready even if only Excluded exist."""
     records = [
         {"review": {"qc_status": "approved"}, "displayed_tier": "Excluded"},
     ]
     r = _compute_readiness(records)
-    assert r["state"] == "no_approved"
+    assert r["state"] == "ready"
     assert r["approved_count"] == 0
+
+
+def test_compute_readiness_no_approved_requires_existing_bullseye():
+    """no_approved only fires when there ARE Bullseye records but none have been approved."""
+    records = [
+        {"review": {"qc_status": "rejected"}, "displayed_tier": "Bullseye"},
+        {"review": {"qc_status": "approved"}, "displayed_tier": "Excluded"},
+    ]
+    r = _compute_readiness(records)
+    assert r["state"] == "no_approved"
 
 
 def test_pending_review_count_only_counts_bullseye(tmp_path):

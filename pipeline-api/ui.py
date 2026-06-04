@@ -1857,7 +1857,7 @@ def _compute_readiness(merged_records: list) -> dict:
     )
     if pending > 0:
         return {"state": "needs_review", "pending_count": pending, "approved_count": approved}
-    if approved == 0:
+    if bullseye_records and approved == 0:
         return {"state": "no_approved", "pending_count": 0, "approved_count": 0}
     return {"state": "ready", "pending_count": 0, "approved_count": approved}
 
