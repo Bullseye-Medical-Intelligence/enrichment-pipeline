@@ -677,6 +677,18 @@ async def icp_import(
     return RedirectResponse("/icp-profiles", status_code=303)
 
 
+@router.post("/icp-profiles/{icp_id}/delete", response_class=HTMLResponse)
+async def icp_delete(
+    request: Request, icp_id: str, username: str = Depends(auth.require_session)
+):
+    """Permanently delete an ICP profile file."""
+    try:
+        icp_profiles.delete_icp_profile(icp_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return RedirectResponse("/icp-profiles", status_code=303)
+
+
 @router.get("/icp-profiles/{icp_id}/edit", response_class=HTMLResponse)
 async def icp_edit_page(
     request: Request, icp_id: str, username: str = Depends(auth.require_session)

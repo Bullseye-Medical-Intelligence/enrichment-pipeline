@@ -251,6 +251,17 @@ def _replace_atomic(tmp: Path, dest: Path) -> None:
             time.sleep(_REPLACE_BACKOFF_SECONDS)
 
 
+def delete_icp_profile(icp_id: str) -> None:
+    """Delete an ICP profile file from ICP_PROFILES_PATH.
+
+    Raises ValueError on invalid icp_id or if the file does not exist.
+    """
+    path = icp_profile_path(icp_id)
+    if not path.exists():
+        raise ValueError(f"ICP profile '{icp_id}' not found.")
+    path.unlink()
+
+
 def save_icp_profile(data: dict, overwrite: bool = False) -> None:
     """
     Validate and write an ICP profile to ICP_PROFILES_PATH/{icp_id}.json.
