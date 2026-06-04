@@ -40,6 +40,7 @@ _brief_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),
 )
+_brief_env.filters["humanize"] = lambda s: s.replace("_", " ").title() if "_" in s else s
 
 # Add the repo root to sys.path so we can import the handoff_renderer module.
 # pipeline-api/ is one level below the repo root; __file__ is inside pipeline-api/.

@@ -16,7 +16,7 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -1432,10 +1432,13 @@ async def download_manifest(run_id: str, username: str = Depends(auth.require_se
 async def publish_brief_route(
     run_id: str,
     brief_type: str,
+    bullseye_id: str = Query(""),
+    contender_id: str = Query(""),
+    excluded_id: str = Query(""),
     username: str = Depends(auth.require_session),
 ):
-    """Publish a brief HTML to Hostinger SFTP and return the public URL as JSON."""
-    _VALID_BRIEF_TYPES = {"sales-handoff", "executive-report", "bullseye-report"}
+    """Publish a brief HTML to Hostinger and return the public URL as JSON."""
+    _VALID_BRIEF_TYPES = {"sales-handoff", "executive-report", "bullseye-report", "sales-brief"}
     if brief_type not in _VALID_BRIEF_TYPES:
         raise HTTPException(status_code=400, detail=f"Unknown brief type: {brief_type!r}")
 
@@ -1460,7 +1463,18 @@ async def publish_brief_route(
         if record_adapter.effective_tier(r, all_reviews).lower() == "excluded"
     )
 
-    if brief_type == "sales-handoff":
+    if brief_type == "sales-brief":
+        existing = brief_publisher.get_published_briefs(run_directory).get("sales-brief", {})
+        b_id = bullseye_id or existing.get("bullseye_id", "")
+        c_id = contender_id or existing.get("contender_id", "")
+        e_id = excluded_id or existing.get("excluded_id", "")
+        if not all([b_id, c_id, e_id]):
+            raise HTTPException(status_code=400, detail="bullseye_id, contender_id, and excluded_id are required for sales-brief")
+        try:
+            html_bytes = sales_export.build_sales_brief(run_id, run_directory, status, b_id, c_id, e_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    elif brief_type == "sales-handoff":
         html_bytes = sales_export._build_client_handoff_html(run_id, run_directory, status)
     elif brief_type == "executive-report":
         from reports import pdf_report
@@ -1489,6 +1503,11 @@ async def publish_brief_route(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+    if brief_type == "sales-brief":
+        result["bullseye_id"] = b_id
+        result["contender_id"] = c_id
+        result["excluded_id"] = e_id
 
     brief_publisher.save_published_brief(run_directory, brief_type, result)
     return JSONResponse({"public_url": result["public_url"]})

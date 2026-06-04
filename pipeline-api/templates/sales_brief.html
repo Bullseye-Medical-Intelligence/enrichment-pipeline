@@ -208,9 +208,20 @@
 
   {# ── Header ────────────────────────────────────────────────────────── #}
   <div class="brief-header">
-    <div>
-      <div class="brief-wordmark">BEMI</div>
-      <div class="brief-tagline">Bullseye Medical Intelligence</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bullseye Medical Intelligence">
+        <line x1="18" y1="24.5" x2="7" y2="9" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="18" y1="24.5" x2="18" y2="6" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="18" y1="24.5" x2="29" y2="9" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="7" cy="8.5" r="2.4" fill="#f7f6f4" stroke="#0a0a0a" stroke-width="1.5"/>
+        <circle cx="18" cy="5.5" r="2.4" fill="#f7f6f4" stroke="#0a0a0a" stroke-width="1.5"/>
+        <circle cx="29" cy="8.5" r="2.4" fill="#f7f6f4" stroke="#0a0a0a" stroke-width="1.5"/>
+        <circle cx="18" cy="25" r="3.4" fill="#c84b2f"/>
+      </svg>
+      <div>
+        <div class="brief-wordmark">Bullseye Medical Intelligence</div>
+        <div class="brief-tagline">Intelligence Brief</div>
+      </div>
     </div>
     <div class="brief-meta">
       {% if specialty %}Specialty: <strong>{{ specialty }}</strong><br>{% endif %}
@@ -281,7 +292,7 @@
           {% for sig in _yes_signals %}
           <div class="signal-item">
             <span class="signal-icon-yes">✓</span>
-            <span>{{ sig.signal_label }}</span>
+            <span>{{ sig.signal_label | humanize }}</span>
           </div>
           {% endfor %}
         </div>
@@ -336,10 +347,10 @@
         <div class="card-section-label">Signals</div>
         <div class="signal-list">
           {% for sig in _c_yes %}
-          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>{{ sig.signal_label }}</span></div>
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>{{ sig.signal_label | humanize }}</span></div>
           {% endfor %}
           {% for sig in _c_no %}
-          <div class="signal-item"><span class="signal-icon-no">✗</span><span>{{ sig.signal_label }}</span></div>
+          <div class="signal-item"><span class="signal-icon-no">✗</span><span>{{ sig.signal_label | humanize }}</span></div>
           {% endfor %}
         </div>
       </div>

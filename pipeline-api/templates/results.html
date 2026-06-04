@@ -52,7 +52,20 @@
           {% endif %}
         </div>
       </div>
-      <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate a prospect-facing methodology brief">Sales Brief</button>
+      {% set sbf = published_briefs.get('sales-brief') if published_briefs else none %}
+      {% if sbf %}
+      <div class="dropdown">
+        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Sales Brief ▾</button>
+        <div class="dropdown-menu">
+          <a href="{{ sbf.public_url }}" target="_blank" rel="noopener noreferrer">View ↗</a>
+          <button onclick="copyShareLink('{{ sbf.public_url }}', this); closeDropdowns()">Copy Link</button>
+          <button onclick="openSalesBriefModal(); closeDropdowns()">Update Brief</button>
+          <button onclick="republishSalesBrief('{{ sbf.bullseye_id }}', '{{ sbf.contender_id }}', '{{ sbf.excluded_id }}', this); closeDropdowns()">Re-Publish</button>
+        </div>
+      </div>
+      {% else %}
+      <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate and publish a prospect-facing methodology brief">Sales Brief</button>
+      {% endif %}
       {% else %}
       {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
       <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
@@ -739,7 +752,7 @@
 
     <div id="brief-error" style="display:none; color:var(--accent,#c84b2f); font-size:0.85em; margin-bottom:1em; padding:0.5em 0.75em; background:#fef2ef; border-radius:6px;"></div>
 
-    <button class="btn btn-submit" onclick="generateSalesBrief('{{ run_id }}')">Generate Sales Brief</button>
+    <button id="brief-generate-btn" class="btn btn-submit" onclick="generateSalesBrief('{{ run_id }}')">Publish & Get Link</button>
   </div>
 </div>
 {% endif %}
@@ -762,7 +775,7 @@ function closeSalesBriefModal() {
   document.getElementById('sales-brief-modal').style.display = 'none';
   document.body.style.overflow = '';
 }
-function generateSalesBrief(runId) {
+async function generateSalesBrief(runId) {
   var bId = document.getElementById('brief-bullseye-id').value;
   var cId = document.getElementById('brief-contender-id').value;
   var eId = document.getElementById('brief-excluded-id').value;
@@ -773,11 +786,52 @@ function generateSalesBrief(runId) {
     return;
   }
   errEl.style.display = 'none';
-  closeSalesBriefModal();
-  window.location.href = '/runs/' + runId + '/download/sales-brief' +
-    '?bullseye_id=' + encodeURIComponent(bId) +
-    '&contender_id=' + encodeURIComponent(cId) +
-    '&excluded_id=' + encodeURIComponent(eId);
+  var btn = document.getElementById('brief-generate-btn');
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Publishing…';
+  try {
+    var url = '/runs/' + runId + '/publish/sales-brief' +
+      '?bullseye_id=' + encodeURIComponent(bId) +
+      '&contender_id=' + encodeURIComponent(cId) +
+      '&excluded_id=' + encodeURIComponent(eId);
+    var resp = await fetch(url, {method: 'POST'});
+    if (!resp.ok) {
+      var data = await resp.json().catch(function() { return {}; });
+      errEl.textContent = 'Publish failed: ' + (data.detail || resp.statusText);
+      errEl.style.display = 'block';
+      return;
+    }
+    var data = await resp.json();
+    closeSalesBriefModal();
+    window.location.reload();
+  } catch(e) {
+    errEl.textContent = 'Publish failed: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+async function republishSalesBrief(bId, cId, eId, btn) {
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Publishing…';
+  try {
+    var url = '/runs/{{ run_id }}/publish/sales-brief' +
+      '?bullseye_id=' + encodeURIComponent(bId) +
+      '&contender_id=' + encodeURIComponent(cId) +
+      '&excluded_id=' + encodeURIComponent(eId);
+    var resp = await fetch(url, {method: 'POST'});
+    if (!resp.ok) {
+      var data = await resp.json().catch(function() { return {}; });
+      alert('Publish failed: ' + (data.detail || resp.statusText));
+      return;
+    }
+    btn.textContent = 'Published ✓';
+    setTimeout(function() { btn.textContent = orig; btn.disabled = false; }, 2000);
+    return;
+  } catch(e) {
+    alert('Publish failed: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = orig;
 }
 (function() {
   var modal = document.getElementById('sales-brief-modal');
