@@ -408,7 +408,20 @@ th.sortable.sort-desc::after { content: " \2193"; opacity: 1; }
   margin-top: 5px;
 }
 
-/* ── Filter bar ───────────────────────────────────────────────────── */
+/* ── Stat blocks as filters ────────────────────────────────────────── */
+.stat-item.stat-clickable {
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.stat-item.stat-clickable:hover { opacity: 0.82; transform: translateY(-1px); }
+.stats-bar.filter-active .stat-item.stat-clickable { opacity: 0.4; }
+.stats-bar.filter-active .stat-item.stat-active { opacity: 1; outline: 2px solid rgba(247,246,244,0.35); outline-offset: 3px; transform: none; }
+
+/* ── Excluded table — hide QC column ─────────────────────────────── */
+#excluded-table th.qc-col,
+#excluded-table td.qc-col { display: none; }
+
+/* ── Filter bar (legacy, kept for ref) ───────────────────────────── */
 .filter-bar {
   display: flex;
   align-items: center;

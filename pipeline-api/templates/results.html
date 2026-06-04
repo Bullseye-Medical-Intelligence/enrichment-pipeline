@@ -243,30 +243,16 @@
 </div>
 {% else %}
 <div class="stats-bar">
-  <div class="stat-item"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
-  <div class="stat-item stat-bullseye"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
-  <div class="stat-item stat-needs-verification"><span class="stat-num">{{ stats.needs_verification }}</span><span class="stat-label">Needs Verification</span></div>
-  <div class="stat-item stat-contender"><span class="stat-num">{{ stats.contender }}</span><span class="stat-label">Contender</span></div>
-  <div class="stat-item stat-manual-review"><span class="stat-num">{{ stats.manual_review }}</span><span class="stat-label">Manual Review</span></div>
-  <div class="stat-item stat-excluded"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
-  <div class="stat-item stat-pending"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
+  <div class="stat-item stat-clickable" onclick="filterByStatBlock('all', this)"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">Total</span></div>
+  <div class="stat-item stat-bullseye stat-clickable" onclick="filterByStatBlock('bullseye', this)"><span class="stat-num">{{ stats.bullseye }}</span><span class="stat-label">Bullseye</span></div>
+  <div class="stat-item stat-needs-verification stat-clickable" onclick="filterByStatBlock('needs-verification', this)"><span class="stat-num">{{ stats.needs_verification }}</span><span class="stat-label">Needs Verification</span></div>
+  <div class="stat-item stat-contender stat-clickable" onclick="filterByStatBlock('contender', this)"><span class="stat-num">{{ stats.contender }}</span><span class="stat-label">Contender</span></div>
+  <div class="stat-item stat-manual-review stat-clickable" onclick="filterByStatBlock('manual-review', this)"><span class="stat-num">{{ stats.manual_review }}</span><span class="stat-label">Manual Review</span></div>
+  <div class="stat-item stat-excluded stat-clickable" onclick="filterByStatBlock('excluded', this)"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
+  <div class="stat-item stat-pending stat-clickable" onclick="filterByStatBlock('pending', this)"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
 </div>
 {% endif %}
 
-{# ── Filter bar ───────────────────────────────────────────────────── #}
-{% if not is_ingested %}
-<div class="filter-bar">
-  <span class="filter-label">Filter:</span>
-  <button class="filter-btn active" onclick="filterRecords('all', this)">All</button>
-  <button class="filter-btn" onclick="filterRecords('bullseye', this)">Bullseye</button>
-  <button class="filter-btn" onclick="filterRecords('needs-verification', this)">Needs Verification</button>
-  <button class="filter-btn" onclick="filterRecords('contender', this)">Contender</button>
-  <button class="filter-btn" onclick="filterRecords('manual-review', this)">Manual Review</button>
-  <span class="filter-sep">|</span>
-  <button class="filter-btn" onclick="filterByQC('pending', this)">Pending Review</button>
-  <button class="filter-btn" onclick="filterByQC('approved', this)">Reviewed</button>
-</div>
-{% endif %}
 
 {% macro record_rows(record, run_id, status) %}
 {% set rid = record.record_id | default("") %}
@@ -316,7 +302,7 @@
           {% endif %}
         </td>
         <td>{{ record.bullseye_score | default("—") }}</td>
-        <td>
+        <td class="qc-col">
           <span class="badge badge-qc-{{ review.qc_status }}">{{ 'Reviewed' if review.qc_status in ('approved', 'rejected') else review.qc_status | title }}</span>
         </td>
       </tr>
@@ -621,7 +607,7 @@
         <th>Location</th>
         <th>Tier</th>
         <th>Score</th>
-        <th>QC</th>
+        <th class="qc-col">QC</th>
       </tr>
     </thead>
     <tbody>
@@ -649,7 +635,7 @@
         <th>Location</th>
         <th>Tier</th>
         <th>Score</th>
-        <th>QC</th>
+        <th class="qc-col">QC</th>
       </tr>
     </thead>
     <tbody>
@@ -690,7 +676,7 @@
           <th>Location</th>
           <th>Tier</th>
           <th>Score</th>
-          <th>QC</th>
+          <th class="qc-col">QC</th>
         </tr>
       </thead>
       <tbody>

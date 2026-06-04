@@ -79,6 +79,37 @@ function toggleDetail(recordId) {
   if (icon) icon.textContent = isHidden ? '▼' : '▶';
 }
 
+/* ── Stat block filter ──────────────────────────────────────── */
+function filterByStatBlock(tier, el) {
+  var isActive = el.classList.contains('stat-active');
+  var bar = el.closest('.stats-bar');
+
+  document.querySelectorAll('.stats-bar .stat-item').forEach(function(s) {
+    s.classList.remove('stat-active');
+  });
+
+  if (isActive || tier === 'all') {
+    _applyFilter(function() { return true; });
+    if (bar) bar.classList.remove('filter-active');
+    return;
+  }
+
+  el.classList.add('stat-active');
+  if (bar) bar.classList.add('filter-active');
+
+  if (tier === 'excluded') {
+    _applyFilter(function() { return true; });
+    var section = document.getElementById('excluded-section');
+    if (section) section.scrollIntoView({behavior: 'smooth', block: 'start'});
+    return;
+  }
+  if (tier === 'pending') {
+    _applyFilter(function(row) { return row.dataset.qc === 'pending'; });
+    return;
+  }
+  _applyFilter(function(row) { return row.dataset.tier === tier; });
+}
+
 /* ── Client-side tier filter ────────────────────────────────── */
 function filterRecords(tier, btn) {
   _setActiveFilter(btn);
