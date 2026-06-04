@@ -1999,7 +1999,7 @@ def _calculate_stats(records: list[dict]) -> dict:
         if tier in stats:
             stats[tier] += 1
         qc = (r.get("review") or {}).get("qc_status", "pending")
-        if qc == "pending":
+        if qc == "pending" and tier != "excluded":
             stats["pending_review"] += 1
         elif qc in stats:
             stats[qc] += 1
