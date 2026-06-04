@@ -98,11 +98,14 @@
   .landmine{font-size:13px;line-height:1.55;color:var(--txt);border-left:2px solid var(--acc);padding-left:12px;}
   .landmine b{color:#f2efeb;}
   .sigrow{display:flex;flex-wrap:wrap;gap:7px;}
-  .sigpill{font-size:11.5px;color:var(--txt);background:rgba(247,246,244,0.05);border-radius:6px;padding:5px 11px;}
-  .sigpill::before{content:"+ ";color:rgba(95,169,120,0.8);font-weight:600;}
+  .sigpill{font-size:11.5px;color:rgba(95,169,120,0.9);background:rgba(95,169,120,0.08);border:1px solid rgba(95,169,120,0.2);border-radius:6px;padding:5px 11px;}
   .verify{list-style:none;columns:2;column-gap:24px;}
-  .verify li{font-size:12.5px;color:var(--txt);padding:4px 0;break-inside:avoid;display:flex;gap:8px;}
-  .verify li::before{content:"○";color:rgba(247,246,244,0.28);font-size:9px;padding-top:2px;}
+  .verify li{font-size:12px;color:var(--mut);padding:3px 0;break-inside:avoid;padding-left:14px;position:relative;}
+  .verify li::before{content:"·";position:absolute;left:0;color:rgba(247,246,244,0.28);font-size:14px;line-height:1.2;}
+
+  /* Excluded section — faded so reps don't accidentally engage */
+  .tsection[data-tier="e"] .acct{opacity:0.35;transition:opacity .2s;}
+  .tsection[data-tier="e"] .acct:hover,.tsection[data-tier="e"] .acct.open{opacity:0.72;}
   .twocol{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
   .qc{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--mut);}
   .qc b{color:#cfccc8;}

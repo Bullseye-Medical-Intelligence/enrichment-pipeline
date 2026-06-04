@@ -209,11 +209,10 @@ def test_empty_tier_section_omitted():
     """A tier with zero accounts must not produce a section or filter chip."""
     run = _make_run(accounts=[_make_account(tier=Tier.BULLSEYE)])
     html = render_handoff(run)
-    # No CONTENDER or EXCLUDED accounts — sections and chips must be absent.
-    # Check via data attributes (the howto text contains "Validate" and "Suppress"
-    # statically, so those words alone are not a reliable signal).
-    assert 'data-tier="c"' not in html, "Validate (CONTENDER) section should be absent"
-    assert 'data-tier="e"' not in html, "Suppress (EXCLUDED) section should be absent"
+    # No CONTENDER or EXCLUDED accounts — section divs and chips must be absent.
+    # Use class="tsection" as the discriminator since the CSS now contains data-tier="e".
+    assert 'class="tsection" data-tier="c"' not in html, "Validate (CONTENDER) section should be absent"
+    assert 'class="tsection" data-tier="e"' not in html, "Suppress (EXCLUDED) section should be absent"
     assert 'data-f="c"' not in html, "Validate filter chip should be absent"
     assert 'data-f="e"' not in html, "Suppress filter chip should be absent"
 
