@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import auth
+import brief_publisher
 import client_exports
 import sales_export
 import config
@@ -893,6 +894,7 @@ async def results_page(
         has_checkpoint=has_checkpoint,
         checkpoint_count=checkpoint_count,
         flash=flash,
+        published_briefs=brief_publisher.get_published_briefs(runs.run_dir(run_id)),
     )
 
 
@@ -1424,6 +1426,67 @@ async def download_manifest(run_id: str, username: str = Depends(auth.require_se
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{run_id}_run_manifest.json"'},
     )
+
+
+@router.post("/runs/{run_id}/publish/{brief_type}")
+async def publish_brief_route(
+    run_id: str,
+    brief_type: str,
+    username: str = Depends(auth.require_session),
+):
+    """Publish a brief HTML to Hostinger SFTP and return the public URL as JSON."""
+    _VALID_BRIEF_TYPES = {"sales-handoff", "executive-report", "bullseye-report"}
+    if brief_type not in _VALID_BRIEF_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unknown brief type: {brief_type!r}")
+
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(status_code=425, detail="Run is not complete")
+    if not config.HOSTINGER_SFTP_HOST:
+        raise HTTPException(
+            status_code=503, detail="Brief publishing is not configured on this server"
+        )
+
+    run_directory = runs.run_dir(run_id)
+    records = client_exports._load_records(run_directory)
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    project = projects.read_config_snapshot(run_directory) or {}
+    icp = icp_profiles.read_snapshot(run_directory) or {}
+    approved = client_exports._approved_records(records, all_reviews)
+    excluded_count = sum(
+        1 for r in records
+        if record_adapter.effective_tier(r, all_reviews).lower() == "excluded"
+    )
+
+    if brief_type == "sales-handoff":
+        html_bytes = sales_export._build_client_handoff_html(run_id, run_directory, status)
+    elif brief_type == "executive-report":
+        from reports import pdf_report
+        html_bytes = pdf_report.build_executive_report_html(
+            run_id=run_id, status=status, project=project, icp=icp,
+            approved_records=approved, all_reviews=all_reviews,
+            screened=len(records), excluded_count=excluded_count,
+        )
+    else:  # bullseye-report
+        from reports import pdf_report
+        html_bytes = pdf_report.build_bullseye_cards_html(
+            run_id=run_id, status=status, project=project, icp=icp,
+            approved_records=approved, all_reviews=all_reviews,
+            screened=len(records), excluded_count=excluded_count,
+        )
+
+    client_name = status.client_name or project.get("client_name") or "client"
+    slug = brief_publisher.client_slug_from_name(client_name)
+
+    try:
+        result = brief_publisher.publish_brief(html_bytes, slug, brief_type)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    brief_publisher.save_published_brief(run_directory, brief_type, result)
+    return JSONResponse({"public_url": result["public_url"]})
 
 
 @router.post("/api/ui/runs")

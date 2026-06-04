@@ -154,3 +154,16 @@ def get_valid_users() -> dict[str, str]:
     if UI_USERNAME and UI_PASSWORD:
         return {UI_USERNAME: UI_PASSWORD}
     return {}
+
+# ---------------------------------------------------------------------------
+# Brief publishing (Hostinger SFTP)
+# ---------------------------------------------------------------------------
+
+HOSTINGER_SFTP_HOST: str = os.environ.get("HOSTINGER_SFTP_HOST", "")
+HOSTINGER_SFTP_PORT: int = int(os.environ.get("HOSTINGER_SFTP_PORT", "22"))
+HOSTINGER_SFTP_USER: str = os.environ.get("HOSTINGER_SFTP_USER", "")
+HOSTINGER_SFTP_PASSWORD: str = os.environ.get("HOSTINGER_SFTP_PASSWORD", "")
+HOSTINGER_BRIEFS_REMOTE_ROOT: str = os.environ.get("HOSTINGER_BRIEFS_REMOTE_ROOT", "")
+BRIEFS_PUBLIC_BASE_URL: str = os.environ.get(
+    "BRIEFS_PUBLIC_BASE_URL", "https://briefs.bullseyemedical.ai"
+)

@@ -1,0 +1,141 @@
+"""
+brief_publisher.py
+Upload a generated HTML brief to the Hostinger SFTP server and return
+a public URL. Also manages the per-run published_briefs.json record.
+
+Public API:
+  publish_brief(html_bytes, client_slug, brief_type) -> dict
+  client_slug_from_name(client_name) -> str
+  get_published_briefs(run_directory) -> dict
+  save_published_brief(run_directory, brief_type, result) -> None
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import secrets
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+
+import config
+
+logger = logging.getLogger(__name__)
+
+_BRIEFS_FILENAME = "published_briefs.json"
+
+
+def publish_brief(html_bytes: bytes, client_slug: str, brief_type: str) -> dict:
+    """Upload an HTML brief to Hostinger SFTP and return its public URL.
+
+    Args:
+        html_bytes: UTF-8 encoded HTML content.
+        client_slug: URL-safe client identifier, e.g. "right-at-home".
+        brief_type: Brief type slug, e.g. "sales-handoff" or "executive-report".
+
+    Returns:
+        {"public_url": str, "storage_path": str, "filename": str, "published_at": str}
+
+    Raises:
+        RuntimeError: if SFTP upload fails or publishing is not configured.
+    """
+    if not config.HOSTINGER_SFTP_HOST:
+        raise RuntimeError(
+            "Brief publishing is not configured. Set HOSTINGER_SFTP_HOST in .env."
+        )
+
+    token = secrets.token_hex(4)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    filename = f"{brief_type}-{token}.html"
+    relative_path = f"{client_slug}/{today}/{filename}"
+    remote_path = str(
+        PurePosixPath(config.HOSTINGER_BRIEFS_REMOTE_ROOT.rstrip("/")) / relative_path
+    )
+    public_url = f"{config.BRIEFS_PUBLIC_BASE_URL.rstrip('/')}/{relative_path}"
+
+    _sftp_upload(html_bytes, remote_path)
+
+    published_at = datetime.now(timezone.utc).isoformat()
+    logger.info("Published %s brief for %s: %s", brief_type, client_slug, public_url)
+    return {
+        "public_url": public_url,
+        "storage_path": remote_path,
+        "filename": filename,
+        "published_at": published_at,
+    }
+
+
+def client_slug_from_name(client_name: str) -> str:
+    """Convert a client name to a URL-safe slug, e.g. 'Right at Home' -> 'right-at-home'."""
+    s = client_name.lower().strip()
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    s = re.sub(r"[\s-]+", "-", s)
+    return s.strip("-")[:40] or "client"
+
+
+def get_published_briefs(run_directory: Path) -> dict:
+    """Load published_briefs.json from run_directory; return {} if absent or corrupt."""
+    path = run_directory / _BRIEFS_FILENAME
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_published_brief(run_directory: Path, brief_type: str, result: dict) -> None:
+    """Atomically update published_briefs.json with a new or updated entry."""
+    path = run_directory / _BRIEFS_FILENAME
+    briefs = get_published_briefs(run_directory)
+    briefs[brief_type] = result
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(briefs, f, indent=2)
+    os.replace(tmp, path)
+
+
+def _sftp_upload(data: bytes, remote_path: str) -> None:
+    """Connect to Hostinger SFTP, create parent directories, and upload data."""
+    try:
+        import paramiko
+    except ImportError as exc:
+        raise RuntimeError(
+            "paramiko is required for brief publishing. "
+            "Install with: pip install paramiko"
+        ) from exc
+
+    transport = paramiko.Transport((config.HOSTINGER_SFTP_HOST, config.HOSTINGER_SFTP_PORT))
+    try:
+        transport.connect(
+            username=config.HOSTINGER_SFTP_USER,
+            password=config.HOSTINGER_SFTP_PASSWORD,
+        )
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        try:
+            _sftp_makedirs(sftp, str(PurePosixPath(remote_path).parent))
+            with sftp.open(remote_path, "wb") as fh:
+                fh.write(data)
+        finally:
+            sftp.close()
+    except paramiko.AuthenticationException as exc:
+        raise RuntimeError(f"SFTP authentication failed: {exc}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"SFTP upload to {remote_path} failed: {exc}") from exc
+    finally:
+        transport.close()
+
+
+def _sftp_makedirs(sftp, remote_dir: str) -> None:
+    """Recursively create remote_dir and all missing parents."""
+    parts = PurePosixPath(remote_dir).parts
+    current = ""
+    for part in parts:
+        current = str(PurePosixPath(current) / part) if current else part
+        try:
+            sftp.stat(current)
+        except FileNotFoundError:
+            sftp.mkdir(current)

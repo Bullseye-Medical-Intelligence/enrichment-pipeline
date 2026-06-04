@@ -40,6 +40,16 @@
     {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
     <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
     {% endif %}
+    {% if readiness and readiness.state == 'ready' %}
+    {% set sf = published_briefs.get('sales-handoff') if published_briefs else none %}
+    {% if sf %}
+    <a href="{{ sf.public_url }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">Sales Handoff ↗</a>
+    <button class="btn btn-secondary" onclick="copyShareLink('{{ sf.public_url }}', this)">Copy Link</button>
+    <button class="btn btn-secondary" onclick="publishBrief('sales-handoff', this)">Republish</button>
+    {% else %}
+    <button class="btn btn-secondary" onclick="publishBrief('sales-handoff', this)">Publish Sales Handoff</button>
+    {% endif %}
+    {% endif %}
     <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate a prospect-facing methodology brief — select 1 Bullseye, 1 Contender, 1 Excluded">Sales Brief</button>
     {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
     {% if limited_count > 0 %}
@@ -808,5 +818,36 @@ function deleteSelected(runId) {
   });
 }
 {% endif %}
+
+async function publishBrief(briefType, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Publishing…';
+  try {
+    const resp = await fetch('/runs/{{ run_id }}/publish/' + briefType, {method: 'POST'});
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Publish failed: ' + (err.detail || resp.statusText));
+      btn.disabled = false;
+      btn.textContent = orig;
+      return;
+    }
+    window.location.reload();
+  } catch (e) {
+    alert('Publish failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+function copyShareLink(url, btn) {
+  navigator.clipboard.writeText(url).then(function() {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = orig; }, 1500);
+  }).catch(function() {
+    prompt('Copy this link:', url);
+  });
+}
 </script>
 {% endblock %}
