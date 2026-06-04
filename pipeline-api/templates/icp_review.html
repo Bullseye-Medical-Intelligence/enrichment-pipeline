@@ -160,7 +160,7 @@
           <th style="width:68px; text-align:center;">Weight</th>
           <th style="width:72px; text-align:center;">No Penalty</th>
           <th style="width:72px; text-align:center;">Must-Have</th>
-          <th style="width:110px; text-align:center;">Cap Tier</th>
+          <th style="width:130px; text-align:center;">Cap Tier</th>
           <th style="width:110px; text-align:center;" title="When this signal is YES and the target is not_found, treat the target as inferred (indirect evidence).">Reinforces</th>
           <th style="width:70px; text-align:center;"></th>
         </tr>
@@ -201,7 +201,7 @@
                    title="Required for Bullseye: confirmed absent caps tier at Contender; not found caps at Needs Verification.">
           </td>
           <td style="text-align:center;">
-            <select name="cap_tier_{{ n }}" style="width:100%;"
+            <select name="cap_tier_{{ n }}" style="width:100%; font-size:11px;"
                     title="When this signal is confirmed YES, hard-cap the tier at this level. Leave None for positive-weight signals.">
               <option value="">None</option>
               <option value="Contender" {% if sig.cap_tier == 'Contender' %}selected{% endif %}>Contender</option>
@@ -356,7 +356,7 @@ function addSignalRow() {
     '<td style="text-align:center;"><input type="number" name="positive_weight_' + n + '" value="10" min="-99" max="99" style="width:58px" required></td>' +
     '<td style="text-align:center;"><input type="number" name="no_weight_' + n + '" min="-99" max="0" style="width:58px" placeholder="0" title="Point penalty when confirmed absent (0 or negative). Leave blank for no penalty."></td>' +
     '<td style="text-align:center;"><input type="checkbox" name="required_for_bullseye_' + n + '" title="Required for Bullseye: confirmed absent caps tier at Contender; not found caps at Needs Verification."></td>' +
-    '<td style="text-align:center;"><select name="cap_tier_' + n + '" style="width:100%;" title="When confirmed YES, hard-cap the tier at this level.">' +
+    '<td style="text-align:center;"><select name="cap_tier_' + n + '" style="width:100%;font-size:11px;" title="When confirmed YES, hard-cap the tier at this level.">' +
       '<option value="">None</option>' +
       '<option value="Contender">Contender</option>' +
       '<option value="Needs Verification">Needs Verification</option>' +
