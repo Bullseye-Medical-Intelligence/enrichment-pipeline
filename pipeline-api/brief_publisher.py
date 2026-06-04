@@ -7,7 +7,7 @@ Tries SFTP (paramiko) first; if paramiko is not installed or the SFTP
 connection is refused, falls back to plain FTP (ftplib, stdlib).
 
 Public API:
-  publish_brief(html_bytes, client_slug, brief_type) -> dict
+  publish_brief(html_bytes, client_slug, brief_type, existing_storage_path=None) -> dict
   client_slug_from_name(client_name) -> str
   get_published_briefs(run_directory) -> dict
   save_published_brief(run_directory, brief_type, result) -> None
@@ -30,32 +30,45 @@ logger = logging.getLogger(__name__)
 _BRIEFS_FILENAME = "published_briefs.json"
 
 
-def publish_brief(html_bytes: bytes, client_slug: str, brief_type: str) -> dict:
-    """Upload an HTML brief to Hostinger SFTP and return its public URL.
+def publish_brief(
+    html_bytes: bytes,
+    client_slug: str,
+    brief_type: str,
+    existing_storage_path: str | None = None,
+) -> dict:
+    """Upload an HTML brief to Hostinger and return its public URL.
 
-    Args:
-        html_bytes: UTF-8 encoded HTML content.
-        client_slug: URL-safe client identifier, e.g. "right-at-home".
-        brief_type: Brief type slug, e.g. "sales-handoff" or "executive-report".
+    When existing_storage_path is provided (a republish), the file is overwritten
+    in place so the URL stays the same for anyone who already received it.
 
     Returns:
         {"public_url": str, "storage_path": str, "filename": str, "published_at": str}
 
     Raises:
-        RuntimeError: if SFTP upload fails or publishing is not configured.
+        RuntimeError: if the upload fails or publishing is not configured.
     """
     if not config.HOSTINGER_SFTP_HOST:
         raise RuntimeError(
             "Brief publishing is not configured. Set HOSTINGER_SFTP_HOST in .env."
         )
 
-    token = secrets.token_hex(4)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    filename = f"{brief_type}-{token}.html"
-    relative_path = f"{client_slug}/{today}/{filename}"
-    remote_path = str(
-        PurePosixPath(config.HOSTINGER_BRIEFS_REMOTE_ROOT.rstrip("/")) / relative_path
-    )
+    if existing_storage_path:
+        remote_path = existing_storage_path
+        root = config.HOSTINGER_BRIEFS_REMOTE_ROOT.rstrip("/")
+        if existing_storage_path.startswith(root + "/"):
+            relative_path = existing_storage_path[len(root) + 1:]
+        else:
+            relative_path = existing_storage_path.lstrip("/")
+        filename = PurePosixPath(relative_path).name
+    else:
+        token = secrets.token_hex(4)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        filename = f"{brief_type}-{token}.html"
+        relative_path = f"{client_slug}/{today}/{filename}"
+        remote_path = str(
+            PurePosixPath(config.HOSTINGER_BRIEFS_REMOTE_ROOT.rstrip("/")) / relative_path
+        )
+
     public_url = f"{config.BRIEFS_PUBLIC_BASE_URL.rstrip('/')}/{relative_path}"
 
     _upload(html_bytes, remote_path)
