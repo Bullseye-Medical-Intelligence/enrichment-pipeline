@@ -383,7 +383,14 @@ th.sortable.sort-desc::after { content: " \2193"; opacity: 1; }
   padding: 14px 18px;
   text-align: center;
   min-width: 78px;
+  border-top: 3px solid transparent;
 }
+.stat-bullseye          { border-top-color: #dc2626; background: linear-gradient(180deg, rgba(220,38,38,0.08) 0%, var(--ink) 60%); }
+.stat-needs-verification{ border-top-color: #d97706; background: linear-gradient(180deg, rgba(217,119,6,0.08) 0%, var(--ink) 60%); }
+.stat-contender         { border-top-color: #c84b2f; background: linear-gradient(180deg, rgba(200,75,47,0.08) 0%, var(--ink) 60%); }
+.stat-manual-review     { border-top-color: #64748b; background: linear-gradient(180deg, rgba(100,116,139,0.08) 0%, var(--ink) 60%); }
+.stat-excluded          { border-top-color: rgba(100,116,139,0.45); background: linear-gradient(180deg, rgba(100,116,139,0.04) 0%, var(--ink) 60%); }
+.stat-pending           { border-top-color: #7c3aed; background: linear-gradient(180deg, rgba(124,58,237,0.08) 0%, var(--ink) 60%); }
 .stat-num {
   display: block;
   font-family: 'Instrument Serif', Georgia, serif;
