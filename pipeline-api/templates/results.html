@@ -521,9 +521,27 @@
                 <div class="form-group" id="reason-group-{{ rid }}"
                      style="{% if not review.override_tier %}display:none{% endif %}">
                   <label>Override Reason <span class="required">*</span></label>
-                  <textarea class="review-reason" rows="2"
-                            id="reason-{{ rid }}"
-                            placeholder="Required: why are you overriding the pipeline's classification?">{{ review.override_reason or "" }}</textarea>
+                  {% set _preset_reasons = [
+                    "Website down / unreachable",
+                    "Office closed or no longer operating",
+                    "Wrong specialty confirmed",
+                    "Hospital / health-system owned",
+                    "Duplicate record",
+                    "No website or insufficient context",
+                    "Verified by phone — signals confirmed",
+                    "Verified by phone — disqualified"
+                  ] %}
+                  <select id="reason-{{ rid }}" onchange="toggleOtherReason('{{ rid }}')">
+                    <option value="">— Select a reason —</option>
+                    {% for r in _preset_reasons %}
+                    <option value="{{ r }}"{% if review.override_reason == r %} selected{% endif %}>{{ r }}</option>
+                    {% endfor %}
+                    <option value="__other__"{% if review.override_reason and review.override_reason not in _preset_reasons %} selected{% endif %}>Other (specify below)</option>
+                  </select>
+                  <input type="text" id="reason-other-{{ rid }}"
+                         placeholder="Describe the reason…"
+                         value="{{ review.override_reason if review.override_reason and review.override_reason not in _preset_reasons else '' }}"
+                         style="margin-top:6px;{% if not (review.override_reason and review.override_reason not in _preset_reasons) %} display:none{% endif %}">
                 </div>
 
                 <div class="form-group">

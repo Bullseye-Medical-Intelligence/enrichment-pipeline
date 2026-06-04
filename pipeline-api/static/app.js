@@ -208,6 +208,13 @@ function toggleReasonField(recordId) {
   group.style.display = select.value ? '' : 'none';
 }
 
+function toggleOtherReason(recordId) {
+  var sel = document.getElementById('reason-' + recordId);
+  var inp = document.getElementById('reason-other-' + recordId);
+  if (!sel || !inp) return;
+  inp.style.display = sel.value === '__other__' ? '' : 'none';
+}
+
 /* ── Set QC status via button click ─────────────────────────── */
 function setQC(recordId, status) {
   var btns = document.querySelectorAll('#review-' + recordId + ' .qc-btn');
@@ -229,7 +236,14 @@ function saveReview(runId, recordId) {
 
   var note     = (document.getElementById('note-'     + recordId) || {}).value || '';
   var override = (document.getElementById('override-' + recordId) || {}).value || null;
-  var reason   = (document.getElementById('reason-'   + recordId) || {}).value || null;
+  var reasonSel   = document.getElementById('reason-' + recordId);
+  var reasonOther = document.getElementById('reason-other-' + recordId);
+  var reason = null;
+  if (reasonSel && reasonSel.value) {
+    reason = reasonSel.value === '__other__'
+      ? ((reasonOther && reasonOther.value.trim()) || null)
+      : reasonSel.value;
+  }
   var reviewEl = document.getElementById('review-'    + recordId);
   var qcStatus = (reviewEl && reviewEl.dataset.qcStatus) ||
                  _currentQC(recordId) || 'pending';
