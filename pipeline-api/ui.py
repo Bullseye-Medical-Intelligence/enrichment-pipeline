@@ -1480,8 +1480,13 @@ async def publish_brief_route(
     client_name = status.client_name or project.get("client_name") or "client"
     slug = brief_publisher.client_slug_from_name(client_name)
 
+    existing = brief_publisher.get_published_briefs(run_directory).get(brief_type, {})
+    existing_path = existing.get("storage_path") or None
+
     try:
-        result = brief_publisher.publish_brief(html_bytes, slug, brief_type)
+        result = brief_publisher.publish_brief(
+            html_bytes, slug, brief_type, existing_storage_path=existing_path
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
