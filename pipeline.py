@@ -43,7 +43,11 @@ from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
 from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import batch_extract
-from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, MIN_CONTEXT_CHARS
+from enrichment.constants import (
+    DEFAULT_BULLSEYE_MIN_SCORE,
+    DEFAULT_NEAR_MISS_BAND,
+    MIN_CONTEXT_CHARS,
+)
 from enrichment.signal_extractor import extract_signals
 from enrichment.verifier import verify_bullseye_record, generate_sales_brief
 from enrichment.exclusion_checker import apply_exclusions, check_structural_exclusions
@@ -196,6 +200,20 @@ def _records_needing_browser_retry(records: list[dict]) -> list[dict]:
     return blocked
 
 
+def _select_verification_records(
+    records: list[dict], bullseye_min: int, near_miss_band: int
+) -> list[dict]:
+    """Select records to send to GPT verification (Step 5a).
+
+    Always includes Bullseye records (score >= bullseye_min). When near_miss_band
+    is > 0, the floor is lowered by that many points so near-miss records just
+    below the Bullseye line also get a second opinion. band 0 keeps the floor at
+    bullseye_min, so only true Bullseye records are verified — the default.
+    """
+    verification_floor = bullseye_min - max(0, near_miss_band)
+    return [r for r in records if r.get("bullseye_score", 0) >= verification_floor]
+
+
 def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -> None:
     """Populate records' context text from operator-provided files, no crawl.
 
@@ -327,6 +345,7 @@ def run_pipeline(input_file: str, source_type: str,
     retries = run_config.get("request_retries", 3)
     max_pages = run_config.get("max_pages_per_practice", 5)
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
+    near_miss_band = run_config.get("verify_near_miss_band", DEFAULT_NEAR_MISS_BAND)
     subpage_keywords = run_config.get("subpage_keywords") or None
     io_concurrency = int(run_config.get("io_concurrency", 6))
     llm_concurrency = int(run_config.get("llm_concurrency", 3))
@@ -612,9 +631,8 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 5: GPT SECOND PASS — verification (Bullseye) + sales brief (all)
     # -------------------------------------------------------------------------
-    bullseye_records = [
-        r for r in records if r.get("bullseye_score", 0) >= bullseye_min
-    ]
+    verification_floor = bullseye_min - max(0, near_miss_band)
+    bullseye_records = _select_verification_records(records, bullseye_min, near_miss_band)
     # Sales brief candidates: enriched records with confirmed signals that aren't
     # already flagged as LLM-detected exclusions (avoid spending GPT on soon-to-
     # be-excluded records). Bullseye records get both verification + sales brief.
@@ -630,7 +648,11 @@ def run_pipeline(input_file: str, source_type: str,
     print(f"\n{'-'*40}")
     print("STEP 5: GPT SECOND PASS")
     print(f"{'-'*40}")
-    print(f"  {len(bullseye_records)} Bullseye records → verification")
+    if near_miss_band > 0:
+        print(f"  {len(bullseye_records)} records scored >= {verification_floor} "
+              f"(Bullseye {bullseye_min} + near-miss band {near_miss_band}) → verification")
+    else:
+        print(f"  {len(bullseye_records)} Bullseye records → verification")
     print(f"  {len(brief_candidates)} records → practice-specific sales brief")
 
     _write_progress(output_dir, 5, "GPT second pass", 0,
@@ -664,7 +686,7 @@ def run_pipeline(input_file: str, source_type: str,
                 f"and are flagged needs_review"
             )
     else:
-        print(f"  No records scored >= {bullseye_min} — verification skipped")
+        print(f"  No records scored >= {verification_floor} — verification skipped")
 
     # 5b — Practice-specific sales brief for all enriched candidates
     if brief_candidates:

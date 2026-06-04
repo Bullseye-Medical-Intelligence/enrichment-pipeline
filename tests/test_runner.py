@@ -218,6 +218,25 @@ def test_merge_id_not_found_leaves_source_untouched(run_store):
     assert (run_dir / "enriched_targets.json").read_text() == before
 
 
+def test_reenrichment_id_mismatch_leaves_source_untouched(run_store):
+    # record_id IS present in the source, but the scratch output carries a
+    # DIFFERENT id. Previously a fallback merged that wrong record into the
+    # source slot, orphaning the analyst's review. The merge must now abort.
+    run_id = "RUN-20260528-110004-eeee"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"}])
+    before = (run_dir / "enriched_targets.json").read_text()
+    scratch = _scratch_with(run_dir, {
+        "id": "T-WRONG", "practice_name": "Mismatch", "target_tier": "Bullseye",
+        "bullseye_score": 95, "exclusion_status": "CLEAR"})
+
+    result = runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    assert result.ok is False
+    assert (run_dir / "enriched_targets.json").read_text() == before
+
+
 def test_merge_invalid_scratch_leaves_source_untouched(run_store):
     run_id = "RUN-20260528-110003-dddd"
     run_dir = _complete_run(run_store, run_id, [

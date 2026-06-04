@@ -31,7 +31,12 @@ from enrichment.signal_extractor import (
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
-from pipeline import _finalize_ingest_only, _records_needing_browser_retry, _load_manual_content
+from pipeline import (
+    _finalize_ingest_only,
+    _records_needing_browser_retry,
+    _load_manual_content,
+    _select_verification_records,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1536,6 +1541,29 @@ class TestBrowserRetrySelection:
         # A browser cannot help a record that has no URL.
         recs = [{"website_url": "", "source_confidence": "failed", "_context_text": ""}]
         assert _records_needing_browser_retry(recs) == []
+
+
+class TestNearMissVerificationSelection:
+    """_select_verification_records honors the opt-in near-miss band."""
+
+    _RECORDS = [
+        {"practice_name": "A", "bullseye_score": 95},
+        {"practice_name": "B", "bullseye_score": 90},
+        {"practice_name": "C", "bullseye_score": 85},
+        {"practice_name": "D", "bullseye_score": 79},
+    ]
+
+    def test_near_miss_band_zero_excludes_below_min(self):
+        # band 0 = default: only records at or above bullseye_min are verified.
+        selected = _select_verification_records(self._RECORDS, bullseye_min=90, near_miss_band=0)
+        names = {r["practice_name"] for r in selected}
+        assert names == {"A", "B"}
+
+    def test_near_miss_band_includes_within_band(self):
+        # band 10 lowers the floor to 80, pulling in the 85 near-miss but not 79.
+        selected = _select_verification_records(self._RECORDS, bullseye_min=90, near_miss_band=10)
+        names = {r["practice_name"] for r in selected}
+        assert names == {"A", "B", "C"}
 
 
 class TestChallengeDetection:

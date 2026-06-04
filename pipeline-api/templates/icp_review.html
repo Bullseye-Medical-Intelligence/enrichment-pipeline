@@ -224,6 +224,44 @@
     </p>
   </div>
 
+  {# ------------------------------------------------------------------ #}
+  {# SECTION 5 — Score simulator (preview tier without a run)           #}
+  {# ------------------------------------------------------------------ #}
+  <div class="card" style="margin-bottom:16px;">
+    <details>
+      <summary class="eyebrow" style="cursor:pointer;">Score Simulator — preview tier without a run</summary>
+      <p class="form-hint" style="margin:10px 0 14px;">
+        Set a hypothetical outcome for each signal and see the resulting score and tier instantly.
+        No crawl, no LLM call. Uses the weights and flags exactly as entered above.
+      </p>
+      <table class="data-table">
+        <thead>
+          <tr><th>Signal</th><th style="width:190px;">Outcome on a practice's site</th></tr>
+        </thead>
+        <tbody>
+          {% for sig in signals %}
+          {% set n = loop.index0 %}
+          <tr>
+            <td>{{ sig.signal_label | default(sig.signal_id | default('S-%03d' | format(n + 1))) }}</td>
+            <td>
+              {# No name attribute: these selects are not part of the saved form. #}
+              <select class="sim-state" data-sim-index="{{ n }}" style="width:100%;">
+                <option value="yes">Yes — confirmed present</option>
+                <option value="not_found" selected>Not found</option>
+                <option value="no">No — confirmed absent</option>
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="margin-top:12px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="runIcpSimulation(this)">Run Simulation</button>
+        <div id="sim-result" class="sim-result" aria-live="polite"></div>
+      </div>
+    </details>
+  </div>
+
   <div class="form-actions">
     <button type="submit" formaction="/icp-profiles/approve"
             class="btn {% if demo %}btn-done{% else %}btn-submit{% endif %}"
@@ -259,6 +297,72 @@ function removeSignalRow(btn) {
   if (!row) return;
   row.querySelectorAll('input, textarea, select').forEach(function (el) { el.disabled = true; });
   row.style.display = 'none';
+}
+
+/* Score simulator: read the live signal definitions from the form, pair each
+   with its chosen outcome, and POST to /icp-profiles/simulate. The endpoint
+   shells out to the pipeline's scorer so the preview matches a real run. */
+function runIcpSimulation(btn) {
+  function field(prefix, n) {
+    var el = document.querySelector('[name="' + prefix + '_' + n + '"]');
+    return el ? el.value : '';
+  }
+  function numField(prefix, n) {
+    var v = field(prefix, n);
+    return v === '' ? undefined : Number(v);
+  }
+
+  var icpSignals = [];
+  var signalStates = {};
+  document.querySelectorAll('.sim-state').forEach(function (sel) {
+    var n = sel.dataset.simIndex;
+    var idEl = document.querySelector('[name="signal_id_' + n + '"]');
+    if (!idEl || idEl.disabled) return;   // removed signal row
+    var sid = idEl.value.trim();
+    if (!sid) return;
+
+    var sig = { signal_id: sid, signal_label: field('signal_label', n) };
+    var pw = numField('positive_weight', n); if (pw !== undefined) sig.positive_weight = pw;
+    var nw = numField('no_weight', n); if (nw !== undefined) sig.no_weight = nw;
+    var nfw = numField('not_found_weight', n); if (nfw !== undefined) sig.not_found_weight = nfw;
+    var reqEl = document.querySelector('[name="required_for_bullseye_' + n + '"]');
+    sig.required_for_bullseye = !!(reqEl && reqEl.checked);
+    sig.verification_required = field('verification_required', n) === '1';
+    var ct = field('cap_tier', n); if (ct) sig.cap_tier = ct;
+    var ft = field('floor_tier', n); if (ft) sig.floor_tier = ft;
+
+    icpSignals.push(sig);
+    signalStates[sid] = { state: sel.value, confidence: 'high' };
+  });
+
+  var out = document.getElementById('sim-result');
+  if (!icpSignals.length) { out.textContent = 'Add at least one signal to simulate.'; return; }
+
+  btn.disabled = true;
+  out.textContent = 'Simulating…';
+  fetch('/icp-profiles/simulate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ icp_signals: icpSignals, signal_states: signalStates })
+  }).then(function (resp) {
+    return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+  }).then(function (r) {
+    if (!r.ok || r.data.error) {
+      out.textContent = 'Simulation failed: ' + (r.data.error || r.data.detail || 'unknown error');
+      return;
+    }
+    var d = r.data;
+    var tierClass = d.tier.toLowerCase().replace(/ /g, '-');
+    out.innerHTML =
+      '<span class="badge badge-' + tierClass + '">' + d.tier + '</span> ' +
+      '<strong>Score ' + d.bullseye_score + '</strong> ' +
+      '<span class="text-muted">(fit ' + d.fit_signal_score + ' · confidence ' + d.confidence_score + ')</span>' +
+      (d.tier_cap_reason ? '<br><span class="text-muted">' + d.tier_cap_reason + '</span>' : '');
+  }).catch(function (err) {
+    out.textContent = 'Simulation error: ' + err;
+  }).finally(function () {
+    btn.disabled = false;
+  });
 }
 </script>
 {% endblock %}

@@ -44,6 +44,9 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
     records_failed = sum(
         1 for r in records if r.get("enrichment_status") == "failed"
     )
+    records_insufficient_context = sum(
+        1 for r in records if r.get("source_confidence") in ("limited", "failed")
+    )
 
     # Get model info from first successfully enriched record
     primary_model = "unknown"
@@ -79,6 +82,7 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
         "records_excluded": records_excluded,
         "records_needs_review": records_needs_review,
         "records_failed": records_failed,
+        "records_insufficient_context": records_insufficient_context,
         "records_skipped": max(0, records_input - records_output),
         "llm_primary_model": primary_model,
         "llm_verification_model": verification_model,

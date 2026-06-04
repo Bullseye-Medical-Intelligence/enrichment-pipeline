@@ -838,16 +838,19 @@ def _merge_recrawled_record(
             new_records = record_adapter.normalize_records_payload(json.load(f))
         updated = next(
             (r for r in new_records if record_adapter.get_record_id(r) == record_id),
-            new_records[0] if new_records else None,
+            None,
         )
         if updated is None:
             logger.error(
-                "In-place %s of record %s in run %s: scratch produced no record.",
+                "In-place %s of record %s in run %s: scratch output did not contain a "
+                "record with the expected id (got: %s). Source left unchanged.",
                 kind, record_id, source_run_id,
+                [record_adapter.get_record_id(r) for r in new_records],
             )
             return InplaceUpdateResult(
                 ok=False,
-                message=f"The {kind} produced no record. The record was left unchanged.",
+                message=f"The {kind} did not return the expected record (id mismatch). "
+                        "The record was left unchanged.",
             )
 
         source_dir = runs.run_dir(source_run_id)

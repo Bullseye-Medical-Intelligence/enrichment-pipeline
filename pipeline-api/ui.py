@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import socket
+import subprocess
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -494,6 +495,48 @@ async def icp_approve(
         company_name=company_name, company_url=company_url,
         product_name=product_name, product_type=product_type,
         product_url=product_url, specialty=specialty,
+    )
+
+
+@router.post("/icp-profiles/simulate")
+def icp_simulate(payload: dict, username: str = Depends(auth.require_session)):
+    """Score a hypothetical signal outcome against an ICP — no crawl, no LLM.
+
+    Shells out to the pipeline's simulate_icp.py so all scoring stays in the
+    pipeline; this API never re-scores. Sync def so FastAPI runs the blocking
+    subprocess in its threadpool rather than on the event loop.
+    """
+    if not isinstance(payload, dict) or not payload.get("icp_signals"):
+        return JSONResponse(status_code=400, content={"error": "icp_signals required"})
+
+    try:
+        proc = subprocess.run(
+            [config.PYTHON_EXECUTABLE, str(config.PIPELINE_REPO_PATH / "simulate_icp.py")],
+            input=json.dumps(payload).encode("utf-8"),
+            capture_output=True,
+            cwd=str(config.PIPELINE_REPO_PATH),
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("ICP simulation timed out.")
+        return JSONResponse(status_code=504, content={"error": "simulation timed out"})
+
+    if proc.returncode != 0:
+        logger.error(
+            "ICP simulation exited %d: %.500s",
+            proc.returncode, proc.stderr.decode("utf-8", "replace"),
+        )
+        return JSONResponse(status_code=500, content={"error": "simulation failed"})
+
+    try:
+        result = json.loads(proc.stdout.decode("utf-8"))
+    except json.JSONDecodeError:
+        logger.error("ICP simulation returned non-JSON: %.300s", proc.stdout[:300])
+        return JSONResponse(status_code=500, content={"error": "bad simulation output"})
+
+    return JSONResponse(
+        status_code=400 if result.get("error") else 200,
+        content=result,
     )
 
 
@@ -2003,6 +2046,7 @@ def _calculate_stats(records: list[dict]) -> dict:
         "pending_review": 0,
         "approved": 0,
         "rejected": 0,
+        "thin_context": 0,
     }
     for r in records:
         tier = (r.get("displayed_tier") or "").lower().replace(" ", "_")
@@ -2013,4 +2057,6 @@ def _calculate_stats(records: list[dict]) -> dict:
             stats["pending_review"] += 1
         elif qc in stats:
             stats[qc] += 1
+        if r.get("source_confidence") in ("limited", "failed") and tier != "excluded":
+            stats["thin_context"] += 1
     return stats

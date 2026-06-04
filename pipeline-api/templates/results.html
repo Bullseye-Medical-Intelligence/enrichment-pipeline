@@ -250,6 +250,9 @@
   <div class="stat-item stat-manual-review stat-clickable" onclick="filterByStatBlock('manual-review', this)"><span class="stat-num">{{ stats.manual_review }}</span><span class="stat-label">Manual Review</span></div>
   <div class="stat-item stat-excluded stat-clickable" onclick="filterByStatBlock('excluded', this)"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
   <div class="stat-item stat-pending stat-clickable" onclick="filterByStatBlock('pending', this)"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
+  {% if stats.thin_context > 0 %}
+  <div class="stat-item stat-needs-verification stat-clickable" onclick="filterByStatBlock('thin_context', this)" title="Records where the crawler could not read enough website text. Signals were skipped, so the tier is unreliable. Re-crawl with Browser or paste page content."><span class="stat-num">{{ stats.thin_context }}</span><span class="stat-label">Thin Context</span></div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -267,6 +270,7 @@
           data-pipeline-excluded="{{ 'true' if record.exclusion_status == 'EXCLUDED' else 'false' }}"
           data-tier="{{ displayed | lower | replace(' ', '-') }}"
           data-qc="{{ review.qc_status }}"
+          data-blocked="{{ 'true' if _blocked else 'false' }}"
           data-sort-practice="{{ record.practice_name | default('') | lower }}"
           data-sort-location="{{ (_city ~ ' ' ~ _state) | lower }}"
           data-sort-tier="{{ _tier_rank }}"
