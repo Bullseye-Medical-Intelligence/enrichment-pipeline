@@ -176,21 +176,36 @@ def _ftp_upload(data: bytes, remote_path: str) -> None:
         ftp.connect(config.HOSTINGER_SFTP_HOST, config.HOSTINGER_FTP_PORT)
         ftp.login(config.HOSTINGER_SFTP_USER, config.HOSTINGER_SFTP_PASSWORD)
 
-        # Relativise against the FTP chroot so absolute config paths work correctly.
-        ftp_root = ftp.pwd()
-        rel_path = _ftp_rel_path(remote_path, ftp_root)
-        logger.info("FTP upload: root=%r configured=%r rel=%r", ftp_root, remote_path, rel_path)
+        # Hostinger chroots FTP to the account home (shows as "/" in pwd).
+        # Discover the correct relative path by checking what exists in FTP root.
+        rel_path = _ftp_rel_path(remote_path, ftp)
+        logger.info("FTP upload: configured=%r rel=%r", remote_path, rel_path)
 
         _ftp_makedirs(ftp, str(PurePosixPath(rel_path).parent))
         ftp.storbinary(f"STOR {rel_path}", io.BytesIO(data))
 
 
-def _ftp_rel_path(remote_path: str, ftp_root: str) -> str:
-    """Return remote_path relative to ftp_root, stripping the chroot prefix."""
+def _ftp_rel_path(remote_path: str, ftp) -> str:
+    """Return remote_path relative to the FTP chroot.
+
+    Hostinger chroots FTP to the account home directory, which appears as '/'
+    in ftp.pwd(). The configured path is an absolute filesystem path like
+    /home/u123/domains/... We strip leading components until the first one
+    is visible in the FTP root listing (e.g. 'domains').
+    """
+    parts = list(PurePosixPath(remote_path).parts)
+    if parts and parts[0] == "/":
+        parts = parts[1:]
+
     try:
-        return str(PurePosixPath(remote_path).relative_to(ftp_root))
-    except ValueError:
-        return remote_path.lstrip("/")
+        root_entries = set(ftp.nlst())
+    except Exception:
+        root_entries = set()
+
+    while len(parts) > 1 and parts[0] not in root_entries:
+        parts = parts[1:]
+
+    return str(PurePosixPath(*parts)) if parts else remote_path.lstrip("/")
 
 
 def _ftp_makedirs(ftp, remote_dir: str) -> None:
