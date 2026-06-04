@@ -128,23 +128,25 @@ to open a run directory and understand what happened.
 
 ```
 /BEMI-pipeline-api
-  main.py          ← FastAPI app, route registration, startup
-  auth.py          ← API key validation dependency
-  runner.py        ← subprocess management, pipeline invocation
-  runs.py          ← run state: create/read/update/list via status.json
-  projects.py      ← project config storage: create/read/update/list/validate
-  icp_profiles.py  ← ICP profile listing/loading from disk
-  exports.py       ← filtered CSV exports (approved / excluded)
-  client_exports.py← client deliverable ZIP (summary + CSVs + briefs)
-  validator.py     ← pre-flight CSV validation
-  schema.py        ← Pydantic models for all request/response types
-  config.py        ← environment variable loading, path constants
-  ui.py            ← server-rendered HTML routes (session auth)
+  main.py            ← FastAPI app, route registration, startup
+  auth.py            ← API key validation dependency
+  runner.py          ← subprocess management, pipeline invocation
+  runs.py            ← run state: create/read/update/list via status.json
+  projects.py        ← project config storage: create/read/update/list/validate
+  icp_profiles.py    ← ICP profile listing/loading from disk
+  exports.py         ← filtered CSV exports (approved / excluded)
+  client_exports.py  ← client deliverable ZIP (5 files: Bullseye report, Sales Handoff, 3 CSVs)
+  brief_publisher.py ← publish HTML briefs to Hostinger via SFTP/FTP; manages published_briefs.json per run
+  sales_export.py    ← Sales Brief + internal Sales Handoff HTML generation
+  validator.py       ← pre-flight CSV validation
+  schema.py          ← Pydantic models for all request/response types
+  config.py          ← environment variable loading, path constants; includes Hostinger SFTP/FTP settings
+  ui.py              ← server-rendered HTML routes (session auth)
   requirements.txt
   .env.example
   .gitignore
   README.md
-  CLAUDE.md        ← this file
+  CLAUDE.md          ← this file
 
 /output/                       ← shared with pipeline (lives outside this repo)
   projects/{project_id}/
@@ -157,6 +159,7 @@ to open a run directory and understand what happened.
     status.json
     run_log.json
     enriched_targets.json
+    published_briefs.json          ← per-run record of published brief URLs (storage_path, public_url, etc.)
 ```
 
 ---
@@ -166,6 +169,14 @@ to open a run directory and understand what happened.
 The server-rendered HTML UI (ui.py + templates/) is the production internal operator tool.
 The React/Vite BEMI Dashboard is a demo reference only and is NOT integrated with this API.
 Do not build React integration unless that decision is explicitly reversed.
+
+### Run Dashboard Header Layout
+The results page header uses a two-tier layout:
+- **Primary row**: Download Client Package | Sales Handoff ▾ (dropdown: View ↗, Copy Link, Re-Publish) | Sales Brief ▾ (dropdown: View ↗, Copy Link, Update Brief, Re-Publish)
+- **Secondary row** (smaller, de-emphasized): Re-crawl with Browser | Full CSV | Run Manifest | ← All Runs
+
+### Stat Block Colors
+Each tier stat block has a distinct solid background color: Bullseye=dark red (`#b91c1c`), Needs Verification=dark amber (`#b45309`), Contender=dark terracotta (`#9a3823`), Manual Review=slate (`#475569`), Excluded=near-black blue-gray (`#1e2530`), Pending Review=purple (`#5b21b6`). Excluded records are not counted in Pending Review (they require no QC sign-off unless reclassified).
 
 ---
 
@@ -222,7 +233,12 @@ GET    /runs/{run_id}/download/csv               Full enriched_targets.csv downl
 GET    /runs/{run_id}/download/manifest          Internal run manifest JSON (not in client package)
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
-GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs)
+GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs; requires all Bullseye/Contender reviewed)
+GET    /runs/{run_id}/download/sales-brief       Prospect-facing methodology brief (select 1 Bullseye, 1 Contender, 1 Excluded via query params)
+POST   /runs/{run_id}/publish/{brief_type}       Publish brief HTML to Hostinger; saves URL to published_briefs.json
+                                                   brief_type: sales-handoff | sales-brief | executive-report | bullseye-report
+                                                   sales-brief requires: ?bullseye_id=&contender_id=&excluded_id=
+                                                   Republish overwrites the existing file in place so the shared URL never changes
 POST   /runs/{run_id}/records/{record_id}/recrawl          Re-crawl one record with headless browser; updates the record in place
 POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record from operator-pasted/uploaded page content; updates in place
 POST   /api/ui/runs                              Create run from browser upload
@@ -273,21 +289,26 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   automatic exclusion when the analyst also approves it. Without an explicit
   override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
   approved set.
-- **Client-safe only.** The ZIP contains `Executive_Target_Report.html`,
+- **Client-safe only.** The ZIP contains exactly 5 files: `Bullseye_Target_Report.html`,
   `Sales_Handoff.html`, `bullseye_accounts.csv`, `contender_accounts.csv`, and
-  `excluded_targets.csv`. It never includes `run_log.json`, `reviews.json`, or
-  the raw `enriched_targets.json`. Client-facing CSVs and the report show tier +
-  confidence band only — numeric scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
+  `excluded_targets.csv`. It never includes `run_log.json`, `reviews.json`, analyst
+  notes, numeric scores, or the raw `enriched_targets.json`. Client-facing CSVs and
+  reports show tier + confidence band only — numeric scores are stripped
+  (`exports._HIDDEN_SCORE_COLUMNS`).
 - **Run manifest is internal-only.** `build_run_manifest` produces a provenance
   summary (scope, ICP version, counts, methodology). It is NOT in the client
   package; operators pull it via `GET /runs/{run_id}/download/manifest`.
-- **Report generation.** `reports/pdf_report.py::build_executive_report_html`
-  renders `reports/templates/executive_target_report.html` to a self-contained
-  HTML file (embedded CSS, logo inlined as a data URI — no external assets, no
-  native dependencies, opens in any browser). The template keeps `@page` /
-  page-break rules so a client can print to PDF from the browser. On failure a
-  visible HTML error page is returned so the ZIP is never corrupt. Bullseye
-  accounts each get a section; Contender accounts appear in CSV only.
+- **Report generation.** `reports/pdf_report.py::build_bullseye_cards_html` renders
+  `reports/templates/bullseye_cards.html` — a self-contained HTML file (embedded CSS,
+  no external assets). `Sales_Handoff.html` is the client-facing 3-tier handoff from
+  `handoff_renderer` (Bullseye, Contender, Excluded only — no analyst notes).
+- **Brief publishing.** `brief_publisher.py` uploads any brief HTML to Hostinger via
+  SFTP (paramiko) with FTP fallback (ftplib). On first publish a tokenized URL is
+  created; on republish the same file is overwritten in place so the shared URL never
+  changes. URLs and storage paths are recorded in `published_briefs.json` inside the
+  run directory, keyed by brief type. Requires `HOSTINGER_SFTP_HOST`, `HOSTINGER_SFTP_USER`,
+  `HOSTINGER_SFTP_PASSWORD`, `HOSTINGER_BRIEFS_REMOTE_ROOT`, and `BRIEFS_PUBLIC_BASE_URL`
+  in `.env`.
 
 ---
 
@@ -399,7 +420,7 @@ All UI in this repo must match the BEMI Dashboard identity. These rules are perm
 - **Eyebrow labels**: 10–11px, `font-weight: 600`, `letter-spacing: 0.12em`, `text-transform: uppercase`, color `--accent`
 
 ### Components
-- **Navbar**: ink background, `Instrument Serif` "BEMI" wordmark in surface color
+- **Navbar**: ink background, SVG bullseye logomark + "Bullseye Medical Intelligence" in `Instrument Serif` surface color
 - **Stat blocks**: ink background, `Instrument Serif` 28px numerals in surface color, labels in `--muted-dark`
 - **Badges**: `border-radius: 100px`, 10px uppercase text — tier/status/QC
 - **Primary button**: ink background, surface text, `border-radius: 100px`
