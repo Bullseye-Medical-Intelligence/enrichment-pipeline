@@ -260,7 +260,7 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
 
     signals = rec.get("signals") or []
     confirmed_signals = [
-        sig.get("signal_label") or sig.get("label") or ""
+        _humanize_label(sig.get("signal_label") or sig.get("label") or "")
         for sig in signals
         if (sig.get("signal_state") == "yes" or sig.get("state_inferred"))
         and (sig.get("signal_label") or sig.get("label"))
@@ -293,6 +293,7 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         label_lower = label.lower()
         if "concierge" in label_lower or "membership" in label_lower:
             continue
+        label = _humanize_label(label)
         if label not in verify:
             verify.append(label)
 
@@ -390,6 +391,13 @@ def _coerce_list(value) -> list[str]:
     if isinstance(value, list):
         return [str(v) for v in value if v]
     return [str(value)]
+
+
+def _humanize_label(label: str) -> str:
+    """Convert snake_case signal IDs to readable labels if they contain underscores."""
+    if "_" in label:
+        return label.replace("_", " ").title()
+    return label
 
 
 # Phrases that betray first-person or second-person framing in stored sales angles.
