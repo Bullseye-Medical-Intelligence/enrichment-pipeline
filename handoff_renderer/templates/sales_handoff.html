@@ -67,6 +67,8 @@
   .acct{border:1px solid var(--line);border-radius:10px;margin-bottom:9px;overflow:hidden;background:var(--card);}
   .acct.flagged{border-color:rgba(200,75,47,0.4);}
   .ahead{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:center;padding:16px 20px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.08);}
+  .ahead *{touch-action:manipulation;}
+  .acct.open{border-color:rgba(200,75,47,0.3);}
   .aname{font-weight:700;font-size:16.5px;letter-spacing:-0.01em;}
   .ameta{font-size:11.5px;color:var(--mut);margin-top:3px;}
   .flag{display:inline-block;margin-top:6px;font-size:10px;font-weight:600;color:var(--acc);
@@ -184,7 +186,7 @@
 
   {% for acct in section.accounts %}
   <div class="acct{% if acct.has_flags %} flagged{% endif %}">
-    <div class="ahead" onclick="tog(this)">
+    <div class="ahead">
       <div>
         <div class="aname">{{ acct.name }}</div>
         <div class="ameta">{{ acct.city }} &middot; {{ acct.phone }} &middot; {{ acct.website }}</div>
@@ -242,15 +244,19 @@
 </div>
 
 <script>
-  function tog(el){el.parentElement.classList.toggle('open');}
   function toggleAll(){
     var accts=document.querySelectorAll('.acct');
     var allOpen=[].every.call(accts,function(a){return a.classList.contains('open');});
     accts.forEach(function(a){a.classList.toggle('open',!allOpen);});
   }
+  document.querySelectorAll('.ahead').forEach(function(h){
+    function expand(e){if(e.type==='touchend')e.preventDefault();h.parentElement.classList.toggle('open');}
+    h.addEventListener('click',expand);
+    h.addEventListener('touchend',expand);
+  });
   document.querySelectorAll('.chip').forEach(function(c){
     function activate(e){
-      if(e.type==='touchend') e.preventDefault();
+      if(e.type==='touchend')e.preventDefault();
       document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
       c.classList.add('on');
       var f=c.dataset.f;
