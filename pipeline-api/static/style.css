@@ -75,7 +75,7 @@ ul, ol { padding-left: 1.4em; }
   height: 52px;
   flex-shrink: 0;
 }
-.nav-brand   { display: flex; align-items: baseline; gap: 10px; }
+.nav-brand   { display: flex; align-items: center; gap: 0; }
 .nav-logo {
   font-family: 'Instrument Serif', Georgia, serif;
   color: var(--surface);
