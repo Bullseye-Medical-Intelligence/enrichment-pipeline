@@ -79,7 +79,7 @@ Every score bound, weight, threshold, and blend factor lives in
    **Auto browser-retry (Step 3b, opt-in)** — with `--auto-browser-retry` (CLI) or `auto_browser_retry: true` (run_config), records that come back blocked/thin from the standard crawler (`source_confidence` limited/failed, or under `MIN_CONTEXT_CHARS` of text) are re-crawled once with headless Chromium before Step 4. `_records_needing_browser_retry` targets only the blocked subset, so most records keep the fast HTTP path; no-op when the whole run is already `--playwright`. This recovers bot-gated sites automatically instead of waiting for an operator to click "Re-crawl with Browser". Exposed in the API as a checkbox on "Enrich All".
    **Manual content (`--manual-content-path`)** — for a single site behind a hard CAPTCHA wall the crawler cannot clear, the operator captures the page in their own browser (Save Page As .html, or copy the visible text) and supplies it. The flag bypasses Steps 2-3 entirely: `_load_manual_content` loads that file into every record's `_context_text` (HTML converted with the crawler's `_extract_text_from_html`, plain text used as-is), sets `source_confidence = "partial"`, and Step 4 runs on it unchanged. Exposed in the API as a per-record "Paste site content" form (`orchestrate_manual_content_recrawl`).
 4. **Signal extract (Claude)** — per-record LLM signal extraction + scoring (`enrichment/signal_extractor.py`), `llm_concurrency` workers, checkpointed. Records with fewer than `MIN_CONTEXT_CHARS` of website text skip the LLM call; all signals are set to `not_found` and `enrichment_status = "partial"` to prevent hallucinations from thin context.
-5. **Verification (GPT)** — Bullseye-tier records only (`enrichment/verifier.py`).
+5. **Verification (GPT)** — Bullseye-tier records by default; opt-in near-miss band extends the window (`enrichment/verifier.py`). `_select_verification_records(records, bullseye_min, near_miss_band)` selects which records enter GPT. When `verify_near_miss_band = 0` (default), only records at or above `bullseye_min` are sent — identical to prior behavior. Set `verify_near_miss_band > 0` to also verify records that scored within that many points below the line (e.g. `10` catches scores 80–89 when `bullseye_min = 90`). Near-miss records that pass verification are not auto-promoted; an operator override is still required.
 6. **Exclusion check** — hard + configurable rules, tier assignment (`enrichment/exclusion_checker.py`).
 7. **Scoring validation** — clamp, validate, enforce invariants (`enrichment/scorer.py`).
 8. **Output** — write JSON, CSV, run_log.json (`output/`, atomic writes).
@@ -279,6 +279,7 @@ let scoring and signals decide instead. The `type` column is optional on import.
 - **`config/icp_checklist.json`** — generic placeholder template (two skeleton
   signals). Copy to `config/clients/<client_slug>/icp_checklist.json` and replace
   with the client's real ICP signals.
+- **`verify_near_miss_band`** (run_config, default `0`): opt-in near-miss GPT verification band. `0` = disabled (verify Bullseye-tier only). Set to `N` to also send records scoring `[bullseye_min − N, bullseye_min)` to GPT. Adds GPT spend proportional to band width and list size — measure before enabling on large runs.
 - **`config/clients/obgyn_femasys/`** — reference implementation for the first
   engagement (Femasys / OBGYN). Pass these with `--config` and `--icp`:
   ```
@@ -297,6 +298,33 @@ let scoring and signals decide instead. The `type` column is optional on import.
 
 ---
 
+## `simulate_icp.py` — ICP Scoring Simulator
+
+`simulate_icp.py` (repo root) is a thin CLI that runs the scoring engine with
+hypothetical signal states — no LLM, no crawl, no side effects. It exists so the
+API can shell out to preview how weight/flag choices affect tier assignment without
+the API ever importing pipeline internals.
+
+Input (stdin JSON):
+```json
+{
+  "icp_signals": [...],
+  "signal_states": {"S-01": {"state": "yes", "confidence": "high"}, ...},
+  "bullseye_min": 90
+}
+```
+
+Output (stdout JSON):
+```json
+{"bullseye_score": 94, "fit_signal_score": 96, "confidence_score": 90, "tier": "Bullseye", "tier_cap_reason": ""}
+```
+
+Called by `pipeline-api/ui.py::icp_simulate` via `subprocess.run`. Never called
+directly by operators. Do not add persistent side effects (file writes, network
+calls) to this script — it must remain stateless and fast.
+
+---
+
 ## Testing
 
 ```
@@ -306,8 +334,10 @@ python -m pytest tests/ -q
 All tests are **deterministic — no API calls, no HTTP**. Key suites in
 `tests/test_pipeline.py`: signal normalization, scoring (`TestScoring`),
 reinforcement (`TestReinforcement`), tier assignment (`TestTierAssignment`),
-specialty inference, exclusions. Any scoring/tier/signal change must keep these
-green and add coverage for new behavior. Lint touched files with `pyflakes`.
+specialty inference, exclusions. `TestNearMissVerificationSelection` covers the
+`_select_verification_records` helper. `tests/test_runner.py` covers in-place
+re-enrichment merge safety. Any scoring/tier/signal change must keep these green
+and add coverage for new behavior. Lint touched files with `pyflakes`.
 
 ---
 

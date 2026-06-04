@@ -47,11 +47,11 @@ Communication:
 The API spawns pipeline.py as a subprocess. It does not contain enrichment
 logic, scoring formulas, or signal definitions.
 
-**One exception: the ICP Profile Builder** (`GET/POST /icp-profiles/new`,
-`POST /icp-profiles/generate`, `POST /icp-profiles/save` in `ui.py`) calls
-Claude via the `anthropic` SDK to generate draft signal definitions. This is
-strictly scoped to the builder flow. `ANTHROPIC_API_KEY` is loaded from `.env`
-via `config.py`. No other route in this API makes LLM calls.
+**Two exceptions — both strictly scoped to the ICP builder flow:**
+1. **Signal generation** (`POST /icp-profiles/generate`, `POST /icp-profiles/regenerate-signals` in `ui.py`) calls Claude to draft signal definitions from a product brief.
+2. **Hypothesis generation** — `narrative_generator.generate_hypothesis()` is called non-fatally after each signal generate/regenerate to pre-fill the commercial fit hypothesis fields. Uses the same `ANTHROPIC_API_KEY` from `.env`.
+
+Both calls are isolated to the builder; all other routes are LLM-free. If hypothesis generation fails (network error, quota), it logs a warning and the form renders with empty hypothesis fields — no error shown to the operator.
 
 Bad:
 ```python
@@ -178,6 +178,8 @@ The results page header uses a two-tier layout:
 ### Stat Block Colors
 Each tier stat block has a distinct solid background color: Bullseye=dark red (`#b91c1c`), Needs Verification=dark amber (`#b45309`), Contender=dark terracotta (`#9a3823`), Manual Review=slate (`#475569`), Excluded=near-black blue-gray (`#1e2530`), Pending Review=purple (`#5b21b6`). Excluded records are not counted in Pending Review (they require no QC sign-off unless reclassified).
 
+**Thin Context stat block** (amber, `.stat-needs-verification` style): rendered only when `stats.thin_context > 0`. Counts non-excluded records where `source_confidence in ("limited", "failed")` — sites the crawler could not read. Clicking it filters the results table to those rows via `data-blocked` attribute. This alerts operators that a meaningful slice of the run scored on absent or thin website text, so they can decide whether to re-crawl with browser or treat the records as low-confidence.
+
 ---
 
 ## enriched_targets.json Schema
@@ -243,6 +245,7 @@ POST   /runs/{run_id}/records/{record_id}/recrawl          Re-crawl one record w
 POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record from operator-pasted/uploaded page content; updates in place
 POST   /api/ui/runs                              Create run from browser upload
 POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
+POST   /icp-profiles/simulate                     Dry-run score preview (no LLM, no crawl); shells out to simulate_icp.py
 ```
 
 Phase 2 additions (do not build now):
@@ -277,6 +280,14 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   Claude to generate a draft checklist. Domain experts must review and approve
   generated signals before saving — the builder is a starting point, not a source
   of truth. `save_icp_profile()` in `icp_profiles.py` writes new profiles atomically.
+
+**Score Simulator** (`/icp-profiles/simulate` POST, rendered in `icp_review.html`):
+  A collapsible panel in the ICP review page lets operators set hypothetical signal
+  states (Yes / Not Found / No) per signal and click "Run Simulation" to see the
+  resulting tier and score instantly. The endpoint shells out to `simulate_icp.py`
+  in the pipeline repo via subprocess — no scoring logic lives in the API. This
+  lets operators validate weight choices before saving a profile or running a full
+  enrichment. Read-only, stateless, never mutates any stored ICP or run data.
 
 ## Client Deliverable Export
 
@@ -486,3 +497,13 @@ Do not invest in these until the React app is promoted to production.
 - Cloud file storage
 - Run retry on partial failure
 - CI/CD pipeline
+
+## Deferred Roadmap Items (Blocked on External Inputs)
+
+These three items were scoped and deliberately deferred — do not begin without resolving the blocker first.
+
+**Outcome Feedback Loop** — blocked by a source of real close/win/loss data per account. Shape: ingest an outcome CSV keyed by practice ID → correlation chart on the run dashboard showing which signals predicted wins → weight-tuning workflow to adjust ICP signal weights based on observed outcomes.
+
+**Horizontal Scale / Job Queue** — blocked by deployment architecture decisions (single host vs. multi-worker, cloud vs. on-prem). Shape: replace subprocess+shared-filesystem with a job queue (Celery/RQ), per-job isolation, cancellable runs. Do not introduce Celery or RQ until this is resolved — they are explicitly banned for MVP.
+
+**Genericity Validation** — blocked by a second client with a structurally different specialty and product. Shape: run end-to-end with a non-OBGYN ICP, identify and fix any hidden specialty assumptions in signal prompts, ICP builder defaults, or exclusion rules. The codebase is designed to be generic (RULE 3 in `CLAUDE.md`); this validates it holds.
