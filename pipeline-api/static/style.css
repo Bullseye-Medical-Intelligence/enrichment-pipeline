@@ -207,6 +207,7 @@ ul, ol { padding-left: 1.4em; }
   color: var(--ink); white-space: nowrap; text-decoration: none;
 }
 .dropdown-menu button:hover, .dropdown-menu a:hover { background: var(--surface); }
+.stale-dot { color: #b45309; font-size: 9px; margin-left: 4px; vertical-align: middle; }
 
 /* ── Modal / dialog ───────────────────────────────────────────────── */
 .modal-overlay {

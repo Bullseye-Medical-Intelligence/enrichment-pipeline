@@ -45,7 +45,7 @@
       <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
       {% endif %}
       <div class="dropdown">
-        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Sales Handoff ▾</button>
+        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Sales Handoff ▾{% if handoff_stale %}<span class="stale-dot" title="Reviews have changed since last publish — Re-Publish to update the shared link">●</span>{% endif %}</button>
         <div class="dropdown-menu">
           {% if sf %}
           <a href="{{ sf.public_url }}" target="_blank" rel="noopener noreferrer">View ↗</a>

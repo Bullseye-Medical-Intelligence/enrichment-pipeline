@@ -14,6 +14,7 @@ import socket
 import subprocess
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -945,6 +946,8 @@ async def results_page(
         flash_type = notice_type if notice_type in ("info", "error") else "info"
         flash = {"type": flash_type, "message": notice[:300]}
 
+    run_directory = runs.run_dir(run_id)
+    published_briefs = brief_publisher.get_published_briefs(run_directory)
     return _render(
         "results.html",
         username=username,
@@ -959,7 +962,8 @@ async def results_page(
         has_checkpoint=has_checkpoint,
         checkpoint_count=checkpoint_count,
         flash=flash,
-        published_briefs=brief_publisher.get_published_briefs(runs.run_dir(run_id)),
+        published_briefs=published_briefs,
+        handoff_stale=_brief_stale(run_id, run_directory, "sales-handoff"),
     )
 
 
@@ -1802,6 +1806,35 @@ _ERROR_PATTERNS: list[tuple] = [
 
 # These messages are already operator-readable; pass through unchanged.
 _PASS_THROUGH_PATTERNS = ("missing required columns", "too many runs in progress")
+
+
+def _brief_stale(run_id: str, run_directory: Path, brief_type: str) -> bool:
+    """Return True when the published brief may not reflect the latest reviews.
+
+    Compares the brief's published_at timestamp against the newest reviewed_at
+    across all review entries for the run. If any review is newer than the
+    publish, the operator should re-publish.
+    """
+    published = brief_publisher.get_published_briefs(run_directory).get(brief_type, {})
+    published_at_str = published.get("published_at") or ""
+    if not published_at_str:
+        return False  # never published
+    try:
+        published_at = datetime.fromisoformat(published_at_str)
+    except ValueError:
+        return False
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    for entry in all_reviews.values():
+        reviewed_str = (entry or {}).get("reviewed_at") or ""
+        if not reviewed_str:
+            continue
+        try:
+            reviewed_at = datetime.fromisoformat(reviewed_str)
+            if reviewed_at > published_at:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def _friendly_error(raw: str | None) -> str | None:
