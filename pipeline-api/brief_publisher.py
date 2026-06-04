@@ -182,7 +182,8 @@ def _ftp_upload(data: bytes, remote_path: str) -> None:
         logger.info("FTP upload: configured=%r rel=%r", remote_path, rel_path)
 
         _ftp_makedirs(ftp, str(PurePosixPath(rel_path).parent))
-        ftp.storbinary(f"STOR {rel_path}", io.BytesIO(data))
+        # cwd is now at the target directory — use filename only, not full path
+        ftp.storbinary(f"STOR {PurePosixPath(rel_path).name}", io.BytesIO(data))
 
 
 def _ftp_rel_path(remote_path: str, ftp) -> str:
