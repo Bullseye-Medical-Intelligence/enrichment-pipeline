@@ -247,12 +247,22 @@ Step 4: SIGNAL EXTRACTION (Claude API)
     - Set enrichment_status based on success/partial/failure
 
 Step 5: BULLSEYE VERIFICATION (GPT API — conditional)
-  If bullseye_score >= 75:
+  Record selection (`_select_verification_records`):
+    - Thin-context records (source_confidence "limited" or "failed") are ALWAYS skipped —
+      GPT has the same limited text the LLM had; verification adds nothing.
+    - Near-miss records (score in [bullseye_min − near_miss_band, bullseye_min)) are ALWAYS
+      verified — highest-value cross-check, genuinely borderline.
+    - Bullseye records (score >= bullseye_min) are verified ONLY when at least one confirmed
+      YES signal has confidence == "low" (`_record_has_uncertain_signal`). All-high/medium
+      confidence Bullseyes are skipped — GPT virtually always agrees and the call wastes spend.
+    - Records below the near-miss floor are skipped entirely.
+  For selected records:
     - Build verification prompt (see /prompts/verification_v1.txt)
     - Call GPT
     - Compare signal states and scores
     - If agreement: no change
     - If disagreement: set enrichment_status = "needs_review", document in internal_notes
+    - Near-miss records that pass verification are NOT auto-promoted; operator override required.
 
 Step 6: EXCLUSION CHECK
   Apply exclusion rules from project config (equivalent of active_exclusion_rules in project.json)

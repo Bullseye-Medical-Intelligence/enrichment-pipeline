@@ -175,6 +175,8 @@ The results page header uses a two-tier layout:
 - **Primary row**: Download Client Package | Sales Handoff ▾ (dropdown: View ↗, Copy Link, Re-Publish) | Sales Brief ▾ (dropdown: View ↗, Copy Link, Update Brief, Re-Publish)
 - **Secondary row** (smaller, de-emphasized): Re-crawl with Browser | Full CSV | Run Manifest | ← All Runs
 
+**Sales Handoff staleness indicator**: `_brief_stale(run_id, run_directory, brief_type)` in `ui.py` compares the `published_at` timestamp in `published_briefs.json` against the newest `reviewed_at` timestamp across all analyst reviews for that run. When any review is newer than the last publish, `results_page` passes `handoff_stale=True` to the template, which renders an amber dot (●) on the Sales Handoff button. This signals to the operator that re-publishing will incorporate the latest overrides. The dot disappears after republish.
+
 ### Stat Block Colors
 Each tier stat block has a distinct solid background color: Bullseye=dark red (`#b91c1c`), Needs Verification=dark amber (`#b45309`), Contender=dark terracotta (`#9a3823`), Manual Review=slate (`#475569`), Excluded=near-black blue-gray (`#1e2530`), Pending Review=purple (`#5b21b6`). Excluded records are not counted in Pending Review (they require no QC sign-off unless reclassified).
 
