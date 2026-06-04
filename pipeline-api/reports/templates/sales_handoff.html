@@ -117,8 +117,24 @@ body {
 /* ── Card header ───────────────────────────────────────── */
 .card-header {
   padding: 22px 28px 18px;
-  border-bottom: 1px solid rgba(247,246,244,0.07);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  cursor: pointer;
+  user-select: none;
 }
+.account-card.suppressed .card-header { cursor: default; }
+.account-card:not(.suppressed) .card-header:hover { background: rgba(247,246,244,0.02); }
+.expand-icon {
+  font-size: 11px;
+  color: rgba(247,246,244,0.35);
+  margin-top: 4px;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+  line-height: 1;
+}
+.account-card.expanded .expand-icon { transform: rotate(90deg); }
+.card-header-content { flex: 1; }
 .card-badges {
   display: flex;
   align-items: center;
@@ -168,10 +184,12 @@ body {
 /* ── Card body grid ────────────────────────────────────── */
 .card-body {
   padding: 20px 28px;
-  display: grid;
+  display: none;
   grid-template-columns: 1fr 260px;
   gap: 24px;
+  border-top: 1px solid rgba(247,246,244,0.07);
 }
+.account-card.expanded .card-body { display: grid; }
 
 /* ── Section label ─────────────────────────────────────── */
 .section-label {
@@ -328,6 +346,15 @@ body {
   font-size: 11px;
   color: rgba(247,246,244,0.3);
 }
+.expand-hint {
+  margin-top: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.22);
+}
+.account-card.expanded .expand-hint { display: none; }
 .analyst-pending {
   font-size: 12px;
   color: rgba(247,246,244,0.3);
@@ -392,43 +419,12 @@ body {
 
 @media (max-width: 640px) {
   body { padding: 20px 16px 48px; }
-
-  .report-header {
-    flex-direction: column;
-    gap: 12px;
-  }
+  .report-header { flex-direction: column; gap: 12px; }
   .report-meta { text-align: left; }
-
   .run-summary { gap: 18px; padding: 14px 16px; }
-
   .card-header { padding: 16px 18px 14px; }
+  .card-body { grid-template-columns: 1fr; padding: 16px 18px; }
   .provider-name { font-size: 19px; }
-
-  /* Card body is hidden by default on mobile; toggled open by JS */
-  .card-body {
-    display: none;
-    grid-template-columns: 1fr;
-    padding: 16px 18px;
-  }
-  .account-card.expanded .card-body { display: grid; }
-
-  /* Visual affordance: show a chevron on the card header */
-  .card-header::after {
-    content: "expand";
-    display: block;
-    margin-top: 8px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: rgba(247,246,244,0.3);
-  }
-  .account-card.expanded .card-header::after { content: "collapse"; }
-  .card-header { cursor: pointer; user-select: none; }
-
-  /* Suppressed cards: no toggle needed, body is absent */
-  .account-card.suppressed .card-header::after { display: none; }
-  .account-card.suppressed .card-header { cursor: default; }
 }
 </style>
 </head>
@@ -487,20 +483,26 @@ body {
   <div class="account-card{% if suppressed %} suppressed{% endif %}">
 
     <div class="card-header">
-      {% if not suppressed %}
-      <div class="card-badges">
-        <span class="tier-badge">{{ rec.tier }}</span>
-        {% if rec.confidence_band and rec.confidence_band != '&#8212;' and rec.confidence_band != '—' %}
-        <span class="confidence-badge">{{ rec.confidence_band }}</span>
+      {% if not suppressed %}<span class="expand-icon">&#9654;</span>{% endif %}
+      <div class="card-header-content">
+        {% if not suppressed %}
+        <div class="card-badges">
+          <span class="tier-badge">{{ rec.tier }}</span>
+          {% if rec.confidence_band and rec.confidence_band != '&#8212;' and rec.confidence_band != '—' %}
+          <span class="confidence-badge">{{ rec.confidence_band }}</span>
+          {% endif %}
+        </div>
         {% endif %}
-      </div>
-      {% endif %}
-      <div class="provider-name">{{ rec.name }}</div>
-      <div class="provider-meta">
-        {{ rec.specialty }}
-        {% if rec.location and rec.location != '—' %}<span class="meta-sep">&middot;</span>{{ rec.location }}{% endif %}
-        {% if rec.phone_formatted and rec.phone_formatted != '—' %}<span class="meta-sep">&middot;</span>{{ rec.phone_formatted }}{% endif %}
-        {% if rec.website %}<span class="meta-sep">&middot;</span><a href="https://{{ rec.website }}" target="_blank" rel="noopener">{{ rec.website }}</a>{% endif %}
+        <div class="provider-name">{{ rec.name }}</div>
+        <div class="provider-meta">
+          {{ rec.specialty }}
+          {% if rec.location and rec.location != '—' %}<span class="meta-sep">&middot;</span>{{ rec.location }}{% endif %}
+          {% if rec.phone_formatted and rec.phone_formatted != '—' %}<span class="meta-sep">&middot;</span>{{ rec.phone_formatted }}{% endif %}
+          {% if rec.website %}<span class="meta-sep">&middot;</span><a href="https://{{ rec.website }}" target="_blank" rel="noopener">{{ rec.website }}</a>{% endif %}
+        </div>
+        {% if not suppressed %}
+        <div class="expand-hint">Click to expand record</div>
+        {% endif %}
       </div>
     </div>
 
@@ -614,17 +616,13 @@ body {
 
 <script>
 (function() {
-  function isMobile() { return window.innerWidth <= 640; }
-
   function attachToggle(card) {
     var header = card.querySelector('.card-header');
     if (!header || card.classList.contains('suppressed')) return;
     header.addEventListener('click', function() {
-      if (!isMobile()) return;
       card.classList.toggle('expanded');
     });
   }
-
   document.querySelectorAll('.account-card').forEach(attachToggle);
 })();
 </script>
