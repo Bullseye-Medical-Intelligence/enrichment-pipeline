@@ -1543,27 +1543,67 @@ class TestBrowserRetrySelection:
         assert _records_needing_browser_retry(recs) == []
 
 
-class TestNearMissVerificationSelection:
-    """_select_verification_records honors the opt-in near-miss band."""
+class TestVerificationRecordSelection:
+    """_select_verification_records smart-skips confident Bullseye records."""
 
-    _RECORDS = [
-        {"practice_name": "A", "bullseye_score": 95},
-        {"practice_name": "B", "bullseye_score": 90},
-        {"practice_name": "C", "bullseye_score": 85},
-        {"practice_name": "D", "bullseye_score": 79},
-    ]
+    def _rec(self, name, score, confidence="high", source_conf="ok"):
+        signals = [{"signal_id": "S-01", "signal_state": "yes", "confidence": confidence}]
+        return {
+            "practice_name": name,
+            "bullseye_score": score,
+            "signals": signals,
+            "source_confidence": source_conf,
+        }
 
-    def test_near_miss_band_zero_excludes_below_min(self):
-        # band 0 = default: only records at or above bullseye_min are verified.
-        selected = _select_verification_records(self._RECORDS, bullseye_min=90, near_miss_band=0)
-        names = {r["practice_name"] for r in selected}
-        assert names == {"A", "B"}
+    def test_high_confidence_bullseye_skipped(self):
+        # All-high-confidence Bullseye: GPT will agree, skip the call.
+        records = [self._rec("A", 95, "high"), self._rec("B", 90, "high")]
+        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=0)
+        assert selected == []
 
-    def test_near_miss_band_includes_within_band(self):
-        # band 10 lowers the floor to 80, pulling in the 85 near-miss but not 79.
-        selected = _select_verification_records(self._RECORDS, bullseye_min=90, near_miss_band=10)
-        names = {r["practice_name"] for r in selected}
-        assert names == {"A", "B", "C"}
+    def test_low_confidence_bullseye_verified(self):
+        # A Bullseye with a low-confidence YES signal warrants a second pass.
+        records = [self._rec("A", 95, "high"), self._rec("B", 90, "low")]
+        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=0)
+        assert [r["practice_name"] for r in selected] == ["B"]
+
+    def test_near_miss_always_verified_regardless_of_confidence(self):
+        # Near-miss records get verified regardless of signal confidence.
+        records = [self._rec("C", 85, "high"), self._rec("D", 79, "high")]
+        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=10)
+        assert [r["practice_name"] for r in selected] == ["C"]
+
+    def test_below_band_excluded(self):
+        # Record outside the band entirely is never selected.
+        records = [self._rec("D", 79, "low")]
+        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=10)
+        assert selected == []
+
+    def test_thin_context_skipped_even_when_low_confidence(self):
+        # Thin-context records skip GPT — same limited text, tier capped in Step 6 anyway.
+        records = [self._rec("A", 90, "low", source_conf="limited")]
+        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=0)
+        assert selected == []
+
+    def test_near_miss_with_thin_context_also_skipped(self):
+        # Near-miss band does not override the thin-context skip.
+        records = [self._rec("C", 85, "high", source_conf="failed")]
+        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=10)
+        assert selected == []
+
+    def test_mixed_confidence_bullseye_verified_when_any_low(self):
+        # One low-confidence signal among medium/high is enough to warrant verification.
+        rec = {
+            "practice_name": "X",
+            "bullseye_score": 92,
+            "source_confidence": "ok",
+            "signals": [
+                {"signal_id": "S-01", "signal_state": "yes", "confidence": "high"},
+                {"signal_id": "S-02", "signal_state": "yes", "confidence": "low"},
+            ],
+        }
+        selected = _select_verification_records([rec], bullseye_min=90, near_miss_band=0)
+        assert [r["practice_name"] for r in selected] == ["X"]
 
 
 class TestChallengeDetection:

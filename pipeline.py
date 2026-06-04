@@ -200,18 +200,56 @@ def _records_needing_browser_retry(records: list[dict]) -> list[dict]:
     return blocked
 
 
+def _record_has_uncertain_signal(record: dict) -> bool:
+    """Return True when a Bullseye record has at least one low-confidence YES signal.
+
+    Low-confidence extraction is the false-positive risk GPT is designed to catch.
+    All-medium/high-confidence records skip GPT — when Claude is certain, GPT agrees
+    and the API call wastes spend.
+    """
+    signals = record.get("signals") or []
+    return any(
+        s.get("signal_state") == "yes" and s.get("confidence") == "low"
+        for s in signals
+    )
+
+
 def _select_verification_records(
     records: list[dict], bullseye_min: int, near_miss_band: int
 ) -> list[dict]:
-    """Select records to send to GPT verification (Step 5a).
+    """Select records for GPT verification (Step 5).
 
-    Always includes Bullseye records (score >= bullseye_min). When near_miss_band
-    is > 0, the floor is lowered by that many points so near-miss records just
-    below the Bullseye line also get a second opinion. band 0 keeps the floor at
-    bullseye_min, so only true Bullseye records are verified — the default.
+    Thin-context records (`source_confidence` limited/failed) are always skipped:
+    the tier will be capped at Needs Verification in Step 6 regardless, and GPT
+    sees the same limited text Claude already processed.
+
+    Near-miss records (score in [bullseye_min - near_miss_band, bullseye_min))
+    are always verified — borderline scores are the highest-value GPT target.
+
+    Bullseye records (score >= bullseye_min) are only verified when Claude showed
+    genuine uncertainty: at least one confirmed-YES signal extracted at low
+    confidence. All-medium/high-confidence Bullseyes are skipped.
+
+    band 0 (default): only uncertain Bullseye records are verified.
+    band N > 0: also verifies records scoring [bullseye_min − N, bullseye_min).
     """
-    verification_floor = bullseye_min - max(0, near_miss_band)
-    return [r for r in records if r.get("bullseye_score", 0) >= verification_floor]
+    near_miss_band = max(0, near_miss_band)
+    verification_floor = bullseye_min - near_miss_band
+    result = []
+    for r in records:
+        score = r.get("bullseye_score", 0)
+        if score < verification_floor:
+            continue
+        # Thin-context: skip at all score levels — same reasoning, same limited text.
+        if r.get("source_confidence") in ("limited", "failed"):
+            continue
+        if score >= bullseye_min:
+            if _record_has_uncertain_signal(r):
+                result.append(r)
+        else:
+            # Near-miss band: always verify regardless of confidence level.
+            result.append(r)
+    return result
 
 
 def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -> None:
