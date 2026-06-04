@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys",
   "name": "Femasys — OBGYN Office-Based Procedures",
-  "version": "obgyn-femasys-v1",
+  "version": "obgyn-femasys-v2",
   "default_specialty": "OBGYN",
   "default_geography": ["TX", "FL", "GA"],
   "default_exclusion_rules": ["rei_on_staff", "wrong_specialty", "outside_geography", "no_web_presence"],
@@ -66,6 +66,15 @@
       "positive_weight": -30,
       "cap_tier": "Needs Verification",
       "note": "Friction signal — caps tier at Needs Verification for operator review. Procurement and budget authority sit with the parent system, not the practice."
+    },
+    {
+      "signal_id": "S-ICP-009",
+      "signal_label": "Cash-pay / self-pay fertility service line visible",
+      "prompt_instruction": "Does the website show explicit evidence of a cash-pay, self-pay, or out-of-network capability for fertility or related services? Examples: published self-pay or package pricing for IUI, insemination, or fertility treatment; the phrase 'out-of-network'; statements that a service is not covered by insurance; offering superbills or invoices for reimbursement; or visible third-party patient financing such as CareCredit. Answer yes only when such language is explicitly present on the site.",
+      "positive_weight": 20,
+      "no_weight": -15,
+      "required_for_bullseye": false,
+      "note": "Cash-pay readiness — commercial-fit signal for adoption velocity; tunable, not yet a gate."
     }
   ]
 }
