@@ -176,8 +176,8 @@ def _ftp_upload(data: bytes, remote_path: str) -> None:
         ftp.connect(config.HOSTINGER_SFTP_HOST, config.HOSTINGER_FTP_PORT)
         ftp.login(config.HOSTINGER_SFTP_USER, config.HOSTINGER_SFTP_PASSWORD)
 
-        # Hostinger chroots FTP to the account home (shows as "/" in pwd).
-        # Discover the correct relative path by checking what exists in FTP root.
+        # If the configured root is a relative path (no leading /), use it directly.
+        # Absolute paths need chroot detection.
         rel_path = _ftp_rel_path(remote_path, ftp)
         logger.info("FTP upload: configured=%r rel=%r", remote_path, rel_path)
 
@@ -187,13 +187,16 @@ def _ftp_upload(data: bytes, remote_path: str) -> None:
 
 
 def _ftp_rel_path(remote_path: str, ftp) -> str:
-    """Return remote_path relative to the FTP chroot.
+    """Return remote_path relative to the FTP chroot root.
 
-    Hostinger chroots FTP to the account home directory, which appears as '/'
-    in ftp.pwd(). The configured path is an absolute filesystem path like
-    /home/u123/domains/... We strip leading components until the first one
-    is visible in the FTP root listing (e.g. 'domains').
+    If the path is already relative (no leading /), return it as-is —
+    this is the recommended configuration when the FTP account is chrooted
+    to a specific directory (e.g. public_html). Absolute paths are handled
+    by probing the FTP root listing to detect the chroot offset.
     """
+    if not remote_path.startswith("/"):
+        return remote_path
+
     parts = list(PurePosixPath(remote_path).parts)
     if parts and parts[0] == "/":
         parts = parts[1:]
@@ -216,9 +219,9 @@ def _ftp_makedirs(ftp, remote_dir: str) -> None:
     for part in PurePosixPath(remote_dir).parts:
         try:
             ftp.cwd(part)
-            logger.debug("FTP cwd(%r) ok — now at %r", part, ftp.pwd())
+            logger.info("FTP cwd(%r) ok — now at %r", part, ftp.pwd())
         except ftplib.error_perm as cwd_err:
-            logger.debug("FTP cwd(%r) failed (%s), trying mkd", part, cwd_err)
+            logger.info("FTP cwd(%r) failed (%s), trying mkd", part, cwd_err)
             try:
                 ftp.mkd(part)
                 ftp.cwd(part)
