@@ -1483,7 +1483,7 @@ async def publish_brief_route(
     try:
         result = brief_publisher.publish_brief(html_bytes, slug, brief_type)
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
 
     brief_publisher.save_published_brief(run_directory, brief_type, result)
     return JSONResponse({"public_url": result["public_url"]})

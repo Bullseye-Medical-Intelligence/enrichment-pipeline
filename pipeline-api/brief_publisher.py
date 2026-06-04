@@ -216,6 +216,13 @@ def _ftp_makedirs(ftp, remote_dir: str) -> None:
     for part in PurePosixPath(remote_dir).parts:
         try:
             ftp.cwd(part)
-        except ftplib.error_perm:
-            ftp.mkd(part)
-            ftp.cwd(part)
+            logger.debug("FTP cwd(%r) ok — now at %r", part, ftp.pwd())
+        except ftplib.error_perm as cwd_err:
+            logger.debug("FTP cwd(%r) failed (%s), trying mkd", part, cwd_err)
+            try:
+                ftp.mkd(part)
+                ftp.cwd(part)
+            except ftplib.error_perm as mkd_err:
+                raise RuntimeError(
+                    f"FTP makedirs failed at {part!r}: cwd={cwd_err!s} mkd={mkd_err!s}"
+                ) from mkd_err
