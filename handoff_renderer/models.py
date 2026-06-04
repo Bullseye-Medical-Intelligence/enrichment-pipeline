@@ -41,6 +41,7 @@ class Account:
     flags: list[str] = field(default_factory=list)  # e.g. ["Multi-site — buying may be central"]
 
     # Populated for BULLSEYE and CONTENDER
+    who_to_ask: Optional[str] = None   # e.g. "Ask for Dr. Jane Smith or Dr. Patel"
     why_it_matters: Optional[list[str]] = None
     wedge: Optional[str] = None
     confirmed_signals: list[str] = field(default_factory=list)

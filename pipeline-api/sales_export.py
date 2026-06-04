@@ -332,6 +332,7 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         internal_score=int(rec.get("bullseye_score") or 0),
         flags=[],  # practice-level flags not yet in pipeline schema
         # Non-excluded content
+        who_to_ask=(brief.get("key_contact") or "") or None,
         why_it_matters=why_it_matters,
         wedge=opener or None,
         confirmed_signals=confirmed_signals,
