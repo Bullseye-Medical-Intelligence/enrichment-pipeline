@@ -193,6 +193,21 @@ ul, ol { padding-left: 1.4em; }
   100% { background-position: -200% 0; }
 }
 
+/* ── Dropdown ─────────────────────────────────────────────────────── */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu {
+  display: none; position: absolute; right: 0; top: calc(100% + 4px);
+  background: var(--white); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(10,10,10,0.1); min-width: 148px; z-index: 200; padding: 4px 0;
+}
+.dropdown.open .dropdown-menu { display: block; }
+.dropdown-menu button, .dropdown-menu a {
+  display: block; width: 100%; text-align: left; padding: 8px 14px; font-size: 13px;
+  font-family: inherit; background: none; border: none; cursor: pointer;
+  color: var(--ink); white-space: nowrap; text-decoration: none;
+}
+.dropdown-menu button:hover, .dropdown-menu a:hover { background: var(--surface); }
+
 /* ── Modal / dialog ───────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;

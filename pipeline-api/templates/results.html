@@ -14,55 +14,68 @@
   </div>
   <div class="header-actions">
     {% if is_ingested %}
-    <button id="delete-btn" class="btn btn-secondary" disabled
-            onclick="deleteSelected('{{ run_id }}')"
-            title="Remove checked records from the roster before enrichment — saves crawl and LLM budget">
-      Delete Selected (<span id="delete-count">0</span>)
-    </button>
-    <form method="post" action="/runs/{{ run_id }}/enrich-all"
-          style="display:inline-flex; align-items:center; gap:10px;"
-          onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
-      <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; cursor:pointer;"
-             title="After the standard crawl, re-crawl bot-blocked sites once with a headless browser. Slower, but recovers sites that block the fast crawler.">
-        <input type="checkbox" name="auto_browser_retry" value="1">
-        Auto browser-retry blocked sites
-      </label>
-      <button type="submit" class="btn btn-submit"
-              title="Run crawl + signal extraction over the loaded roster">
-        Enrich All ({{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }})
+    <div class="header-row-primary">
+      <button id="delete-btn" class="btn btn-secondary" disabled
+              onclick="deleteSelected('{{ run_id }}')"
+              title="Remove checked records from the roster before enrichment — saves crawl and LLM budget">
+        Delete Selected (<span id="delete-count">0</span>)
       </button>
-    </form>
+      <form method="post" action="/runs/{{ run_id }}/enrich-all"
+            style="display:inline-flex; align-items:center; gap:10px;"
+            onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+        <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; cursor:pointer;"
+               title="After the standard crawl, re-crawl bot-blocked sites once with a headless browser. Slower, but recovers sites that block the fast crawler.">
+          <input type="checkbox" name="auto_browser_retry" value="1">
+          Auto browser-retry blocked sites
+        </label>
+        <button type="submit" class="btn btn-submit"
+                title="Run crawl + signal extraction over the loaded roster">
+          Enrich All ({{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }})
+        </button>
+      </form>
+    </div>
     {% endif %}
     {% if status.status == "complete" %}
-    {% if readiness and readiness.state == 'ready' %}
-    <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
-    {% else %}
-    {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
-    <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
-    {% endif %}
-    {% if readiness and readiness.state == 'ready' %}
     {% set sf = published_briefs.get('sales-handoff') if published_briefs else none %}
-    {% if sf %}
-    <a href="{{ sf.public_url }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">Sales Handoff ↗</a>
-    <button class="btn btn-secondary" onclick="copyShareLink('{{ sf.public_url }}', this)">Copy Link</button>
-    <button class="btn btn-secondary" onclick="publishBrief('sales-handoff', this)">Republish</button>
+    <div class="header-row-primary">
+      {% if readiness and readiness.state == 'ready' %}
+      <a href="/runs/{{ run_id }}/client-package" class="btn btn-submit">Download Client Package</a>
+      <div class="dropdown">
+        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Sales Handoff ▾</button>
+        <div class="dropdown-menu">
+          {% if sf %}
+          <a href="{{ sf.public_url }}" target="_blank" rel="noopener noreferrer">View ↗</a>
+          <button onclick="copyShareLink('{{ sf.public_url }}', this); closeDropdowns()">Copy Link</button>
+          <button onclick="publishBrief('sales-handoff', this); closeDropdowns()">Re-Publish</button>
+          {% else %}
+          <button onclick="publishBrief('sales-handoff', this); closeDropdowns()">Publish</button>
+          {% endif %}
+        </div>
+      </div>
+      <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate a prospect-facing methodology brief">Sales Brief</button>
+      {% else %}
+      {% set pending_title = readiness.pending_count ~ ' Bullseye record' ~ ('s' if readiness.pending_count != 1 else '') ~ ' still pending review' if readiness and readiness.pending_count else 'Review Bullseye records before downloading' %}
+      <span class="btn btn-submit" style="opacity:0.5; cursor:not-allowed; pointer-events:none;" title="{{ pending_title }}">Download Client Package</span>
+      {% endif %}
+    </div>
+    <div class="header-row-secondary">
+      {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
+      {% if limited_count > 0 %}
+      <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+        <button type="submit" class="btn btn-secondary" title="Re-crawl {{ limited_count }} site{{ 's' if limited_count != 1 else '' }} that failed extraction using headless browser (Playwright)">
+          Re-crawl with Browser ({{ limited_count }})
+        </button>
+      </form>
+      {% endif %}
+      <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
+      <a href="/runs/{{ run_id }}/download/manifest" class="btn btn-secondary" title="Internal run manifest — scope, ICP version, counts, methodology. Not included in the client package.">Run Manifest</a>
+      <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
+    </div>
     {% else %}
-    <button class="btn btn-secondary" onclick="publishBrief('sales-handoff', this)">Publish Sales Handoff</button>
+    <div class="header-row-primary">
+      <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
+    </div>
     {% endif %}
-    {% endif %}
-    <button type="button" class="btn btn-secondary" onclick="openSalesBriefModal()" title="Generate a prospect-facing methodology brief — select 1 Bullseye, 1 Contender, 1 Excluded">Sales Brief</button>
-    {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
-    {% if limited_count > 0 %}
-    <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
-      <button type="submit" class="btn btn-secondary" title="Re-crawl {{ limited_count }} site{{ 's' if limited_count != 1 else '' }} that failed extraction using headless browser (Playwright)">
-        Re-crawl with Browser ({{ limited_count }})
-      </button>
-    </form>
-    {% endif %}
-    <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
-    <a href="/runs/{{ run_id }}/download/manifest" class="btn btn-secondary" title="Internal run manifest — scope, ICP version, counts, methodology. Not included in the client package.">Run Manifest</a>
-    {% endif %}
-    <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
   </div>
 </div>
 
@@ -849,5 +862,18 @@ function copyShareLink(url, btn) {
     prompt('Copy this link:', url);
   });
 }
+
+function toggleDropdown(btn) {
+  const dd = btn.closest('.dropdown');
+  const wasOpen = dd.classList.contains('open');
+  closeDropdowns();
+  if (!wasOpen) dd.classList.add('open');
+}
+function closeDropdowns() {
+  document.querySelectorAll('.dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.dropdown')) closeDropdowns();
+});
 </script>
 {% endblock %}
