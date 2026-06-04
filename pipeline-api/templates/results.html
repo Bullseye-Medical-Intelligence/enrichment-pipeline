@@ -803,6 +803,7 @@ async function generateSalesBrief(runId) {
     }
     var data = await resp.json();
     closeSalesBriefModal();
+    window.open(data.public_url, '_blank', 'noopener,noreferrer');
     window.location.reload();
   } catch(e) {
     errEl.textContent = 'Publish failed: ' + e.message;
