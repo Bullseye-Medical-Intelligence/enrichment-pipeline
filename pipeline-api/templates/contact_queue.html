@@ -106,6 +106,7 @@
               {# Call brief #}
               <div class="detail-section">
                 <h4>Rep Call Brief</h4>
+                {% if brief.key_contact %}<p><span class="brief-label">Ask For</span> {{ brief.key_contact }}</p>{% endif %}
                 {% if brief.why_contact %}<p><span class="brief-label">Why Contact</span> {{ brief.why_contact }}</p>{% endif %}
                 {% if brief.opening_line %}<p><span class="brief-label">Opener</span> {{ brief.opening_line }}</p>{% endif %}
                 {% if brief.likely_objection %}<p><span class="brief-label">Likely Objection</span> {{ brief.likely_objection }}</p>{% endif %}

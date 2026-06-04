@@ -499,8 +499,45 @@ def _determine_fit_confidence_status(fit_signal_score: int,
 # Rep call brief
 # ---------------------------------------------------------------------------
 
+def _parse_providers(raw: list) -> tuple[list[dict], list[str]]:
+    """Validate LLM-returned providers and format provider_names strings.
+
+    Returns (validated_providers, provider_names) where validated_providers is
+    a clean list of {name, title} dicts and provider_names is a list of
+    formatted strings like "Dr. Jane Smith, MD".
+    """
+    if not isinstance(raw, list):
+        return [], []
+    validated = []
+    for entry in raw[:8]:
+        if not isinstance(entry, dict):
+            continue
+        name = (entry.get("name") or "").strip()
+        if not name:
+            continue
+        title = (entry.get("title") or "").strip()
+        validated.append({"name": name, "title": title})
+    provider_names = [
+        f"{p['name']}, {p['title']}" if p["title"] else p["name"]
+        for p in validated
+    ]
+    return validated, provider_names
+
+
+def _format_key_contact(providers: list[dict]) -> str:
+    """Format a rep-friendly 'Ask for ...' string from the providers list."""
+    if not providers:
+        return ""
+    names = [p["name"] for p in providers[:3]]
+    if len(names) == 1:
+        return f"Ask for {names[0]}"
+    if len(names) == 2:
+        return f"Ask for {names[0]} or {names[1]}"
+    return f"Ask for {names[0]}, {names[1]}, or {names[2]}"
+
+
 def _build_call_brief(signals: list[dict], scores: dict, record: dict,
-                       generated: dict) -> dict:
+                       generated: dict, providers: list[dict] | None = None) -> dict:
     """
     Assemble a rep call brief from already-validated signals and scores.
 
@@ -566,6 +603,7 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
     brief = empty_call_brief()
     brief.update({
         "why_contact": why_contact,
+        "key_contact": _format_key_contact(providers or []),
         "opening_line": str(generated.get("opening_line") or "").strip(),
         "likely_objection": str(generated.get("likely_objection") or "").strip(),
         "discovery_question": str(generated.get("discovery_question") or "").strip(),
@@ -676,11 +714,14 @@ def extract_signals(record: dict, icp_signals: list[dict],
         exclusion_triggers = parsed.get("exclusion_triggers", [])
         exclusion_rationale = parsed.get("exclusion_rationale", "")
 
+        # Provider extraction
+        validated_providers, provider_names = _parse_providers(parsed.get("providers", []))
+
         # Rep call brief: grounded fields derived from signals, prep lines from LLM
         generated_brief = parsed.get("call_brief") or {}
         if not isinstance(generated_brief, dict):
             generated_brief = {}
-        call_brief = _build_call_brief(signals, scores, record, generated_brief)
+        call_brief = _build_call_brief(signals, scores, record, generated_brief, validated_providers)
 
         # Gate sales_angle: only serve bullets when confirmed evidence exists.
         # When top_evidence is empty, the integrity gate already cleared the
@@ -711,6 +752,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "fit_confidence_status": fit_confidence_status,
             "sales_angle": sales_angle,
             "call_brief": call_brief,
+            "provider_names": provider_names,
             "source_confidence": source_confidence,
             "date_enriched": date.today().isoformat(),
             "enrichment_run_id": run_id,

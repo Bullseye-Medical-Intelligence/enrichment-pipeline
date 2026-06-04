@@ -199,6 +199,8 @@ def _prepare_sales_record(rec: dict, review: dict) -> dict:
         "exclusion_reason": rec.get("exclusion_reason") or "",
         "confirmed_signals": _extract_confirmed_signals(signals),
         "why_contact": brief.get("why_contact") or "",
+        "key_contact": brief.get("key_contact") or "",
+        "provider_names": rec.get("provider_names") or [],
         "opening_line": brief.get("opening_line") or "",
         "likely_objection": brief.get("likely_objection") or "",
         "discovery_question": brief.get("discovery_question") or "",

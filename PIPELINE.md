@@ -297,7 +297,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 {
   "id": "T-001",
   "practice_name": "Sample Women's Health Practice",
-  "provider_names": ["Dr. Sample Provider"],
+  "provider_names": ["Dr. Jane Smith, MD, OBGYN", "Sarah Lee, NP"],
   "specialty": "OBGYN",
   "npi_optional": "",
   "website_url": "https://example-practice.com",
@@ -346,6 +346,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 
   "call_brief": {
     "why_contact": "OBGYN practice: Infertility workup listed + Independent private practice (fit 88).",
+    "key_contact": "Ask for Dr. Jane Smith or Sarah Lee",
     "opening_line": "I saw your team lists infertility workups, so I wanted to reach out about how peers are streamlining that path.",
     "likely_objection": "They may feel their current vendor relationship already covers this.",
     "discovery_question": "How are you handling device sourcing for your in-office procedures today?",
@@ -392,13 +393,21 @@ derived from the signals (no LLM): `top_evidence` (highest-weight confirmed
 signals with their evidence + source_url), `missing_to_verify` (unconfirmed
 `verification_required` signals not covered by inference), `disqualifier_risk`
 (confirmed friction or `cap_tier` signals), and `why_contact` (one-liner from the
-top confirmed signals + fit). Generated/extracted fields come from the LLM
-(reading the website text): `opening_line`, `likely_objection`,
-`discovery_question`, and `hours_of_operation` (office hours if stated on the
-site, else empty string). All fields default to empty (string or list) when
-extraction fails. This is enrichment output — downstream serves it unchanged;
-"Contact Priority" in the UI is a display relabel of `target_tier`, not a stored
-field.
+top confirmed signals + fit). Extracted fields come from the LLM reading the
+website text: `opening_line`, `likely_objection`, `discovery_question`,
+`hours_of_operation` (office hours if stated on the site, else empty string), and
+`key_contact` (formatted "Ask for Dr. X or Dr. Y" string derived from the
+`providers` extraction — empty string when no named providers were found). All
+fields default to empty (string or list) when extraction fails. This is enrichment
+output — downstream serves it unchanged; "Contact Priority" in the UI is a display
+relabel of `target_tier`, not a stored field.
+
+**provider_names:** List of formatted strings for each named provider found on the
+practice website, populated by the LLM during signal extraction. Format is
+"Name, Title" (e.g. "Dr. Jane Smith, MD, OBGYN") or "Name" when no title was
+found. Empty list when no named providers appear in the crawled text. Populated
+from the `providers` array in the LLM response; `key_contact` in `call_brief` is
+the rep-facing distillation of this same data.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
 

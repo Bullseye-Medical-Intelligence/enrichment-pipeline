@@ -27,6 +27,8 @@ from enrichment.signal_extractor import (
     _apply_reinforcement,
     _build_call_brief,
     _build_empty_signals,
+    _parse_providers,
+    _format_key_contact,
 )
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
@@ -1765,3 +1767,56 @@ class TestNoContextReason:
     def test_thin_text_reports_char_count(self):
         r = self._reason({"website_url": "https://x.com"}, context_text="abc")
         assert "3 characters" in r
+
+
+class TestProviderExtraction:
+    """Provider name extraction and key_contact formatting."""
+
+    def test_valid_providers_parsed(self):
+        raw = [{"name": "Dr. Jane Smith", "title": "MD, OBGYN"}, {"name": "Sarah Lee", "title": "NP"}]
+        providers, names = _parse_providers(raw)
+        assert len(providers) == 2
+        assert providers[0] == {"name": "Dr. Jane Smith", "title": "MD, OBGYN"}
+        assert names == ["Dr. Jane Smith, MD, OBGYN", "Sarah Lee, NP"]
+
+    def test_missing_title_omits_comma(self):
+        raw = [{"name": "Dr. Marcus Patel"}]
+        providers, names = _parse_providers(raw)
+        assert names == ["Dr. Marcus Patel"]
+
+    def test_empty_name_skipped(self):
+        raw = [{"name": "", "title": "MD"}, {"name": "Dr. Chen", "title": "DO"}]
+        providers, names = _parse_providers(raw)
+        assert len(providers) == 1
+        assert providers[0]["name"] == "Dr. Chen"
+
+    def test_non_list_returns_empty(self):
+        providers, names = _parse_providers(None)
+        assert providers == []
+        assert names == []
+
+    def test_caps_at_eight_entries(self):
+        raw = [{"name": f"Dr. Provider {i}", "title": "MD"} for i in range(12)]
+        providers, _ = _parse_providers(raw)
+        assert len(providers) == 8
+
+    def test_key_contact_single(self):
+        providers = [{"name": "Dr. Jane Smith", "title": "MD"}]
+        assert _format_key_contact(providers) == "Ask for Dr. Jane Smith"
+
+    def test_key_contact_two(self):
+        providers = [{"name": "Dr. Jane Smith", "title": "MD"}, {"name": "Dr. Patel", "title": "DO"}]
+        assert _format_key_contact(providers) == "Ask for Dr. Jane Smith or Dr. Patel"
+
+    def test_key_contact_three_or_more(self):
+        providers = [
+            {"name": "Dr. A", "title": "MD"},
+            {"name": "Dr. B", "title": "DO"},
+            {"name": "Dr. C", "title": "NP"},
+            {"name": "Dr. D", "title": "PA"},
+        ]
+        result = _format_key_contact(providers)
+        assert result == "Ask for Dr. A, Dr. B, or Dr. C"
+
+    def test_key_contact_empty(self):
+        assert _format_key_contact([]) == ""

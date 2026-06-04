@@ -525,12 +525,18 @@ body {
         </div>
         {% endif %}
 
-        {% if rec.opening_line or rec.likely_objection or rec.discovery_question or rec.hours_of_operation %}
+        {% if rec.key_contact or rec.opening_line or rec.likely_objection or rec.discovery_question or rec.hours_of_operation %}
         <div class="call-brief-box">
           <div class="call-brief-heading">
             <span class="call-brief-label">Rep Call Brief</span>
             <span class="call-brief-note">coaching guidance, not a script</span>
           </div>
+          {% if rec.key_contact %}
+          <div class="brief-row">
+            <div class="brief-field-label">Ask For</div>
+            <div class="brief-field-text">{{ rec.key_contact }}</div>
+          </div>
+          {% endif %}
           {% if rec.opening_line %}
           <div class="brief-row">
             <div class="brief-field-label">Opening Direction</div>

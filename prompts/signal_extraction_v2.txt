@@ -45,6 +45,7 @@ After evaluating signals, generate:
    - discovery_question: one open question that would advance the conversation.
    - hours_of_operation: brief string of office hours if stated on the site (e.g. "Mon-Fri 8am-5pm"), or empty string if not found.
 3. exclusion_check: Identify if any of these exclusion triggers apply: hospital_owned, health_system_affiliated, rei_on_staff, wrong_specialty, outside_geography, practice_closed, academic_medical_center, no_web_presence, competitor_conflict, no_relevant_service_line
+4. providers: Extract all named physicians, nurse practitioners, physician assistants, and practice managers listed on the site. For each, include their name and credential/title if shown (e.g. "MD", "DO, OBGYN", "NP", "PA-C", "Practice Manager"). Return an empty array if no named providers appear in the text. Cap at 8 entries.
 
 Respond ONLY with valid JSON in exactly this format — no commentary before or after:
 
@@ -71,7 +72,11 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
     "hours_of_operation": "Mon-Fri 8am-5pm"
   },
   "exclusion_triggers": [],
-  "exclusion_rationale": ""
+  "exclusion_rationale": "",
+  "providers": [
+    {"name": "Dr. Jane Smith", "title": "MD, OBGYN"},
+    {"name": "Sarah Lee", "title": "NP"}
+  ]
 }
 
 CRITICAL RULES:
@@ -87,4 +92,5 @@ CRITICAL RULES:
 - call_brief opening_line, likely_objection, discovery_question must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption; hours_of_operation is a short factual string or empty string
 - exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "rei_on_staff", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]
 - If no exclusions apply, exclusion_triggers must be an empty list []
+- providers entries must only name people explicitly mentioned in the website text — never invent names. Return [] if no named providers appear.
 - Return valid JSON only — no markdown, no code blocks, no explanation

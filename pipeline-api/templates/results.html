@@ -368,6 +368,10 @@
 
               {# Sales angles + exclusion #}
               <div class="detail-section">
+                {% if record.provider_names %}
+                <h4>Providers on Site</h4>
+                <ul class="sales-list">{% for pn in record.provider_names %}<li>{{ pn }}</li>{% endfor %}</ul>
+                {% endif %}
                 {% set _angles = record.sales_angle | clean_angles %}
                 {% if _angles %}
                 <h4>Sales Angles</h4>
