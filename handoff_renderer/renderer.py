@@ -116,6 +116,7 @@ def _prepare_account(acct: Account, qc_reviewer: str, client_facing: bool) -> di
         "conf_segments": _CONFIDENCE_SEGMENTS[acct.confidence],
         "flags": acct.flags,
         "has_flags": bool(acct.flags),
+        "who_to_ask": acct.who_to_ask,
         "why_it_matters": acct.why_it_matters,
         "wedge": acct.wedge,
         "confirmed_signals": acct.confirmed_signals,
