@@ -690,7 +690,7 @@
 {# ── Rejected Records section ──────────────────────────────────────────── #}
 {% if not is_ingested and status.status == "complete" %}
 {% set _ns = namespace(rejected=[]) %}
-{% for r in records %}{% if r.review.qc_status == 'rejected' %}{% set _ns.rejected = _ns.rejected + [r] %}{% endif %}{% endfor %}
+{% for r in records %}{% if r.review.qc_status == 'rejected' and r.exclusion_status != 'EXCLUDED' and r.displayed_tier != 'Excluded' %}{% set _ns.rejected = _ns.rejected + [r] %}{% endif %}{% endfor %}
 {% if _ns.rejected %}
 <div id="rejected-section" style="margin-top:2em;">
   <div style="margin-bottom:0.5em; display:flex; align-items:center; gap:0.75em;">
