@@ -247,17 +247,21 @@ def _check_geography(record: dict, target_geography: list[str]) -> bool:
     return state not in geo_upper
 
 
+_REI_TAXONOMY_CODE = "207VE0102X"
+
+
 def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[str], list[str]]:
     """Return (triggered, rationale_parts) for deterministic, signal-independent exclusions.
 
-    Covers wrong_specialty and outside_geography — both decided purely from data
-    available at ingest (specialty, state). Because they need no crawl or LLM
-    output, they can run as a pre-filter before enrichment to avoid spending
-    crawl + LLM budget on records that will be excluded anyway. apply_exclusions
-    also calls this so the rules have a single home.
+    Covers wrong_specialty, outside_geography, and (when rei_on_staff is an active
+    configurable rule) rei_taxonomy_present from the NPI enrichment step. All three
+    are decided from data available before the crawl, enabling the structural pre-filter
+    to route confirmed exclusions without spending crawl or LLM budget on them.
+    apply_exclusions also calls this so the logic lives in one place.
     """
     target_geography = run_config.get("target_geography", [])
     target_specialty = (run_config.get("target_specialty") or "").strip()
+    active_rules = set(run_config.get("active_exclusion_rules", []))
     triggered: list[str] = []
     rationale_parts: list[str] = []
 
@@ -280,6 +284,19 @@ def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[st
         rationale_parts.append(
             f"Practice is in {state}, outside target geography "
             f"({', '.join(target_geography)})."
+        )
+
+    # REI taxonomy structural gate: when NPI enrichment confirmed a reproductive
+    # endocrinologist on staff via federal registry data, fire rei_on_staff before
+    # the crawl rather than waiting for the LLM pass. Only fires when rei_on_staff
+    # is listed in active_exclusion_rules (same configurable-rule contract as the
+    # LLM-triggered path). This saves crawl + LLM spend on confirmed REI practices.
+    if (record.get("rei_taxonomy_present")
+            and "rei_on_staff" in active_rules):
+        triggered.append("rei_on_staff")
+        rationale_parts.append(
+            f"Reproductive endocrinologist confirmed on staff via NPPES taxonomy "
+            f"(code {_REI_TAXONOMY_CODE}) — excluded before crawl."
         )
 
     return triggered, rationale_parts

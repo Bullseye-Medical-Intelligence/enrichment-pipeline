@@ -21,6 +21,15 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ingestion.outscraper_adapter import _normalize_state, infer_specialty
+from ingestion.npi_lookup import (
+    _normalize_phone,
+    _names_agree,
+    _extract_taxonomy_codes,
+    REI_TAXONOMY_CODE,
+    CONFIDENCE_CONFIDENT,
+    CONFIDENCE_AMBIGUOUS,
+    CONFIDENCE_NONE,
+)
 from enrichment.signal_extractor import (
     _validate_and_clean_signals,
     _calculate_scores,
@@ -1834,3 +1843,157 @@ class TestProviderExtraction:
 
     def test_key_contact_none(self):
         assert _format_key_contact(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# NPI Lookup — pure-function tests (no HTTP)
+# ---------------------------------------------------------------------------
+
+class TestNormalizePhone:
+    def test_standard_10_digit(self):
+        assert _normalize_phone("(214) 555-1234") == "2145551234"
+
+    def test_strips_country_code(self):
+        assert _normalize_phone("+1-214-555-1234") == "2145551234"
+
+    def test_dashes_and_dots(self):
+        assert _normalize_phone("214.555.1234") == "2145551234"
+
+    def test_too_short_returns_empty(self):
+        assert _normalize_phone("555-1234") == ""
+
+    def test_empty_returns_empty(self):
+        assert _normalize_phone("") == ""
+
+    def test_none_returns_empty(self):
+        assert _normalize_phone(None) == ""
+
+
+class TestNamesAgree:
+    def test_exact_match(self):
+        assert _names_agree("Dallas Women's Health", "Dallas Women's Health")
+
+    def test_common_tokens_agree(self):
+        assert _names_agree("Dallas OBGYN Associates", "Dallas OBGYN Clinic")
+
+    def test_partial_name_overlap_agrees(self):
+        assert _names_agree("Dallas OB/GYN Associates", "Dallas OB/GYN Clinic") is True
+
+    def test_completely_different_names_disagree(self):
+        assert _names_agree("Northside Family Medicine", "Dallas Women's Clinic") is False
+
+    def test_empty_name_disagrees(self):
+        assert _names_agree("", "Dallas Women's Health") is False
+        assert _names_agree("Dallas Women's Health", "") is False
+
+    def test_noise_only_names_disagree(self):
+        # Both names reduce to empty token sets after noise stripping
+        assert _names_agree("The Health Group LLC", "The Care Center PC") is False
+
+
+class TestExtractTaxonomyCodes:
+    def test_extracts_single_code(self):
+        result = {"taxonomies": [{"code": "207VX0000X", "desc": "Obstetrics & Gynecology"}]}
+        assert _extract_taxonomy_codes(result) == ["207VX0000X"]
+
+    def test_extracts_multiple_codes(self):
+        result = {
+            "taxonomies": [
+                {"code": "207VX0000X"},
+                {"code": "207VE0102X"},
+            ]
+        }
+        codes = _extract_taxonomy_codes(result)
+        assert "207VX0000X" in codes
+        assert "207VE0102X" in codes
+
+    def test_empty_taxonomies_returns_empty(self):
+        assert _extract_taxonomy_codes({"taxonomies": []}) == []
+
+    def test_no_taxonomies_key_returns_empty(self):
+        assert _extract_taxonomy_codes({}) == []
+
+    def test_rei_taxonomy_code_detected(self):
+        result = {"taxonomies": [{"code": REI_TAXONOMY_CODE}]}
+        codes = _extract_taxonomy_codes(result)
+        assert REI_TAXONOMY_CODE in codes
+
+
+# ---------------------------------------------------------------------------
+# REI Structural Exclusion Gate
+# ---------------------------------------------------------------------------
+
+class TestREIStructuralGate:
+    """Verify that rei_taxonomy_present=True triggers the structural exclusion
+    when rei_on_staff is listed in active_exclusion_rules."""
+
+    def _make_run_config(self, active_rules=None):
+        return {
+            "target_specialty": "OBGYN",
+            "target_geography": ["TX"],
+            "active_exclusion_rules": active_rules or [],
+        }
+
+    def _make_record(self, rei_taxonomy_present=False):
+        return {
+            "id": "T-TEST",
+            "practice_name": "Test OB/GYN",
+            "specialty": "OBGYN",
+            "address_state": "TX",
+            "address_zip": "75001",
+            "rei_taxonomy_present": rei_taxonomy_present,
+        }
+
+    def test_rei_taxonomy_present_fires_when_rule_active(self):
+        from enrichment.exclusion_checker import check_structural_exclusions
+        record = self._make_record(rei_taxonomy_present=True)
+        run_config = self._make_run_config(active_rules=["rei_on_staff"])
+        triggered, rationale = check_structural_exclusions(record, run_config)
+        assert "rei_on_staff" in triggered
+        assert any("NPPES" in r for r in rationale)
+
+    def test_rei_taxonomy_present_suppressed_when_rule_not_active(self):
+        from enrichment.exclusion_checker import check_structural_exclusions
+        record = self._make_record(rei_taxonomy_present=True)
+        run_config = self._make_run_config(active_rules=[])  # rei_on_staff not active
+        triggered, _ = check_structural_exclusions(record, run_config)
+        assert "rei_on_staff" not in triggered
+
+    def test_rei_taxonomy_false_does_not_fire(self):
+        from enrichment.exclusion_checker import check_structural_exclusions
+        record = self._make_record(rei_taxonomy_present=False)
+        run_config = self._make_run_config(active_rules=["rei_on_staff"])
+        triggered, _ = check_structural_exclusions(record, run_config)
+        assert "rei_on_staff" not in triggered
+
+    def test_rei_taxonomy_missing_does_not_fire(self):
+        from enrichment.exclusion_checker import check_structural_exclusions
+        record = self._make_record()
+        del record["rei_taxonomy_present"]
+        run_config = self._make_run_config(active_rules=["rei_on_staff"])
+        triggered, _ = check_structural_exclusions(record, run_config)
+        assert "rei_on_staff" not in triggered
+
+    def test_rei_exclusion_applies_full_apply_exclusions(self):
+        """End-to-end: rei_taxonomy_present=True leads to EXCLUDED status."""
+        record = {
+            "id": "T-REI",
+            "practice_name": "REI Center",
+            "specialty": "OBGYN",
+            "address_state": "TX",
+            "address_zip": "75001",
+            "website_url": "https://example.com",
+            "rei_taxonomy_present": True,
+            "signals": [],
+            "bullseye_score": 85,
+            "fit_signal_score": 85,
+            "confidence_score": 80,
+            "enrichment_status": "complete",
+            "source_confidence": "complete",
+        }
+        run_config = self._make_run_config(active_rules=["rei_on_staff"])
+        result = apply_exclusions(record, run_config)
+        assert result["exclusion_status"] == "EXCLUDED"
+        assert result["target_tier"] == "Excluded"
+        assert result.get("exclusion_reason")  # non-empty rationale
+        assert "NPPES" in result.get("exclusion_reason", "")

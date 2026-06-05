@@ -217,6 +217,21 @@ Records flow through these steps in order. Each step is a separate function or m
 Step 1: INGEST
   Load source CSV → normalize to canonical schema → deduplicate → validate required fields
 
+Step 1b: NPI ENRICHMENT (ingestion/npi_lookup.py)
+  For each record, query the public NPPES registry (no auth) to populate provider taxonomy data.
+  Run before the structural pre-filter so rei_taxonomy_present is available to
+  check_structural_exclusions, allowing confirmed REI practices to skip crawl + LLM entirely.
+  - Fast path: when npi_optional is already set (Outscraper often includes NPI),
+    query NPPES directly by number — no address-match ambiguity.
+  - Normal path: query by ZIP + practice name; confirm candidate with name or phone agreement.
+  - Confidence tiers: "confident" (address + name/phone agree), "ambiguous" (address
+    matched but name + phone both disagreed), "none" (no ZIP candidate found).
+  - Conservative matching: anything below "confident" → NPI fields stay null/false.
+    A wrong NPI match writing a wrong taxonomy to the REI exclusion gate is worse than
+    no match.
+  - Controlled by run_config key `npi_enrichment_enabled` (default true).
+  - Writes new NPI fields (see schema §4.x below). Never overwrites crawl fields.
+
 Step 2: URL VALIDATION
   For each record with a website_url:
     - HEAD request to verify URL is reachable (200 or 301/302 followed)
@@ -434,12 +449,35 @@ the rep-facing distillation of this same data.
   structurally screened (specialty/geography/no-web-presence) but has not been
   crawled or scored. Scores are 0 and `signals` is empty until enrichment runs.
 
+**NPI enrichment fields (Step 1b, ingestion/npi_lookup.py):**
+Added by the NPPES registry lookup. All are additive — they never overwrite crawl fields.
+Records enriched before Step 1b was added, or runs with `npi_enrichment_enabled: false`,
+receive default null/false values via the scorer's validation pass.
+
+| Field | Type | Description |
+|---|---|---|
+| `npi_number` | string \| null | Matched NPI from NPPES. Null if no confident match. |
+| `npi_match_confidence` | string | `"confident"` / `"ambiguous"` / `"none"` |
+| `npi_entity_type` | string \| null | `"organization"` (type 2) or `"individual"` (type 1) |
+| `provider_taxonomy_codes` | list[string] | All taxonomy codes from the matched NPI |
+| `rei_taxonomy_present` | bool | True when taxonomy code `207VE0102X` (REI) is present |
+| `npi_provider_count` | int \| null | Count of NPI results returned for the match query |
+| `npi_practice_name` | string \| null | Registry-reported organization name |
+
+`rei_taxonomy_present` feeds the structural REI exclusion gate in
+`check_structural_exclusions` (when `rei_on_staff` is in `active_exclusion_rules`),
+saving crawl and LLM budget on confirmed REI practices.
+
 **null usage:**
 - `exclusion_reason`: null when exclusion_status is CLEAR
 - `analyst_override_classification`: always null in pipeline output
 - `override_reason`: always null in pipeline output
 - `client_facing_rationale`: always null in pipeline output
 - `npi_optional`: null if NPI unavailable
+- `npi_number`: null if no confident NPPES match
+- `npi_entity_type`: null if no confident NPPES match
+- `npi_provider_count`: null if no confident NPPES match
+- `npi_practice_name`: null if no confident NPPES match
 - `internal_notes`: empty string `""`, not null
 - `analyst_note` on signals: empty string `""`, not null
 

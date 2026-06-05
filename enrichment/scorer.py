@@ -151,6 +151,23 @@ def validate_and_finalize(record: dict) -> dict:
     if "npi_optional" not in record:
         record["npi_optional"] = None
 
+    # NPI enrichment fields: default when absent (records enriched before the
+    # NPI step was added, or runs with npi_enrichment_enabled: false).
+    if "npi_number" not in record:
+        record["npi_number"] = None
+    if "npi_match_confidence" not in record:
+        record["npi_match_confidence"] = "none"
+    if "npi_entity_type" not in record:
+        record["npi_entity_type"] = None
+    if not isinstance(record.get("provider_taxonomy_codes"), list):
+        record["provider_taxonomy_codes"] = []
+    if "rei_taxonomy_present" not in record:
+        record["rei_taxonomy_present"] = False
+    if "npi_provider_count" not in record:
+        record["npi_provider_count"] = None
+    if "npi_practice_name" not in record:
+        record["npi_practice_name"] = None
+
     # internal_notes: empty string, not null
     if record.get("internal_notes") is None:
         record["internal_notes"] = ""

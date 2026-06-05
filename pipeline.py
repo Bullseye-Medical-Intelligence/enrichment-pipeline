@@ -41,6 +41,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
+from ingestion import npi_lookup
 from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import batch_extract
 from enrichment.constants import (
@@ -490,10 +491,26 @@ def run_pipeline(input_file: str, source_type: str,
         }
 
     # -------------------------------------------------------------------------
+    # STEP 1b: NPI ENRICHMENT
+    # Populate registry-derived fields (taxonomy codes, REI flag) from the
+    # public NPPES database before the structural pre-filter runs. The REI
+    # taxonomy gate in check_structural_exclusions reads rei_taxonomy_present,
+    # so NPI enrichment must complete first to let confirmed REI practices
+    # skip the crawl rather than being excluded only after LLM spend.
+    # Skip when npi_enrichment_enabled is explicitly False in run_config.
+    # -------------------------------------------------------------------------
+    if run_config.get("npi_enrichment_enabled", True):
+        _write_progress(output_dir, 1, "NPI enrichment")
+        print(f"\n{'-'*40}")
+        print("STEP 1b: NPI ENRICHMENT (NPPES registry lookup)")
+        print(f"{'-'*40}")
+        npi_lookup.enrich_records(records, run_config)
+
+    # -------------------------------------------------------------------------
     # STRUCTURAL PRE-FILTER (cost routing): records that deterministic
-    # specialty/geography rules will exclude skip crawl + LLM entirely. They
-    # rejoin the set at Step 6, where apply_exclusions formally marks them.
-    # Signal-dependent exclusions still run later, unchanged.
+    # specialty/geography/REI-taxonomy rules will exclude skip crawl + LLM
+    # entirely. They rejoin the set at Step 6, where apply_exclusions formally
+    # marks them. Signal-dependent exclusions still run later, unchanged.
     # -------------------------------------------------------------------------
     pre_excluded = []
     eligible = []
@@ -502,7 +519,8 @@ def run_pipeline(input_file: str, source_type: str,
         (pre_excluded if triggered else eligible).append(record)
     if pre_excluded:
         print(f"\n  Pre-filter: {len(pre_excluded)} records skip enrichment "
-              f"(wrong specialty / outside geography); {len(eligible)} eligible")
+              f"(wrong specialty / outside geography / REI taxonomy); "
+              f"{len(eligible)} eligible")
     records = eligible
 
     if manual_content_path:
