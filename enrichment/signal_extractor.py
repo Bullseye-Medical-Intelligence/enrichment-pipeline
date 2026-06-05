@@ -44,9 +44,11 @@ load_dotenv()
 # Constants
 # ---------------------------------------------------------------------------
 
-PROMPT_VERSION = "signal_extraction_v2"
-PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_v2.txt"
-_PROMPT_TEMPLATE: str = PROMPT_PATH.read_text(encoding="utf-8")
+PROMPT_VERSION = "signal_extraction_v3"
+_SYSTEM_TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_system_v3.txt"
+_USER_TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_user_v3.txt"
+_SYSTEM_TEMPLATE: str = _SYSTEM_TEMPLATE_PATH.read_text(encoding="utf-8")
+_USER_TEMPLATE: str = _USER_TEMPLATE_PATH.read_text(encoding="utf-8")
 
 # Number of confirmed signals surfaced in the call brief's evidence list.
 TOP_EVIDENCE_COUNT = 3
@@ -98,15 +100,13 @@ def _build_signal_checklist(signals: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def _build_prompt(record: dict, context_text: str, icp_signals: list[dict]) -> str:
-    """
-    Build the full signal extraction prompt for a record.
-    Uses explicit str.replace() instead of .format() so that JSON examples
-    in the prompt template (which contain { and }) are left untouched.
-    """
-    template = _PROMPT_TEMPLATE
-    checklist_text = _build_signal_checklist(icp_signals)
+def _build_system_prompt(icp_signals: list[dict]) -> str:
+    """Build the cacheable system prompt — identical for every record in a run."""
+    return _SYSTEM_TEMPLATE.replace("{signal_checklist}", _build_signal_checklist(icp_signals))
 
+
+def _build_user_message(record: dict, context_text: str) -> str:
+    """Build the per-record user message containing practice info and website text."""
     replacements = {
         "{practice_name}": record.get("practice_name", "Unknown"),
         "{specialty}": record.get("specialty", "Unknown"),
@@ -115,9 +115,8 @@ def _build_prompt(record: dict, context_text: str, icp_signals: list[dict]) -> s
         "{address_zip}": record.get("address_zip", ""),
         "{website_url}": record.get("website_url", ""),
         "{context_text}": context_text or "(No website text available — limited public presence)",
-        "{signal_checklist}": checklist_text,
     }
-    result = template
+    result = _USER_TEMPLATE
     for placeholder, value in replacements.items():
         result = result.replace(placeholder, str(value))
     return result
@@ -127,11 +126,14 @@ def _build_prompt(record: dict, context_text: str, icp_signals: list[dict]) -> s
 # LLM call with retry
 # ---------------------------------------------------------------------------
 
-def _call_claude(prompt: str, client: anthropic.Anthropic, model: str,
+def _call_claude(system_prompt: str, user_message: str,
+                  client: anthropic.Anthropic, model: str,
                   retries: int = 3) -> str:
-    """
-    Call Claude with retry logic.
-    Returns the raw text response or raises on all retries exhausted.
+    """Call Claude with a cached system prompt and per-record user message.
+
+    The system prompt is marked ephemeral so Claude caches it across all
+    records in a run — the signal checklist and instructions are identical
+    per run, so only the first call pays full input token cost for that block.
     """
     last_error = None
 
@@ -146,10 +148,17 @@ def _call_claude(prompt: str, client: anthropic.Anthropic, model: str,
                 model=model,
                 max_tokens=LLM_MAX_TOKENS,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                system=[
+                    {
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=[
                     {
                         "role": "user",
-                        "content": prompt,
+                        "content": user_message,
                     }
                 ],
             )
@@ -699,10 +708,11 @@ def extract_signals(record: dict, icp_signals: list[dict],
             return record
 
         client = _get_client()
-        prompt = _build_prompt(record, context_text, icp_signals)
+        system_prompt = _build_system_prompt(icp_signals)
+        user_message = _build_user_message(record, context_text)
         print(f"    Calling Claude ({model}) for signal extraction...")
 
-        raw_response = _call_claude(prompt, client, model)
+        raw_response = _call_claude(system_prompt, user_message, client, model)
         parsed = _parse_response(raw_response)
 
         # Validate and clean signals

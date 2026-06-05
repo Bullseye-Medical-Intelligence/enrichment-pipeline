@@ -1,0 +1,12 @@
+Evaluate this practice:
+
+PRACTICE INFORMATION:
+Practice Name: {practice_name}
+Specialty: {specialty}
+Location: {address_city}, {address_state} {address_zip}
+Website: {website_url}
+
+---
+
+WEBSITE TEXT (public pages only):
+{context_text}
