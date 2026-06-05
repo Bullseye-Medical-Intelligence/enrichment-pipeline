@@ -180,7 +180,7 @@ The results page header uses a two-tier layout:
 ### Stat Block Colors
 Each tier stat block has a distinct solid background color: Bullseye=dark red (`#b91c1c`), Needs Verification=dark amber (`#b45309`), Contender=dark terracotta (`#9a3823`), Manual Review=slate (`#475569`), Excluded=near-black blue-gray (`#1e2530`), Pending Review=purple (`#5b21b6`). Excluded records are not counted in Pending Review (they require no QC sign-off unless reclassified).
 
-**Thin Context stat block** (amber, `.stat-needs-verification` style): rendered only when `stats.thin_context > 0`. Counts non-excluded records where `source_confidence in ("limited", "failed")` — sites the crawler could not read. Clicking it filters the results table to those rows via `data-blocked` attribute. This alerts operators that a meaningful slice of the run scored on absent or thin website text, so they can decide whether to re-crawl with browser or treat the records as low-confidence.
+**Site Blocked — Needs Re-crawl section**: a dedicated table section (below the main scored table, above Excluded) for records where `source_confidence in ("limited", "failed")`. These records are removed from the main scored table entirely — they were never scored, so showing them alongside Bullseyes and Contenders was misleading. The section header shows a count badge and a "Retry All with Browser" button that fires the existing `POST /runs/{run_id}/retry-with-browser` route. `stats.blocked` tracks this count (replaces the former `stats.thin_context`). Blocked records are excluded from tier stats and from Pending Review — they need a re-crawl, not a QC sign-off.
 
 ---
 

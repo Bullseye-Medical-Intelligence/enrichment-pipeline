@@ -250,9 +250,6 @@
   <div class="stat-item stat-manual-review stat-clickable" onclick="filterByStatBlock('manual-review', this)"><span class="stat-num">{{ stats.manual_review }}</span><span class="stat-label">Manual Review</span></div>
   <div class="stat-item stat-excluded stat-clickable" onclick="filterByStatBlock('excluded', this)"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
   <div class="stat-item stat-pending stat-clickable" onclick="filterByStatBlock('pending', this)"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
-  {% if stats.thin_context > 0 %}
-  <div class="stat-item stat-needs-verification stat-clickable" onclick="filterByStatBlock('thin_context', this)" title="Records where the crawler could not read enough website text. Signals were skipped, so the tier is unreliable. Re-crawl with Browser or paste page content."><span class="stat-num">{{ stats.thin_context }}</span><span class="stat-label">Thin Context</span></div>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -626,13 +623,48 @@
       </tr>
     </thead>
     <tbody>
-      {% for record in records if record.exclusion_status != 'EXCLUDED' and record.displayed_tier != 'Excluded' and record.review.qc_status != 'rejected' %}
+      {% for record in records if record.exclusion_status != 'EXCLUDED' and record.displayed_tier != 'Excluded' and record.review.qc_status != 'rejected' and record.source_confidence not in ("limited", "failed") %}
       {{ record_rows(record, run_id, status) }}
       {% endfor %}
     </tbody>
   </table>
   </div>
 </div>
+
+{# ── Site Blocked — Needs Re-crawl section ────────────────────────── #}
+{% if not is_ingested and stats.blocked > 0 %}
+<div id="blocked-section" style="margin-top:2em;">
+  <div style="margin-bottom:0.5em; display:flex; align-items:center; gap:0.75em; flex-wrap:wrap;">
+    <h3 style="font-size:0.95em; font-weight:600; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:0.04em; margin:0;">Site Blocked — Needs Re-crawl</h3>
+    <span class="badge badge-blocked" style="font-size:0.8em;">{{ stats.blocked }}</span>
+    <span style="font-size:0.8em; color:var(--text-muted,#888);">The crawler was blocked or returned insufficient text — these accounts were not scored. Re-crawl with a headless browser to recover scoring. Many come back as Contenders or Bullseyes.</span>
+    <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="margin:0;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.82em; padding:4px 12px;">Retry All with Browser</button>
+    </form>
+  </div>
+  <div class="card table-card">
+    <div class="table-scroll">
+    <table class="data-table" id="blocked-table">
+      <thead>
+        <tr>
+          <th style="width:2em;"></th>
+          <th>Practice</th>
+          <th>Location</th>
+          <th>Tier</th>
+          <th>Score</th>
+          <th class="qc-col">QC</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in records if record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
+        {{ record_rows(record, run_id, status) }}
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% set _pipeline_excluded = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list %}
 {% set _analyst_excluded = records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | selectattr('displayed_tier', 'equalto', 'Excluded') | list %}

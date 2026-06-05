@@ -107,10 +107,6 @@ function filterByStatBlock(tier, el) {
     _applyFilter(function(row) { return row.dataset.qc === 'pending'; });
     return;
   }
-  if (tier === 'thin_context') {
-    _applyFilter(function(row) { return row.dataset.blocked === 'true'; });
-    return;
-  }
   _applyFilter(function(row) { return row.dataset.tier === tier; });
 }
 

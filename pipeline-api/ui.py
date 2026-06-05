@@ -2139,17 +2139,18 @@ def _calculate_stats(records: list[dict]) -> dict:
         "pending_review": 0,
         "approved": 0,
         "rejected": 0,
-        "thin_context": 0,
+        "blocked": 0,  # site-blocked: source_confidence limited/failed, not excluded
     }
     for r in records:
         tier = (r.get("displayed_tier") or "").lower().replace(" ", "_")
-        if tier in stats:
+        is_blocked = r.get("source_confidence") in ("limited", "failed") and tier != "excluded"
+        if is_blocked:
+            stats["blocked"] += 1
+        elif tier in stats:
             stats[tier] += 1
         qc = (r.get("review") or {}).get("qc_status", "pending")
-        if qc == "pending" and tier != "excluded":
+        if qc == "pending" and tier != "excluded" and not is_blocked:
             stats["pending_review"] += 1
         elif qc in stats:
             stats[qc] += 1
-        if r.get("source_confidence") in ("limited", "failed") and tier != "excluded":
-            stats["thin_context"] += 1
     return stats
