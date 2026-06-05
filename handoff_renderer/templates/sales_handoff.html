@@ -243,6 +243,33 @@
 </div>
 {% endfor %}
 
+{% if npi_accounts %}
+<div style="margin-top:40px;padding-top:24px;border-top:1px solid var(--line);">
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--acc);margin-bottom:12px;">Provider Registry Reference</div>
+  <div style="font-size:11.5px;color:var(--mut);margin-bottom:14px;">NPI numbers confirmed via NPPES federal registry. Use to verify provider credentials or cross-reference purchasing authority.</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+    <thead>
+      <tr style="border-bottom:1px solid var(--line2);">
+        <th style="text-align:left;padding:5px 12px 5px 0;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--lbl);">Practice</th>
+        <th style="text-align:left;padding:5px 12px 5px 0;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--lbl);">Location</th>
+        <th style="text-align:left;padding:5px 12px 5px 0;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--lbl);">NPI</th>
+        <th style="text-align:left;padding:5px 0;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--lbl);">Tier</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in npi_accounts %}
+      <tr style="border-bottom:1px solid rgba(247,246,244,0.06);">
+        <td style="padding:7px 12px 7px 0;color:var(--warm);">{{ row.name }}</td>
+        <td style="padding:7px 12px 7px 0;color:var(--txt);">{{ row.city }}</td>
+        <td style="padding:7px 12px 7px 0;color:var(--warm);font-family:monospace;letter-spacing:0.04em;">{{ row.npi_number }}</td>
+        <td style="padding:7px 0;color:var(--mut);font-size:11px;">{{ row.tier.value | title }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <div class="foot">
   Snapshot {{ run_date }} &middot; not live. &nbsp; Internal numeric scores <b>suppressed</b> in this build. &nbsp; <b>Built for field prioritization, not sales scripting.</b><br>
   Confidential to {{ run.client_name }} &middot; do not forward &middot; expires {{ expiry_date }} &middot; &copy; Bullseye Medical Intelligence

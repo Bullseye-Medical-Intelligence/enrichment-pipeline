@@ -127,6 +127,7 @@ def _prepare_account(acct: Account, qc_reviewer: str, client_facing: bool) -> di
         "suppress_reason": acct.suppress_reason,
         "revisit_if": acct.revisit_if,
         "qc_reviewer": qc_reviewer,
+        "npi_number": acct.npi_number,
     }
     if not client_facing:
         result["internal_score"] = acct.internal_score
@@ -156,6 +157,15 @@ def render_handoff(run: HandoffRun, client_facing: bool = True) -> str:
 
     counts = {t: len(grouped[t]) for t in _TIER_ORDER}
 
+    # Accounts with a confirmed NPI match — for the registry reference section.
+    # Sorted Bullseye → Contender → Excluded, then by name within each tier.
+    npi_accounts = [
+        {"name": a.name, "city": a.city, "npi_number": a.npi_number, "tier": a.tier}
+        for tier in _TIER_ORDER
+        for a in _sorted_accounts(grouped[tier])
+        if a.npi_number
+    ]
+
     template = _jinja_env.get_template("sales_handoff.html")
     return template.render(
         run=run,
@@ -166,4 +176,5 @@ def render_handoff(run: HandoffRun, client_facing: bool = True) -> str:
         expiry_date=_format_date(run.expiry_date),
         client_facing=client_facing,
         Tier=Tier,
+        npi_accounts=npi_accounts,
     )
