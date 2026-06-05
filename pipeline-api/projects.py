@@ -43,6 +43,24 @@ def project_config_path(project_id: str) -> Path:
     return project_dir(project_id) / config.PROJECT_CONFIG_FILENAME
 
 
+def suppression_list_path(project_id: str) -> Path:
+    """Return the path to a project's customer suppression CSV (may not exist)."""
+    return project_dir(project_id) / config.SUPPRESSION_LIST_FILENAME
+
+
+def suppression_list_row_count(project_id: str) -> int:
+    """Return the number of data rows in the suppression list, or 0 if absent."""
+    path = suppression_list_path(project_id)
+    if not path.exists():
+        return 0
+    try:
+        import csv as _csv
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            return max(0, sum(1 for _ in _csv.reader(f)) - 1)
+    except Exception:
+        return 0
+
+
 def default_project_config() -> dict:
     """Return generic scoring/crawl defaults for a new project.
 

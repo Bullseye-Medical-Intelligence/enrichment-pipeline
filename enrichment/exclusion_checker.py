@@ -319,6 +319,21 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     Returns:
         Updated record.
     """
+    # Customer suppression (Step 1c) takes precedence over all other rules.
+    # The record was already matched against the client's existing-customer list
+    # before enrichment; nothing downstream should re-classify it.
+    if record.get("_customer_suppressed"):
+        score = record.get("bullseye_score", 0)
+        record["exclusion_status"] = "EXCLUDED"
+        record["exclusion_reason"] = (
+            record.get("_suppression_reason") or "Existing customer"
+        )
+        record["target_tier"] = "Excluded"
+        if score > EXCLUDED_SCORE_CAP:
+            record["bullseye_score"] = EXCLUDED_SCORE_CAP
+        print("    [X] EXCLUDED: existing customer (suppression list)")
+        return record
+
     active_rules = set(run_config.get("active_exclusion_rules", []))
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
 

@@ -42,6 +42,7 @@ load_dotenv()
 from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
 from ingestion import npi_lookup
+from ingestion.customer_suppression import load_suppression_list, check_suppression
 from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import batch_extract
 from enrichment.constants import (
@@ -457,11 +458,73 @@ def run_pipeline(input_file: str, source_type: str,
         print(f"\n  Dry run complete in {elapsed:.1f}s")
         return {"run_id": run_id, "records_processed": len(records), "dry_run": True}
 
+    # -------------------------------------------------------------------------
+    # STEP 1b: NPI ENRICHMENT
+    # Populate registry-derived fields (taxonomy codes, REI flag) from the
+    # public NPPES database before the structural pre-filter runs. The REI
+    # taxonomy gate in check_structural_exclusions reads rei_taxonomy_present,
+    # so NPI enrichment must complete first to let confirmed REI practices
+    # skip the crawl rather than being excluded only after LLM spend.
+    # Runs before ingest-only exit so the roster carries NPI fields.
+    # Skip when npi_enrichment_enabled is explicitly False in run_config.
+    # -------------------------------------------------------------------------
+    if run_config.get("npi_enrichment_enabled", True):
+        _write_progress(output_dir, 1, "NPI enrichment")
+        print(f"\n{'-'*40}")
+        print("STEP 1b: NPI ENRICHMENT (NPPES registry lookup)")
+        print(f"{'-'*40}")
+        npi_lookup.enrich_records(records, run_config)
+
+    # -------------------------------------------------------------------------
+    # STEP 1c: CUSTOMER SUPPRESSION
+    # Exclude existing customers before any crawl or LLM spend. Optional:
+    # skipped when suppression_list_path is absent from run_config. Runs before
+    # the ingest-only exit so suppressed records appear as EXCLUDED in every
+    # roster view rather than surfacing as prospects the operator has to skip.
+    # -------------------------------------------------------------------------
+    customer_suppressed: list[dict] = []
+    suppression_path = run_config.get("suppression_list_path")
+    if suppression_path:
+        _write_progress(output_dir, 1, "Customer suppression check")
+        print(f"\n{'-'*40}")
+        print("STEP 1c: CUSTOMER SUPPRESSION")
+        print(f"{'-'*40}")
+        suppression_list = load_suppression_list(suppression_path)
+        if not suppression_list.is_empty:
+            remaining: list[dict] = []
+            for record in records:
+                is_suppressed, reason = check_suppression(record, suppression_list)
+                if is_suppressed:
+                    record["_customer_suppressed"] = True
+                    record["_suppression_reason"] = reason
+                    customer_suppressed.append(record)
+                else:
+                    remaining.append(record)
+            records = remaining
+            if customer_suppressed:
+                print(f"\n  {len(customer_suppressed)} records suppressed "
+                      f"(existing customers); {len(records)} remaining")
+            else:
+                print(f"\n  0 records matched suppression list; {len(records)} remaining")
+        else:
+            print(f"  [WARN] Suppression list at {suppression_path} is empty or unreadable")
+
     if ingest_only:
         print(f"\n{'-'*40}")
         print("INGEST-ONLY MODE - Writing roster (no crawl, no LLM)")
         print(f"{'-'*40}")
         output_records = _finalize_ingest_only(records)
+        for r in customer_suppressed:
+            r["enrichment_status"] = "not_enriched"
+            r["bullseye_score"] = 0
+            r["fit_signal_score"] = 0
+            r["confidence_score"] = 0
+            r["signals"] = []
+            r["exclusion_status"] = "EXCLUDED"
+            r["exclusion_reason"] = r.get("_suppression_reason") or "Existing customer"
+            r["target_tier"] = "Excluded"
+            r = validate_and_finalize(r)
+            output_records.append(r)
         output_records = [strip_internal_fields(r) for r in output_records]
         for r in output_records:
             r["source_pipeline_version"] = PIPELINE_VERSION
@@ -485,26 +548,10 @@ def run_pipeline(input_file: str, source_type: str,
             "run_id": run_id,
             "records_input": records_input_total,
             "records_output": len(output_records),
-            "excluded": 0,
+            "excluded": len(customer_suppressed),
             "ingest_only": True,
             "elapsed_seconds": round(elapsed, 1),
         }
-
-    # -------------------------------------------------------------------------
-    # STEP 1b: NPI ENRICHMENT
-    # Populate registry-derived fields (taxonomy codes, REI flag) from the
-    # public NPPES database before the structural pre-filter runs. The REI
-    # taxonomy gate in check_structural_exclusions reads rei_taxonomy_present,
-    # so NPI enrichment must complete first to let confirmed REI practices
-    # skip the crawl rather than being excluded only after LLM spend.
-    # Skip when npi_enrichment_enabled is explicitly False in run_config.
-    # -------------------------------------------------------------------------
-    if run_config.get("npi_enrichment_enabled", True):
-        _write_progress(output_dir, 1, "NPI enrichment")
-        print(f"\n{'-'*40}")
-        print("STEP 1b: NPI ENRICHMENT (NPPES registry lookup)")
-        print(f"{'-'*40}")
-        npi_lookup.enrich_records(records, run_config)
 
     # -------------------------------------------------------------------------
     # STRUCTURAL PRE-FILTER (cost routing): records that deterministic
@@ -767,9 +814,10 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     # STEP 6: EXCLUSION CHECK
     # -------------------------------------------------------------------------
-    # Rejoin records held out by the structural pre-filter so they are formally
-    # excluded, tiered, and written to output alongside the enriched set.
-    records = records + pre_excluded
+    # Rejoin records held out by the structural pre-filter and customer suppression
+    # so they are formally excluded, tiered, and written to output alongside the
+    # enriched set. apply_exclusions handles the _customer_suppressed flag.
+    records = records + pre_excluded + customer_suppressed
     _write_progress(output_dir, 6, "Exclusion check", 0, len(records))
     print(f"\n{'-'*40}")
     print("STEP 6: EXCLUSION CHECK")

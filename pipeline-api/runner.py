@@ -209,7 +209,18 @@ async def _prepare_run(
     # past run's inputs.
     config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
     icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
-    _write_json(config_snapshot, project_config)
+
+    # Inject the suppression list absolute path when the file exists for this
+    # project. The path is not stored in project_config.json (it's derived from
+    # the project directory); injecting it here keeps the config generic while
+    # still letting the pipeline subprocess find the file.
+    supp_path = projects.suppression_list_path(project_id)
+    if supp_path.exists():
+        config_with_supp = {**project_config, "suppression_list_path": str(supp_path)}
+        _write_json(config_snapshot, config_with_supp)
+    else:
+        _write_json(config_snapshot, project_config)
+
     _write_json(icp_snapshot, icp_profile)
 
     runs.create_run(

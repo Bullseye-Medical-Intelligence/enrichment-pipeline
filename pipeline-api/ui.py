@@ -279,7 +279,55 @@ async def project_detail_page(
     project = projects.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-    return _render("project_detail.html", username=username, project=project)
+    supp_path = projects.suppression_list_path(project_id)
+    return _render(
+        "project_detail.html",
+        username=username,
+        project=project,
+        suppression_file_exists=supp_path.exists(),
+        suppression_row_count=projects.suppression_list_row_count(project_id),
+    )
+
+
+@router.post("/projects/{project_id}/suppression-list")
+async def upload_suppression_list(
+    request: Request,
+    project_id: str,
+    file: UploadFile = File(...),
+    username: str = Depends(auth.require_session),
+):
+    """Upload or replace the customer suppression list CSV for a project."""
+    if projects.get_project(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+    dest = projects.suppression_list_path(project_id)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(content)
+    logger.info(
+        "Suppression list uploaded for project '%s' by '%s' (%d bytes)",
+        project_id, username, len(content),
+    )
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/suppression-list/delete")
+async def delete_suppression_list(
+    request: Request,
+    project_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Delete the customer suppression list for a project."""
+    if projects.get_project(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    dest = projects.suppression_list_path(project_id)
+    if dest.exists():
+        dest.unlink()
+        logger.info(
+            "Suppression list deleted for project '%s' by '%s'", project_id, username,
+        )
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

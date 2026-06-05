@@ -61,4 +61,33 @@
     <tr><td>Created By</td><td class="text-muted">{{ project.created_by | default("—") }}</td></tr>
   </table>
 </div>
+
+<div class="card" style="margin-top:24px;">
+  <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;">Customer Suppression List</h3>
+  <p style="color:var(--muted,#888);font-size:13px;margin:0 0 16px;">
+    Upload a CSV of existing customers. Records that match are auto-excluded before any crawl or LLM spend — no intelligence cost for accounts already in the book of business.
+  </p>
+
+  {% if suppression_file_exists %}
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;padding:10px 14px;background:rgba(34,197,94,0.08);border-radius:6px;border:1px solid rgba(34,197,94,0.2);">
+    <span style="color:#16a34a;font-size:13px;font-weight:500;">&#10003; Active &mdash; {{ suppression_row_count | default(0) }} customer{{ 's' if suppression_row_count != 1 else '' }}</span>
+    <form method="post" action="/projects/{{ project.project_id }}/suppression-list/delete" style="margin:0;">
+      <button type="submit" class="btn btn-secondary" style="font-size:12px;padding:4px 10px;"
+              onclick="return confirm('Remove the suppression list for this project?')">Remove</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/projects/{{ project.project_id }}/suppression-list" enctype="multipart/form-data">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input type="file" name="file" accept=".csv" required style="font-size:13px;">
+      <button type="submit" class="btn btn-secondary" style="font-size:13px;">
+        {{ "Replace List" if suppression_file_exists else "Upload List" }}
+      </button>
+    </div>
+    <p style="color:var(--muted,#888);font-size:12px;margin:8px 0 0;">
+      Expected columns (any combination): <code>practice_name</code> &middot; <code>address_zip</code> &middot; <code>address_state</code> &middot; <code>npi_number</code>
+    </p>
+  </form>
+</div>
 {% endblock %}

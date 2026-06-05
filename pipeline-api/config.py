@@ -62,6 +62,7 @@ STATUS_FILENAME: str = "status.json"
 PROJECT_CONFIG_FILENAME: str = "project_config.json"
 PROJECT_CONFIG_SNAPSHOT_FILENAME: str = "project_config_snapshot.json"
 ICP_SNAPSHOT_FILENAME: str = "icp_snapshot.json"
+SUPPRESSION_LIST_FILENAME: str = "existing_customers.csv"
 
 # Fields an operator-created project_config.json must contain to run a pipeline.
 REQUIRED_PROJECT_FIELDS: tuple[str, ...] = (
