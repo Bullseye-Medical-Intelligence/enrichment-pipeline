@@ -372,6 +372,21 @@
                 <h4>Providers on Site</h4>
                 <ul class="sales-list">{% for pn in record.provider_names %}<li>{{ pn }}</li>{% endfor %}</ul>
                 {% endif %}
+
+                {% if record.npi_match_confidence %}
+                <h4>NPI Registry</h4>
+                {% if record.npi_match_confidence == "confident" and record.npi_number %}
+                <p class="text-muted small" style="margin:0 0 0.25em;">
+                  <strong style="font-family:monospace;letter-spacing:0.03em;">{{ record.npi_number }}</strong>
+                  {% if record.npi_practice_name and record.npi_practice_name != record.practice_name %}&nbsp;&middot;&nbsp;{{ record.npi_practice_name }}{% endif %}
+                  &nbsp;&middot;&nbsp;<a href="https://npiregistry.cms.hhs.gov/provider-view/{{ record.npi_number }}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">Verify ↗</a>
+                </p>
+                {% elif record.npi_match_confidence == "ambiguous" %}
+                <p class="text-muted small" style="margin:0;color:#b45309;">Address matched NPPES but name and phone could not confirm — verify manually.</p>
+                {% else %}
+                <p class="text-muted small" style="margin:0;">No NPPES registry match found.</p>
+                {% endif %}
+                {% endif %}
                 {% set _angles = record.sales_angle | clean_angles %}
                 {% if _angles %}
                 <h4>Sales Angles</h4>
