@@ -10,12 +10,47 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader
+from jinja2 import select_autoescape as _jinja_autoescape
 
 import runs
 from config import HOST, PORT
+
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+_error_env = Environment(
+    loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+    autoescape=_jinja_autoescape(["html"]),
+)
+
+# Content-Security-Policy for the operator UI.
+# - script-src 'self': no inline scripts; all JS served from /static/
+# - style-src 'unsafe-inline': templates use inline style= attributes throughout
+# - font-src gstatic: Google Fonts files
+# - frame-ancestors 'none': clickjacking protection
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
+def _render_error(code: int, message: str) -> str:
+    """Render error.html with the given HTTP status code and message."""
+    return _error_env.get_template("error.html").render(code=code, message=message)
+
+
+def _wants_html(request: Request) -> bool:
+    """Return True if the client prefers an HTML response (browser requests)."""
+    return "text/html" in request.headers.get("accept", "")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -122,17 +157,44 @@ _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Attach security and CSP headers to every response."""
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = _CSP
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "0"
+    return response
+
+
 # Register UI routes (login, dashboard, upload, results)
 from ui import router as ui_router  # noqa: E402 — after app creation
 app.include_router(ui_router)
 
 
 # ---------------------------------------------------------------------------
-# Global exception handler
+# Exception handlers
 # ---------------------------------------------------------------------------
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Return a styled HTML error page for browser requests, JSON for API clients.
+
+    Redirects (3xx) are passed through as RedirectResponse to preserve Location.
+    """
+    if 300 <= exc.status_code < 400:
+        location = (exc.headers or {}).get("Location") or "/"
+        return RedirectResponse(url=location, status_code=exc.status_code)
+    if _wants_html(request):
+        return HTMLResponse(_render_error(exc.status_code, exc.detail), status_code=exc.status_code)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def global_exception_handler(request: Request, exc: Exception):
     """Catch all unhandled exceptions, log full context, return clean 500."""
     run_id = request.path_params.get("run_id", "unknown")
     logger.error(
@@ -143,10 +205,10 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         exc,
         traceback.format_exc(),
     )
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"Internal server error. Run ID: {run_id}"},
-    )
+    message = f"Internal server error. Run ID: {run_id}"
+    if _wants_html(request):
+        return HTMLResponse(_render_error(500, message), status_code=500)
+    return JSONResponse(status_code=500, content={"detail": message})
 
 
 if __name__ == "__main__":
