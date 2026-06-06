@@ -460,13 +460,12 @@ def run_pipeline(input_file: str, source_type: str,
 
     # -------------------------------------------------------------------------
     # STEP 1b: NPI ENRICHMENT
-    # Populate registry-derived fields (taxonomy codes, REI flag) from the
-    # public NPPES database before the structural pre-filter runs. The REI
-    # taxonomy gate in check_structural_exclusions reads rei_taxonomy_present,
-    # so NPI enrichment must complete first to let confirmed REI practices
-    # skip the crawl rather than being excluded only after LLM spend.
-    # Runs before ingest-only exit so the roster carries NPI fields.
-    # Skip when npi_enrichment_enabled is explicitly False in run_config.
+    # Populate registry-derived fields (taxonomy codes, exclusion flags) from
+    # the public NPPES database before the structural pre-filter runs.
+    # _npi_taxonomy_exclusions is read by check_structural_exclusions so that
+    # taxonomy-matched practices skip the crawl rather than being excluded only
+    # after LLM spend. Runs before ingest-only exit so the roster carries NPI
+    # fields. Skip when npi_enrichment_enabled is explicitly False in run_config.
     # -------------------------------------------------------------------------
     if run_config.get("npi_enrichment_enabled", True):
         _write_progress(output_dir, 1, "NPI enrichment")

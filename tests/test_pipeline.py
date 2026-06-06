@@ -25,10 +25,6 @@ from ingestion.npi_lookup import (
     _normalize_phone,
     _names_agree,
     _extract_taxonomy_codes,
-    REI_TAXONOMY_CODE,
-    CONFIDENCE_CONFIDENT,
-    CONFIDENCE_AMBIGUOUS,
-    CONFIDENCE_NONE,
 )
 from enrichment.signal_extractor import (
     _validate_and_clean_signals,
@@ -1913,19 +1909,19 @@ class TestExtractTaxonomyCodes:
     def test_no_taxonomies_key_returns_empty(self):
         assert _extract_taxonomy_codes({}) == []
 
-    def test_rei_taxonomy_code_detected(self):
-        result = {"taxonomies": [{"code": REI_TAXONOMY_CODE}]}
+    def test_taxonomy_code_detected(self):
+        result = {"taxonomies": [{"code": "207VE0102X"}]}
         codes = _extract_taxonomy_codes(result)
-        assert REI_TAXONOMY_CODE in codes
+        assert "207VE0102X" in codes
 
 
 # ---------------------------------------------------------------------------
-# REI Structural Exclusion Gate
+# Taxonomy Structural Exclusion Gate
 # ---------------------------------------------------------------------------
 
-class TestREIStructuralGate:
-    """Verify that rei_taxonomy_present=True triggers the structural exclusion
-    when rei_on_staff is listed in active_exclusion_rules."""
+class TestTaxonomyStructuralGate:
+    """Verify that _npi_taxonomy_exclusions drives the structural exclusion gate
+    via taxonomy_exclusion_rules config — generic, not REI-specific."""
 
     def _make_run_config(self, active_rules=None):
         return {
@@ -1934,48 +1930,48 @@ class TestREIStructuralGate:
             "active_exclusion_rules": active_rules or [],
         }
 
-    def _make_record(self, rei_taxonomy_present=False):
+    def _make_record(self, taxonomy_exclusions=None):
         return {
             "id": "T-TEST",
             "practice_name": "Test OB/GYN",
             "specialty": "OBGYN",
             "address_state": "TX",
             "address_zip": "75001",
-            "rei_taxonomy_present": rei_taxonomy_present,
+            "_npi_taxonomy_exclusions": taxonomy_exclusions or [],
         }
 
-    def test_rei_taxonomy_present_fires_when_rule_active(self):
+    def test_taxonomy_exclusion_fires_when_rule_active(self):
         from enrichment.exclusion_checker import check_structural_exclusions
-        record = self._make_record(rei_taxonomy_present=True)
+        record = self._make_record(taxonomy_exclusions=["rei_on_staff"])
         run_config = self._make_run_config(active_rules=["rei_on_staff"])
         triggered, rationale = check_structural_exclusions(record, run_config)
         assert "rei_on_staff" in triggered
-        assert any("NPPES" in r for r in rationale)
+        assert any("taxonomy" in r.lower() for r in rationale)
 
-    def test_rei_taxonomy_present_suppressed_when_rule_not_active(self):
+    def test_taxonomy_exclusion_suppressed_when_rule_not_active(self):
         from enrichment.exclusion_checker import check_structural_exclusions
-        record = self._make_record(rei_taxonomy_present=True)
-        run_config = self._make_run_config(active_rules=[])  # rei_on_staff not active
+        record = self._make_record(taxonomy_exclusions=["rei_on_staff"])
+        run_config = self._make_run_config(active_rules=[])  # rei_on_staff not in active rules
         triggered, _ = check_structural_exclusions(record, run_config)
         assert "rei_on_staff" not in triggered
 
-    def test_rei_taxonomy_false_does_not_fire(self):
+    def test_empty_taxonomy_exclusions_does_not_fire(self):
         from enrichment.exclusion_checker import check_structural_exclusions
-        record = self._make_record(rei_taxonomy_present=False)
+        record = self._make_record(taxonomy_exclusions=[])
         run_config = self._make_run_config(active_rules=["rei_on_staff"])
         triggered, _ = check_structural_exclusions(record, run_config)
         assert "rei_on_staff" not in triggered
 
-    def test_rei_taxonomy_missing_does_not_fire(self):
+    def test_missing_taxonomy_exclusions_field_does_not_fire(self):
         from enrichment.exclusion_checker import check_structural_exclusions
         record = self._make_record()
-        del record["rei_taxonomy_present"]
+        del record["_npi_taxonomy_exclusions"]
         run_config = self._make_run_config(active_rules=["rei_on_staff"])
         triggered, _ = check_structural_exclusions(record, run_config)
         assert "rei_on_staff" not in triggered
 
-    def test_rei_exclusion_applies_full_apply_exclusions(self):
-        """End-to-end: rei_taxonomy_present=True leads to EXCLUDED status."""
+    def test_taxonomy_exclusion_end_to_end_excluded(self):
+        """End-to-end: _npi_taxonomy_exclusions matching active rule → EXCLUDED."""
         record = {
             "id": "T-REI",
             "practice_name": "REI Center",
@@ -1983,7 +1979,7 @@ class TestREIStructuralGate:
             "address_state": "TX",
             "address_zip": "75001",
             "website_url": "https://example.com",
-            "rei_taxonomy_present": True,
+            "_npi_taxonomy_exclusions": ["rei_on_staff"],
             "signals": [],
             "bullseye_score": 85,
             "fit_signal_score": 85,
@@ -1995,5 +1991,4 @@ class TestREIStructuralGate:
         result = apply_exclusions(record, run_config)
         assert result["exclusion_status"] == "EXCLUDED"
         assert result["target_tier"] == "Excluded"
-        assert result.get("exclusion_reason")  # non-empty rationale
-        assert "NPPES" in result.get("exclusion_reason", "")
+        assert result.get("exclusion_reason")

@@ -219,16 +219,15 @@ Step 1: INGEST
 
 Step 1b: NPI ENRICHMENT (ingestion/npi_lookup.py)
   For each record, query the public NPPES registry (no auth) to populate provider taxonomy data.
-  Run before the structural pre-filter so rei_taxonomy_present is available to
-  check_structural_exclusions, allowing confirmed REI practices to skip crawl + LLM entirely.
+  Run before the structural pre-filter so _npi_taxonomy_exclusions is available to
+  check_structural_exclusions, allowing taxonomy-matched practices to skip crawl + LLM entirely.
   - Fast path: when npi_optional is already set (Outscraper often includes NPI),
     query NPPES directly by number — no address-match ambiguity.
   - Normal path: query by ZIP + practice name; confirm candidate with name or phone agreement.
   - Confidence tiers: "confident" (address + name/phone agree), "ambiguous" (address
     matched but name + phone both disagreed), "none" (no ZIP candidate found).
-  - Conservative matching: anything below "confident" → NPI fields stay null/false.
-    A wrong NPI match writing a wrong taxonomy to the REI exclusion gate is worse than
-    no match.
+  - Conservative matching: anything below "confident" → NPI fields stay null/empty.
+    A wrong NPI match writing a wrong taxonomy exclusion is worse than no match.
   - Controlled by run_config key `npi_enrichment_enabled` (default true).
   - Writes new NPI fields (see schema §4.x below). Never overwrites crawl fields.
 
@@ -460,13 +459,15 @@ receive default null/false values via the scorer's validation pass.
 | `npi_match_confidence` | string | `"confident"` / `"ambiguous"` / `"none"` |
 | `npi_entity_type` | string \| null | `"organization"` (type 2) or `"individual"` (type 1) |
 | `provider_taxonomy_codes` | list[string] | All taxonomy codes from the matched NPI |
-| `rei_taxonomy_present` | bool | True when taxonomy code `207VE0102X` (REI) is present |
+| `_npi_taxonomy_exclusions` | list[string] | Rule names matched via `taxonomy_exclusion_rules` config (e.g. `["rei_on_staff"]`). Empty list when no taxonomy rules matched. |
 | `npi_provider_count` | int \| null | Count of NPI results returned for the match query |
 | `npi_practice_name` | string \| null | Registry-reported organization name |
 
-`rei_taxonomy_present` feeds the structural REI exclusion gate in
-`check_structural_exclusions` (when `rei_on_staff` is in `active_exclusion_rules`),
-saving crawl and LLM budget on confirmed REI practices.
+`_npi_taxonomy_exclusions` feeds the structural taxonomy gate in `check_structural_exclusions`.
+Each entry is a rule name from `run_config["taxonomy_exclusion_rules"]` whose `taxonomy_code`
+was found in the matched NPI's taxonomy list. Any matching rule that also appears in
+`active_exclusion_rules` triggers a pre-crawl structural exclusion, saving crawl and LLM budget.
+The OBGYN Femasys cartridge maps `207VE0102X` → `rei_on_staff` via this mechanism.
 
 **null usage:**
 - `exclusion_reason`: null when exclusion_status is CLEAR
