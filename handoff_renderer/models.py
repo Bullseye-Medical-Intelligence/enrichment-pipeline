@@ -54,8 +54,6 @@ class Account:
     suppress_reason: Optional[str] = None
     revisit_if: Optional[str] = None
 
-    # NPI registry data — populated when NPPES match confidence is "confident"
-    npi_number: Optional[str] = None
 
 
 @dataclass

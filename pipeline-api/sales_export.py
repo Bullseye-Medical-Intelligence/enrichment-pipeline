@@ -343,8 +343,6 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         evidence=_extract_domain(rec.get("website_url") or rec.get("website") or "") or None,
         suppress_reason=rec.get("exclusion_reason") or None,
         revisit_if=None,  # not in pipeline schema
-        # NPI — only surface confirmed matches, not ambiguous ones
-        npi_number=rec.get("npi_number") if rec.get("npi_match_confidence") == "confident" else None,
     )
 
 
