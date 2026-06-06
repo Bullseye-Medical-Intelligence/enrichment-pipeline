@@ -9,6 +9,9 @@
     "outside_geography",
     "no_web_presence"
   ],
+  "taxonomy_exclusion_rules": [
+    {"taxonomy_code": "207VE0102X", "rule_name": "rei_on_staff"}
+  ],
   "bullseye_min_score": 90,
   "verify_near_miss_band": 10,
   "max_pages_per_practice": 5,

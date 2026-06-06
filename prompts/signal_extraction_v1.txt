@@ -37,7 +37,7 @@ For each signal, determine:
 
 After evaluating signals, generate:
 1. sales_angle: 3-5 bullet points a sales rep could use when opening a conversation with this practice. Be specific to what you found. Each point should be a complete sentence.
-2. exclusion_check: Identify if any of these exclusion triggers apply: hospital_owned, health_system_affiliated, rei_on_staff, wrong_specialty, outside_geography, practice_closed, academic_medical_center, no_web_presence, competitor_conflict, no_relevant_service_line
+2. exclusion_check: Identify if any of these exclusion triggers apply: hospital_owned, health_system_affiliated, wrong_specialty, outside_geography, practice_closed, academic_medical_center, no_web_presence, competitor_conflict, no_relevant_service_line
 
 Respond ONLY with valid JSON in exactly this format — no commentary before or after:
 
@@ -65,6 +65,6 @@ CRITICAL RULES:
 - signal_state must be EXACTLY "yes", "no", or "not_found" — never null, true, false, 1, 0, or any other value
 - If context_text is empty or minimal, use "not_found" for all signals and set confidence to "low"
 - Do not invent or assume information not present in the website text
-- exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "rei_on_staff", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]
+- exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]
 - If no exclusions apply, exclusion_triggers must be an empty list []
 - Return valid JSON only — no markdown, no code blocks, no explanation

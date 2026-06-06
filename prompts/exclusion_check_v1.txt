@@ -20,7 +20,6 @@ HARD EXCLUSIONS (always apply if detected):
 - academic_medical_center: Practice is part of a university or academic medical center
 
 CONFIGURABLE EXCLUSIONS (flag if detected):
-- rei_on_staff: A reproductive endocrinologist (REI) is listed as a provider
 - no_web_presence: No usable website found and no public directory presence
 - competitor_conflict: Practice already uses a named competing product
 - no_relevant_service_line: Practice does not offer any services relevant to contraception or reproductive health

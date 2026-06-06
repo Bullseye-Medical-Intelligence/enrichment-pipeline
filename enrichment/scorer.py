@@ -161,8 +161,8 @@ def validate_and_finalize(record: dict) -> dict:
         record["npi_entity_type"] = None
     if not isinstance(record.get("provider_taxonomy_codes"), list):
         record["provider_taxonomy_codes"] = []
-    if "rei_taxonomy_present" not in record:
-        record["rei_taxonomy_present"] = False
+    if not isinstance(record.get("_npi_taxonomy_exclusions"), list):
+        record["_npi_taxonomy_exclusions"] = []
     if "npi_provider_count" not in record:
         record["npi_provider_count"] = None
     if "npi_practice_name" not in record:

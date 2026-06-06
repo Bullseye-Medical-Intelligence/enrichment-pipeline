@@ -3,11 +3,13 @@ npi_lookup.py
 NPPES NPI registry enrichment for pipeline records.
 
 Queries the public NPPES API (no auth) at ingestion time to populate provider
-taxonomy data. Primary win: rei_taxonomy_present for the structural REI
-exclusion pre-filter, saving crawl and LLM spend on confirmed REI practices.
+taxonomy data. Supports a generic taxonomy exclusion gate: run_config can
+specify `taxonomy_exclusion_rules` (list of {taxonomy_code, rule_name}) so
+that any client can pre-filter records whose NPI taxonomy matches a configured
+code before spending crawl or LLM budget on them.
 
 Run at Step 1b: after CSV ingest and address normalization, before the
-structural pre-filter and crawl (so rei_taxonomy_present is available to
+structural pre-filter and crawl (so _npi_taxonomy_exclusions is available to
 check_structural_exclusions before any crawl budget is spent).
 """
 
@@ -27,9 +29,6 @@ logger = logging.getLogger(__name__)
 NPPES_API_URL = "https://npiregistry.cms.hhs.gov/api/"
 NPPES_API_VERSION = "2.1"
 
-# Reproductive Endocrinology taxonomy code (OB/GYN sub-specialty)
-REI_TAXONOMY_CODE = "207VE0102X"
-
 # Confidence tiers
 CONFIDENCE_CONFIDENT = "confident"
 CONFIDENCE_AMBIGUOUS = "ambiguous"
@@ -41,7 +40,7 @@ _EMPTY_NPI_FIELDS: dict = {
     "npi_match_confidence": CONFIDENCE_NONE,
     "npi_entity_type": None,
     "provider_taxonomy_codes": [],
-    "rei_taxonomy_present": False,
+    "_npi_taxonomy_exclusions": [],
     "npi_provider_count": None,
     "npi_practice_name": None,
 }
@@ -144,8 +143,22 @@ def _query_nppes(params: dict, timeout: int = 8) -> Optional[dict]:
         return None
 
 
-def _match_record(record: dict) -> dict:
+def _taxonomy_exclusions(codes: list[str], taxonomy_rules: list[dict]) -> list[str]:
+    """Return rule names from taxonomy_rules whose taxonomy_code appears in codes."""
+    return [
+        r["rule_name"] for r in taxonomy_rules
+        if r.get("taxonomy_code") and r.get("rule_name") and r["taxonomy_code"] in codes
+    ]
+
+
+def _match_record(record: dict, taxonomy_rules: list[dict] | None = None) -> dict:
     """Look up a single record in NPPES and return NPI field values.
+
+    taxonomy_rules: list of {"taxonomy_code": str, "rule_name": str} from
+    run_config["taxonomy_exclusion_rules"]. When a matched NPI carries one of
+    these taxonomy codes, the corresponding rule_name is added to
+    _npi_taxonomy_exclusions so check_structural_exclusions can pre-filter
+    the record before any crawl spend.
 
     Fast path: when npi_optional is populated (Outscraper CSV often carries the
     NPI), query NPPES directly by number — no address-match ambiguity, no
@@ -154,6 +167,7 @@ def _match_record(record: dict) -> dict:
     Normal path: query by ZIP + practice name, then confirm with name/phone
     agreement per the §3 confidence rule from the spec.
     """
+    taxonomy_rules = taxonomy_rules or []
     npi_optional = (record.get("npi_optional") or "").strip()
 
     # ------------------------------------------------------------------
@@ -172,7 +186,7 @@ def _match_record(record: dict) -> dict:
                                     if r.get("enumeration_type") == "NPI-2"
                                     else "individual"),
                 "provider_taxonomy_codes": codes,
-                "rei_taxonomy_present": REI_TAXONOMY_CODE in codes,
+                "_npi_taxonomy_exclusions": _taxonomy_exclusions(codes, taxonomy_rules),
                 "npi_provider_count": len(results),
                 "npi_practice_name": _npi_org_name(r) or None,
             }
@@ -224,7 +238,7 @@ def _match_record(record: dict) -> dict:
                                     if candidate.get("enumeration_type") == "NPI-2"
                                     else "individual"),
                 "provider_taxonomy_codes": codes,
-                "rei_taxonomy_present": REI_TAXONOMY_CODE in codes,
+                "_npi_taxonomy_exclusions": _taxonomy_exclusions(codes, taxonomy_rules),
                 "npi_provider_count": len(candidates),
                 "npi_practice_name": npi_name or None,
             }
@@ -253,9 +267,11 @@ def enrich_records(records: list[dict], run_config: dict) -> list[dict]:
     if not records:
         return records
 
+    taxonomy_rules = run_config.get("taxonomy_exclusion_rules") or []
+
     def _enrich_one(record: dict) -> None:
         try:
-            npi_fields = _match_record(record)
+            npi_fields = _match_record(record, taxonomy_rules)
         except Exception as exc:
             logger.warning("NPI lookup error for %s: %s", record.get("id"), exc)
             npi_fields = dict(_EMPTY_NPI_FIELDS)
@@ -279,12 +295,12 @@ def enrich_records(records: list[dict], run_config: dict) -> list[dict]:
     ambiguous = sum(
         1 for r in records if r.get("npi_match_confidence") == CONFIDENCE_AMBIGUOUS
     )
-    rei_hits = sum(1 for r in records if r.get("rei_taxonomy_present"))
+    taxonomy_hits = sum(1 for r in records if r.get("_npi_taxonomy_exclusions"))
 
     print(
         f"  [NPI] {confident}/{len(records)} confident matches, "
         f"{ambiguous} ambiguous, "
         f"{len(records) - confident - ambiguous} no match"
-        + (f" — {rei_hits} REI taxonomy hit(s)" if rei_hits else "")
+        + (f" — {taxonomy_hits} taxonomy exclusion hit(s)" if taxonomy_hits else "")
     )
     return records

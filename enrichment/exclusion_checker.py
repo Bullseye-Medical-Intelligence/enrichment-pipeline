@@ -27,7 +27,6 @@ HARD_EXCLUSION_RULES = {
 CONFIGURABLE_EXCLUSION_RULES = {
     "hospital_owned",
     "health_system_affiliated",
-    "rei_on_staff",
     "no_web_presence",
     "competitor_conflict",
     "no_relevant_service_line",
@@ -247,16 +246,13 @@ def _check_geography(record: dict, target_geography: list[str]) -> bool:
     return state not in geo_upper
 
 
-_REI_TAXONOMY_CODE = "207VE0102X"
-
-
 def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[str], list[str]]:
     """Return (triggered, rationale_parts) for deterministic, signal-independent exclusions.
 
-    Covers wrong_specialty, outside_geography, and (when rei_on_staff is an active
-    configurable rule) rei_taxonomy_present from the NPI enrichment step. All three
-    are decided from data available before the crawl, enabling the structural pre-filter
-    to route confirmed exclusions without spending crawl or LLM budget on them.
+    Covers wrong_specialty, outside_geography, and any NPI taxonomy rules
+    configured in run_config["taxonomy_exclusion_rules"]. All three are decided
+    from data available before the crawl, enabling the structural pre-filter to
+    route confirmed exclusions without spending crawl or LLM budget on them.
     apply_exclusions also calls this so the logic lives in one place.
     """
     target_geography = run_config.get("target_geography", [])
@@ -286,18 +282,17 @@ def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[st
             f"({', '.join(target_geography)})."
         )
 
-    # REI taxonomy structural gate: when NPI enrichment confirmed a reproductive
-    # endocrinologist on staff via federal registry data, fire rei_on_staff before
-    # the crawl rather than waiting for the LLM pass. Only fires when rei_on_staff
-    # is listed in active_exclusion_rules (same configurable-rule contract as the
-    # LLM-triggered path). This saves crawl + LLM spend on confirmed REI practices.
-    if (record.get("rei_taxonomy_present")
-            and "rei_on_staff" in active_rules):
-        triggered.append("rei_on_staff")
-        rationale_parts.append(
-            f"Reproductive endocrinologist confirmed on staff via NPPES taxonomy "
-            f"(code {_REI_TAXONOMY_CODE}) — excluded before crawl."
-        )
+    # NPI taxonomy structural gate: fire any rule whose taxonomy code was matched
+    # by NPI enrichment and is listed in active_exclusion_rules. The mapping from
+    # taxonomy code to rule name lives in run_config["taxonomy_exclusion_rules"],
+    # not in the engine — each client cartridge defines which codes matter to them.
+    for rule_name in record.get("_npi_taxonomy_exclusions", []):
+        if rule_name in active_rules:
+            triggered.append(rule_name)
+            rationale_parts.append(
+                f"Excluded via NPI taxonomy structural gate "
+                f"(rule: {rule_name!r}) — excluded before crawl."
+            )
 
     return triggered, rationale_parts
 
