@@ -100,9 +100,18 @@ def _build_signal_checklist(signals: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def _build_system_prompt(icp_signals: list[dict]) -> str:
-    """Build the cacheable system prompt — identical for every record in a run."""
-    return _SYSTEM_TEMPLATE.replace("{signal_checklist}", _build_signal_checklist(icp_signals))
+def _build_system_prompt(icp_signals: list[dict], target_specialty: str = "") -> str:
+    """Build the cacheable system prompt — identical for every record in a run.
+
+    target_specialty is injected so the LLM knows which specialty to evaluate
+    wrong_specialty against. Same value for the whole run, so the cache hit rate
+    is unaffected.
+    """
+    return (
+        _SYSTEM_TEMPLATE
+        .replace("{signal_checklist}", _build_signal_checklist(icp_signals))
+        .replace("{target_specialty}", target_specialty or "the target specialty")
+    )
 
 
 def _build_user_message(record: dict, context_text: str) -> str:
@@ -651,7 +660,8 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
 
 def extract_signals(record: dict, icp_signals: list[dict],
                      context_text: str, run_id: str,
-                     bullseye_min_score: int = DEFAULT_BULLSEYE_MIN_SCORE) -> dict:
+                     bullseye_min_score: int = DEFAULT_BULLSEYE_MIN_SCORE,
+                     target_specialty: str = "") -> dict:
     """
     Run signal extraction for a single record via Claude.
     Populates all enrichment fields on the record and returns it.
@@ -708,7 +718,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             return record
 
         client = _get_client()
-        system_prompt = _build_system_prompt(icp_signals)
+        system_prompt = _build_system_prompt(icp_signals, target_specialty)
         user_message = _build_user_message(record, context_text)
         print(f"    Calling Claude ({model}) for signal extraction...")
 

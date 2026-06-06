@@ -31,7 +31,7 @@ After evaluating signals, generate:
    - likely_objection: one sentence naming the most likely objection this practice would raise.
    - discovery_question: one open question that would advance the conversation.
    - hours_of_operation: brief string of office hours if stated on the site (e.g. "Mon-Fri 8am-5pm"), or empty string if not found.
-3. exclusion_check: Identify if any of these exclusion triggers apply: hospital_owned, health_system_affiliated, rei_on_staff, wrong_specialty, outside_geography, practice_closed, academic_medical_center, no_web_presence, competitor_conflict, no_relevant_service_line
+3. exclusion_check: Identify if any of these exclusion triggers apply: hospital_owned, health_system_affiliated, rei_on_staff, wrong_specialty (target specialty: {target_specialty}), outside_geography, practice_closed, academic_medical_center, no_web_presence, competitor_conflict, no_relevant_service_line
 4. providers: Extract all named physicians, nurse practitioners, physician assistants, and practice managers listed on the site. For each, include their name and credential/title if shown (e.g. "MD", "DO, OBGYN", "NP", "PA-C", "Practice Manager"). Return an empty array if no named providers appear in the text. Cap at 8 entries.
 5. primary_contact: From the providers list, identify the single best contact for a device sales rep. Prefer the physician (MD/DO) who performs the relevant procedures; if a practice owner or medical director is named, prefer them; fall back to the first listed physician. Include a brief reason phrase (5–10 words, no punctuation at the end). Return null if providers is empty.
 
@@ -62,10 +62,10 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
   "exclusion_triggers": [],
   "exclusion_rationale": "",
   "providers": [
-    {"name": "Dr. Jane Smith", "title": "MD, OBGYN"},
+    {"name": "Dr. Jane Smith", "title": "MD"},
     {"name": "Sarah Lee", "title": "NP"}
   ],
-  "primary_contact": {"name": "Dr. Jane Smith", "title": "MD, OBGYN", "reason": "performs in-office gynecologic procedures"}
+  "primary_contact": {"name": "Dr. Jane Smith", "title": "MD", "reason": "most experienced physician on staff"}
 }
 
 CRITICAL RULES:

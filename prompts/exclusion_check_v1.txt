@@ -14,7 +14,7 @@ EXCLUSION RULES (evaluate each):
 HARD EXCLUSIONS (always apply if detected):
 - hospital_owned: Practice is owned by or operates as part of a hospital
 - health_system_affiliated: Practice is part of a health system network (e.g., "A [System Name] Physician Practice")
-- wrong_specialty: Practice specialty does not match target (OBGYN)
+- wrong_specialty: Practice specialty does not match target ({target_specialty})
 - outside_geography: Practice is not in target geography
 - practice_closed: Practice appears to be closed or no longer operating
 - academic_medical_center: Practice is part of a university or academic medical center
