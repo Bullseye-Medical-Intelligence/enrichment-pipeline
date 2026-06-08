@@ -50,6 +50,8 @@ def cmd_generate(args):
             num_nodes=args.nodes,
             rail_type=args.rail_type,
             complexity=args.complexity,
+            fade_zone=args.fade_zone,
+            max_velocity=args.max_velocity,
         )
 
         diff = track_data.difficulties.get(difficulty)
@@ -71,6 +73,8 @@ def cmd_generate(args):
             notes = snap_notes_to_rail(
                 onsets, rail_nodes, start_sec, end_sec,
                 track_data.bpm, track_data.offset, hand,
+                min_gap=args.cooldown,
+                max_hand_speed=args.max_hand_speed,
             )
             diff.notes.extend(notes)
             print(f"Snapped {len(notes)} notes to audio onsets")
@@ -109,9 +113,17 @@ def main():
                         help="Rail curve modifier type")
     p_gen.add_argument("--complexity", type=int, default=0, help="Modifier intensity (0 = smooth)")
     p_gen.add_argument("--nodes", type=int, default=16, help="Number of rail nodes (default: 16)")
+    p_gen.add_argument("--fade-zone", type=float, default=0.15,
+                        help="Envelope fade fraction near anchors (0.0–0.5, default: 0.15)")
+    p_gen.add_argument("--max-velocity", type=float, default=4.0,
+                        help="Max rail node-to-node velocity in grid-units/beat (0 = unclamped)")
     p_gen.add_argument("--snap-to-audio", action="store_true", help="Snap notes to audio transients")
     p_gen.add_argument("--sensitivity", type=float, default=1.0,
                         help="Onset detection sensitivity (higher = more notes)")
+    p_gen.add_argument("--cooldown", type=float, default=0.050,
+                        help="Minimum seconds between notes (default: 0.050)")
+    p_gen.add_argument("--max-hand-speed", type=float, default=6.0,
+                        help="Max hand speed in grid-units/sec for note filtering (0 = off)")
     p_gen.add_argument("--difficulty", default="Expert", help="Target difficulty (default: Expert)")
     p_gen.add_argument("--hand", choices=["left", "right"], default="right", help="Hand assignment")
     p_gen.add_argument("--output", help="Output .synth path (default: <input>_modified.synth)")

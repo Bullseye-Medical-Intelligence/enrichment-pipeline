@@ -3,7 +3,15 @@
 Analyzes a time-slice of the audio file to detect transient spikes
 (drum hits, synth plucks, percussive attacks) and maps them onto
 positions along a generated rail curve.
+
+Physical constraints:
+- Cooldown threshold prevents humanly impossible note clusters (default
+  50ms minimum gap between successive notes on the same hand).
+- Velocity gate rejects notes that would require arm travel faster than
+  a configurable max speed, measured in Synth Riders grid-units/second.
 """
+
+import math
 
 import numpy as np
 
@@ -13,6 +21,9 @@ try:
     import librosa
 except ImportError:
     librosa = None
+
+MIN_NOTE_GAP_SEC = 0.050
+MAX_HAND_SPEED = 6.0
 
 
 def detect_onsets(
@@ -52,6 +63,19 @@ def detect_onsets(
     return [float(t) for t in absolute_times if start_sec <= t <= end_sec]
 
 
+def apply_cooldown(
+    onset_times: list[float], min_gap: float = MIN_NOTE_GAP_SEC
+) -> list[float]:
+    """Remove onsets that fall within the cooldown window of a prior onset."""
+    if not onset_times:
+        return []
+    filtered = [onset_times[0]]
+    for t in onset_times[1:]:
+        if t - filtered[-1] >= min_gap:
+            filtered.append(t)
+    return filtered
+
+
 def snap_notes_to_rail(
     onset_times_sec: list[float],
     rail_nodes: list[RailNode],
@@ -60,12 +84,20 @@ def snap_notes_to_rail(
     bpm: float,
     offset: float = 0.0,
     hand_type: int = 0,
+    min_gap: float = MIN_NOTE_GAP_SEC,
+    max_hand_speed: float = MAX_HAND_SPEED,
 ) -> list[Note]:
     """Place notes along a rail curve at detected onset timestamps.
 
     For each onset, finds the corresponding position on the rail by
     interpolating between rail nodes based on time, then creates a
     Note at that (x, y, beat_time).
+
+    Physical constraints are applied in two passes:
+    1. Cooldown: drop onsets closer than min_gap seconds apart.
+    2. Velocity gate: drop notes that would require hand travel
+       faster than max_hand_speed grid-units/second from the
+       previous accepted note.
 
     Args:
         onset_times_sec: onset timestamps in seconds.
@@ -75,6 +107,8 @@ def snap_notes_to_rail(
         bpm: beats per minute for time conversion.
         offset: audio offset in seconds.
         hand_type: 0=right, 1=left.
+        min_gap: minimum seconds between notes (cooldown).
+        max_hand_speed: max grid-units/second between consecutive notes.
 
     Returns:
         List of Note objects placed along the rail at onset positions.
@@ -86,15 +120,29 @@ def snap_notes_to_rail(
     if duration <= 0:
         return []
 
+    onset_times_sec = apply_cooldown(sorted(onset_times_sec), min_gap)
+
     notes = []
+    prev_pos = None
+    prev_sec = None
+
     for t_sec in onset_times_sec:
         progress = (t_sec - start_sec) / duration
         progress = max(0.0, min(1.0, progress))
 
         x, y = _interpolate_position(rail_nodes, progress)
-        beat_time = (t_sec - offset) * (bpm / 60.0)
 
+        if max_hand_speed > 0 and prev_pos is not None:
+            dt = t_sec - prev_sec
+            if dt > 0:
+                dist = math.hypot(x - prev_pos[0], y - prev_pos[1])
+                if dist / dt > max_hand_speed:
+                    continue
+
+        beat_time = (t_sec - offset) * (bpm / 60.0)
         notes.append(Note(time=beat_time, x=x, y=y, hand_type=hand_type))
+        prev_pos = (x, y)
+        prev_sec = t_sec
 
     return notes
 

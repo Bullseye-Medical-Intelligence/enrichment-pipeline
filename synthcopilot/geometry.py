@@ -4,6 +4,12 @@ Generates intermediate rail nodes that smoothly connect a start and end
 anchor point. Complexity modifiers inject algorithmic geometry (sine waves,
 spirals, zigzag) into the interpolated path for Dubstep-style chaotic rails
 while preserving the start and end positions exactly.
+
+Envelope windowing uses a cubic smoothstep (Hermite) instead of a raw sine
+taper. The smoothstep has zero first-derivative at t=0 and t=1, which
+eliminates the inflection-clipping problem: modifier amplitude ramps
+organically near anchors instead of producing velocity spikes where a sine
+taper's slope is steepest.
 """
 
 import math
@@ -12,6 +18,9 @@ import numpy as np
 
 from synthcopilot.models import RailNode
 
+FADE_ZONE = 0.15
+MAX_VELOCITY = 4.0
+
 
 def generate_rail(
     start: tuple[float, float, float],
@@ -19,6 +28,8 @@ def generate_rail(
     num_nodes: int = 16,
     rail_type: str = "smooth",
     complexity: int = 0,
+    fade_zone: float = FADE_ZONE,
+    max_velocity: float = MAX_VELOCITY,
 ) -> list[RailNode]:
     """Generate rail nodes between two anchor points.
 
@@ -28,6 +39,10 @@ def generate_rail(
         num_nodes: total number of nodes including start and end.
         rail_type: "smooth", "wave", "spiral", or "zigzag".
         complexity: intensity of the modifier (0 = pure curve).
+        fade_zone: fraction of the rail (0–0.5) where the envelope
+                   ramps from zero to full. Larger = gentler entry/exit.
+        max_velocity: if > 0, clamp node-to-node displacement to prevent
+                      physically impossible hand movements.
 
     Returns:
         List of RailNode objects forming the rail.
@@ -45,10 +60,17 @@ def generate_rail(
     times = np.linspace(start[2], end[2], num_nodes)
 
     if complexity > 0 and rail_type != "smooth":
-        points = _apply_modifier(points, t_values, rail_type, complexity, p0, p3)
+        points = _apply_modifier(
+            points, t_values, rail_type, complexity, p0, p3, fade_zone
+        )
 
     points[0] = p0
     points[-1] = p3
+
+    if max_velocity > 0 and num_nodes > 2:
+        points = _clamp_velocity(points, times, max_velocity)
+        points[0] = p0
+        points[-1] = p3
 
     return [
         RailNode(time=float(times[i]), x=float(points[i][0]), y=float(points[i][1]))
@@ -88,6 +110,26 @@ def _auto_control_points(
     return p1, p2
 
 
+def _smoothstep_envelope(t: float, fade: float) -> float:
+    """Compute a cubic smoothstep envelope with configurable fade zones.
+
+    Returns 0 at t=0 and t=1, ramping to 1 over the fade zone at each end.
+    The Hermite basis (3x^2 - 2x^3) has zero first-derivative at the
+    boundaries, so modifier amplitude enters and exits with zero velocity —
+    no inflection clipping near anchor points.
+    """
+    if t <= 0.0 or t >= 1.0:
+        return 0.0
+    fade = max(fade, 0.01)
+    if t < fade:
+        x = t / fade
+        return x * x * (3.0 - 2.0 * x)
+    if t > 1.0 - fade:
+        x = (1.0 - t) / fade
+        return x * x * (3.0 - 2.0 * x)
+    return 1.0
+
+
 def _apply_modifier(
     points: np.ndarray,
     t_values: np.ndarray,
@@ -95,6 +137,7 @@ def _apply_modifier(
     complexity: int,
     p0: np.ndarray,
     p3: np.ndarray,
+    fade_zone: float = FADE_ZONE,
 ) -> np.ndarray:
     """Apply wave/spiral/zigzag modifier to interpolated curve points."""
     n = len(points)
@@ -112,7 +155,7 @@ def _apply_modifier(
 
     for i in range(1, n - 1):
         t = t_values[i]
-        envelope = math.sin(math.pi * t)
+        envelope = _smoothstep_envelope(t, fade_zone)
 
         if rail_type == "wave":
             offset = math.sin(2 * math.pi * freq * t) * amplitude * envelope
@@ -128,6 +171,47 @@ def _apply_modifier(
             sawtooth = (2.0 * (freq * t % 1.0) - 1.0)
             offset = sawtooth * amplitude * envelope
             points[i] += normal * offset
+
+    return points
+
+
+def _clamp_velocity(
+    points: np.ndarray, times: np.ndarray, max_vel: float
+) -> np.ndarray:
+    """Limit node-to-node displacement so hand velocity stays playable.
+
+    Uses bidirectional clamping: a forward pass anchored at the start
+    and a backward pass anchored at the end, blended by proximity to
+    each anchor. This prevents the last-segment spike that a single
+    forward pass would create when the end anchor is re-pinned.
+    """
+    n = len(points)
+    if n < 3:
+        return points
+
+    fwd = points.copy()
+    for i in range(1, n):
+        dt = times[i] - times[i - 1]
+        if dt <= 0:
+            continue
+        delta = fwd[i] - fwd[i - 1]
+        dist = np.linalg.norm(delta)
+        if dist > 0 and dist / dt > max_vel:
+            fwd[i] = fwd[i - 1] + delta * (max_vel * dt / dist)
+
+    bwd = points.copy()
+    for i in range(n - 2, -1, -1):
+        dt = times[i + 1] - times[i]
+        if dt <= 0:
+            continue
+        delta = bwd[i] - bwd[i + 1]
+        dist = np.linalg.norm(delta)
+        if dist > 0 and dist / dt > max_vel:
+            bwd[i] = bwd[i + 1] + delta * (max_vel * dt / dist)
+
+    for i in range(1, n - 1):
+        blend = i / (n - 1)
+        points[i] = fwd[i] * (1.0 - blend) + bwd[i] * blend
 
     return points
 
