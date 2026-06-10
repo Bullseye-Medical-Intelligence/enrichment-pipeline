@@ -295,7 +295,7 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
     # Why It Matters: the rep-facing value proposition (the sales angle / wedge).
     # The pipeline's why_contact string embeds the internal fit score, so it is
     # deliberately NOT used here — internal ranking data never reaches the client.
-    sales_angles = _coerce_list(rec.get("sales_angle"))
+    sales_angles = [a for a in _coerce_list(rec.get("sales_angle")) if not _is_first_person_angle(a)]
     why_it_matters = sales_angles or None
 
     # Example opener: the LLM opener (or discovery question) a rep can use to
