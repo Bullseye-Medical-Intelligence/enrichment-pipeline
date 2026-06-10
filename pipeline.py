@@ -720,6 +720,7 @@ def run_pipeline(input_file: str, source_type: str,
                     run_id=run_id,
                     bullseye_min_score=bullseye_min,
                     target_specialty=run_config.get("target_specialty", ""),
+                    contact_strategy=icp_data.get("contact_strategy", ""),
                 ), None
             except Exception as e:
                 err_str = str(e)

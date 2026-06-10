@@ -35,6 +35,8 @@ from enrichment.signal_extractor import (
     _parse_providers,
     _parse_primary_contact,
     _format_key_contact,
+    _build_system_prompt,
+    DEFAULT_CONTACT_STRATEGY,
 )
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
@@ -1845,6 +1847,28 @@ class TestProviderExtraction:
 
     def test_key_contact_none(self):
         assert _format_key_contact(None) == ""
+
+
+class TestContactStrategyPrompt:
+    """ICP-configured contact strategy injection into the system prompt."""
+
+    _SIGNALS = [{"signal_id": "S-01", "signal_label": "Test signal",
+                 "prompt_instruction": "Is it there?", "positive_weight": 10}]
+
+    def test_default_strategy_when_unset(self):
+        prompt = _build_system_prompt(self._SIGNALS)
+        assert DEFAULT_CONTACT_STRATEGY in prompt
+        assert "{contact_strategy}" not in prompt
+
+    def test_custom_strategy_replaces_default(self):
+        strategy = "Prefer the treatment coordinator or lead hygienist when named."
+        prompt = _build_system_prompt(self._SIGNALS, contact_strategy=strategy)
+        assert strategy in prompt
+        assert DEFAULT_CONTACT_STRATEGY not in prompt
+
+    def test_whitespace_strategy_falls_back_to_default(self):
+        prompt = _build_system_prompt(self._SIGNALS, contact_strategy="   ")
+        assert DEFAULT_CONTACT_STRATEGY in prompt
 
 
 # ---------------------------------------------------------------------------

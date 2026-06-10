@@ -1,7 +1,8 @@
 {
   "icp_id": "ortho_angel_v1",
   "name": "Angel Aligner — Orthodontics (New Logo)",
-  "version": "ortho-angel-v2",
+  "version": "ortho-angel-v3",
+  "contact_strategy": "Prefer a named treatment coordinator or lead hygienist when one appears on the site — they see patient satisfaction, struggling cases, and scanner reliability in real time, and workflow friction beats brand loyalty in their purchase influence. The reason phrase should reference what makes their job easier (case workflow, scanning, patient experience). If neither role is named, prefer the practice owner or lead orthodontist; fall back to the first listed provider.",
   "client": "Angelalign Technology",
   "product": "Angel Aligner",
   "default_specialty": "Orthodontics",

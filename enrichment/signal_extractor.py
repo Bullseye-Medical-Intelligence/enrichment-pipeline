@@ -100,17 +100,30 @@ def _build_signal_checklist(signals: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def _build_system_prompt(icp_signals: list[dict], target_specialty: str = "") -> str:
+# Default primary-contact guidance when the ICP profile defines no
+# contact_strategy of its own.
+DEFAULT_CONTACT_STRATEGY = (
+    "Prefer the physician (MD/DO) who performs the relevant procedures; "
+    "if a practice owner or medical director is named, prefer them; "
+    "fall back to the first listed physician."
+)
+
+
+def _build_system_prompt(icp_signals: list[dict], target_specialty: str = "",
+                          contact_strategy: str = "") -> str:
     """Build the cacheable system prompt — identical for every record in a run.
 
     target_specialty is injected so the LLM knows which specialty to evaluate
-    wrong_specialty against. Same value for the whole run, so the cache hit rate
-    is unaffected.
+    wrong_specialty against. contact_strategy is the ICP profile's operator-authored
+    guidance for who the primary_contact should be (e.g. a role that owns workflow
+    decisions); defaults to physician-first when the profile defines none. Both are
+    run-constant, so the cache hit rate is unaffected.
     """
     return (
         _SYSTEM_TEMPLATE
         .replace("{signal_checklist}", _build_signal_checklist(icp_signals))
         .replace("{target_specialty}", target_specialty or "the target specialty")
+        .replace("{contact_strategy}", (contact_strategy or "").strip() or DEFAULT_CONTACT_STRATEGY)
     )
 
 
@@ -675,7 +688,8 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
 def extract_signals(record: dict, icp_signals: list[dict],
                      context_text: str, run_id: str,
                      bullseye_min_score: int = DEFAULT_BULLSEYE_MIN_SCORE,
-                     target_specialty: str = "") -> dict:
+                     target_specialty: str = "",
+                     contact_strategy: str = "") -> dict:
     """
     Run signal extraction for a single record via Claude.
     Populates all enrichment fields on the record and returns it.
@@ -686,6 +700,8 @@ def extract_signals(record: dict, icp_signals: list[dict],
         context_text: Extracted website text for this practice.
         run_id: Current pipeline run ID for tracking.
         bullseye_min_score: Minimum score for Bullseye tier.
+        target_specialty: Specialty the wrong_specialty exclusion evaluates against.
+        contact_strategy: ICP profile guidance for picking the primary contact.
 
     Returns:
         Enriched record dict.
@@ -732,7 +748,7 @@ def extract_signals(record: dict, icp_signals: list[dict],
             return record
 
         client = _get_client()
-        system_prompt = _build_system_prompt(icp_signals, target_specialty)
+        system_prompt = _build_system_prompt(icp_signals, target_specialty, contact_strategy)
         user_message = _build_user_message(record, context_text)
         print(f"    Calling Claude ({model}) for signal extraction...")
 

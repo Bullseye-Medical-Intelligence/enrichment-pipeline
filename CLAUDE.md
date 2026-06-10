@@ -155,6 +155,14 @@ Defined per signal in `config/icp_checklist.json` / ICP profiles. Required:
 `signal_id`, `signal_label`, `prompt_instruction`, `positive_weight`. Optional
 (all default to off), validated in `pipeline-api/icp_profiles.py`:
 
+**Profile-level optional field — `contact_strategy`** (string): operator-authored
+guidance for who the call brief's `key_contact` should be, injected into the
+extraction prompt's primary_contact instruction (e.g. "prefer the treatment
+coordinator or lead hygienist — workflow friction beats brand loyalty"). When
+unset, the engine defaults to physician-first
+(`signal_extractor.DEFAULT_CONTACT_STRATEGY`). Role names belong in cartridges,
+never in engine code (RULE 3).
+
 | Field | Type | Effect |
 |-------|------|--------|
 | `positive_weight` | number | Desirability weight. Negative = friction (a `"yes"` is bad). |
