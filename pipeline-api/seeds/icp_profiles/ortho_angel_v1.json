@@ -1,14 +1,14 @@
 {
   "icp_id": "ortho_angel_v1",
   "name": "Angel Aligner — Orthodontics (New Logo)",
-  "version": "ortho-angel-v1",
+  "version": "ortho-angel-v2",
   "client": "Angelalign Technology",
   "product": "Angel Aligner",
   "default_specialty": "Orthodontics",
   "default_geography": ["TX", "FL", "GA", "AZ", "NC"],
   "default_exclusion_rules": ["wrong_specialty", "outside_geography", "no_web_presence", "hospital_owned"],
   "description": "Independent orthodontic practices in Sun Belt growth metros that actively offer clear aligner treatment, have adopted digital scanning workflows, and market to adult and teen patients. The ideal target has a confirmed digital-workflow foundation (intraoral scanner named on site), visible patient financing, and direct budget authority (independent ownership). Practices with high-tier Invisalign badges (Diamond+) route to Contender for a dual-brand pitch rather than a replacement pitch. DSO-affiliated practices route to Contender for corporate procurement. Hospital-employed, academic, and general-dentist-only practices are excluded. Angel Aligner already-providers are excluded (new-logo campaign only).",
-  "scoring_notes": "Clear aligner adoption is the primary gate — required_for_bullseye ensures no Bullseye without confirmed aligner offering. Four scored signals (clear_aligners, intraoral_scanner, patient_financing, treats_adults) represent the clinical and commercial readiness profile; independent_practice is the wedge. Ten additional zero-weight contextual signals are captured by the LLM for sales angle and call brief quality but do not affect fit_signal_score. Recommended bullseye_min_score: 90 (default). The four core signals at high confidence produce a fit score of ~91 — a practice with clear aligners, scanner, financing, and adult treatment confirmed is a genuine Bullseye. The invisalign_high_tier_lock cap and dso_corporate_buyer cap do not alter fit; they reroute tier to Contender for a different sales motion.",
+  "scoring_notes": "Clear aligner adoption is the primary gate — required_for_bullseye ensures no Bullseye without confirmed aligner offering. Four scored signals (clear_aligners, open_intraoral_scanner, patient_financing, treats_adults) represent the clinical and commercial readiness profile; independent_practice is the wedge. The scanner signal counts only brand-agnostic scanners (Trios, Medit, Primescan, Carestream) — iTero is Align's proprietary scanner and scores as friction (-15): an iTero-only practice has its digital workflow built around Invisalign. Competing-brand listings (Spark, ClearCorrect, SureSmile) reinforce the open-scanner signal, since those brands run on open STL workflows. Zero-weight contextual signals are captured by the LLM for sales angle and call brief quality but do not affect fit_signal_score. Recommended bullseye_min_score: 90 (default). The four core signals at high confidence produce a fit score of ~91 — a practice with clear aligners, an open scanner, financing, and adult treatment confirmed is a genuine Bullseye. The invisalign_high_tier_lock cap and dso_corporate_buyer cap do not alter fit; they reroute tier to Contender for a different sales motion.",
   "hypothesis": {
     "target_profile": "Independent orthodontist in a Sun Belt metro who already offers clear aligners and has adopted intraoral scanning — this practice understands the digital workflow and is actively competing on aligner outcomes. The gap is margin: Invisalign lab fees run $1,000–$1,500 per case above comparable Angel outcomes. An orthodontist doing 200 aligner cases per year is leaving $200K–$300K on the table annually. Angel's pitch is not 'switch away from Invisalign' — it is 'use Angel for cost-sensitive patients and first-consult capture so you stop losing cases to price.'",
     "wedge": "Lab-fee delta on comparable outcomes. Roughly $1,000 savings per case vs. Invisalign Comprehensive. For a practice doing volume, this is a practice-economics argument, not a product feature argument.",
@@ -31,10 +31,17 @@
     },
     {
       "signal_id": "S-OA-002",
-      "signal_label": "Intraoral scanner present",
-      "prompt_instruction": "Does this practice's website name an intraoral scanner — iTero, 3Shape Trios, Primescan, or Medit — as equipment they use?",
+      "signal_label": "Open intraoral scanner present",
+      "prompt_instruction": "Does this practice's website name a brand-agnostic intraoral scanner — 3Shape Trios, Medit, Primescan, Carestream, or a similar open-STL scanner — as equipment they use? Do NOT count iTero; iTero is captured by a separate signal.",
       "positive_weight": 28,
-      "note": "Digital-readiness signal. Angel Aligner workflows are fully digital; scanner presence confirms compatibility. No penalty for absence (not_found is neutral)."
+      "note": "Digital-readiness signal, open-ecosystem only. A brand-agnostic scanner exports open STL files and slots directly into Angel's workflow with no equipment change. iTero is deliberately excluded — it is Align Technology's scanner and is scored separately as friction. No penalty for absence (not_found is neutral)."
+    },
+    {
+      "signal_id": "S-OA-019",
+      "signal_label": "iTero scanner (Align ecosystem)",
+      "prompt_instruction": "Does this practice's website name the iTero intraoral scanner as equipment they use?",
+      "positive_weight": -15,
+      "note": "FRICTION. iTero is Align Technology's proprietary scanner — an iTero-only practice has its digital workflow built around Invisalign, the strongest practical lock-in short of a Diamond badge. A confirmed 'yes' subtracts from fit. A practice naming both iTero and an open scanner nets positive (S-OA-002 + this), correctly reading as multi-path."
     },
     {
       "signal_id": "S-OA-003",
@@ -117,7 +124,8 @@
       "signal_label": "Competing aligner brands listed",
       "prompt_instruction": "Does this practice list any clear aligner brands other than Invisalign — such as ClearCorrect, Spark, Reveal, or SureSmile — as offered treatments?",
       "positive_weight": 0,
-      "note": "Contextual capture. Multi-brand aligner presence is the lowest-friction adoption signal for Angel."
+      "reinforces": "S-OA-002",
+      "note": "Multi-brand aligner presence is the lowest-friction adoption signal for Angel. Reinforces the open-scanner signal: Spark, ClearCorrect, and SureSmile all run on open STL workflows, so a practice offering them almost certainly operates a brand-agnostic scanner even when no scanner is named on the site."
     },
     {
       "signal_id": "S-OA-014",
@@ -160,8 +168,8 @@
       "practice_name": "Smiley Orthodontics — Dallas, TX",
       "tier": "Bullseye",
       "confidence_band": "High",
-      "signals_summary": "Clear aligners listed (yes, high), iTero scanner named (yes, high), CareCredit financing visible (yes, high), adult aligner messaging prominent (yes, high), independent single-location practice (yes, high). No Invisalign badge shown. No DSO affiliation.",
-      "sales_angle": "Independent Dallas orthodontist offering multiple aligner brands with iTero on site and active adult patient messaging — direct budget authority and confirmed digital readiness. Lab-fee delta argument is immediately actionable: practice lists ClearCorrect alongside Invisalign, confirming multi-brand openness. Financing visibility signals cost-sensitive patient focus — Angel's value-tier consult-capture story lands directly.",
+      "signals_summary": "Clear aligners listed (yes, high), 3Shape Trios scanner named (yes, high), CareCredit financing visible (yes, high), adult aligner messaging prominent (yes, high), independent single-location practice (yes, high). No iTero. No Invisalign badge shown. No DSO affiliation.",
+      "sales_angle": "Independent Dallas orthodontist offering multiple aligner brands on an open Trios scanner with active adult patient messaging — direct budget authority, zero equipment friction. Lab-fee delta argument is immediately actionable: practice lists ClearCorrect alongside Invisalign, confirming multi-brand openness. Financing visibility signals cost-sensitive patient focus — Angel's value-tier consult-capture story lands directly.",
       "exclusion_reason": "",
       "note": "Sample account for field validation. Signals illustrate the target Bullseye profile: four core signals confirmed at high confidence producing fit score ~91."
     },
@@ -169,10 +177,10 @@
       "practice_name": "Coral Gables Orthodontic Group — Miami, FL",
       "tier": "Contender",
       "confidence_band": "High",
-      "signals_summary": "Clear aligners listed (yes, high), iTero scanner named (yes, high), financing visible (yes, high), treats adults (yes, high), independent practice (yes, high). Invisalign Diamond Plus badge displayed on homepage.",
-      "sales_angle": "High clinical fit — independent practice with full digital workflow and adult aligner focus. Invisalign Diamond Plus badge indicates deep Align relationship and likely volume incentive lock-in; direct replacement pitch will fail. Dual-brand positioning is the angle: Angel for cost-sensitive consults and first-time aligner patients the practice is currently losing to price objections. Financing infrastructure already in place — Angel cases slot into existing payment workflow with no front-desk process change.",
+      "signals_summary": "Clear aligners listed (yes, high), iTero scanner named (yes, high — friction), financing visible (yes, high), treats adults (yes, high), independent practice (yes, high). Invisalign Diamond Plus badge displayed on homepage.",
+      "sales_angle": "Strong commercial profile — independent practice with adult aligner focus and financing in place — but the entire digital workflow is Align ecosystem: iTero scanner plus Diamond Plus badge means deep relationship and likely volume incentive lock-in; direct replacement pitch will fail. Dual-brand positioning is the angle: Angel for cost-sensitive consults and first-time aligner patients the practice is currently losing to price objections.",
       "exclusion_reason": "",
-      "note": "Sample account illustrating cap_tier: Contender due to invisalign_high_tier_lock. Fit score is identical to the Bullseye case; tier is capped by competitive context signal, not reduced fit."
+      "note": "Sample account illustrating both friction mechanisms: iTero (-15 fit) plus the invisalign_high_tier_lock cap_tier routing to Contender. Compare with the Bullseye sample: same commercial signals, different scanner ecosystem."
     },
     {
       "practice_name": "Phoenix Family Dental & Orthodontics — Phoenix, AZ",
