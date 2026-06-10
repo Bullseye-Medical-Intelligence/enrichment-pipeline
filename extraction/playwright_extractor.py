@@ -200,6 +200,7 @@ def crawl_with_playwright(
 
     pages_crawled = []
     all_text_blocks = []
+    evidence_pages = []
 
     try:
         with sync_playwright() as pw:
@@ -273,6 +274,7 @@ def crawl_with_playwright(
             if homepage_text:
                 all_text_blocks.append(f"[Source: {final_url}]\n{homepage_text}")
                 pages_crawled.append(final_url)
+                evidence_pages.append({"url": final_url, "text": homepage_text})
 
             # --- Subpages ---
             subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
@@ -291,6 +293,7 @@ def crawl_with_playwright(
                     if sub_text:
                         all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
                         pages_crawled.append(sub_final)
+                        evidence_pages.append({"url": sub_final, "text": sub_text})
                 except Exception:
                     pass  # Skip failed subpages; homepage text is still valuable
 
@@ -304,4 +307,5 @@ def crawl_with_playwright(
     if len(combined) > MAX_COMBINED_CHARS:
         combined = combined[:MAX_COMBINED_CHARS] + "\n\n[... truncated for token budget ...]"
 
-    return ExtractionResult(url=url, context_text=combined, pages_crawled=pages_crawled)
+    return ExtractionResult(url=url, context_text=combined, pages_crawled=pages_crawled,
+                            pages=evidence_pages)

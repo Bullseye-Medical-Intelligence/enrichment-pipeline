@@ -57,6 +57,7 @@ from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from output.json_writer import write_json
 from output.csv_writer import write_csv
 from output.log_writer import write_run_log
+from output.evidence_writer import write_record_evidence
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -272,6 +273,7 @@ def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -
 
     blocks = []
     page_labels = []
+    evidence_pages = []
     for path in manual_content_paths:
         raw = Path(path).read_bytes().decode("utf-8", errors="replace")
         is_html = (
@@ -282,6 +284,7 @@ def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -
         if clean_text:
             blocks.append(clean_text)
             page_labels.append(f"[Manual content] {Path(path).name}")
+            evidence_pages.append({"url": Path(path).name, "text": clean_text})
 
     combined = "\n\n---\n\n".join(blocks)
     if len(combined) > MAX_COMBINED_CHARS:
@@ -290,11 +293,41 @@ def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -
     for record in records:
         record["_context_text"] = combined
         record["_pages_crawled"] = list(page_labels)
+        record["_evidence_pages"] = list(evidence_pages)
+        record["_evidence_provenance"] = "operator_supplied"
         record["_url_valid"] = True
         record["_url_error"] = ""
         # Operator-supplied content: trustworthy enough to enrich, but not a full
         # multi-page crawl, so cap honesty at "partial".
         record["source_confidence"] = "partial"
+
+
+def _capture_evidence(records: list[dict], output_dir: str) -> int:
+    """Write Evidence Vault snapshots for every record that has crawled pages.
+
+    Runs once after extraction (Step 3 / 3b / manual content) so the archived
+    pages always reflect the text Step 4 actually scored. Per-record failures
+    are logged and skipped — evidence capture must never fail an enrichment run.
+    Returns the number of records captured.
+    """
+    captured = 0
+    for record in records:
+        pages = record.get("_evidence_pages") or []
+        if not pages:
+            continue
+        try:
+            written = write_record_evidence(
+                Path(output_dir),
+                record.get("id", ""),
+                pages,
+                provenance=record.get("_evidence_provenance", "crawl"),
+            )
+            if written:
+                captured += 1
+        except Exception as e:
+            print(f"    [WARN] Evidence capture failed for "
+                  f"{record.get('practice_name', 'Unknown')}: {e}")
+    return captured
 
 
 def _validate_required_fields(records: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -636,6 +669,19 @@ def run_pipeline(input_file: str, source_type: str,
             print(f"\n  Browser retry recovered {after - before} of {len(blocked)} blocked records")
         else:
             print("\n  No blocked/thin records — skipping browser retry")
+
+    # -------------------------------------------------------------------------
+    # EVIDENCE VAULT CAPTURE
+    # Archive the per-page text the crawler saw (timestamp + sha256 per page)
+    # under <output_dir>/evidence/<record_id>/, so every signal claim stays
+    # verifiable even after the live site changes. Runs after all extraction
+    # paths (Step 3, 3b browser retry, manual content) so snapshots match the
+    # text Step 4 scores. Disable with evidence_capture_enabled: false.
+    # -------------------------------------------------------------------------
+    if run_config.get("evidence_capture_enabled", True):
+        captured = _capture_evidence(records, output_dir)
+        if captured:
+            print(f"\n  Evidence Vault: archived page snapshots for {captured} record(s)")
 
     # -------------------------------------------------------------------------
     # STEP 4: SIGNAL EXTRACTION (Claude)

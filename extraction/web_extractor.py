@@ -92,12 +92,16 @@ class ExtractionResult:
     """Result of web text extraction for a single practice."""
 
     def __init__(self, url: str, context_text: str, pages_crawled: list[str],
-                 error: str = ""):
+                 error: str = "", pages: list[dict] | None = None):
         self.url = url
         self.context_text = context_text
         self.pages_crawled = pages_crawled
         self.error = error
         self.success = bool(context_text)
+        # Per-page evidence capture: [{"url": ..., "text": ...}] — feeds the
+        # Evidence Vault writer so claims stay verifiable after the live site
+        # changes. Unlike context_text, these are NOT truncated to token budget.
+        self.pages = pages or []
 
 
 def _source_confidence_for_extraction(result: ExtractionResult) -> str:
@@ -123,6 +127,7 @@ def _apply_successful_extraction(
     """
     record["_context_text"] = result.context_text
     record["_pages_crawled"] = result.pages_crawled
+    record["_evidence_pages"] = result.pages
 
     if recover_blocked_source:
         final_url = result.pages_crawled[0] if result.pages_crawled else result.url
@@ -285,6 +290,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
 
     pages_crawled = []
     all_text_blocks = []
+    evidence_pages = []
 
     # Step 1: Fetch and extract homepage
     print(f"    Fetching homepage: {url}")
@@ -314,6 +320,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
     if homepage_text:
         all_text_blocks.append(f"[Source: {final_url}]\n{homepage_text}")
         pages_crawled.append(final_url)
+        evidence_pages.append({"url": final_url, "text": homepage_text})
 
     # Step 2: Find and crawl relevant subpages
     subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
@@ -332,6 +339,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
             if sub_text:
                 all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
                 pages_crawled.append(sub_final)
+                evidence_pages.append({"url": sub_final, "text": sub_text})
 
     # Step 3: Combine all text, trimmed to budget
     combined = "\n\n---\n\n".join(all_text_blocks)
@@ -342,6 +350,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         url=url,
         context_text=combined,
         pages_crawled=pages_crawled,
+        pages=evidence_pages,
     )
 
 

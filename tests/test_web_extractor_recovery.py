@@ -61,3 +61,28 @@ def test_normal_extraction_preserves_upstream_limited_confidence():
     assert record["source_confidence"] == "limited"
     assert record["_url_valid"] is False
     assert record["_url_error"] == "HTTP 403"
+
+
+def test_extraction_result_carries_evidence_pages_onto_record():
+    """Evidence Vault: per-page captures flow from ExtractionResult to the record."""
+    record = {"practice_name": "Vault Clinic", "website_url": "https://v.example"}
+    pages = [
+        {"url": "https://v.example", "text": "Homepage text."},
+        {"url": "https://v.example/services", "text": "Services text."},
+    ]
+    result = ExtractionResult(
+        url="https://v.example",
+        context_text="combined",
+        pages_crawled=["https://v.example", "https://v.example/services"],
+        pages=pages,
+    )
+
+    _apply_successful_extraction(record, result)
+
+    assert record["_evidence_pages"] == pages
+
+
+def test_extraction_result_defaults_to_no_evidence_pages():
+    """Results built without pages (older call sites) default to an empty list."""
+    result = ExtractionResult(url="https://x.example", context_text="t", pages_crawled=[])
+    assert result.pages == []
