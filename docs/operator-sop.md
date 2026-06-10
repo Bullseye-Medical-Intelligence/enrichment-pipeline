@@ -231,6 +231,9 @@ Click any record to open its full detail view. You'll see:
 - **Signal checklist** — what Claude found (or didn't) for each signal, with evidence text and source URL
 - **Score breakdown** — fit score, confidence score, and composite Bullseye score
 
+### Evidence Vault: Archived snapshots
+Each confirmed signal shows an **Archived snapshot** link next to its evidence. It opens the page text exactly as the crawler captured it, with the capture date, a content fingerprint, and the evidence quote highlighted. Use it when a practice's website has changed since the run, or when a client questions where a claim came from — the snapshot is the proof. Snapshots are internal only; they are never sent to clients.
+
 ### Analyst overrides
 If you disagree with how a record was classified:
 1. Open the record.

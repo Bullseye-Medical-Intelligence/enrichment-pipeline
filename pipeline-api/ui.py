@@ -22,6 +22,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup, escape as jinja_escape
 
 import auth
 import brief_publisher
@@ -997,6 +998,7 @@ async def results_page(
 
     run_directory = runs.run_dir(run_id)
     published_briefs = brief_publisher.get_published_briefs(run_directory)
+    evidence_ids = _records_with_evidence(run_directory, merged_records)
     return _render(
         "results.html",
         username=username,
@@ -1013,6 +1015,106 @@ async def results_page(
         flash=flash,
         published_briefs=published_briefs,
         handoff_stale=_brief_stale(run_id, run_directory, "sales-handoff"),
+        evidence_ids=evidence_ids,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evidence Vault — archived page snapshots written by the pipeline at crawl
+# time (<run_dir>/evidence/<record_id>/). The API reads the files directly;
+# it never re-derives or re-scores anything from them.
+# ---------------------------------------------------------------------------
+
+_EVIDENCE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
+_EVIDENCE_DIRNAME = "evidence"
+_EVIDENCE_INDEX = "index.json"
+
+
+def _evidence_record_dir(run_directory: Path, record_id: str) -> Path | None:
+    """Resolve a record's evidence directory with the same charset rule the
+    pipeline writer uses (path-traversal guard). None when the id is empty."""
+    safe_id = _EVIDENCE_ID_RE.sub("_", (record_id or "").strip())[:80]
+    if not safe_id:
+        return None
+    return run_directory / _EVIDENCE_DIRNAME / safe_id
+
+
+def _records_with_evidence(run_directory: Path, records: list[dict]) -> set:
+    """Return the set of record ids that have an archived evidence snapshot."""
+    found = set()
+    for r in records:
+        rid = record_adapter.get_record_id(r)
+        record_dir = _evidence_record_dir(run_directory, rid)
+        if record_dir is not None and (record_dir / _EVIDENCE_INDEX).exists():
+            found.add(rid)
+    return found
+
+
+def _load_evidence_entry(record_dir: Path, url: str) -> tuple[dict | None, str]:
+    """Pick the index entry matching url (fallback: first) and read its text."""
+    try:
+        with open(record_dir / _EVIDENCE_INDEX, "r", encoding="utf-8") as f:
+            index = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None, ""
+    if not isinstance(index, list) or not index:
+        return None, ""
+    entry = next((e for e in index if e.get("url") == url), None) or index[0]
+    # Serve only the basename recorded in the index — never a caller-built path.
+    page_path = record_dir / Path(entry.get("file", "")).name
+    if not page_path.exists():
+        return entry, ""
+    try:
+        return entry, page_path.read_text(encoding="utf-8")
+    except OSError:
+        return entry, ""
+
+
+def _highlight_snapshot(text: str, quote: str) -> tuple[Markup, bool]:
+    """Escape the snapshot text and <mark> the first occurrence of quote.
+
+    Returns (safe_html, found). Escapes both sides before matching so the
+    output is XSS-safe regardless of what the crawled page contained.
+    """
+    safe = str(jinja_escape(text))
+    needle = str(jinja_escape((quote or "").strip()))
+    if needle and needle in safe:
+        return Markup(safe.replace(needle, f"<mark>{needle}</mark>", 1)), True
+    return Markup(safe), False
+
+
+@router.get("/dashboard/{run_id}/evidence/{record_id}", response_class=HTMLResponse)
+async def evidence_snapshot_page(
+    request: Request,
+    run_id: str,
+    record_id: str,
+    url: str = "",
+    q: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Render an archived page snapshot with capture metadata and the evidence
+    quote highlighted — the operator-facing Evidence Vault viewer."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    run_directory = runs.run_dir(run_id)
+    record_dir = _evidence_record_dir(run_directory, record_id)
+
+    entry, text = (None, "")
+    if record_dir is not None and record_dir.exists():
+        entry, text = _load_evidence_entry(record_dir, url)
+
+    snapshot_html, quote_found = _highlight_snapshot(text, q)
+    return _render(
+        "evidence_snapshot.html",
+        username=username,
+        run_id=run_id,
+        record_id=record_id,
+        entry=entry,
+        snapshot_html=snapshot_html,
+        quote=q,
+        quote_found=quote_found,
     )
 
 

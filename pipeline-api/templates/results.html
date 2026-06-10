@@ -351,6 +351,9 @@
                       {% if sig.state_inferred %}
                       <span class="signal-conf text-muted" title="Inferred from signal {{ sig.inferred_from }}">Inferred</span>
                       {% endif %}
+                      {% if rid in evidence_ids and sig.evidence_text %}
+                      <a class="signal-conf" style="color:var(--accent);text-decoration:none;" title="View the page text as captured at crawl time" href="/dashboard/{{ run_id }}/evidence/{{ rid }}?url={{ sig.source_url | urlencode }}&q={{ sig.evidence_text | urlencode }}">Archived snapshot</a>
+                      {% endif %}
                     </div>
                     {% if sig.evidence_text %}
                     <p class="signal-evidence">{{ sig.evidence_text }}</p>

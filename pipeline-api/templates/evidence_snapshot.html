@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Evidence Snapshot — BEMI{% endblock %}
+{% block content %}
+<div style="max-width:900px;margin:0 auto;padding:24px 16px;">
+
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-bottom:6px;">Evidence Vault</div>
+  <h1 style="font-family:'Instrument Serif',serif;font-size:30px;font-weight:400;margin:0 0 18px;">Archived Page Snapshot</h1>
+
+  {% if entry %}
+  <div style="background:#0a0a0a;color:#f7f6f4;border-radius:10px;padding:18px 22px;margin-bottom:18px;font-size:13px;line-height:2;">
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">Source page</span><br>
+      <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer" style="color:#f7f6f4;word-break:break-all;">{{ entry.url }} ↗</a></div>
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">Captured</span><br>{{ entry.fetched_at }} UTC{% if entry.provenance == "operator_supplied" %} &middot; operator-supplied content{% endif %}</div>
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">Content fingerprint (SHA-256)</span><br><span style="font-family:monospace;font-size:11px;word-break:break-all;">{{ entry.sha256 }}</span></div>
+  </div>
+
+  {% if quote and not quote_found %}
+  <div class="flash flash-info" style="margin-bottom:14px;">The evidence quote was not found verbatim in this snapshot. It may be a close paraphrase, or come from a different captured page.</div>
+  {% endif %}
+
+  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-top:2px solid #c84b2f;border-radius:8px;padding:20px 24px;">
+    <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-bottom:10px;">Page text as captured</div>
+    <div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;color:#0a0a0a;">{{ snapshot_html }}</div>
+  </div>
+
+  {% else %}
+  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;padding:28px 24px;text-align:center;">
+    <p style="font-size:15px;margin:0 0 6px;">No snapshot was captured for this record.</p>
+    <p class="text-muted" style="font-size:13px;margin:0;">This run predates the Evidence Vault, evidence capture was disabled, or the site could not be crawled.</p>
+  </div>
+  {% endif %}
+
+  <div style="margin-top:20px;">
+    <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+  </div>
+</div>
+{% endblock %}

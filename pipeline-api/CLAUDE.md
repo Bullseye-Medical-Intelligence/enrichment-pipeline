@@ -180,6 +180,17 @@ The results page header uses a two-tier layout:
 ### Stat Block Colors
 Each tier stat block has a distinct solid background color: Bullseye=dark red (`#b91c1c`), Needs Verification=dark amber (`#b45309`), Contender=dark terracotta (`#9a3823`), Manual Review=slate (`#475569`), Excluded=near-black blue-gray (`#1e2530`), Pending Review=purple (`#5b21b6`). Excluded records are not counted in Pending Review (they require no QC sign-off unless reclassified).
 
+**Evidence Vault snapshot viewer**: the pipeline archives each crawled page's
+text under `<run_dir>/evidence/<record_id>/` (index.json with url, fetched_at,
+sha256, provenance + page-NN.txt files). The dashboard's signal rows link to
+`GET /dashboard/{run_id}/evidence/{record_id}` which renders the archived text
+with the evidence quote highlighted and the capture metadata shown — proof of
+what the crawler saw even after the live site changes. The API only reads these
+files (`_load_evidence_entry`, `_records_with_evidence` in `ui.py`); it never
+writes or re-derives them. Record ids are sanitized with the same charset rule
+the pipeline writer uses, and only the basename in index.json is ever served.
+Operator-facing only — snapshots are never included in client deliverables.
+
 **Site Blocked — Needs Re-crawl section**: a dedicated table section (below the main scored table, above Excluded) for records where `source_confidence in ("limited", "failed")`. These records are removed from the main scored table entirely — they were never scored, so showing them alongside Bullseyes and Contenders was misleading. The section header shows a count badge and a "Retry All with Browser" button that fires the existing `POST /runs/{run_id}/retry-with-browser` route. `stats.blocked` tracks this count (replaces the former `stats.thin_context`). Blocked records are excluded from tier stats and from Pending Review — they need a re-crawl, not a QC sign-off.
 
 ---
@@ -221,6 +232,7 @@ GET    /icp-profiles                             List loaded ICP profiles
 GET    /dashboard                                Run list
 GET    /dashboard/{run_id}                       Results + inline review
 GET    /dashboard/{run_id}/queue                 Contact Queue (rep call sheet, sorted by priority)
+GET    /dashboard/{run_id}/evidence/{record_id}  Evidence Vault snapshot viewer (?url= picks the page, ?q= highlights the quote)
 GET    /runs/{run_id}/download/json              Full enriched_targets.json download
 GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
 GET    /runs/{run_id}/download/manifest          Internal run manifest JSON (not in client package)

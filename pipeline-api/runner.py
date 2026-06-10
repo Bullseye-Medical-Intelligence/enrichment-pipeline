@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -817,6 +818,31 @@ def _recompute_counts_from_records(records: list[dict]) -> dict:
     }
 
 
+_EVIDENCE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _copy_recrawl_evidence(scratch_dir: Path, source_dir: Path, record_id: str) -> None:
+    """Replace the source run's evidence snapshot for one record with the
+    scratch run's freshly captured one. No-op when the scratch run captured
+    nothing (e.g. the site is still blocked)."""
+    safe_id = _EVIDENCE_ID_RE.sub("_", (record_id or "").strip())[:80]
+    if not safe_id:
+        return
+    scratch_evidence = scratch_dir / "evidence" / safe_id
+    if not scratch_evidence.is_dir():
+        return
+    try:
+        target = source_dir / "evidence" / safe_id
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(scratch_evidence, target)
+    except OSError:
+        logger.warning(
+            "Could not copy re-crawl evidence for record %s; snapshot may be stale.",
+            record_id,
+        )
+
+
 def _merge_recrawled_record(
     source_run_id: str,
     scratch_dir: Path,
@@ -898,6 +924,11 @@ def _merge_recrawled_record(
 
         # Keep the analyst's decision; flag that the data changed under it.
         reviews.stamp_reenriched(source_run_id, record_id, source_dir, kind)
+
+        # Carry the scratch run's Evidence Vault snapshot into the source run so
+        # the archived pages match the record the operator now sees. Best-effort:
+        # a copy failure must not undo a successful merge.
+        _copy_recrawl_evidence(scratch_dir, source_dir, record_id)
 
         # Recompute counts from the merged file. records_output is unchanged
         # (one record replaced one record), so it is preserved as-is.

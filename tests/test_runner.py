@@ -400,3 +400,61 @@ def test_read_progress_returns_data_for_valid_file(run_store):
 
 def test_read_progress_returns_none_for_invalid_run_id(run_store):
     assert runs.read_progress("../../etc/passwd") is None
+
+
+# ---------------------------------------------------------------------------
+# Evidence Vault: merge carries the scratch run's snapshot into the source run
+# ---------------------------------------------------------------------------
+
+def _scratch_with_evidence(run_dir: Path, record: dict, record_id: str) -> Path:
+    scratch = _scratch_with(run_dir, record)
+    evidence_dir = scratch / "evidence" / record_id
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "page-01.txt").write_text("Fresh page text.", encoding="utf-8")
+    (evidence_dir / "index.json").write_text(json.dumps([
+        {"url": "https://a.example", "file": "page-01.txt",
+         "fetched_at": "2026-06-10T12:00:00+00:00", "sha256": "x", "chars": 16,
+         "provenance": "crawl"},
+    ]))
+    return scratch
+
+
+def test_merge_copies_scratch_evidence_into_source_run(run_store):
+    run_id = "RUN-20260528-130000-aaaa"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"},
+    ])
+    # Stale snapshot from the original crawl, to be replaced by the merge.
+    stale = run_dir / "evidence" / "T-A"
+    stale.mkdir(parents=True)
+    (stale / "page-01.txt").write_text("Old page text.", encoding="utf-8")
+    scratch = _scratch_with_evidence(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+        "bullseye_score": 92, "exclusion_status": "CLEAR"}, "T-A")
+
+    result = runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    assert result.ok
+    copied = (run_dir / "evidence" / "T-A" / "page-01.txt").read_text(encoding="utf-8")
+    assert copied == "Fresh page text."
+
+
+def test_merge_without_scratch_evidence_keeps_source_snapshot(run_store):
+    run_id = "RUN-20260528-140000-aaaa"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Contender",
+         "bullseye_score": 40, "exclusion_status": "CLEAR"},
+    ])
+    stale = run_dir / "evidence" / "T-A"
+    stale.mkdir(parents=True)
+    (stale / "page-01.txt").write_text("Old page text.", encoding="utf-8")
+    scratch = _scratch_with(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+        "bullseye_score": 92, "exclusion_status": "CLEAR"})
+
+    result = runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    assert result.ok
+    # No new capture — the original snapshot survives untouched.
+    assert (run_dir / "evidence" / "T-A" / "page-01.txt").read_text(encoding="utf-8") == "Old page text."

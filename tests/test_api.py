@@ -409,3 +409,81 @@ class TestSafeRedirectHandler:
         import ui as ui_mod
         monkeypatch.setattr(ui_mod, "_is_safe_public_url", lambda u: False)
         assert ui_mod._fetch_page_text("http://127.0.0.1/") == ""
+
+
+# ---------------------------------------------------------------------------
+# Evidence Vault viewer helpers
+# ---------------------------------------------------------------------------
+
+class TestEvidenceVaultHelpers:
+    def _write_vault(self, tmp_path, record_id="T-001"):
+        import json as _json
+        record_dir = tmp_path / "evidence" / record_id
+        record_dir.mkdir(parents=True)
+        (record_dir / "page-01.txt").write_text(
+            "We proudly offer IUD insertion and contraception counseling.",
+            encoding="utf-8",
+        )
+        (record_dir / "index.json").write_text(_json.dumps([
+            {"url": "https://a.example/services", "file": "page-01.txt",
+             "fetched_at": "2026-06-10T12:00:00+00:00", "sha256": "abc",
+             "chars": 60, "provenance": "crawl"},
+        ]))
+        return record_dir
+
+    def test_record_dir_blocks_traversal(self, tmp_path):
+        from ui import _evidence_record_dir
+        d = _evidence_record_dir(tmp_path, "../../etc/passwd")
+        assert d is not None
+        assert tmp_path in d.parents  # sanitized id stays inside the run dir
+
+    def test_record_dir_empty_id_is_none(self, tmp_path):
+        from ui import _evidence_record_dir
+        assert _evidence_record_dir(tmp_path, "   ") is None
+
+    def test_records_with_evidence(self, tmp_path):
+        from ui import _records_with_evidence
+        self._write_vault(tmp_path, "T-001")
+        records = [{"id": "T-001"}, {"id": "T-002"}]
+        assert _records_with_evidence(tmp_path, records) == {"T-001"}
+
+    def test_load_evidence_entry_matches_url(self, tmp_path):
+        from ui import _load_evidence_entry
+        record_dir = self._write_vault(tmp_path)
+        entry, text = _load_evidence_entry(record_dir, "https://a.example/services")
+        assert entry["sha256"] == "abc"
+        assert "IUD insertion" in text
+
+    def test_load_evidence_entry_falls_back_to_first_page(self, tmp_path):
+        from ui import _load_evidence_entry
+        record_dir = self._write_vault(tmp_path)
+        entry, text = _load_evidence_entry(record_dir, "https://other.example/")
+        assert entry is not None
+        assert text
+
+    def test_load_evidence_entry_ignores_path_in_index_file_field(self, tmp_path):
+        import json as _json
+        from ui import _load_evidence_entry
+        record_dir = self._write_vault(tmp_path)
+        (record_dir / "index.json").write_text(_json.dumps([
+            {"url": "https://a.example/services", "file": "../../../etc/passwd",
+             "fetched_at": "x", "sha256": "x", "chars": 1, "provenance": "crawl"},
+        ]))
+        entry, text = _load_evidence_entry(record_dir, "https://a.example/services")
+        assert text == ""  # basename "passwd" does not exist in the vault dir
+
+    def test_highlight_wraps_quote_and_escapes_html(self):
+        from ui import _highlight_snapshot
+        html, found = _highlight_snapshot(
+            "Before <script>alert(1)</script> we offer IUD insertion here.",
+            "IUD insertion",
+        )
+        assert found
+        assert "<mark>IUD insertion</mark>" in str(html)
+        assert "<script>" not in str(html)
+
+    def test_highlight_missing_quote_reports_not_found(self):
+        from ui import _highlight_snapshot
+        html, found = _highlight_snapshot("Some page text.", "cash pay")
+        assert not found
+        assert "<mark>" not in str(html)

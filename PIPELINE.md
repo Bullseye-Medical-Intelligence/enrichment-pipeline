@@ -746,7 +746,22 @@ Optional flags:
   enriched_targets.json        ← Import this into the dashboard
   enriched_targets.csv         ← Flat version for review
   run_log.json                 ← Run metadata and error summary
+  evidence/<record_id>/        ← Evidence Vault: per-page crawl snapshots
+    index.json                 ←   url, fetched_at, sha256, chars, provenance
+    page-NN.txt                ←   extracted text of one crawled page
 ```
+
+### Evidence Vault
+
+After extraction (Step 3, browser retry, or manual content), the pipeline
+archives each crawled page's extracted text with a UTC timestamp and a SHA-256
+content fingerprint (`output/evidence_writer.py`). This keeps every signal's
+`evidence_text` claim verifiable even after the live site changes — the
+operator dashboard links each signal to its archived snapshot. Re-crawling a
+record replaces its snapshot (newest capture wins). Controlled by run_config
+`evidence_capture_enabled` (default `true`); capture failures warn and never
+fail a run. The snapshots are internal/operator-facing and are never included
+in client deliverables.
 
 ---
 
