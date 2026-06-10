@@ -169,3 +169,12 @@ HOSTINGER_BRIEFS_REMOTE_ROOT: str = os.environ.get("HOSTINGER_BRIEFS_REMOTE_ROOT
 BRIEFS_PUBLIC_BASE_URL: str = os.environ.get(
     "BRIEFS_PUBLIC_BASE_URL", "https://briefs.bullseyemedical.ai"
 )
+# Plain FTP transmits credentials and content in cleartext — it is an explicit
+# opt-in, never an automatic fallback. Default: fail closed on SFTP errors.
+HOSTINGER_ALLOW_FTP_FALLBACK: bool = (
+    os.environ.get("HOSTINGER_ALLOW_FTP_FALLBACK", "").lower() in ("1", "true", "yes")
+)
+# Optional pinned SFTP host key (base64 public key, e.g. the field after the
+# key type in a known_hosts entry). When set, the server key is verified on
+# every connect; on mismatch the upload aborts.
+HOSTINGER_SFTP_HOST_KEY: str = os.environ.get("HOSTINGER_SFTP_HOST_KEY", "")

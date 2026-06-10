@@ -3,8 +3,10 @@ brief_publisher.py
 Upload a generated HTML brief to Hostinger and return a public URL.
 Also manages the per-run published_briefs.json record.
 
-Tries SFTP (paramiko) first; if paramiko is not installed or the SFTP
-connection is refused, falls back to plain FTP (ftplib, stdlib).
+Uploads via SFTP (paramiko), failing closed on any SFTP error. Plain FTP
+(cleartext credentials and content) is available only as an explicit opt-in
+via HOSTINGER_ALLOW_FTP_FALLBACK. Set HOSTINGER_SFTP_HOST_KEY to pin and
+verify the server's host key before credentials are sent.
 
 Public API:
   publish_brief(html_bytes, client_slug, brief_type, existing_storage_path=None) -> dict
@@ -115,16 +117,24 @@ def save_published_brief(run_directory: Path, brief_type: str, result: dict) -> 
 
 
 def _upload(data: bytes, remote_path: str) -> None:
-    """Upload data to remote_path, trying SFTP first and falling back to FTP."""
-    sftp_err = None
+    """Upload data to remote_path via SFTP, failing closed on error.
+
+    Plain FTP transmits credentials and brief content in cleartext, so it is
+    never an automatic fallback: it runs only when the operator has explicitly
+    set HOSTINGER_ALLOW_FTP_FALLBACK in .env.
+    """
     try:
         _sftp_upload(data, remote_path)
         return
     except RuntimeError as exc:
-        # paramiko not installed or SFTP connection refused — fall through to FTP
+        if not config.HOSTINGER_ALLOW_FTP_FALLBACK:
+            raise RuntimeError(
+                f"SFTP upload failed: {exc}. FTP fallback is disabled "
+                f"(set HOSTINGER_ALLOW_FTP_FALLBACK=1 to opt in to cleartext FTP)."
+            ) from exc
         sftp_err = exc
 
-    logger.warning("SFTP unavailable (%s); retrying via FTP.", sftp_err)
+    logger.warning("SFTP unavailable (%s); retrying via FTP (explicit opt-in).", sftp_err)
     try:
         _ftp_upload(data, remote_path)
     except Exception as exc:
@@ -141,9 +151,19 @@ def _sftp_upload(data: bytes, remote_path: str) -> None:
     except ImportError as exc:
         raise RuntimeError("paramiko not installed; falling back to FTP") from exc
 
+    hostkey = _pinned_host_key(paramiko)
+    if hostkey is None:
+        logger.warning(
+            "SFTP host key is not pinned (HOSTINGER_SFTP_HOST_KEY unset) — "
+            "server identity will not be verified."
+        )
+
     transport = paramiko.Transport((config.HOSTINGER_SFTP_HOST, config.HOSTINGER_SFTP_PORT))
     try:
+        # Passing hostkey makes paramiko verify the server's key during
+        # negotiation, BEFORE the password is sent; mismatch aborts the connect.
         transport.connect(
+            hostkey=hostkey,
             username=config.HOSTINGER_SFTP_USER,
             password=config.HOSTINGER_SFTP_PASSWORD,
         )
@@ -160,6 +180,29 @@ def _sftp_upload(data: bytes, remote_path: str) -> None:
         raise RuntimeError(f"SFTP upload failed: {exc}") from exc
     finally:
         transport.close()
+
+
+def _pinned_host_key(paramiko_mod):
+    """Parse HOSTINGER_SFTP_HOST_KEY ('<keytype> <base64>') into a paramiko key.
+
+    Returns None when unset. Raises RuntimeError when set but malformed —
+    a typo'd pin must abort the upload, not silently skip verification.
+    """
+    raw = config.HOSTINGER_SFTP_HOST_KEY.strip()
+    if not raw:
+        return None
+    try:
+        entry = paramiko_mod.hostkeys.HostKeyEntry.from_line(
+            f"{config.HOSTINGER_SFTP_HOST} {raw}"
+        )
+    except Exception as exc:
+        raise RuntimeError(f"HOSTINGER_SFTP_HOST_KEY could not be parsed: {exc}") from exc
+    if entry is None or entry.key is None:
+        raise RuntimeError(
+            "HOSTINGER_SFTP_HOST_KEY is malformed — expected '<keytype> <base64>' "
+            "(a known_hosts entry without the hostname column)."
+        )
+    return entry.key
 
 
 def _sftp_makedirs(sftp, remote_dir: str) -> None:

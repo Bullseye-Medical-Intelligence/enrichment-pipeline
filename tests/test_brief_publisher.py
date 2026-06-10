@@ -3,8 +3,6 @@ tests/test_brief_publisher.py
 Unit tests for brief_publisher (non-SFTP functionality only).
 """
 
-import json
-
 import pytest
 
 import sys, os
@@ -70,3 +68,69 @@ def test_publish_brief_no_config(monkeypatch):
     monkeypatch.setattr(config, "HOSTINGER_SFTP_HOST", "")
     with pytest.raises(RuntimeError, match="not configured"):
         brief_publisher.publish_brief(b"<html></html>", "test-client", "sales-handoff")
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed transport: FTP is opt-in, never an automatic fallback
+# ---------------------------------------------------------------------------
+
+def test_upload_fails_closed_without_ftp_optin(monkeypatch):
+    """SFTP failure with fallback disabled raises — FTP is never attempted."""
+    import config
+    monkeypatch.setattr(config, "HOSTINGER_ALLOW_FTP_FALLBACK", False)
+    monkeypatch.setattr(
+        brief_publisher, "_sftp_upload",
+        lambda data, path: (_ for _ in ()).throw(RuntimeError("auth failed")),
+    )
+    ftp_calls = []
+    monkeypatch.setattr(
+        brief_publisher, "_ftp_upload", lambda data, path: ftp_calls.append(path)
+    )
+    with pytest.raises(RuntimeError, match="FTP fallback is disabled"):
+        brief_publisher._upload(b"x", "briefs/test.html")
+    assert ftp_calls == []
+
+
+def test_upload_falls_back_when_explicitly_enabled(monkeypatch):
+    """With the opt-in flag set, SFTP failure routes to FTP."""
+    import config
+    monkeypatch.setattr(config, "HOSTINGER_ALLOW_FTP_FALLBACK", True)
+    monkeypatch.setattr(
+        brief_publisher, "_sftp_upload",
+        lambda data, path: (_ for _ in ()).throw(RuntimeError("conn refused")),
+    )
+    ftp_calls = []
+    monkeypatch.setattr(
+        brief_publisher, "_ftp_upload", lambda data, path: ftp_calls.append(path)
+    )
+    brief_publisher._upload(b"x", "briefs/test.html")
+    assert ftp_calls == ["briefs/test.html"]
+
+
+def test_upload_sftp_success_never_touches_ftp(monkeypatch):
+    """Successful SFTP upload returns without consulting the fallback flag."""
+    monkeypatch.setattr(brief_publisher, "_sftp_upload", lambda data, path: None)
+    ftp_calls = []
+    monkeypatch.setattr(
+        brief_publisher, "_ftp_upload", lambda data, path: ftp_calls.append(path)
+    )
+    brief_publisher._upload(b"x", "briefs/test.html")
+    assert ftp_calls == []
+
+
+def test_pinned_host_key_unset_returns_none(monkeypatch):
+    """No pinned key configured → None (verification skipped with a warning)."""
+    import config
+    monkeypatch.setattr(config, "HOSTINGER_SFTP_HOST_KEY", "")
+    paramiko = pytest.importorskip("paramiko")
+    assert brief_publisher._pinned_host_key(paramiko) is None
+
+
+def test_pinned_host_key_malformed_raises(monkeypatch):
+    """A typo'd pin must abort, not silently skip verification."""
+    import config
+    monkeypatch.setattr(config, "HOSTINGER_SFTP_HOST_KEY", "ssh-ed25519 not-base64!!")
+    monkeypatch.setattr(config, "HOSTINGER_SFTP_HOST", "example.com")
+    paramiko = pytest.importorskip("paramiko")
+    with pytest.raises(RuntimeError, match="HOSTINGER_SFTP_HOST_KEY"):
+        brief_publisher._pinned_host_key(paramiko)

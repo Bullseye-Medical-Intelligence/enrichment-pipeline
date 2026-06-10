@@ -210,7 +210,6 @@ def test_validate_credentials_unknown_user():
     assert auth.validate_credentials("ghost", "secret-pw") is False
 
 
-import sys as _sys  # noqa: E402 (re-import to avoid name collision)
 from ui import _friendly_error, _compute_readiness, _pending_review_count, _parse_signals_from_form  # noqa: E402
 
 
@@ -370,3 +369,43 @@ def test_project_edit_route_exists(tmp_path, monkeypatch):
         client.post("/login", data={"username": "tester", "password": "secret-pw"})
         r = client.get("/projects/nonexistent-project/edit")
         assert r.status_code != 405
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard — redirect hops are validated, not just the initial URL
+# ---------------------------------------------------------------------------
+
+class TestSafeRedirectHandler:
+    """Every redirect destination must pass the public-host SSRF guard."""
+
+    def _handler(self):
+        from ui import _SafeRedirectHandler
+        return _SafeRedirectHandler()
+
+    def _attempt(self, monkeypatch, new_url, safe):
+        import ui as ui_mod
+        import urllib.error
+        import urllib.request
+        monkeypatch.setattr(ui_mod, "_is_safe_public_url", lambda u: safe)
+        req = urllib.request.Request("https://example.com/")
+        handler = self._handler()
+        return lambda: handler.redirect_request(
+            req, None, 302, "Found", {}, new_url
+        )
+
+    def test_unsafe_redirect_blocked(self, monkeypatch):
+        import urllib.error
+        attempt = self._attempt(monkeypatch, "http://169.254.169.254/meta", safe=False)
+        with pytest.raises(urllib.error.HTTPError):
+            attempt()
+
+    def test_safe_redirect_allowed(self, monkeypatch):
+        attempt = self._attempt(monkeypatch, "https://example.org/page", safe=True)
+        result = attempt()
+        assert result is not None
+        assert result.full_url == "https://example.org/page"
+
+    def test_fetch_returns_empty_on_unsafe_initial_url(self, monkeypatch):
+        import ui as ui_mod
+        monkeypatch.setattr(ui_mod, "_is_safe_public_url", lambda u: False)
+        assert ui_mod._fetch_page_text("http://127.0.0.1/") == ""

@@ -12,6 +12,7 @@ import logging
 import re
 import socket
 import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -2087,11 +2088,27 @@ def _is_safe_public_url(url: str) -> bool:
         return False
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that applies the SSRF guard to every hop.
+
+    The initial URL is validated before the request is made, but a public
+    site can 30x to a loopback, private, or cloud-metadata address — each
+    redirect target must pass _is_safe_public_url before it is followed.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_safe_public_url(newurl):
+            raise urllib.error.HTTPError(
+                newurl, code, "Redirect to non-public address blocked", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
     """Fetch a URL and return stripped plain text, truncated to max_chars.
 
     Uses stdlib only (urllib + html.parser). Returns empty string on any error
-    or when the URL fails the public-host SSRF guard.
+    or when the URL (or any redirect hop) fails the public-host SSRF guard.
     """
     if not url or not _is_safe_public_url(url):
         return ""
@@ -2099,7 +2116,8 @@ def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
         req = urllib.request.Request(
             url, headers={"User-Agent": "Mozilla/5.0 (compatible; BEMI-ICP-Builder/1.0)"}
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+        opener = urllib.request.build_opener(_SafeRedirectHandler)
+        with opener.open(req, timeout=15) as resp:  # noqa: S310
             raw_bytes = resp.read(300_000)
         raw_html = raw_bytes.decode("utf-8", errors="replace")
         parser = _TagStripper()
