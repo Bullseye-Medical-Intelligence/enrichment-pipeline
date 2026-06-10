@@ -535,15 +535,21 @@ class TestTierAssignment:
                     "state_inferred": True}]
         assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Bullseye"
 
-    def test_all_required_confirmed_is_bullseye_below_score_threshold(self):
-        """All must-haves confirmed YES → Bullseye even when score is below bullseye_min."""
+    def test_all_required_confirmed_below_score_threshold_is_contender(self):
+        """All must-haves confirmed but score below bullseye_min → Contender, not Bullseye.
+
+        Bullseye requires BOTH the score threshold and confirmed must-haves; a
+        single confirmed must-have must never promote a weak-fit record.
+        """
         signals = [
             {"signal_id": "S-tms", "signal_state": "yes",
              "required_for_bullseye": True, "cap_tier": ""},
             {"signal_id": "S-cash", "signal_state": "yes",
              "required_for_bullseye": True, "cap_tier": ""},
         ]
-        assert _assign_tier(self._record_with_signals(signals), 73, 90) == "Bullseye"
+        rec = self._record_with_signals(signals)
+        assert _assign_tier(rec, 73, 90) == "Contender"
+        assert "below the Bullseye threshold" in rec["tier_cap_reason"]
 
     def test_partial_required_confirmed_uses_score_threshold(self):
         """Some must-haves not confirmed → score threshold still applies (not all confirmed)."""

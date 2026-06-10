@@ -107,21 +107,11 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
             )
             return "Manual Review"
 
-    # When the ICP defines must-have signals and every one is confirmed (or inferred),
-    # the qualitative gate IS the quality gate — start at Bullseye directly.
-    # The score threshold only applies as a fallback when some must-haves are missing,
-    # so records that lack key evidence don't auto-promote on volume of minor signals.
-    # Cap gates (cap_tier, source confidence, must-have "no"/"not_found") still apply below.
-    required_sigs = [s for s in signals if s.get("required_for_bullseye")]
-    all_required_confirmed = bool(required_sigs) and all(
-        s.get("signal_state") == "yes" or s.get("state_inferred")
-        for s in required_sigs
-    )
-    rank = (
-        TIER_RANK["Bullseye"]
-        if all_required_confirmed or score >= bullseye_min
-        else TIER_RANK["Contender"]
-    )
+    # Bullseye requires BOTH the score threshold and the must-have gate below.
+    # Confirming the must-have signals alone never promotes a low-scoring record:
+    # with a single-must-have ICP, "lists the service" would otherwise make every
+    # marginal practice a Bullseye regardless of how weak the rest of its fit is.
+    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
     # Apply floor guarantee: lift rank up to the floor minimum.
     if floor_rank > rank:
         rank = floor_rank
@@ -175,17 +165,16 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
         final_rank = min(final_rank, cap_rank)
 
     # Explain the gap to Bullseye: list every constraint that kept it down, most
-    # severe first. When nothing capped it but score alone fell short (no must-haves
-    # defined), say so plainly instead of leaving the operator guessing.
+    # severe first, including a score shortfall — the operator should never have
+    # to reverse-engineer why a record landed below Bullseye.
     if final_rank < TIER_RANK["Bullseye"]:
         reasons = [reason for _cap_rank, reason in sorted(caps, key=lambda c: c[0])]
+        if score < bullseye_min:
+            reasons.append(
+                f"Score {score} is below the Bullseye threshold ({bullseye_min})."
+            )
         if reasons:
             record["tier_cap_reason"] = " ".join(reasons)
-        elif not required_sigs and score < bullseye_min:
-            record["tier_cap_reason"] = (
-                f"Score {score} is below the Bullseye threshold ({bullseye_min}); "
-                "no must-have signals are defined for this ICP."
-            )
 
     return _RANK_TO_TIER[final_rank]
 
