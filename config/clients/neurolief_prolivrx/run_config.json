@@ -14,6 +14,8 @@
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
   "request_retries": 3,
+  "io_concurrency": 10,
+  "llm_concurrency": 6,
   "icp_profiles": {
     "cashpay_psychiatry": "icp_checklist_cashpay_psychiatry.json",
     "corrections": "icp_checklist_corrections.json"
