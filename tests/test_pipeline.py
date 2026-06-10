@@ -1992,3 +1992,102 @@ class TestTaxonomyStructuralGate:
         assert result["exclusion_status"] == "EXCLUDED"
         assert result["target_tier"] == "Excluded"
         assert result.get("exclusion_reason")
+
+
+# ---------------------------------------------------------------------------
+# GPT Verification Response Normalization
+# ---------------------------------------------------------------------------
+
+class TestVerifierResponseNormalization:
+    """_parse_verification_response must store the normalized verdict so the
+    downstream == "agree" comparison survives casing/whitespace variants."""
+
+    def _parse(self, payload):
+        from enrichment.verifier import _parse_verification_response
+        import json as _json
+        return _parse_verification_response(_json.dumps(payload))
+
+    def _payload(self, result, bullseye=True):
+        return {
+            "verification_result": result,
+            "verifier_would_score_bullseye": bullseye,
+            "signal_verifications": [],
+        }
+
+    def test_uppercase_agree_normalized(self):
+        parsed = self._parse(self._payload("AGREE"))
+        assert parsed["verification_result"] == "agree"
+
+    def test_whitespace_agree_normalized(self):
+        parsed = self._parse(self._payload("  agree  "))
+        assert parsed["verification_result"] == "agree"
+
+    def test_mixed_case_disagree_normalized(self):
+        parsed = self._parse(self._payload("Disagree"))
+        assert parsed["verification_result"] == "disagree"
+
+    def test_unknown_verdict_defaults_to_disagree(self):
+        parsed = self._parse(self._payload("maybe"))
+        assert parsed["verification_result"] == "disagree"
+
+    def test_string_boolean_true_normalized(self):
+        parsed = self._parse(self._payload("agree", bullseye="true"))
+        assert parsed["verifier_would_score_bullseye"] is True
+
+    def test_string_boolean_false_normalized(self):
+        parsed = self._parse(self._payload("agree", bullseye="False"))
+        assert parsed["verifier_would_score_bullseye"] is False
+
+    def test_real_boolean_untouched(self):
+        parsed = self._parse(self._payload("agree", bullseye=True))
+        assert parsed["verifier_would_score_bullseye"] is True
+
+
+# ---------------------------------------------------------------------------
+# LLM Parse Failure Routes to needs_review
+# ---------------------------------------------------------------------------
+
+class TestParseFailureStatus:
+    """A structurally invalid Claude response (missing required keys) is a
+    parse failure and must land needs_review, not failed (PIPELINE.md §error
+    handling). RuntimeError (API failure) must still land failed."""
+
+    _ICP = [{"signal_id": "S-01", "signal_label": "test",
+             "prompt_instruction": "x", "positive_weight": 10}]
+
+    def _run_with_response(self, raw):
+        from unittest.mock import patch
+        from enrichment.signal_extractor import extract_signals
+        record = {"id": "T-1", "practice_name": "Test", "specialty": "OBGYN"}
+        with patch("enrichment.signal_extractor._get_client", return_value=object()), \
+             patch("enrichment.signal_extractor._call_claude", return_value=raw):
+            return extract_signals(
+                record=record,
+                icp_signals=self._ICP,
+                context_text="x" * 500,
+                run_id="RUN-TEST",
+            )
+
+    def test_missing_signals_key_is_needs_review(self):
+        result = self._run_with_response('{"sales_angle": []}')
+        assert result["enrichment_status"] == "needs_review"
+        assert "parse" in result["internal_notes"].lower()
+
+    def test_missing_sales_angle_key_is_needs_review(self):
+        result = self._run_with_response('{"signals": []}')
+        assert result["enrichment_status"] == "needs_review"
+
+    def test_api_failure_is_failed(self):
+        from unittest.mock import patch
+        from enrichment.signal_extractor import extract_signals
+        record = {"id": "T-2", "practice_name": "Test", "specialty": "OBGYN"}
+        with patch("enrichment.signal_extractor._get_client", return_value=object()), \
+             patch("enrichment.signal_extractor._call_claude",
+                   side_effect=RuntimeError("API down")):
+            result = extract_signals(
+                record=record,
+                icp_signals=self._ICP,
+                context_text="x" * 500,
+                run_id="RUN-TEST",
+            )
+        assert result["enrichment_status"] == "failed"

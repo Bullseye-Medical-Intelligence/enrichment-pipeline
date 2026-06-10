@@ -146,10 +146,16 @@ def _parse_verification_response(raw: str) -> dict:
         if key not in parsed:
             raise ValueError(f"Verification response missing key: '{key}'")
 
-    # Normalize verification_result
+    # Normalize verification_result — store the lowered/stripped value so the
+    # downstream == "agree" comparison cannot be defeated by casing/whitespace.
     result = str(parsed["verification_result"]).lower().strip()
-    if result not in ("agree", "disagree"):
-        parsed["verification_result"] = "disagree"  # Default to flagging
+    parsed["verification_result"] = result if result in ("agree", "disagree") else "disagree"
+
+    # Normalize verifier_would_score_bullseye when the model returns a string
+    # ("true"/"false") instead of a JSON boolean.
+    verdict = parsed["verifier_would_score_bullseye"]
+    if isinstance(verdict, str):
+        parsed["verifier_would_score_bullseye"] = verdict.lower().strip() == "true"
 
     return parsed
 

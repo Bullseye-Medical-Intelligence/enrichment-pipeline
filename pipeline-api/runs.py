@@ -124,11 +124,15 @@ def update_run_status(run_id: str, **fields) -> RunStatus:
 
 
 def list_runs(
-    max_runs: int = MAX_RUNS_RETURNED,
+    max_runs: int | None = MAX_RUNS_RETURNED,
     include_archived: bool = False,
 ) -> list[RunSummary]:
     """Return up to max_runs RunSummary objects sorted newest-first.
 
+    max_runs=None returns every run — required for internal accounting
+    (count_active_runs, reconcile_orphaned_runs) which must never be
+    display-paginated, or stuck runs older than the UI page silently
+    escape the concurrency cap and orphan recovery.
     Skips any run directory whose status.json is missing or malformed.
     Archived runs are excluded by default; pass include_archived=True to include them.
     """
@@ -179,7 +183,10 @@ def list_runs(
 
 def count_active_runs() -> int:
     """Return the number of runs currently in 'pending' or 'running' state."""
-    return sum(1 for s in list_runs() if s.status in ("pending", "running"))
+    return sum(
+        1 for s in list_runs(max_runs=None, include_archived=True)
+        if s.status in ("pending", "running")
+    )
 
 
 def archive_run(run_id: str) -> None:
@@ -231,7 +238,7 @@ def reconcile_orphaned_runs() -> int:
     Returns the number of runs reconciled.
     """
     reconciled = 0
-    for summary in list_runs():
+    for summary in list_runs(max_runs=None, include_archived=True):
         if summary.status in ("pending", "running"):
             try:
                 update_run_status(

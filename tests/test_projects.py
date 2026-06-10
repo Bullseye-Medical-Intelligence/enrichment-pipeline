@@ -479,3 +479,44 @@ def test_legacy_run_lists_and_parses(store):
     status = runs.get_run("RUN-20260101-090000-bbbb")
     assert status.client_name is None
     assert status.target_geography == []
+
+
+# ---------------------------------------------------------------------------
+# Internal run accounting must not be display-paginated
+# ---------------------------------------------------------------------------
+
+def _write_run_status(store, run_id, status, created_at):
+    d = store["runs"] / run_id
+    d.mkdir(parents=True)
+    (d / "status.json").write_text(json.dumps({
+        "run_id": run_id,
+        "project_id": "p",
+        "source_type": "outscraper",
+        "status": status,
+        "created_at": created_at,
+        "operator": "tester",
+        "input_filename": "x.csv",
+    }))
+
+
+def test_count_active_runs_sees_beyond_display_page(store):
+    # Two old stuck runs, one newer complete run. A display page of 1 shows
+    # only the newest, but the concurrency count must still see both stuck runs.
+    _write_run_status(store, "RUN-20260101-090000-0001", "running", "2026-01-01T09:00:00Z")
+    _write_run_status(store, "RUN-20260102-090000-0002", "pending", "2026-01-02T09:00:00Z")
+    _write_run_status(store, "RUN-20260103-090000-0003", "complete", "2026-01-03T09:00:00Z")
+
+    page = runs.list_runs(max_runs=1)
+    assert len(page) == 1 and page[0].status == "complete"
+    assert runs.count_active_runs() == 2
+
+
+def test_reconcile_orphans_beyond_display_page(store):
+    _write_run_status(store, "RUN-20260101-090000-0001", "running", "2026-01-01T09:00:00Z")
+    _write_run_status(store, "RUN-20260102-090000-0002", "pending", "2026-01-02T09:00:00Z")
+    _write_run_status(store, "RUN-20260103-090000-0003", "complete", "2026-01-03T09:00:00Z")
+
+    assert runs.reconcile_orphaned_runs() == 2
+    assert runs.get_run("RUN-20260101-090000-0001").status == "failed"
+    assert runs.get_run("RUN-20260102-090000-0002").status == "failed"
+    assert runs.get_run("RUN-20260103-090000-0003").status == "complete"

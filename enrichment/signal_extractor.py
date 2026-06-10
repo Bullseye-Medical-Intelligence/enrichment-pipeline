@@ -813,8 +813,11 @@ def extract_signals(record: dict, icp_signals: list[dict],
 
         print(f"    [OK] Bullseye: {bullseye_score} | Fit: {fit_signal_score} | Confidence: {confidence_score}")
 
-    except json.JSONDecodeError as e:
-        print(f"    [FAIL] JSON parse failure: {e}")
+    except ValueError as e:
+        # Covers json.JSONDecodeError (a ValueError subclass) and the
+        # missing-required-key ValueError from _parse_response — both are
+        # parse failures and follow the documented needs_review path.
+        print(f"    [FAIL] LLM response parse failure: {e}")
         record.update({
             "signals": [],
             "bullseye_score": 0,
