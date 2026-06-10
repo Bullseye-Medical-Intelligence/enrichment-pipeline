@@ -73,7 +73,7 @@ From the menu, click **ICP Profiles → Build New Profile**.
 Click **Generate Hypothesis & Signals →**. Wait 30–45 seconds. Claude will:
 - Crawl the URLs you provided (if any)
 - Write a commercial fit hypothesis (ideal practice profile, fit reasoning, fast-close indicators, common objections)
-- Generate 3 synthetic demo account examples (one Bullseye, one Watchlist, one Excluded)
+- Generate 3 synthetic demo account examples (one Bullseye, one Contender, one Excluded)
 - Generate a signal checklist (typically 8–12 signals)
 
 ### Step 5: Review the output
@@ -84,7 +84,7 @@ The Review page shows everything Claude generated. Go through it carefully:
 - Check that the fast-close indicators match what your best reps look for.
 
 **Demo Account Examples** (3 cards)
-- These are synthetic (not real practices). They show how the scoring logic would classify a Bullseye, Watchlist, and Excluded account for your product.
+- These are synthetic (not real practices). They show how the scoring logic would classify a Bullseye, Contender, and Excluded account for your product.
 - Review the reasoning. If a card's reasoning doesn't feel right, the signals may need tuning.
 
 **Signal Checklist** (editable table)
@@ -118,12 +118,12 @@ Before a client commits to a pilot, show them a one-page demo brief: three synth
 ### From the ICP Profiles list:
 - Click **Demo Brief** next to a profile that has demo accounts (profiles built with the AI builder always have them).
 - Review the HTML version in-browser.
-- Click **↓ Download PDF** to get a PDF you can send to a prospect.
+- Click **↓ Download HTML** to get a self-contained HTML file you can send to a prospect (print to PDF from your browser if a PDF is preferred).
 
 The brief shows:
 - Your ICP description and commercial fit hypothesis
 - A Bullseye example: what an ideal practice looks like and why it scores high
-- A Watchlist example: a near-fit that needs a conversation before committing
+- A Contender example: a near-fit that needs a conversation before committing
 - An Excluded example: the type of practice BEMI would surface and immediately flag out
 
 > **Note:** All three example accounts are AI-generated and labeled as synthetic. They are not real practices.
@@ -186,13 +186,13 @@ Fill in:
 | Field | What to enter |
 |-------|---------------|
 | **Project** | Select the project you created |
-| **Input Source** | `Outscraper CSV` or `Manual CSV` |
-| **CSV File** | Upload your prospect list |
-| **Dry Run** | Check this to parse only, no LLM calls — use to validate the CSV first |
-| **Record Limit** | Optional. Enter `10` to test with just 10 records before a full run |
+| **CSV Source** | `Outscraper export` or `Manual (Bullseye canonical format)` |
+| **Outscraper CSV File** | Upload your prospect list (max 10,000 rows / 50 MB) |
 
-### Step 2: Start the run
-Click **Start Run**. The pipeline kicks off in the background. The page shows a live progress bar through 8 steps:
+### Step 2: Review the roster, then Enrich All
+Uploading loads and validates the list without spending any crawl or LLM budget — the run shows as **ingested**, with structural exclusions (wrong specialty, outside geography) already applied. Review the roster: confirm the record count looks right and the obvious mismatches landed in Excluded.
+
+When the roster looks right, click **Enrich All**. The optional **auto browser retry** checkbox re-crawls bot-blocked sites with a headless browser automatically — leave it on for lists with many modern practice websites. The pipeline then runs in the background through 8 steps:
 1. Ingest
 2. URL validation
 3. Web extraction
@@ -212,15 +212,18 @@ A typical run of 50 records takes 20–40 minutes. The pipeline checkpoints afte
 ## Part 6 — Review Results
 
 ### Opening a run
-From **Dashboard**, click on the completed run. You'll see a summary: total records, tier breakdown (Bullseye / Watchlist / Needs Verification / Excluded), errors.
+From **Dashboard**, click on the completed run. You'll see a summary: total records, tier breakdown (Bullseye / Needs Verification / Contender / Manual Review / Excluded), errors.
 
 ### Tier meanings
 | Tier | What it means | Your action |
 |------|---------------|-------------|
 | **Bullseye** | High score + all must-have signals confirmed | Ready for rep outreach |
-| **Watchlist** | Solid fit but one or more signals are weak or missing | Warm — worth a call, but not the top priority |
 | **Needs Verification** | Scored as a candidate but a key signal is unconfirmed | Call to verify before committing |
+| **Contender** | Solid fit but one or more signals are weak or missing | Warm — worth a call, but not the top priority |
+| **Manual Review** | No signal could be confirmed (often a thin or blocked website) | An operator must look before it enters any call queue |
 | **Excluded** | Hard or soft exclusion rule fired | Remove from outreach list |
+
+Records whose website was bot-blocked or returned too little text appear in the dedicated **Site Blocked — Needs Re-crawl** section below the main table. Use **Retry All with Browser** there to recover them — many come back as scored Contenders or Bullseyes.
 
 ### Reviewing individual records
 Click any record to open its full detail view. You'll see:
@@ -231,16 +234,16 @@ Click any record to open its full detail view. You'll see:
 ### Analyst overrides
 If you disagree with how a record was classified:
 1. Open the record.
-2. Use the **Override Classification** dropdown to set it to Strong / Warm / Cold / Excluded.
+2. Use the **Override** dropdown to set it to Bullseye / Needs Verification / Contender / Excluded.
 3. Enter a reason. The override is saved immediately.
 
 Overrides appear in the approved export. They do not change the underlying scores.
 
 ### Records flagged "needs_review"
-These are Bullseye-tier records where Claude and GPT disagreed. An analyst must look at these before they go to the rep. Check the signal checklist and the `internal_notes` field to see where the models differed. Then either approve with an override or move to Watchlist.
+These are Bullseye-tier records where Claude and GPT disagreed. An analyst must look at these before they go to the rep. Check the signal checklist and the `internal_notes` field to see where the models differed. Then either approve with an override or move to Contender.
 
 ### Contact Queue
-Click **Contact Queue** from the run view. This shows all Bullseye and Watchlist records sorted by score, with the call brief pre-loaded. Use this view during a rep briefing session.
+Click **Contact Queue** from the run view. This shows the callable records sorted by contact priority, with the call brief pre-loaded. Use this view during a rep briefing session.
 
 ---
 
@@ -254,11 +257,11 @@ From the run detail page, click the **Export** dropdown:
 | **Download CSV** | Flat export — all records, signals omitted | For quick review in Excel |
 | **Export Approved** | Only analyst-approved records, with overrides applied | Deliver to client or hand to rep team |
 | **Export Excluded** | Only excluded records | QA check — confirm the right practices are out |
-| **Client Package** | PDF package with tier summary + approved target list | Send to the client contact |
+| **Client Package** | ZIP of 5 client-safe files: Bullseye Target Report (HTML), Sales Handoff (HTML), and Bullseye / Contender / Excluded CSVs | Send to the client contact |
 
 **For a rep handoff:** use **Export Approved**. This contains only records that have been reviewed and approved, with the override classification and call brief for each.
 
-**For a client check-in:** use **Client Package** (PDF).
+**For a client check-in:** use **Client Package**. It requires every Bullseye and Contender record to be reviewed first; numeric scores are stripped — clients see tier and confidence band only.
 
 ---
 
@@ -270,8 +273,8 @@ From the run detail page, click the **Export** dropdown:
 | Many records with `source_confidence = "limited"` | Practices have no website or URL is broken | Expected for some lists. These records still get scored from what's available. |
 | Bullseye records flagged `needs_review` | Claude and GPT disagreed on signals | Review manually. Check `internal_notes` on each record. |
 | ICP builder returns an error | Claude API key not configured, or the API is down | Contact your system admin to check the `.env` configuration. |
-| Run fails to start | CSV format issue | Try a dry run first (`Dry Run` checkbox). Check the error message for which column is missing. |
-| PDF download is blank | WeasyPrint not installed on the server | Contact your system admin to install the PDF dependencies (`requirements.txt`). |
+| Run fails to start | CSV format issue | The upload validates the CSV before any spend — check the error message for which column is missing or malformed. |
+| Many records in Site Blocked section | Practice websites use bot protection | Click **Retry All with Browser** in that section, or re-run Enrich All with the auto browser retry checkbox on. |
 
 ---
 
@@ -288,16 +291,17 @@ From the run detail page, click the **Export** dropdown:
 ## Quick-Reference Checklist: First Run on a New Engagement
 
 - [ ] Build ICP profile (ICP Builder → review → save)
-- [ ] Download the demo brief PDF (for the pre-pilot prospect meeting)
+- [ ] Download the demo brief HTML (for the pre-pilot prospect meeting)
 - [ ] Create a project (geography + exclusion rules + ICP profile linked)
 - [ ] Pull Outscraper CSV for target specialty + geography
-- [ ] Upload CSV — dry run first to validate format
-- [ ] Start full run
-- [ ] Review results: Bullseye → Watchlist → Needs Verification
+- [ ] Upload CSV — review the ingested roster before spending budget
+- [ ] Click Enrich All
+- [ ] Review results: Bullseye → Needs Verification → Contender → Manual Review
+- [ ] Re-crawl any Site Blocked records with the browser retry
 - [ ] Override any misclassified records
 - [ ] Export Approved CSV for the rep team
 
 ---
 
 *Bullseye Medical Intelligence | Internal Use Only*
-*Last updated: May 2026*
+*Last updated: June 2026*

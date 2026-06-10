@@ -335,6 +335,10 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
 - **Constant-time auth**: API key and UI password comparisons use `hmac.compare_digest`.
 - **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
   output (`output/atomic_write.py`) use temp-file + `os.replace()`.
+- **Read-modify-write safety relies on single-process uvicorn**: mutating routes are
+  `async def` with synchronous (no-await) read-modify-write bodies, so they cannot
+  interleave on the event loop. This guarantee breaks under multi-worker uvicorn —
+  add per-run file locking before any multi-worker deployment.
 
 Scale note: current design targets ~10 operators / ≤1000-record batches on a single
 host. Task queue / database / Redis remain out of scope until that ceiling is crossed.

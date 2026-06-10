@@ -18,14 +18,12 @@ If a request conflicts with anything in this file, surface the conflict immediat
 
 ## WHERE THIS SITS IN THE BULLSEYE MVP SYSTEM
 
-The Bullseye MVP is two connected parts:
+Bullseye is two connected parts:
 
 1. **Offline Enrichment Pipeline** — this repo. Converts raw prospect lists into structured, signal-backed intelligence.
-2. **Review Dashboard** — separate repo (`bullseye-medical-intelligence/bemi`). Imports enriched files for human QC, approval, and CSV export.
+2. **Pipeline API + operator UI** — `pipeline-api/` (same repo). The production interface: operators upload lists, trigger runs, review records, and build client deliverables through the server-rendered UI. It spawns this pipeline as a subprocess and reads its output from the shared `/output/runs/` directory — it never reimplements enrichment logic (see `pipeline-api/CLAUDE.md`). (The separate React dashboard repo is a demo reference only.)
 
-**Connection between parts:** File handoff only for MVP. The pipeline produces `enriched_targets.json` or `enriched_targets.csv`. The dashboard imports that file. No live API connection between them until Phase 2.
-
-**Operating principle:** Pipeline generates intelligence. Dashboard reviews intelligence. Shared schema keeps them aligned.
+**Operating principle:** Pipeline generates intelligence. API/UI reviews and packages intelligence. Shared output schema keeps them aligned.
 
 ### Suggested directory structure (if combined into a monorepo later):
 
@@ -113,7 +111,6 @@ If a data source requires authentication to access, it is not approved for the M
 - Any scraping-as-a-service library beyond Outscraper CSV
 - LangChain or any LLM orchestration framework — call the APIs directly
 - Any library that stores or transmits data externally
-- Browser automation for MVP (Playwright is Phase 2)
 
 ---
 
@@ -777,7 +774,6 @@ Optional flags:
 
 ## PHASE 2 BACKLOG (DO NOT BUILD NOW)
 
-- [ ] Playwright or Selenium for JS-heavy practice sites
 - [ ] Docker containerization for reproducible runs
 - [ ] Additional ingestion adapters (CRM export, Definitive, IQVIA, NPI-derived)
 - [ ] Backend job queue for dashboard-triggered enrichment
