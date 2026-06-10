@@ -487,3 +487,191 @@ class TestEvidenceVaultHelpers:
         html, found = _highlight_snapshot("Some page text.", "cash pay")
         assert not found
         assert "<mark>" not in str(html)
+
+
+# ---------------------------------------------------------------------------
+# Cartridge Viewer
+# ---------------------------------------------------------------------------
+
+def _minimal_status(**overrides):
+    base = dict(
+        run_id="RUN-20260610-100000-aaaa", project_id="p", source_type="manual",
+        input_filename="in.csv", status="complete",
+        created_at="2026-06-10T10:00:00Z", operator="tester",
+    )
+    base.update(overrides)
+    from schema import RunStatus
+    return RunStatus(**base)
+
+
+class TestCartridgeViewer:
+    def _write_snapshots(self, run_dir, cfg, icp):
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "project_config_snapshot.json").write_text(json.dumps(cfg))
+        (run_dir / "icp_snapshot.json").write_text(json.dumps(icp))
+
+    def test_renders_cartridge_without_geography_or_brands(self, tmp_path):
+        """Valid-absence states: no geography restriction, no competitive_brands."""
+        from ui import _build_cartridge_context, _render
+        self._write_snapshots(
+            tmp_path,
+            {"client_name": "Neurolief", "target_specialty": "Psychiatry",
+             "active_exclusion_rules": ["hospital_owned"]},
+            {"icp_id": "neuro", "name": "Neurolief ICP", "signals": [
+                {"signal_id": "S-1", "signal_label": "Cash pay",
+                 "positive_weight": 20, "required_for_bullseye": True},
+            ]},
+        )
+        ctx = _build_cartridge_context(tmp_path)
+        assert ctx["geography"] == []
+        assert ctx["competitive_brands"] is None
+        html = _render("cartridge.html", username="t", run_id="RUN-X",
+                       status=_minimal_status(), cartridge=ctx).body.decode("utf-8")
+        assert "No geography restriction" in html
+        assert "Not configured for this ICP" in html
+        assert "Cash pay" in html
+
+    def test_renders_competitive_brands_block(self, tmp_path):
+        from ui import _build_cartridge_context, _render
+        self._write_snapshots(
+            tmp_path,
+            {"client_name": "Angel", "target_geography": ["TX", "FL"]},
+            {"icp_id": "angel", "signals": [],
+             "competitive_brands": {
+                 "brands": ["Invisalign", "ClearCorrect"],
+                 "aliases": ["iTero"],
+                 "partner_tier_phrases": ["Diamond Provider"],
+             }},
+        )
+        ctx = _build_cartridge_context(tmp_path)
+        html = _render("cartridge.html", username="t", run_id="RUN-X",
+                       status=_minimal_status(), cartridge=ctx).body.decode("utf-8")
+        assert "Invisalign" in html and "ClearCorrect" in html
+        assert "iTero" in html
+        assert "Diamond Provider" in html
+        assert "TX, FL" in html
+
+    def test_missing_snapshots_is_valid_state(self, tmp_path):
+        from ui import _build_cartridge_context, _render
+        ctx = _build_cartridge_context(tmp_path)  # empty dir — legacy CLI run
+        assert ctx["config"] is None and ctx["icp"] is None
+        html = _render("cartridge.html", username="t", run_id="RUN-X",
+                       status=_minimal_status(), cartridge=ctx).body.decode("utf-8")
+        assert "No cartridge snapshot" in html
+
+    def test_gates_describe_caps_and_exclusions(self, tmp_path):
+        from ui import _build_cartridge_context
+        self._write_snapshots(
+            tmp_path, {"client_name": "C"},
+            {"signals": [
+                {"signal_id": "S-1", "signal_label": "REI on staff",
+                 "positive_weight": 0, "exclude_if_yes": True},
+                {"signal_id": "S-2", "signal_label": "Hospital affiliated",
+                 "positive_weight": -30, "cap_tier": "Needs Verification"},
+            ]},
+        )
+        gates = _build_cartridge_context(tmp_path)["gates"]
+        rules = {g["signal_id"]: "; ".join(g["rules"]) for g in gates}
+        assert "excludes" in rules["S-1"]
+        assert "Needs Verification" in rules["S-2"]
+
+
+# ---------------------------------------------------------------------------
+# Evidence Link Checker (API side)
+# ---------------------------------------------------------------------------
+
+class TestLinkCheckReport:
+    def test_collect_links_filters_tiers_and_bad_urls(self):
+        from ui import _collect_evidence_links
+        records = [
+            {"id": "T-1", "practice_name": "A", "displayed_tier": "Bullseye",
+             "signals": [
+                 {"signal_label": "IUD", "source_url": "https://a.com/services"},
+                 {"signal_label": "Cash", "source_url": "not_found"},
+                 {"signal_label": "Hours", "source_url": ""},
+             ]},
+            {"id": "T-2", "practice_name": "B", "displayed_tier": "Excluded",
+             "signals": [{"signal_label": "X", "source_url": "https://b.com/"}]},
+            {"id": "T-3", "practice_name": "C", "displayed_tier": "Contender",
+             "signals": [{"signal_label": "Y", "source_url": "https://c.com/y"}]},
+        ]
+        links = _collect_evidence_links(records)
+        urls = [l["url"] for l in links]
+        assert urls == ["https://a.com/services", "https://c.com/y"]
+
+    def test_report_written_and_run_outputs_untouched(self, tmp_path):
+        import hashlib
+        from ui import _build_link_check_report, _read_link_check_report
+        import reviews as reviews_mod
+        # A run output file that must not change.
+        enriched = tmp_path / "enriched_targets.json"
+        enriched.write_text(json.dumps({"records": [{"id": "T-1"}]}))
+        before = hashlib.sha256(enriched.read_bytes()).hexdigest()
+
+        links = [{"record_id": "T-1", "practice_name": "A",
+                  "signal_label": "IUD", "url": "https://a.com/x"}]
+        results = [{"url": "https://a.com/x", "classification": "DEAD",
+                    "detail": "timeout", "final_url": "https://a.com/x"}]
+        report = _build_link_check_report(links, results)
+        reviews_mod._atomic_write(tmp_path / "link_check_report.json", report)
+
+        loaded = _read_link_check_report(tmp_path)
+        assert loaded["total_checked"] == 1
+        assert loaded["flagged"] == 1
+        assert loaded["results"][0]["classification"] == "DEAD"
+        after = hashlib.sha256(enriched.read_bytes()).hexdigest()
+        assert before == after  # run output byte-identical
+
+    def test_summary_counts(self):
+        from ui import _build_link_check_report
+        links = [
+            {"record_id": "T-1", "practice_name": "A", "signal_label": "S", "url": "https://a.com/1"},
+            {"record_id": "T-2", "practice_name": "B", "signal_label": "S", "url": "https://a.com/2"},
+        ]
+        results = [
+            {"url": "https://a.com/1", "classification": "OK", "detail": "", "final_url": ""},
+            {"url": "https://a.com/2", "classification": "FLAG", "detail": "x", "final_url": ""},
+        ]
+        report = _build_link_check_report(links, results)
+        assert report["total_checked"] == 2
+        assert report["ok"] == 1
+        assert report["flagged"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Cost-per-run display
+# ---------------------------------------------------------------------------
+
+class TestCostPerRun:
+    def test_cost_math(self):
+        import llm_pricing
+        # 2M input @ $3/M + 1M output @ $15/M = $21
+        assert llm_pricing.estimate_cost_usd(2_000_000, 1_000_000) == 21.0
+
+    def test_cost_summary_with_per_record_division(self):
+        import llm_pricing
+        status = _minimal_status(
+            records_output=50,
+            llm_input_tokens=1_000_000, llm_output_tokens=200_000, llm_call_count=50,
+        )
+        summary = llm_pricing.cost_summary(status)
+        assert summary["estimated_cost_usd"] == 6.0   # 3 + 3
+        assert summary["cost_per_record_usd"] == 0.12
+        assert summary["llm_calls"] == 50
+        assert summary["rates_as_of"] == llm_pricing.LAST_VERIFIED
+
+    def test_pre_capture_run_returns_none_not_zero(self):
+        """status.json without token fields → 'not captured' message, never $0."""
+        import llm_pricing
+        status = _minimal_status()  # no llm_* fields
+        assert status.llm_call_count is None
+        assert llm_pricing.cost_summary(status) is None
+
+    def test_zero_records_avoids_division_error(self):
+        import llm_pricing
+        status = _minimal_status(
+            records_output=0,
+            llm_input_tokens=100, llm_output_tokens=100, llm_call_count=1,
+        )
+        summary = llm_pricing.cost_summary(status)
+        assert summary["cost_per_record_usd"] is None

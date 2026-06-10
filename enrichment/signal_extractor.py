@@ -137,12 +137,17 @@ def _build_user_message(record: dict, context_text: str) -> str:
 
 def _call_claude(system_prompt: str, user_message: str,
                   client: anthropic.Anthropic, model: str,
-                  retries: int = 3) -> str:
+                  retries: int = 3) -> tuple[str, dict]:
     """Call Claude with a cached system prompt and per-record user message.
 
     The system prompt is marked ephemeral so Claude caches it across all
     records in a run — the signal checklist and instructions are identical
     per run, so only the first call pays full input token cost for that block.
+
+    Returns (response_text, usage) where usage carries input_tokens and
+    output_tokens from the API response. input_tokens includes cache-creation
+    and cache-read tokens so the run total reflects everything sent; the cost
+    display downstream is labeled an estimate (cache reads bill cheaper).
     """
     last_error = None
 
@@ -171,7 +176,16 @@ def _call_claude(system_prompt: str, user_message: str,
                     }
                 ],
             )
-            return message.content[0].text
+            usage = getattr(message, "usage", None)
+            usage_dict = {
+                "input_tokens": (
+                    (getattr(usage, "input_tokens", 0) or 0)
+                    + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
+                    + (getattr(usage, "cache_read_input_tokens", 0) or 0)
+                ),
+                "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+            }
+            return message.content[0].text, usage_dict
 
         except anthropic.RateLimitError as e:
             last_error = f"Rate limit: {e}"
@@ -722,7 +736,10 @@ def extract_signals(record: dict, icp_signals: list[dict],
         user_message = _build_user_message(record, context_text)
         print(f"    Calling Claude ({model}) for signal extraction...")
 
-        raw_response = _call_claude(system_prompt, user_message, client, model)
+        raw_response, llm_usage = _call_claude(system_prompt, user_message, client, model)
+        # Internal usage accounting — summed by the pipeline into run_log.json,
+        # stripped before output (never a record schema field).
+        record["_llm_usage"] = llm_usage
         parsed = _parse_response(raw_response)
 
         # Validate and clean signals

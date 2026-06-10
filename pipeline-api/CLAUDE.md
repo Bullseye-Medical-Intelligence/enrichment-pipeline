@@ -140,7 +140,8 @@ to open a run directory and understand what happened.
   sales_export.py    ← Sales Brief + internal Sales Handoff HTML generation
   validator.py       ← pre-flight CSV validation
   schema.py          ← Pydantic models for all request/response types
-  config.py          ← environment variable loading, path constants; includes Hostinger SFTP/FTP settings
+  config.py          ← environment variable loading, path constants; includes Hostinger SFTP/FTP settings; BUILD_VERSION/BUILD_DATE
+  llm_pricing.py     ← the ONE home for LLM pricing constants (operator-maintained LAST_VERIFIED); cost-per-run estimate
   ui.py              ← server-rendered HTML routes (session auth)
   requirements.txt
   .env.example
@@ -191,6 +192,30 @@ writes or re-derives them. Record ids are sanitized with the same charset rule
 the pipeline writer uses, and only the basename in index.json is ever served.
 Operator-facing only — snapshots are never included in client deliverables.
 
+**Cartridge view**: `GET /dashboard/{run_id}/cartridge` renders the run's frozen
+`project_config_snapshot.json` + `icp_snapshot.json` (via the existing
+`projects.read_config_snapshot` / `icp_profiles.read_snapshot` readers — no
+parallel loader): identity + snapshot dates, signals table, exclusion gates and
+tier caps, `competitive_brands` ("Not configured for this ICP" when absent — a
+valid state), and geography ("No geography restriction" when empty — also
+valid). STRICTLY read-only: no edit controls, no file writes.
+
+**Evidence Link Checker**: manual, pre-delivery audit that evidence source URLs
+in Bullseye/Contender (client-shipped tier) records still resolve. The API
+collects signal `source_url`s and shells out to the pipeline's `check_links.py`
+CLI via subprocess — this API never makes external HTTP calls itself. Results
+persist to `link_check_report.json` in the run directory (audit trail; written
+atomically). Report-only: no record is mutated based on results. Never runs
+automatically on completion.
+
+**Cost per run**: the pipeline captures Claude token usage into run_log.json
+(`llm_input_tokens`, `llm_output_tokens`, `llm_call_count`); the monitor copies
+the fields into status.json on completion. The results page shows an estimated
+cost computed from `llm_pricing.py` (the single home for rates, with an
+operator-maintained `LAST_VERIFIED` date shown as "estimate — rates as of").
+Runs predating capture show "cost data not captured for this run" — never zero.
+No per-record cost fields exist.
+
 **Site Blocked — Needs Re-crawl section**: a dedicated table section (below the main scored table, above Excluded) for records where `source_confidence in ("limited", "failed")`. These records are removed from the main scored table entirely — they were never scored, so showing them alongside Bullseyes and Contenders was misleading. The section header shows a count badge and a "Retry All with Browser" button that fires the existing `POST /runs/{run_id}/retry-with-browser` route. `stats.blocked` tracks this count (replaces the former `stats.thin_context`). Blocked records are excluded from tier stats and from Pending Review — they need a re-crawl, not a QC sign-off.
 
 ---
@@ -233,6 +258,9 @@ GET    /dashboard                                Run list
 GET    /dashboard/{run_id}                       Results + inline review
 GET    /dashboard/{run_id}/queue                 Contact Queue (rep call sheet, sorted by priority)
 GET    /dashboard/{run_id}/evidence/{record_id}  Evidence Vault snapshot viewer (?url= picks the page, ?q= highlights the quote)
+GET    /dashboard/{run_id}/cartridge             Read-only Cartridge view: the frozen config + ICP snapshot the run used
+GET    /dashboard/{run_id}/link-check            Evidence link check report (flagged URLs only)
+POST   /runs/{run_id}/check-links                Run the evidence link check (manual trigger; complete runs only)
 GET    /runs/{run_id}/download/json              Full enriched_targets.json download
 GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
 GET    /runs/{run_id}/download/manifest          Internal run manifest JSON (not in client package)

@@ -751,6 +751,23 @@ Optional flags:
     page-NN.txt                ←   extracted text of one crawled page
 ```
 
+run_log.json additionally carries run-level LLM usage totals when Step 4 ran:
+`llm_input_tokens` (includes prompt-cache creation/read tokens),
+`llm_output_tokens`, and `llm_call_count`. The fields are **absent** (not zero)
+for ingest-only runs and runs predating capture, so the API can distinguish
+"no spend" from "not measured". Captured in `signal_extractor._call_claude`,
+summed in pipeline.py before internal-field stripping — never a record field.
+
+### check_links.py (evidence link checker CLI)
+
+`check_links.py` (repo root) verifies evidence source URLs still resolve:
+stdin `{"urls": [...]}` → stdout `{"results": [{url, classification, detail,
+final_url}]}`. OK = 2xx or same-domain redirect; FLAG = cross-domain or
+path-to-homepage redirect; DEAD = 4xx/5xx/timeout/DNS failure. Polite by
+design: 2 workers, 500ms per-domain spacing, 10s timeout. Called by the API
+via subprocess (same pattern as simulate_icp.py); never run by operators
+directly. Report-only — it writes nothing and never mutates records.
+
 ### Evidence Vault
 
 After extraction (Step 3, browser retry, or manual content), the pipeline

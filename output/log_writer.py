@@ -15,7 +15,8 @@ from output.atomic_write import atomic_write
 def write_run_log(run_id: str, records: list[dict], errors: list[dict],
                    warnings: list[str], input_file: str, input_source_type: str,
                    records_input: int, pipeline_version: str = "v1.0",
-                   output_dir: str = "./output") -> str:
+                   output_dir: str = "./output",
+                   llm_usage: dict | None = None) -> str:
     """
     Write run_log.json summarizing the pipeline run.
 
@@ -29,6 +30,10 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
         records_input: Total records read from input (before dedup).
         pipeline_version: Pipeline version string.
         output_dir: Directory to write into.
+        llm_usage: Optional run-level token totals (llm_input_tokens,
+            llm_output_tokens, llm_call_count). Omitted from the log when
+            None (e.g. ingest-only runs) so pre-capture and no-LLM runs
+            are distinguishable from a zero-token run.
 
     Returns:
         Absolute path to the written log file.
@@ -90,6 +95,10 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
         "errors": safe_errors,
         "warnings": warnings,
     }
+    if llm_usage is not None:
+        log["llm_input_tokens"] = int(llm_usage.get("llm_input_tokens", 0))
+        log["llm_output_tokens"] = int(llm_usage.get("llm_output_tokens", 0))
+        log["llm_call_count"] = int(llm_usage.get("llm_call_count", 0))
 
     atomic_write(output_path, lambda f: json.dump(log, f, indent=2, ensure_ascii=False))
 

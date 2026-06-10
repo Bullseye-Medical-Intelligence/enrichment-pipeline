@@ -31,6 +31,7 @@ import sales_export
 import config
 import exports
 import icp_profiles
+import llm_pricing
 import projects
 import record_adapter
 import reviews
@@ -1001,6 +1002,7 @@ async def results_page(
     evidence_ids = _records_with_evidence(run_directory, merged_records)
     return _render(
         "results.html",
+        cost_summary=llm_pricing.cost_summary(status),
         username=username,
         run_id=run_id,
         status=status,
@@ -1016,6 +1018,220 @@ async def results_page(
         published_briefs=published_briefs,
         handoff_stale=_brief_stale(run_id, run_directory, "sales-handoff"),
         evidence_ids=evidence_ids,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cartridge Viewer — read-only display of the exact config a run used.
+# Reads the run's frozen snapshots (project_config_snapshot.json +
+# icp_snapshot.json) via the existing projects/icp_profiles readers — the
+# same files the pipeline was launched with. No editing, no file writes.
+# ---------------------------------------------------------------------------
+
+def _build_cartridge_context(run_directory: Path) -> dict:
+    """Assemble the read-only cartridge view from a run's frozen snapshots.
+
+    Absence states are valid, not errors: no competitive_brands block means
+    the ICP doesn't use one; an empty target_geography means the cartridge
+    has no geography restriction (legitimate for some clients).
+    """
+    cfg = projects.read_config_snapshot(run_directory)
+    icp = icp_profiles.read_snapshot(run_directory)
+
+    def _mtime(filename: str) -> str:
+        path = run_directory / filename
+        if not path.exists():
+            return ""
+        return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+
+    signals = (icp or {}).get("signals") or []
+    gates = []
+    for s in signals:
+        rules = []
+        if s.get("required_for_bullseye"):
+            rules.append("required for Bullseye")
+        if s.get("verification_required"):
+            rules.append("verification required when not found")
+        if s.get("cap_tier"):
+            rules.append(f"caps tier at {s['cap_tier']} when confirmed")
+        if s.get("exclude_if_yes"):
+            rules.append("excludes the record when confirmed")
+        if s.get("reinforces"):
+            rules.append(f"reinforces {s['reinforces']}")
+        if rules:
+            gates.append({"signal_id": s.get("signal_id", ""),
+                          "signal_label": s.get("signal_label", ""),
+                          "rules": rules})
+
+    return {
+        "config": cfg,
+        "icp": icp,
+        "snapshot_path": str(run_directory),
+        "config_mtime": _mtime(config.PROJECT_CONFIG_SNAPSHOT_FILENAME),
+        "icp_mtime": _mtime(config.ICP_SNAPSHOT_FILENAME),
+        "signals": signals,
+        "gates": gates,
+        "active_exclusion_rules": (cfg or {}).get("active_exclusion_rules") or [],
+        "taxonomy_exclusion_rules": (cfg or {}).get("taxonomy_exclusion_rules") or [],
+        "competitive_brands": (icp or {}).get("competitive_brands"),
+        "geography": (cfg or {}).get("target_geography") or [],
+    }
+
+
+@router.get("/dashboard/{run_id}/cartridge", response_class=HTMLResponse)
+async def cartridge_page(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Read-only view of the cartridge config (snapshots) a run was launched with."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    cartridge = _build_cartridge_context(runs.run_dir(run_id))
+    return _render(
+        "cartridge.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        cartridge=cartridge,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evidence Link Checker — pre-delivery audit that evidence source URLs still
+# resolve. The HTTP work happens in the pipeline's check_links.py CLI via
+# subprocess (this API makes no external HTTP calls); results are persisted
+# to link_check_report.json in the run directory as part of the audit trail.
+# Report-only: no record is ever modified based on results.
+# ---------------------------------------------------------------------------
+
+_LINK_CHECK_REPORT_FILENAME = "link_check_report.json"
+_LINK_CHECK_TIERS = ("Bullseye", "Contender")
+_LINK_CHECK_TIMEOUT_SECONDS = 600
+
+
+def _collect_evidence_links(records: list[dict]) -> list[dict]:
+    """Gather every signal source URL from client-shipped-tier records."""
+    links = []
+    for r in records:
+        if r.get("displayed_tier") not in _LINK_CHECK_TIERS:
+            continue
+        for sig in r.get("signals") or []:
+            url = (sig.get("source_url") or "").strip()
+            if url.lower().startswith(("http://", "https://")):
+                links.append({
+                    "record_id": record_adapter.get_record_id(r),
+                    "practice_name": r.get("practice_name", ""),
+                    "signal_label": sig.get("signal_label", sig.get("signal_id", "")),
+                    "url": url,
+                })
+    return links
+
+
+def _read_link_check_report(run_directory: Path) -> dict | None:
+    """Load a run's persisted link check report, or None if absent/malformed."""
+    path = run_directory / _LINK_CHECK_REPORT_FILENAME
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _build_link_check_report(links: list[dict], results: list[dict]) -> dict:
+    """Join per-URL check results back onto per-signal link occurrences."""
+    by_url = {r["url"]: r for r in results}
+    rows = []
+    for link in links:
+        result = by_url.get(link["url"], {})
+        rows.append({
+            **link,
+            "classification": result.get("classification", "DEAD"),
+            "detail": result.get("detail", "not checked"),
+            "final_url": result.get("final_url", ""),
+        })
+    ok_urls = sum(1 for r in results if r.get("classification") == "OK")
+    return {
+        "checked_at": datetime.now().astimezone().isoformat(),
+        "total_checked": len(results),
+        "ok": ok_urls,
+        "flagged": len(results) - ok_urls,
+        "results": rows,
+    }
+
+
+@router.post("/runs/{run_id}/check-links")
+def check_links_route(run_id: str, username: str = Depends(auth.require_session)):
+    """Run the evidence link check for a completed run (manual trigger only).
+
+    Sync def so the long-running subprocess executes in FastAPI's threadpool,
+    not on the event loop.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(status_code=409, detail="Run is not complete")
+
+    merged_records = _load_merged_records(run_id, status)
+    links = _collect_evidence_links(merged_records)
+    unique_urls = sorted({link["url"] for link in links})
+
+    results: list[dict] = []
+    if unique_urls:
+        try:
+            proc = subprocess.run(
+                [config.PYTHON_EXECUTABLE, str(config.PIPELINE_REPO_PATH / "check_links.py")],
+                input=json.dumps({"urls": unique_urls}).encode("utf-8"),
+                capture_output=True,
+                cwd=str(config.PIPELINE_REPO_PATH),
+                timeout=_LINK_CHECK_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail="Link check timed out")
+        if proc.returncode != 0:
+            logger.error("Link check exited %d: %.500s",
+                         proc.returncode, proc.stderr.decode("utf-8", "replace"))
+            raise HTTPException(status_code=500, detail="Link check failed")
+        try:
+            results = json.loads(proc.stdout.decode("utf-8")).get("results", [])
+        except json.JSONDecodeError:
+            logger.error("Link check returned non-JSON: %.300s", proc.stdout[:300])
+            raise HTTPException(status_code=500, detail="Bad link check output")
+
+    report = _build_link_check_report(links, results)
+    run_directory = runs.run_dir(run_id)
+    reviews._atomic_write(run_directory / _LINK_CHECK_REPORT_FILENAME, report)
+    logger.info("Link check for run %s: %d checked, %d flagged by '%s'",
+                run_id, report["total_checked"], report["flagged"], username)
+    return RedirectResponse(url=f"/dashboard/{run_id}/link-check", status_code=303)
+
+
+@router.get("/dashboard/{run_id}/link-check", response_class=HTMLResponse)
+async def link_check_page(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Render the persisted evidence link check report for a run."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    report = _read_link_check_report(runs.run_dir(run_id))
+    flagged_rows = [
+        r for r in (report or {}).get("results", [])
+        if r.get("classification") != "OK"
+    ]
+    return _render(
+        "link_check.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        report=report,
+        flagged_rows=flagged_rows,
     )
 
 

@@ -44,6 +44,11 @@ class RunStatus(BaseModel):
     icp_profile_name: Optional[str] = None
     icp_profile_version: Optional[str] = None
     archived: bool = False
+    # LLM usage totals (copied from run_log.json on completion). None means
+    # the run predates token capture — display "not captured", never zero.
+    llm_input_tokens: Optional[int] = None
+    llm_output_tokens: Optional[int] = None
+    llm_call_count: Optional[int] = None
 
 
 class RunSummary(BaseModel):

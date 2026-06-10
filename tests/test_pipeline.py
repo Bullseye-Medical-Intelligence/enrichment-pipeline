@@ -2060,7 +2060,8 @@ class TestParseFailureStatus:
         from enrichment.signal_extractor import extract_signals
         record = {"id": "T-1", "practice_name": "Test", "specialty": "OBGYN"}
         with patch("enrichment.signal_extractor._get_client", return_value=object()), \
-             patch("enrichment.signal_extractor._call_claude", return_value=raw):
+             patch("enrichment.signal_extractor._call_claude",
+                   return_value=(raw, {"input_tokens": 0, "output_tokens": 0})):
             return extract_signals(
                 record=record,
                 icp_signals=self._ICP,
@@ -2091,3 +2092,55 @@ class TestParseFailureStatus:
                 run_id="RUN-TEST",
             )
         assert result["enrichment_status"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# LLM Token Usage Capture (cost-per-run)
+# ---------------------------------------------------------------------------
+
+class TestTokenUsageCapture:
+    """extract_signals records per-call token usage; the run log carries totals."""
+
+    _ICP = [{"signal_id": "S-01", "signal_label": "test",
+             "prompt_instruction": "x", "positive_weight": 10}]
+
+    def test_extract_signals_records_usage(self):
+        from unittest.mock import patch
+        from enrichment.signal_extractor import extract_signals
+        record = {"id": "T-1", "practice_name": "Test", "specialty": "OBGYN"}
+        raw = '{"signals": [], "sales_angle": []}'
+        with patch("enrichment.signal_extractor._get_client", return_value=object()), \
+             patch("enrichment.signal_extractor._call_claude",
+                   return_value=(raw, {"input_tokens": 1200, "output_tokens": 340})):
+            result = extract_signals(
+                record=record, icp_signals=self._ICP,
+                context_text="x" * 500, run_id="RUN-TEST",
+            )
+        assert result["_llm_usage"] == {"input_tokens": 1200, "output_tokens": 340}
+
+    def test_run_log_carries_usage_totals(self, tmp_path):
+        import json as _json
+        from output.log_writer import write_run_log
+        path = write_run_log(
+            run_id="RUN-TEST", records=[], errors=[], warnings=[],
+            input_file="in.csv", input_source_type="manual", records_input=0,
+            output_dir=str(tmp_path),
+            llm_usage={"llm_input_tokens": 5000, "llm_output_tokens": 900,
+                       "llm_call_count": 4},
+        )
+        log = _json.loads(open(path, encoding="utf-8").read())
+        assert log["llm_input_tokens"] == 5000
+        assert log["llm_output_tokens"] == 900
+        assert log["llm_call_count"] == 4
+
+    def test_run_log_omits_usage_when_not_captured(self, tmp_path):
+        import json as _json
+        from output.log_writer import write_run_log
+        path = write_run_log(
+            run_id="RUN-TEST", records=[], errors=[], warnings=[],
+            input_file="in.csv", input_source_type="manual", records_input=0,
+            output_dir=str(tmp_path),
+        )
+        log = _json.loads(open(path, encoding="utf-8").read())
+        assert "llm_input_tokens" not in log
+        assert "llm_call_count" not in log

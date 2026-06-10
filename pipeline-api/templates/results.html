@@ -82,6 +82,10 @@
       {% endif %}
       <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
       <a href="/runs/{{ run_id }}/download/manifest" class="btn btn-secondary" title="Internal run manifest — scope, ICP version, counts, methodology. Not included in the client package.">Run Manifest</a>
+      <a href="/dashboard/{{ run_id }}/cartridge" class="btn btn-secondary" title="Read-only view of the frozen config and ICP signals this run used.">Cartridge</a>
+      {% if status.status == "complete" %}
+      <a href="/dashboard/{{ run_id }}/link-check" class="btn btn-secondary" title="Verify evidence source links still resolve before shipping a deliverable.">Check Evidence Links</a>
+      {% endif %}
       <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
     </div>
     {% else %}
@@ -251,6 +255,23 @@
   <div class="stat-item stat-excluded stat-clickable" onclick="filterByStatBlock('excluded', this)"><span class="stat-num">{{ stats.excluded }}</span><span class="stat-label">Excluded</span></div>
   <div class="stat-item stat-pending stat-clickable" onclick="filterByStatBlock('pending', this)"><span class="stat-num">{{ stats.pending_review }}</span><span class="stat-label">Pending Review</span></div>
 </div>
+
+{# ── Cost per run ─────────────────────────────────────────────────── #}
+{% if status.status == "complete" %}
+<div style="margin:10px 0 18px;padding:12px 18px;background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;font-size:12.5px;color:#0a0a0a;">
+  <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-right:14px;">Run Economics</span>
+  {% if cost_summary %}
+  {{ status.records_output }} records &nbsp;·&nbsp;
+  {{ cost_summary.llm_calls }} LLM calls &nbsp;·&nbsp;
+  {{ "{:,}".format(cost_summary.input_tokens) }} in / {{ "{:,}".format(cost_summary.output_tokens) }} out tokens &nbsp;·&nbsp;
+  <strong>${{ "%.2f" | format(cost_summary.estimated_cost_usd) }}</strong>
+  {% if cost_summary.cost_per_record_usd is not none %}(${{ "%.3f" | format(cost_summary.cost_per_record_usd) }}/record){% endif %}
+  <span class="text-muted" style="margin-left:8px;">estimate — rates as of {{ cost_summary.rates_as_of }}</span>
+  {% else %}
+  <span class="text-muted">cost data not captured for this run</span>
+  {% endif %}
+</div>
+{% endif %}
 {% endif %}
 
 

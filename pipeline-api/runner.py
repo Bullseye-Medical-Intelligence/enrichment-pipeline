@@ -1074,6 +1074,11 @@ def _read_completion_counts(run_id: str) -> dict:
             counts["records_output"] = log.get("records_output", 0)
             counts["excluded_count"] = log.get("records_excluded", 0)
             counts["error_count"] = log.get("records_failed", 0)
+            # Token usage totals are present only when the pipeline captured
+            # them; absent keys stay absent so old runs read "not captured".
+            for usage_key in ("llm_input_tokens", "llm_output_tokens", "llm_call_count"):
+                if usage_key in log:
+                    counts[usage_key] = log[usage_key]
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("Could not parse run_log.json for run %s: %s", run_id, e)
     else:

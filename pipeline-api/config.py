@@ -52,6 +52,9 @@ ICP_PROFILES_PATH: Path = Path(
 MAX_CSV_SIZE_BYTES: int = MAX_CSV_SIZE_MB * 1024 * 1024
 MAX_RUNS_RETURNED: int = 50
 PIPELINE_VERSION: str = "v1.0"
+# API build version — bump MINOR for new capabilities, PATCH for fixes.
+BUILD_VERSION: str = "1.1.0"
+BUILD_DATE: str = "2026-06-10"
 PIPELINE_SCRIPT: str = "pipeline.py"
 STATUS_FILENAME: str = "status.json"
 

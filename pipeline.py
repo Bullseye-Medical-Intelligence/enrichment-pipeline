@@ -904,6 +904,14 @@ def run_pipeline(input_file: str, source_type: str,
     excluded_final = sum(1 for r in records if r.get("target_tier") == "Excluded")
     print(f"  Tiers: {bullseye_final} Bullseye | {contender_final} Contender | {excluded_final} Excluded")
 
+    # Sum LLM token usage before internal fields are stripped — run-level
+    # metadata for the cost display, never a per-record output field.
+    llm_usage_totals = {
+        "llm_input_tokens": sum((r.get("_llm_usage") or {}).get("input_tokens", 0) for r in records),
+        "llm_output_tokens": sum((r.get("_llm_usage") or {}).get("output_tokens", 0) for r in records),
+        "llm_call_count": sum(1 for r in records if r.get("_llm_usage")),
+    }
+
     # Strip internal fields before output
     output_records = [strip_internal_fields(r) for r in records]
 
@@ -932,6 +940,7 @@ def run_pipeline(input_file: str, source_type: str,
         records_input=records_input_total,
         pipeline_version=PIPELINE_VERSION,
         output_dir=output_dir,
+        llm_usage=llm_usage_totals,
     )
 
     elapsed = time.time() - start_time

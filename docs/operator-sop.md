@@ -231,6 +231,12 @@ Click any record to open its full detail view. You'll see:
 - **Signal checklist** — what Claude found (or didn't) for each signal, with evidence text and source URL
 - **Score breakdown** — fit score, confidence score, and composite Bullseye score
 
+### Cartridge view
+Click **Cartridge** in the run header to see a read-only view of the exact configuration the run used: the client identity, every ICP signal with its weight and must-have flag, the exclusion gates and tier caps, and the geography. "No geography restriction" and "Not configured for this ICP" are normal states for some clients, not errors. Use this when you need to confirm which weights or rules produced a result without opening config files.
+
+### Run economics
+Completed runs show a **Run Economics** line above the results: records processed, LLM calls, token totals, and an estimated cost with cost-per-record. The figure is an estimate at the rates noted next to it; older runs that predate token tracking say "cost data not captured for this run".
+
 ### Evidence Vault: Archived snapshots
 Each confirmed signal shows an **Archived snapshot** link next to its evidence. It opens the page text exactly as the crawler captured it, with the capture date, a content fingerprint, and the evidence quote highlighted. Use it when a practice's website has changed since the run, or when a client questions where a claim came from — the snapshot is the proof. Snapshots are internal only; they are never sent to clients.
 
@@ -265,6 +271,8 @@ From the run detail page, click the **Export** dropdown:
 **For a rep handoff:** use **Export Approved**. This contains only records that have been reviewed and approved, with the override classification and call brief for each.
 
 **For a client check-in:** use **Client Package**. It requires every Bullseye and Contender record to be reviewed first; numeric scores are stripped — clients see tier and confidence band only.
+
+**Before shipping any deliverable:** click **Check Evidence Links** on the run. It verifies every evidence link in Bullseye and Contender records still resolves and flags dead links and suspicious redirects. A 404 in a client brief is a credibility failure — fix or override flagged records before exporting. The check never changes any record; you decide what to do with the flags.
 
 ---
 

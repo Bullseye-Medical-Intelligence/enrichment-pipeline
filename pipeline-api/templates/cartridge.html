@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Cartridge — {{ run_id }} — BEMI{% endblock %}
+{% block content %}
+<div style="max-width:980px;margin:0 auto;padding:24px 16px;">
+
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-bottom:6px;">Cartridge</div>
+  <h1 style="font-family:'Instrument Serif',serif;font-size:30px;font-weight:400;margin:0 0 4px;">Run Configuration</h1>
+  <p class="text-muted" style="margin:0 0 20px;font-size:13px;">Read-only view of the frozen config this run was launched with. Edit the project or ICP profile to change future runs; past runs never change.</p>
+
+  {% if not cartridge.config and not cartridge.icp %}
+  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;padding:28px 24px;text-align:center;">
+    <p style="font-size:15px;margin:0 0 6px;">No cartridge snapshot for this run.</p>
+    <p class="text-muted" style="font-size:13px;margin:0;">This run predates the project layer, or was launched directly from the CLI.</p>
+  </div>
+  {% else %}
+
+  {# 1 — Identity #}
+  <div style="background:#0a0a0a;color:#f7f6f4;border-radius:10px;padding:16px 22px;margin-bottom:18px;font-size:13px;line-height:2;">
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">Client</span><br>{{ (cartridge.config or {}).get("client_name") or "—" }}{% if (cartridge.config or {}).get("target_specialty") %} &middot; {{ cartridge.config.get("target_specialty") }}{% endif %}</div>
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">Snapshot location</span><br><span style="font-family:monospace;font-size:11px;">{{ cartridge.snapshot_path }}</span></div>
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">Snapshot dates</span><br>run config {{ cartridge.config_mtime or "—" }} &middot; ICP checklist {{ cartridge.icp_mtime or "—" }}</div>
+    {% if cartridge.icp %}
+    <div><span style="color:rgba(247,246,244,0.45);text-transform:uppercase;font-size:10px;letter-spacing:0.1em;">ICP profile</span><br>{{ cartridge.icp.get("name") or cartridge.icp.get("icp_id") or "—" }}{% if cartridge.icp.get("version") %} (v{{ cartridge.icp.get("version") }}){% endif %}</div>
+    {% endif %}
+  </div>
+
+  {# 2 — Signals #}
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin:18px 0 8px;">Signals</div>
+  {% if cartridge.signals %}
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;border:1px solid #e3e1dd;border-radius:8px;">
+    <thead>
+      <tr style="border-bottom:2px solid #e3e1dd;text-align:left;">
+        <th style="padding:8px 12px;">ID</th>
+        <th style="padding:8px 12px;">Signal</th>
+        <th style="padding:8px 12px;text-align:right;">Weight</th>
+        <th style="padding:8px 12px;text-align:right;">No-weight</th>
+        <th style="padding:8px 12px;">Must-have</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in cartridge.signals %}
+      <tr style="border-bottom:1px solid #f0eeea;">
+        <td style="padding:7px 12px;font-family:monospace;font-size:11px;">{{ s.signal_id }}</td>
+        <td style="padding:7px 12px;">{{ s.signal_label }}</td>
+        <td style="padding:7px 12px;text-align:right;">{{ s.positive_weight }}</td>
+        <td style="padding:7px 12px;text-align:right;">{{ s.no_weight if s.no_weight is defined else "—" }}</td>
+        <td style="padding:7px 12px;">{{ "Yes" if s.required_for_bullseye else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted" style="font-size:13px;">No ICP snapshot for this run.</p>
+  {% endif %}
+
+  {# 3 — Gates and exclusions #}
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin:22px 0 8px;">Exclusion Gates &amp; Tier Caps</div>
+  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;padding:14px 18px;font-size:13px;">
+    {% if cartridge.active_exclusion_rules %}
+    <div style="margin-bottom:8px;"><strong>Active exclusion rules:</strong> {{ cartridge.active_exclusion_rules | join(", ") }}</div>
+    {% endif %}
+    {% if cartridge.taxonomy_exclusion_rules %}
+    <div style="margin-bottom:8px;"><strong>NPI taxonomy gates:</strong>
+      {% for t in cartridge.taxonomy_exclusion_rules %}{{ t.taxonomy_code }} → {{ t.rule_name }}{{ ", " if not loop.last }}{% endfor %}
+    </div>
+    {% endif %}
+    {% if cartridge.gates %}
+    <ul style="margin:6px 0 0;padding-left:18px;">
+      {% for g in cartridge.gates %}
+      <li style="margin-bottom:4px;"><span style="font-family:monospace;font-size:11px;">{{ g.signal_id }}</span> {{ g.signal_label }} — {{ g.rules | join("; ") }}</li>
+      {% endfor %}
+    </ul>
+    {% elif not cartridge.active_exclusion_rules and not cartridge.taxonomy_exclusion_rules %}
+    <span class="text-muted">No signal-level gates defined.</span>
+    {% endif %}
+  </div>
+
+  {# 4 — Competitive brands #}
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin:22px 0 8px;">Competitive Brands</div>
+  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;padding:14px 18px;font-size:13px;">
+    {% if cartridge.competitive_brands %}
+    {% set cb = cartridge.competitive_brands %}
+    {% if cb.brands %}<div style="margin-bottom:6px;"><strong>Brands:</strong> {{ cb.brands | join(", ") }}</div>{% endif %}
+    {% if cb.aliases %}<div style="margin-bottom:6px;"><strong>Aliases:</strong> {{ cb.aliases | join(", ") }}</div>{% endif %}
+    {% if cb.partner_tier_phrases %}<div><strong>Partner-tier phrases:</strong> {{ cb.partner_tier_phrases | join(", ") }}</div>{% endif %}
+    {% else %}
+    <span class="text-muted">Not configured for this ICP</span>
+    {% endif %}
+  </div>
+
+  {# 5 — Geography #}
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin:22px 0 8px;">Geography</div>
+  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;padding:14px 18px;font-size:13px;">
+    {% if cartridge.geography %}
+    {{ cartridge.geography | join(", ") }}
+    {% else %}
+    <span class="text-muted">No geography restriction</span>
+    {% endif %}
+  </div>
+
+  {% endif %}
+
+  <div style="margin-top:22px;">
+    <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+  </div>
+</div>
+{% endblock %}
