@@ -26,13 +26,12 @@ _error_env = Environment(
 )
 
 # Content-Security-Policy for the operator UI.
-# - script-src 'self': no inline scripts; all JS served from /static/
-# - style-src 'unsafe-inline': templates use inline style= attributes throughout
-# - font-src gstatic: Google Fonts files
-# - frame-ancestors 'none': clickjacking protection
+# Templates use inline <script> blocks throughout; 'unsafe-inline' is required.
+# The operator dashboard is not a public-facing surface — restricting frame
+# embedding, MIME sniffing, and form actions still provides meaningful defence.
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "img-src 'self' data:; "
