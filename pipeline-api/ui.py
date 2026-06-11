@@ -622,7 +622,16 @@ async def icp_save(
             product_brief = {}
     except (ValueError, TypeError):
         product_brief = {}
-    profile = {
+    # Start from the existing profile when editing so fields not managed by this
+    # form (e.g. contact_strategy, scoring_notes, client metadata) are preserved.
+    profile: dict = {}
+    if is_edit:
+        try:
+            profile = dict(icp_profiles.get_icp_profile(icp_id.strip()))
+        except (ValueError, KeyError):
+            profile = {}
+
+    profile.update({
         "icp_id": icp_id.strip(),
         "name": icp_name.strip(),
         "version": version.strip() or "1.0",
@@ -633,7 +642,7 @@ async def icp_save(
         "product_brief": product_brief,
         "source_urls": {"company_url": company_url.strip(), "product_url": product_url.strip()},
         "signals": signals,
-    }
+    })
     try:
         icp_profiles.save_icp_profile(profile, overwrite=bool(is_edit))
     except ValueError as exc:
