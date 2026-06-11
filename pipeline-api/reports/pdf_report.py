@@ -20,6 +20,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 import record_adapter
+from sales_export import _is_first_person_angle
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,7 @@ def _prepare_sales_record(rec: dict, review: dict) -> dict:
     sales_angles = rec.get("sales_angle") or []
     if isinstance(sales_angles, str):
         sales_angles = [sales_angles]
+    sales_angles = [a for a in sales_angles if not _is_first_person_angle(a)]
 
     return {
         "name": rec.get("practice_name") or rec.get("name") or "Unknown Practice",
@@ -333,6 +335,7 @@ def _prepare_record(rec: dict, review: dict) -> dict:
     sales_angles = rec.get("sales_angle") or []
     if isinstance(sales_angles, str):
         sales_angles = [sales_angles]
+    sales_angles = [a for a in sales_angles if not _is_first_person_angle(a)]
 
     brief = rec.get("call_brief") or {}
 

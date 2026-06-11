@@ -429,9 +429,12 @@ def _humanize_label(label: str) -> str:
 # Matched case-insensitively at the start of a bullet or anywhere in the text.
 _FIRST_PERSON_MARKERS = (
     "i noticed", "i wanted", "i see", "i found", "i recommend",
+    "i believe", "i think", "i suggest", "i'd", "i've", "i would",
     "we could", "we offer", "we can", "we should",
-    "you should", "you could", "you can", "you might",
+    "we'd", "we'll", "we would", "we suggest", "we recommend",
+    "you should", "you could", "you can", "you might", "you'll",
     "our product", "our solution", "our team",
+    "let me ", "let's ",
 )
 
 
