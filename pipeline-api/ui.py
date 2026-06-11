@@ -54,21 +54,13 @@ _jinja_env = Environment(
 # Expose presentation helpers to all templates as globals.
 _jinja_env.globals["friendly_error"] = lambda raw: _friendly_error(raw)
 
-_FIRST_PERSON_MARKERS = (
-    "i noticed", "i wanted", "i see", "i found", "i recommend",
-    "we could", "we offer", "we can", "we should",
-    "you should", "you could", "you can", "you might",
-    "our product", "our solution", "our team",
-)
-
-
 def _clean_angles(angles) -> list:
     """Strip first-person / rep-script bullets from a sales_angle list or string."""
     if not angles:
         return []
     if isinstance(angles, str):
         angles = [angles]
-    return [a for a in angles if not any(m in str(a).lower() for m in _FIRST_PERSON_MARKERS)]
+    return [a for a in angles if not sales_export._is_first_person_angle(str(a))]
 
 
 _jinja_env.filters["clean_angles"] = _clean_angles

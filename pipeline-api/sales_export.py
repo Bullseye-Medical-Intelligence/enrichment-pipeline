@@ -425,23 +425,31 @@ def _humanize_label(label: str) -> str:
     return label
 
 
-# Phrases that betray first-person or second-person framing in stored sales angles.
-# Matched case-insensitively at the start of a bullet or anywhere in the text.
-_FIRST_PERSON_MARKERS = (
-    "i noticed", "i wanted", "i see", "i found", "i recommend",
-    "i believe", "i think", "i suggest", "i'd", "i've", "i would",
-    "we could", "we offer", "we can", "we should",
-    "we'd", "we'll", "we would", "we suggest", "we recommend",
-    "you should", "you could", "you can", "you might", "you'll",
-    "our product", "our solution", "our team",
-    "let me ", "let's ",
+# Word-boundary anchored regex for first- and second-person framing detection.
+# \b guards prevent false matches inside longer words: "Miami sees" won't match
+# "i see", and "outlet's" won't match "let's".
+_FIRST_PERSON_RE = _re.compile(
+    r"\b(?:"
+    r"i\s+noticed|i\s+wanted|i\s+see|i\s+found|i\s+recommend"
+    r"|i\s+believe|i\s+think|i\s+suggest|i'd|i've|i\s+would"
+    r"|we\s+could|we\s+offer|we\s+can|we\s+should"
+    r"|we'd|we'll|we\s+would|we\s+suggest|we\s+recommend"
+    r"|you\s+should|you\s+could|you\s+can|you\s+might|you'll"
+    r"|our\s+product|our\s+solution|our\s+team"
+    r"|let\s+me|let's"
+    r")\b",
+    _re.IGNORECASE,
 )
 
 
 def _is_first_person_angle(text: str) -> bool:
-    """Return True if the angle text contains first- or second-person framing."""
-    lower = text.lower()
-    return any(marker in lower for marker in _FIRST_PERSON_MARKERS)
+    """Return True if the angle text contains first- or second-person framing.
+
+    Returns False for non-string input so callers need no type guard.
+    """
+    if not isinstance(text, str):
+        return False
+    return bool(_FIRST_PERSON_RE.search(text))
 
 
 def _sanitize_sales_angles(record: dict) -> dict:
