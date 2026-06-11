@@ -25,7 +25,7 @@ import sys
 
 from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE
 from enrichment.exclusion_checker import _assign_tier
-from enrichment.signal_extractor import _calculate_scores
+from enrichment.signal_extractor import _apply_reinforcement, _calculate_scores
 
 _VALID_STATES = ("yes", "no", "not_found")
 _VALID_CONFIDENCE = ("high", "medium", "low")
@@ -38,8 +38,11 @@ def simulate(icp_signals: list[dict], signal_states: dict, bullseye_min: int) ->
     operator's chosen outcome per signal. Signals with no chosen state default
     to not_found, matching how a real record scores an unobserved signal.
     """
-    scoring_signals = []
-    tier_signals = []
+    # Build a single merged signal list carrying both scoring fields (signal_state,
+    # confidence, state_inferred) and tiering flags (required_for_bullseye, etc.)
+    # so reinforcement, scoring, tiering, and exclusion all operate on the same
+    # objects and state_inferred propagates correctly through all three passes.
+    signals = []
     for icp_signal in icp_signals:
         sid = icp_signal["signal_id"]
         chosen = signal_states.get(sid) or {}
@@ -50,31 +53,44 @@ def simulate(icp_signals: list[dict], signal_states: dict, bullseye_min: int) ->
         if confidence not in _VALID_CONFIDENCE:
             confidence = "high"
 
-        scoring_signals.append({
-            "signal_id": sid,
-            "signal_state": state,
-            "confidence": confidence,
-            "state_inferred": False,
-        })
-        # Tiering reads the ICP flags off the signal object, so merge them in.
-        tier_signals.append({
+        signals.append({
             "signal_id": sid,
             "signal_label": icp_signal.get("signal_label", sid),
             "signal_state": state,
+            "confidence": confidence,
             "state_inferred": False,
             "required_for_bullseye": icp_signal.get("required_for_bullseye", False),
             "verification_required": icp_signal.get("verification_required", False),
             "cap_tier": icp_signal.get("cap_tier"),
             "floor_tier": icp_signal.get("floor_tier"),
+            "exclude_if_yes": bool(icp_signal.get("exclude_if_yes", False)),
         })
 
-    scores = _calculate_scores(scoring_signals, icp_signals)
+    # Reinforcement: a `reinforces` signal that is "yes" marks its not_found
+    # target as state_inferred, granting partial fit credit and skipping
+    # verification gates — must run before scoring and tiering.
+    _apply_reinforcement(signals, icp_signals)
+
+    scores = _calculate_scores(signals, icp_signals)
     record = {
         "enrichment_status": "complete",
         "source_confidence": "full",
-        "signals": tier_signals,
+        "signals": signals,
     }
     tier = _assign_tier(record, scores["bullseye_score"], bullseye_min)
+
+    # exclude_if_yes overrides tier — mirrors apply_exclusions in the real pipeline.
+    for sig in signals:
+        if sig.get("exclude_if_yes") and sig.get("signal_state") == "yes":
+            label = sig.get("signal_label") or sig["signal_id"]
+            return {
+                "bullseye_score": scores["bullseye_score"],
+                "fit_signal_score": scores["fit_signal_score"],
+                "confidence_score": scores["confidence_score"],
+                "tier": "Excluded",
+                "tier_cap_reason": f"{label} confirmed present (immediate exclusion).",
+            }
+
     return {
         "bullseye_score": scores["bullseye_score"],
         "fit_signal_score": scores["fit_signal_score"],

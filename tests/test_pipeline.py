@@ -2174,3 +2174,75 @@ class TestTokenUsageCapture:
         log = _json.loads(open(path, encoding="utf-8").read())
         assert "llm_input_tokens" not in log
         assert "llm_call_count" not in log
+
+
+class TestSimulator:
+    """simulate_icp.py — exclude_if_yes and reinforcement parity with real pipeline."""
+
+    _BASE_SIGNALS = [
+        {"signal_id": "S-1", "signal_label": "Clear aligners", "positive_weight": 35, "required_for_bullseye": True},
+        {"signal_id": "S-2", "signal_label": "Open scanner", "positive_weight": 28},
+        {"signal_id": "S-3", "signal_label": "Financing", "positive_weight": 22},
+        {"signal_id": "S-4", "signal_label": "Treats adults", "positive_weight": 15},
+        {"signal_id": "S-X", "signal_label": "Exclusion trigger", "positive_weight": 0, "exclude_if_yes": True},
+    ]
+
+    def _run(self, states, signals=None, bullseye_min=90):
+        from simulate_icp import simulate
+        return simulate(signals or self._BASE_SIGNALS, states, bullseye_min)
+
+    def test_exclude_if_yes_returns_excluded_tier(self):
+        states = {
+            "S-1": {"state": "yes", "confidence": "high"},
+            "S-2": {"state": "yes", "confidence": "high"},
+            "S-3": {"state": "yes", "confidence": "high"},
+            "S-4": {"state": "yes", "confidence": "high"},
+            "S-X": {"state": "yes", "confidence": "high"},
+        }
+        result = self._run(states)
+        assert result["tier"] == "Excluded"
+        assert "Exclusion trigger" in result["tier_cap_reason"]
+
+    def test_exclude_if_yes_not_fired_when_state_not_yes(self):
+        states = {
+            "S-1": {"state": "yes", "confidence": "high"},
+            "S-2": {"state": "yes", "confidence": "high"},
+            "S-3": {"state": "yes", "confidence": "high"},
+            "S-4": {"state": "yes", "confidence": "high"},
+            "S-X": {"state": "not_found", "confidence": "high"},
+        }
+        result = self._run(states)
+        assert result["tier"] == "Bullseye"
+
+    def test_reinforcement_grants_inference_credit(self):
+        """S-R reinforces S-2; when S-R is yes and S-2 is not_found, S-2 earns partial credit."""
+        signals = [
+            {"signal_id": "S-1", "signal_label": "Aligners", "positive_weight": 35, "required_for_bullseye": True},
+            {"signal_id": "S-2", "signal_label": "Open scanner", "positive_weight": 28},
+            {"signal_id": "S-R", "signal_label": "Competing brands", "positive_weight": 0, "reinforces": "S-2"},
+        ]
+        # With reinforcement: S-R yes → S-2 inferred → partial credit on S-2
+        result_with = self._run(
+            {"S-1": {"state": "yes", "confidence": "high"}, "S-R": {"state": "yes", "confidence": "high"}},
+            signals=signals, bullseye_min=50,
+        )
+        # Without reinforcement: S-R not_found → S-2 not_found → no credit
+        result_without = self._run(
+            {"S-1": {"state": "yes", "confidence": "high"}, "S-R": {"state": "not_found", "confidence": "high"}},
+            signals=signals, bullseye_min=50,
+        )
+        assert result_with["fit_signal_score"] > result_without["fit_signal_score"]
+
+    def test_reinforcement_skips_verification_gate(self):
+        """A verification_required signal that is state_inferred should not cap the tier."""
+        signals = [
+            {"signal_id": "S-1", "signal_label": "Aligners", "positive_weight": 35, "required_for_bullseye": True},
+            {"signal_id": "S-2", "signal_label": "Scanner", "positive_weight": 28, "verification_required": True},
+            {"signal_id": "S-R", "signal_label": "Competing brands", "positive_weight": 0, "reinforces": "S-2"},
+        ]
+        # S-R yes → S-2 inferred → verification gate skipped → Bullseye reachable
+        result = self._run(
+            {"S-1": {"state": "yes", "confidence": "high"}, "S-R": {"state": "yes", "confidence": "high"}},
+            signals=signals, bullseye_min=50,
+        )
+        assert result["tier"] == "Bullseye"
