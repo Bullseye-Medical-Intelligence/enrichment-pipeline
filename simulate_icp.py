@@ -64,6 +64,7 @@ def simulate(icp_signals: list[dict], signal_states: dict, bullseye_min: int) ->
             "cap_tier": icp_signal.get("cap_tier"),
             "floor_tier": icp_signal.get("floor_tier"),
             "exclude_if_yes": bool(icp_signal.get("exclude_if_yes", False)),
+            "inhibited_by": icp_signal.get("inhibited_by"),
         })
 
     # Reinforcement: a `reinforces` signal that is "yes" marks its not_found
@@ -80,8 +81,13 @@ def simulate(icp_signals: list[dict], signal_states: dict, bullseye_min: int) ->
     tier = _assign_tier(record, scores["bullseye_score"], bullseye_min)
 
     # exclude_if_yes overrides tier — mirrors apply_exclusions in the real pipeline.
+    # inhibited_by: when the named signal is also "yes", the exclusion is suppressed.
+    signal_states_map = {s["signal_id"]: s.get("signal_state") for s in signals}
     for sig in signals:
         if sig.get("exclude_if_yes") and sig.get("signal_state") == "yes":
+            inhibitor = sig.get("inhibited_by")
+            if inhibitor and signal_states_map.get(inhibitor) == "yes":
+                continue
             label = sig.get("signal_label") or sig["signal_id"]
             return {
                 "bullseye_score": scores["bullseye_score"],

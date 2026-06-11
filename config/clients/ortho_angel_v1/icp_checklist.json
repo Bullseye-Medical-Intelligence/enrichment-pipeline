@@ -4,7 +4,7 @@
     {
       "signal_id": "S-OA-001",
       "signal_label": "Clear aligners offered (non-Invisalign)",
-      "prompt_instruction": "Does this practice explicitly list clear aligner treatment as a service, using a brand OTHER than Invisalign — such as ClearCorrect, Spark, SureSmile, Angel Aligner, or similar? Do NOT mark 'yes' if Invisalign is the only aligner brand mentioned.",
+      "prompt_instruction": "Does this practice explicitly list clear aligner treatment as a service, using a brand OTHER than Invisalign \u2014 such as ClearCorrect, Spark, SureSmile, Angel Aligner, or similar? Do NOT mark 'yes' if Invisalign is the only aligner brand mentioned.",
       "positive_weight": 35,
       "required_for_bullseye": true,
       "note": "Primary clinical-fit gate. A 'yes' requires at least one non-Invisalign aligner brand listed. Invisalign-only practices do not satisfy this gate. Confirmed 'no' caps at Contender; not_found caps at Needs Verification."
@@ -12,23 +12,23 @@
     {
       "signal_id": "S-OA-002",
       "signal_label": "Open intraoral scanner present",
-      "prompt_instruction": "Does this practice's website name a brand-agnostic intraoral scanner — 3Shape Trios, Medit, Primescan, Carestream, or a similar open-STL scanner — as equipment they use? Do NOT count iTero; iTero is captured by a separate signal.",
+      "prompt_instruction": "Does this practice's website name a brand-agnostic intraoral scanner \u2014 3Shape Trios, Medit, Primescan, Carestream, or a similar open-STL scanner \u2014 as equipment they use? Do NOT count iTero; iTero is captured by a separate signal.",
       "positive_weight": 28,
-      "note": "Digital-readiness signal, open-ecosystem only. A brand-agnostic scanner exports open STL files and slots directly into Angel's workflow with no equipment change. iTero is deliberately excluded — it is Align Technology's scanner and is scored separately as friction."
+      "note": "Digital-readiness signal, open-ecosystem only. A brand-agnostic scanner exports open STL files and slots directly into Angel's workflow with no equipment change. iTero is deliberately excluded \u2014 it is Align Technology's scanner and is scored separately as friction."
     },
     {
       "signal_id": "S-OA-019",
       "signal_label": "iTero scanner (Align ecosystem)",
       "prompt_instruction": "Does this practice's website name the iTero intraoral scanner as equipment they use?",
       "positive_weight": -15,
-      "note": "FRICTION. iTero is Align Technology's proprietary scanner — an iTero-only practice has its digital workflow built around Invisalign. A practice naming both iTero and an open scanner nets positive (S-OA-002 + this), correctly reading as multi-path."
+      "note": "FRICTION. iTero is Align Technology's proprietary scanner \u2014 an iTero-only practice has its digital workflow built around Invisalign. A practice naming both iTero and an open scanner nets positive (S-OA-002 + this), correctly reading as multi-path."
     },
     {
       "signal_id": "S-OA-003",
       "signal_label": "Patient financing visible",
       "prompt_instruction": "Does this practice's website explicitly mention patient financing, payment plans, or third-party financing partners such as CareCredit, LendingClub, or similar?",
       "positive_weight": 22,
-      "note": "Value-tier consult-capture signal. Financing visibility indicates the practice converts cost-sensitive patients — Angel's margin argument lands here."
+      "note": "Value-tier consult-capture signal. Financing visibility indicates the practice converts cost-sensitive patients \u2014 Angel's margin argument lands here."
     },
     {
       "signal_id": "S-OA-004",
@@ -40,7 +40,7 @@
     {
       "signal_id": "S-OA-005",
       "signal_label": "Independent practice",
-      "prompt_instruction": "Does this appear to be an independently owned orthodontic practice — not part of a DSO, not hospital-owned, and not affiliated with a dental school?",
+      "prompt_instruction": "Does this appear to be an independently owned orthodontic practice \u2014 not part of a DSO, not hospital-owned, and not affiliated with a dental school?",
       "positive_weight": 10,
       "note": "THE WEDGE. Independence means direct budget authority, faster device adoption, and no committee purchasing layer."
     },
@@ -50,15 +50,16 @@
       "prompt_instruction": "Does this practice display an Invisalign Diamond, Diamond Plus, or Top 1% provider badge or tier designation, AND does the site NOT list any clear aligner brand other than Invisalign (such as ClearCorrect, Spark, SureSmile, or similar)? Mark 'yes' only when BOTH conditions are true: high-tier badge present AND no competing aligner brands mentioned.",
       "positive_weight": 0,
       "exclude_if_yes": true,
-      "note": "HARD EXCLUSION — high-tier Align lock with no multi-brand evidence. Commercially unreachable: volume incentives, iTero workflow dependency, staff alignment to a single system. If the practice also lists competing brands alongside the badge, S-OA-020 fires instead and routes to Contender."
+      "note": "HARD EXCLUSION \u2014 high-tier Align lock with no multi-brand evidence. Commercially unreachable: volume incentives, iTero workflow dependency, staff alignment to a single system. If the practice also lists competing brands alongside the badge, S-OA-020 fires instead and routes to Contender.",
+      "inhibited_by": "S-OA-020"
     },
     {
       "signal_id": "S-OA-020",
       "signal_label": "Invisalign high-tier with multi-brand offering",
-      "prompt_instruction": "Does this practice display an Invisalign Diamond, Diamond Plus, or Top 1% provider badge or tier designation AND also explicitly list at least one clear aligner brand other than Invisalign — such as ClearCorrect, Spark, SureSmile, or similar — as an offered treatment? Mark 'yes' only when BOTH conditions are true: high-tier badge present AND at least one competing aligner brand also listed.",
+      "prompt_instruction": "Does this practice display an Invisalign Diamond, Diamond Plus, or Top 1% provider badge or tier designation AND also explicitly list at least one clear aligner brand other than Invisalign \u2014 such as ClearCorrect, Spark, SureSmile, or similar \u2014 as an offered treatment? Mark 'yes' only when BOTH conditions are true: high-tier badge present AND at least one competing aligner brand also listed.",
       "positive_weight": 0,
       "cap_tier": "Contender",
-      "note": "ROUTING FLAG — high-tier Align practice that has already opened its aligner stack. Pitch shifts to lab-fee delta on cost-sensitive consults. Capped at Contender. Mutually exclusive with S-OA-006: exactly one fires when a high-tier badge is present."
+      "note": "ROUTING FLAG \u2014 high-tier Align practice that has already opened its aligner stack. Pitch shifts to lab-fee delta on cost-sensitive consults. Capped at Contender. Mutually exclusive with S-OA-006: exactly one fires when a high-tier badge is present."
     },
     {
       "signal_id": "S-OA-007",
@@ -66,12 +67,12 @@
       "prompt_instruction": "Does this practice's website or any named affiliation identify it as part of a Dental Service Organization (DSO) or corporate dental group?",
       "positive_weight": 0,
       "cap_tier": "Contender",
-      "note": "ROUTING FLAG — not a hard exclusion. Caps tier at Contender; buying authority sits at corporate level."
+      "note": "ROUTING FLAG \u2014 not a hard exclusion. Caps tier at Contender; buying authority sits at corporate level."
     },
     {
       "signal_id": "S-OA-008",
       "signal_label": "General dentist only",
-      "prompt_instruction": "Does this practice appear to offer only general dentistry with no orthodontic specialty — no mention of braces, clear aligners, orthodontist on staff, or orthodontic credentials?",
+      "prompt_instruction": "Does this practice appear to offer only general dentistry with no orthodontic specialty \u2014 no mention of braces, clear aligners, orthodontist on staff, or orthodontic credentials?",
       "positive_weight": 0,
       "exclude_if_yes": true,
       "note": "Hard exclusion for V1."
@@ -90,7 +91,7 @@
       "prompt_instruction": "Does this practice explicitly identify itself as an Angel Aligner or Angelalign Technology provider or partner?",
       "positive_weight": 0,
       "exclude_if_yes": true,
-      "note": "Hard exclusion — new-logo acquisition only."
+      "note": "Hard exclusion \u2014 new-logo acquisition only."
     },
     {
       "signal_id": "S-OA-011",
@@ -110,7 +111,7 @@
     {
       "signal_id": "S-OA-013",
       "signal_label": "Competing aligner brands listed",
-      "prompt_instruction": "Does this practice list any clear aligner brands other than Invisalign — such as ClearCorrect, Spark, Reveal, or SureSmile — as offered treatments?",
+      "prompt_instruction": "Does this practice list any clear aligner brands other than Invisalign \u2014 such as ClearCorrect, Spark, Reveal, or SureSmile \u2014 as offered treatments?",
       "positive_weight": 0,
       "reinforces": "S-OA-002",
       "note": "Multi-brand aligner presence is the lowest-friction adoption signal for Angel. Reinforces the open-scanner signal: Spark, ClearCorrect, and SureSmile all run on open STL workflows."
@@ -139,7 +140,7 @@
     {
       "signal_id": "S-OA-017",
       "signal_label": "Markets aligners actively",
-      "prompt_instruction": "Does this practice appear to actively market clear aligners — through dedicated aligner landing pages, before/after aligner case galleries, or aligner-specific call-to-action messaging?",
+      "prompt_instruction": "Does this practice appear to actively market clear aligners \u2014 through dedicated aligner landing pages, before/after aligner case galleries, or aligner-specific call-to-action messaging?",
       "positive_weight": 0,
       "note": "Contextual capture. Active aligner marketing signals high patient demand and openness to expanding the aligner product offering."
     },
@@ -150,5 +151,6 @@
       "positive_weight": 0,
       "note": "Contextual capture. Review mentions confirm active aligner use independent of website marketing claims."
     }
-  ]
+  ],
+  "contact_strategy": "Prefer a named treatment coordinator or lead hygienist when one appears on the site \u2014 they see patient satisfaction, struggling cases, and scanner reliability in real time, and workflow friction beats brand loyalty in their purchase influence. The reason phrase should reference what makes their job easier (case workflow, scanning, patient experience). If neither role is named, prefer the practice owner or lead orthodontist; fall back to the first listed provider."
 }

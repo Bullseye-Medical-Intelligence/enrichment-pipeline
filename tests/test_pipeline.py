@@ -2246,3 +2246,48 @@ class TestSimulator:
             signals=signals, bullseye_min=50,
         )
         assert result["tier"] == "Bullseye"
+
+    def test_inhibited_by_suppresses_exclusion_when_inhibitor_yes(self):
+        """exclude_if_yes is suppressed when the inhibited_by signal is also yes."""
+        signals = [
+            {"signal_id": "S-1", "signal_label": "Aligners", "positive_weight": 35, "required_for_bullseye": True},
+            {"signal_id": "S-2", "signal_label": "Scanner", "positive_weight": 28},
+            # S-EX is the exclusion signal; S-INH is its inhibitor
+            {"signal_id": "S-EX", "signal_label": "High tier exclusive", "positive_weight": 0,
+             "exclude_if_yes": True, "inhibited_by": "S-INH"},
+            {"signal_id": "S-INH", "signal_label": "Competing brands present", "positive_weight": 0,
+             "cap_tier": "Contender"},
+        ]
+        # Both S-EX and S-INH yes → inhibitor fires → exclusion suppressed → Contender via cap_tier
+        result = self._run(
+            {
+                "S-1": {"state": "yes", "confidence": "high"},
+                "S-2": {"state": "yes", "confidence": "high"},
+                "S-EX": {"state": "yes", "confidence": "high"},
+                "S-INH": {"state": "yes", "confidence": "high"},
+            },
+            signals=signals, bullseye_min=50,
+        )
+        assert result["tier"] == "Contender"
+
+    def test_inhibited_by_does_not_suppress_when_inhibitor_not_yes(self):
+        """exclude_if_yes fires normally when the inhibited_by signal is not yes."""
+        signals = [
+            {"signal_id": "S-1", "signal_label": "Aligners", "positive_weight": 35, "required_for_bullseye": True},
+            {"signal_id": "S-2", "signal_label": "Scanner", "positive_weight": 28},
+            {"signal_id": "S-EX", "signal_label": "High tier exclusive", "positive_weight": 0,
+             "exclude_if_yes": True, "inhibited_by": "S-INH"},
+            {"signal_id": "S-INH", "signal_label": "Competing brands present", "positive_weight": 0,
+             "cap_tier": "Contender"},
+        ]
+        # S-EX yes, S-INH not_found → exclusion fires
+        result = self._run(
+            {
+                "S-1": {"state": "yes", "confidence": "high"},
+                "S-2": {"state": "yes", "confidence": "high"},
+                "S-EX": {"state": "yes", "confidence": "high"},
+                "S-INH": {"state": "not_found", "confidence": "high"},
+            },
+            signals=signals, bullseye_min=50,
+        )
+        assert result["tier"] == "Excluded"

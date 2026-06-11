@@ -154,6 +154,19 @@ def validate_icp_profile(data: dict) -> None:
                     f"ICP signal #{i + 1} 'reinforces' references unknown signal_id "
                     f"'{signal['reinforces']}'."
                 )
+        if "inhibited_by" in signal:
+            if not isinstance(signal["inhibited_by"], str) or not signal["inhibited_by"]:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'inhibited_by' must be a non-empty signal_id string."
+                )
+            if signal["inhibited_by"] not in signal_ids:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'inhibited_by' references unknown signal_id "
+                    f"'{signal['inhibited_by']}'."
+                )
+    # Profile-level optional fields.
+    if "contact_strategy" in data and not isinstance(data.get("contact_strategy"), str):
+        raise ValueError("ICP profile 'contact_strategy' must be a string.")
 
 
 def get_icp_profile(icp_profile_id: str) -> dict:

@@ -170,9 +170,7 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     if final_rank < TIER_RANK["Bullseye"]:
         reasons = [reason for _cap_rank, reason in sorted(caps, key=lambda c: c[0])]
         if score < bullseye_min:
-            reasons.append(
-                f"Score {score} is below the Bullseye threshold ({bullseye_min})."
-            )
+            reasons.append("Score is below the Bullseye threshold.")
         if reasons:
             record["tier_cap_reason"] = " ".join(reasons)
 
@@ -363,8 +361,15 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
     # Signal-driven hard exclusion: any confirmed "yes" signal flagged
     # exclude_if_yes in the ICP profile is an immediate disqualifier (e.g.
     # telehealth-only). Generic — the engine never names the concept itself.
+    # inhibited_by: when the named signal_id is also "yes", this exclusion is
+    # suppressed — used for mutually-exclusive pairs where the companion
+    # signal's "yes" logically invalidates this one.
+    signal_states = {s.get("signal_id"): s.get("signal_state") for s in record.get("signals", [])}
     for sig in record.get("signals", []):
         if sig.get("exclude_if_yes") and sig.get("signal_state") == "yes":
+            inhibitor = sig.get("inhibited_by")
+            if inhibitor and signal_states.get(inhibitor) == "yes":
+                continue
             rule = sig.get("signal_id") or "signal_exclusion"
             if rule not in triggered:
                 triggered.append(rule)
