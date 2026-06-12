@@ -85,6 +85,33 @@ def _load_json_config(path: str) -> dict:
         return json.load(f)
 
 
+def _validate_icp_signals(icp_signals: list[dict]) -> None:
+    """Raise ValueError if any ICP signal is misconfigured.
+
+    Runs before any crawl or LLM spend so config errors fail fast.
+    """
+    signal_ids = {s.get("signal_id") for s in icp_signals if isinstance(s, dict)}
+    for i, sig in enumerate(icp_signals):
+        if not isinstance(sig, dict):
+            raise ValueError(f"ICP signal #{i + 1} must be an object.")
+        sid = sig.get("signal_id")
+        if not sid:
+            raise ValueError(f"ICP signal #{i + 1} is missing 'signal_id'.")
+        if "positive_weight" not in sig or not isinstance(sig["positive_weight"], (int, float)) or isinstance(sig["positive_weight"], bool):
+            raise ValueError(f"ICP signal {sid!r} 'positive_weight' must be numeric.")
+        if sig.get("source_type") == "static_lookup":
+            raise ValueError(
+                f"ICP signal {sid!r} has source_type=static_lookup, which is not "
+                "implemented. Remove source_type from the ICP profile before running."
+            )
+        for ref_field in ("reinforces", "inhibited_by"):
+            ref = sig.get(ref_field)
+            if ref and ref not in signal_ids:
+                raise ValueError(
+                    f"ICP signal {sid!r} '{ref_field}' references unknown signal_id {ref!r}."
+                )
+
+
 def _deduplicate_records(records: list[dict]) -> tuple[list[dict], int]:
     """
     Deduplicate records by ID.
@@ -408,11 +435,14 @@ def run_pipeline(input_file: str, source_type: str,
         print(f"Limit:   {limit} records")
     print(f"{'='*60}\n")
 
-    # Load configs
+    # Load and validate configs — fail before any crawl or LLM spend.
     print("Loading configuration...")
     run_config = _load_json_config(config_path)
     icp_data = _load_json_config(icp_path)
     icp_signals = icp_data.get("signals", [])
+    if not isinstance(icp_signals, list) or not icp_signals:
+        raise ValueError(f"ICP config at {icp_path} has no signals.")
+    _validate_icp_signals(icp_signals)
 
     timeout = run_config.get("request_timeout_seconds", 15)
     retries = run_config.get("request_retries", 3)

@@ -11,9 +11,10 @@ public websites, and outputs `enriched_targets.json` for dashboard import.
 
 The pipeline takes a list of medical practices from an Outscraper CSV or manual CSV,
 visits each practice's public website, sends the text to Claude (Anthropic API) for
-signal analysis, and produces a scored, structured output file. Records that score
-high enough (≥ 90 by default) are additionally verified by a second LLM (OpenAI GPT)
-as a quality gate. The output file is imported into the review dashboard for human QC.
+signal analysis, and produces a scored, structured output file. Borderline and
+low-confidence Bullseye records may receive selective verification by a second LLM
+(OpenAI GPT) — thin-context records and high-confidence Bullseyes are skipped to
+avoid wasted spend. The output file is imported into the review dashboard for human QC.
 
 ---
 
