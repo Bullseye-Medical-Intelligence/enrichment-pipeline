@@ -1287,17 +1287,43 @@ def _load_evidence_entry(record_dir: Path, url: str) -> tuple[dict | None, str]:
         return entry, ""
 
 
-def _highlight_snapshot(text: str, quote: str) -> tuple[Markup, bool]:
-    """Escape the snapshot text and <mark> the first occurrence of quote.
+def _excerpt_snapshot(
+    text: str, quote: str, context: int = 200
+) -> tuple[Markup, Markup, bool]:
+    """Return (excerpt_html, full_html, found).
 
-    Returns (safe_html, found). Escapes both sides before matching so the
-    output is XSS-safe regardless of what the crawled page contained.
+    excerpt_html: ~context chars before and after the matched quote with <mark>.
+    full_html: complete text with <mark>.
+    Slicing runs on raw text before escaping so entity boundaries are never split.
+    When the quote is not found both return values are the full escaped text.
     """
-    safe = str(jinja_escape(text))
-    needle = str(jinja_escape((quote or "").strip()))
-    if needle and needle in safe:
-        return Markup(safe.replace(needle, f"<mark>{needle}</mark>", 1)), True
-    return Markup(safe), False
+    q = (quote or "").strip()
+    found = bool(q and q in text)
+
+    if found:
+        idx = text.index(q)
+        start = max(0, idx - context)
+        end = min(len(text), idx + len(q) + context)
+        prefix = "… " if start > 0 else ""
+        suffix = " …" if end < len(text) else ""
+        excerpt_raw = prefix + text[start:end] + suffix
+    else:
+        excerpt_raw = text
+
+    escaped_q = str(jinja_escape(q)) if q else ""
+
+    def _mark(t: str) -> Markup:
+        safe = str(jinja_escape(t))
+        if escaped_q and escaped_q in safe:
+            safe = safe.replace(
+                escaped_q,
+                f'<mark style="background:#fef08a;padding:0 2px;border-radius:2px;">'
+                f"{escaped_q}</mark>",
+                1,
+            )
+        return Markup(safe)
+
+    return _mark(excerpt_raw), _mark(text), found
 
 
 @router.get("/dashboard/{run_id}/evidence/{record_id}", response_class=HTMLResponse)
@@ -1322,13 +1348,14 @@ async def evidence_snapshot_page(
     if record_dir is not None and record_dir.exists():
         entry, text = _load_evidence_entry(record_dir, url)
 
-    snapshot_html, quote_found = _highlight_snapshot(text, q)
+    excerpt_html, snapshot_html, quote_found = _excerpt_snapshot(text, q)
     return _render(
         "evidence_snapshot.html",
         username=username,
         run_id=run_id,
         record_id=record_id,
         entry=entry,
+        excerpt_html=excerpt_html,
         snapshot_html=snapshot_html,
         quote=q,
         quote_found=quote_found,

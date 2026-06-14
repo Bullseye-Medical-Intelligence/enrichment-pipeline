@@ -473,20 +473,20 @@ class TestEvidenceVaultHelpers:
         assert text == ""  # basename "passwd" does not exist in the vault dir
 
     def test_highlight_wraps_quote_and_escapes_html(self):
-        from ui import _highlight_snapshot
-        html, found = _highlight_snapshot(
+        from ui import _excerpt_snapshot
+        excerpt_html, full_html, found = _excerpt_snapshot(
             "Before <script>alert(1)</script> we offer IUD insertion here.",
             "IUD insertion",
         )
         assert found
-        assert "<mark>IUD insertion</mark>" in str(html)
-        assert "<script>" not in str(html)
+        assert "<mark" in str(full_html) and "IUD insertion" in str(full_html)
+        assert "<script>" not in str(full_html)
 
     def test_highlight_missing_quote_reports_not_found(self):
-        from ui import _highlight_snapshot
-        html, found = _highlight_snapshot("Some page text.", "cash pay")
+        from ui import _excerpt_snapshot
+        excerpt_html, full_html, found = _excerpt_snapshot("Some page text.", "cash pay")
         assert not found
-        assert "<mark>" not in str(html)
+        assert "<mark>" not in str(full_html)
 
 
 # ---------------------------------------------------------------------------

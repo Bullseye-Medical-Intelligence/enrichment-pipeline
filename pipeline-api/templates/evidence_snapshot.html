@@ -19,8 +19,17 @@
   {% endif %}
 
   <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-top:2px solid #c84b2f;border-radius:8px;padding:20px 24px;">
-    <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-bottom:10px;">Page text as captured</div>
-    <div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;color:#0a0a0a;">{{ snapshot_html }}</div>
+    <div style="display:flex;align-items:center;margin-bottom:10px;">
+      <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;">Page text as captured</span>
+      {% if quote and quote_found %}
+      <button id="toggle-btn" onclick="toggleView()" style="margin-left:auto;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;border:1px solid #0a0a0a;border-radius:100px;padding:4px 14px;cursor:pointer;color:#0a0a0a;">Show full page text</button>
+      {% endif %}
+    </div>
+
+    <div id="view-excerpt" style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;color:#0a0a0a;">{{ excerpt_html }}</div>
+    {% if quote and quote_found %}
+    <div id="view-full" style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;color:#0a0a0a;display:none;">{{ snapshot_html }}</div>
+    {% endif %}
   </div>
 
   {% else %}
@@ -34,4 +43,18 @@
     <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
   </div>
 </div>
+
+{% if quote and quote_found %}
+<script>
+function toggleView() {
+  var btn = document.getElementById('toggle-btn');
+  var exc = document.getElementById('view-excerpt');
+  var full = document.getElementById('view-full');
+  var showingFull = full.style.display !== 'none';
+  exc.style.display = showingFull ? '' : 'none';
+  full.style.display = showingFull ? 'none' : '';
+  btn.textContent = showingFull ? 'Show full page text' : 'Show excerpt';
+}
+</script>
+{% endif %}
 {% endblock %}
