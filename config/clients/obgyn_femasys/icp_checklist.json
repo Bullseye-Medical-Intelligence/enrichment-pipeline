@@ -1,11 +1,12 @@
 {
-  "version": "icp-v1",
+  "version": "obgyn-femasys-v6",
   "signals": [
     {
       "signal_id": "S-ICP-001",
-      "signal_label": "IUD insertion listed",
-      "prompt_instruction": "Does this practice explicitly list IUD insertion as a service on their website?",
-      "positive_weight": 15
+      "signal_label": "IUI listed",
+      "prompt_instruction": "Does this practice explicitly list IUI (intrauterine insemination) as a service on their website?",
+      "positive_weight": 20,
+      "note": "Core office-procedure signal and direct Femasys procedure fit \u2014 confirms in-office reproductive procedure capability."
     },
     {
       "signal_id": "S-ICP-002",
@@ -13,7 +14,7 @@
       "prompt_instruction": "Is there a reproductive endocrinologist (REI) listed as a provider on staff at this practice?",
       "positive_weight": 0,
       "exclude_if_yes": true,
-      "note": "Hard disqualifier — REI presence confirms a specialized fertility center, not the office-based OBGYN profile Femasys fits. NPI structural gate pre-filters via taxonomy_exclusion_rules; this signal catches any that reach the LLM pass."
+      "note": "Hard disqualifier \u2014 REI presence confirms a specialized fertility center, not the office-based OBGYN profile Femasys fits. NPI structural gate pre-filters via taxonomy_exclusion_rules; this signal catches any that reach the LLM pass."
     },
     {
       "signal_id": "S-ICP-003",
@@ -27,7 +28,7 @@
       "prompt_instruction": "Does this practice operate its own in-house IVF or ART (assisted reproductive technology) program?",
       "positive_weight": -15,
       "cap_tier": "Contender",
-      "note": "Friction signal — hard caps at Contender; in-house IVF/ART routes patients to lab-based pathways, not office-based devices"
+      "note": "Friction signal \u2014 hard caps at Contender; in-house IVF/ART routes patients to lab-based pathways, not office-based devices"
     },
     {
       "signal_id": "S-ICP-005",
@@ -53,7 +54,7 @@
       "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
       "positive_weight": -30,
       "cap_tier": "Needs Verification",
-      "note": "Friction signal — caps tier at Needs Verification for operator review"
+      "note": "Friction signal \u2014 caps tier at Needs Verification for operator review"
     },
     {
       "signal_id": "S-ICP-009",
@@ -62,7 +63,15 @@
       "positive_weight": 20,
       "no_weight": -15,
       "required_for_bullseye": false,
-      "note": "Cash-pay readiness — commercial-fit signal for adoption velocity; tunable, not yet a gate."
+      "note": "Cash-pay readiness \u2014 commercial-fit signal for adoption velocity; tunable, not yet a gate."
+    },
+    {
+      "signal_id": "S-ICP-010",
+      "signal_label": "In-house ultrasound",
+      "prompt_instruction": "Does this practice have in-house ultrasound capability? Look for mentions of office-based ultrasound, sonography, pelvic ultrasound, or ultrasound-guided procedures performed at the practice.",
+      "positive_weight": 22,
+      "not_found_weight": -8,
+      "note": "Strong fit signal \u2014 Femasys devices require ultrasound guidance. In-house capability means the practice can use the product without patient referral for imaging."
     }
   ]
 }

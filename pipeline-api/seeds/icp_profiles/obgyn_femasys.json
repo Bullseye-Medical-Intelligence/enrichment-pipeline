@@ -1,21 +1,30 @@
 {
   "icp_id": "obgyn_femasys",
-  "name": "Femasys — OBGYN Office-Based Procedures",
-  "version": "obgyn-femasys-v5",
+  "name": "Femasys \u2014 OBGYN Office-Based Procedures",
+  "version": "obgyn-femasys-v6",
   "default_specialty": "OBGYN",
-  "default_geography": ["TX", "FL", "GA"],
-  "default_exclusion_rules": ["rei_on_staff", "wrong_specialty", "outside_geography", "no_web_presence"],
+  "default_geography": [
+    "TX",
+    "FL",
+    "GA"
+  ],
+  "default_exclusion_rules": [
+    "rei_on_staff",
+    "wrong_specialty",
+    "outside_geography",
+    "no_web_presence"
+  ],
   "client": "Femasys",
   "product": "Femasys",
-  "description": "Independent, office-based OBGYN / women's health practices that perform in-office gynecologic procedures (IUD insertion, contraception counseling, infertility workup, hormone/PCOS management) and are NOT high-acuity fertility centers. The ideal target is a physician-owned general OBGYN practice with an established office-procedure patient flow but no in-house IVF program and no reproductive endocrinologist on staff — those route patients to specialized ART pathways rather than office-based devices. Hospital or health-system affiliation is friction (procurement and budget authority sit elsewhere).",
-  "scoring_notes": "Office-based gynecologic procedure volume is the qualifier; independence is the wedge. REI on staff and in-house IVF are negative signals — they indicate a specialized fertility center rather than the general-OBGYN office-procedure profile Femasys fits. Hospital/health-system affiliation caps tier at Needs Verification for operator review. bullseye_min_score is high (90) by design: a Bullseye requires strong, broad office-procedure fit, not a single matched service line.",
+  "description": "Independent, office-based OBGYN / women's health practices that perform in-office gynecologic procedures (IUI (intrauterine insemination), contraception counseling, infertility workup, hormone/PCOS management) and are NOT high-acuity fertility centers. The ideal target is a physician-owned general OBGYN practice with an established office-procedure patient flow but no in-house IVF program and no reproductive endocrinologist on staff \u2014 those route patients to specialized ART pathways rather than office-based devices. Hospital or health-system affiliation is friction (procurement and budget authority sit elsewhere).",
+  "scoring_notes": "Office-based gynecologic procedure volume is the qualifier; independence is the wedge. REI on staff and in-house IVF are negative signals \u2014 they indicate a specialized fertility center rather than the general-OBGYN office-procedure profile Femasys fits. Hospital/health-system affiliation caps tier at Needs Verification for operator review. bullseye_min_score is high (90) by design: a Bullseye requires strong, broad office-procedure fit, not a single matched service line.",
   "signals": [
     {
       "signal_id": "S-ICP-001",
-      "signal_label": "IUD insertion listed",
-      "prompt_instruction": "Does this practice explicitly list IUD insertion as a service on their website?",
-      "positive_weight": 15,
-      "note": "Core office-procedure signal — confirms in-office gynecologic procedure flow."
+      "signal_label": "IUI listed",
+      "prompt_instruction": "Does this practice explicitly list IUI (intrauterine insemination) as a service on their website?",
+      "positive_weight": 20,
+      "note": "Core office-procedure signal and direct Femasys procedure fit \u2014 confirms in-office reproductive procedure capability."
     },
     {
       "signal_id": "S-ICP-002",
@@ -23,7 +32,7 @@
       "prompt_instruction": "Is there a reproductive endocrinologist (REI) listed as a provider on staff at this practice?",
       "positive_weight": 0,
       "exclude_if_yes": true,
-      "note": "Hard disqualifier — REI presence confirms a specialized fertility center, not the office-based OBGYN profile Femasys fits. NPI structural gate pre-filters via taxonomy_exclusion_rules; this signal catches any that reach the LLM pass."
+      "note": "Hard disqualifier \u2014 REI presence confirms a specialized fertility center, not the office-based OBGYN profile Femasys fits. NPI structural gate pre-filters via taxonomy_exclusion_rules; this signal catches any that reach the LLM pass."
     },
     {
       "signal_id": "S-ICP-003",
@@ -38,7 +47,7 @@
       "prompt_instruction": "Does this practice operate its own in-house IVF or ART (assisted reproductive technology) program?",
       "positive_weight": -15,
       "cap_tier": "Contender",
-      "note": "Friction signal — hard caps at Contender. In-house IVF/ART routes patients to specialized lab and male-factor pathways; Femasys targets office-based women's health procedures."
+      "note": "Friction signal \u2014 hard caps at Contender. In-house IVF/ART routes patients to specialized lab and male-factor pathways; Femasys targets office-based women's health procedures."
     },
     {
       "signal_id": "S-ICP-005",
@@ -68,7 +77,7 @@
       "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
       "positive_weight": -30,
       "cap_tier": "Needs Verification",
-      "note": "Friction signal — caps tier at Needs Verification for operator review. Procurement and budget authority sit with the parent system, not the practice."
+      "note": "Friction signal \u2014 caps tier at Needs Verification for operator review. Procurement and budget authority sit with the parent system, not the practice."
     },
     {
       "signal_id": "S-ICP-009",
@@ -77,7 +86,15 @@
       "positive_weight": 20,
       "no_weight": -15,
       "required_for_bullseye": false,
-      "note": "Cash-pay readiness — commercial-fit signal for adoption velocity; tunable, not yet a gate."
+      "note": "Cash-pay readiness \u2014 commercial-fit signal for adoption velocity; tunable, not yet a gate."
+    },
+    {
+      "signal_id": "S-ICP-010",
+      "signal_label": "In-house ultrasound",
+      "prompt_instruction": "Does this practice have in-house ultrasound capability? Look for mentions of office-based ultrasound, sonography, pelvic ultrasound, or ultrasound-guided procedures performed at the practice.",
+      "positive_weight": 22,
+      "not_found_weight": -8,
+      "note": "Strong fit signal \u2014 Femasys devices require ultrasound guidance. In-house capability means the practice can use the product without patient referral for imaging."
     }
   ]
 }
