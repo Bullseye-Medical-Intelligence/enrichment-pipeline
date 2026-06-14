@@ -282,6 +282,94 @@ async def orchestrate_run(
     return run_id, row_count
 
 
+async def orchestrate_rerun(
+    source_run_id: str,
+    operator: str,
+    background_tasks,
+) -> str:
+    """Create a new full enrichment run using an existing run's input.csv.
+
+    Re-snapshots the current project config and ICP so any edits made since the
+    original run are picked up. Skips CSV re-validation (the file was already
+    validated when the source run started). Returns the new run_id.
+
+    Raises ValueError if the source run, its CSV, or its project cannot be found,
+    or if the concurrent-run cap is reached.
+    """
+    source_status = runs.get_run(source_run_id)
+    if source_status is None:
+        raise ValueError(f"Source run '{source_run_id}' not found.")
+
+    source_csv = runs.run_dir(source_run_id) / "input.csv"
+    if not source_csv.exists():
+        raise ValueError(f"Input CSV for run '{source_run_id}' is missing.")
+
+    active = runs.count_active_runs()
+    if active >= MAX_CONCURRENT_RUNS:
+        raise ValueError(
+            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+            "Wait for a run to finish before starting another."
+        )
+
+    project_id = source_status.project_id
+    project_config = projects.get_project(project_id)
+    if project_config is None:
+        raise ValueError(f"Project '{project_id}' no longer exists.")
+    projects.validate_project_config(project_config)
+    icp_profile = icp_profiles.get_icp_profile(project_config["icp_profile_id"])
+
+    content = source_csv.read_bytes()
+    run_id = runs.generate_run_id()
+    run_directory = OUTPUT_RUNS_PATH / run_id
+    run_directory.mkdir(parents=True, exist_ok=True)
+    (run_directory / "input.csv").write_bytes(content)
+
+    config_snapshot = run_directory / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot = run_directory / ICP_SNAPSHOT_FILENAME
+
+    supp_path = projects.suppression_list_path(project_id)
+    if supp_path.exists():
+        _write_json(config_snapshot, {**project_config, "suppression_list_path": str(supp_path)})
+    else:
+        _write_json(config_snapshot, project_config)
+    _write_json(icp_snapshot, icp_profile)
+
+    runs.create_run(
+        run_id=run_id,
+        project_id=project_id,
+        source_type=source_status.source_type,
+        input_filename=source_status.input_filename or "input.csv",
+        operator=operator,
+        records_input=source_status.records_input,
+        metadata={
+            "client_name": project_config.get("client_name"),
+            "product_name": project_config.get("product_name"),
+            "target_specialty": project_config.get("target_specialty"),
+            "target_geography": project_config.get("target_geography") or [],
+            "icp_profile_id": project_config.get("icp_profile_id"),
+            "icp_profile_name": icp_profile.get("name"),
+            "icp_profile_version": icp_profile.get("version"),
+        },
+    )
+
+    process = spawn_pipeline(
+        run_id,
+        run_directory / "input.csv",
+        source_status.source_type,
+        run_directory,
+        config_snapshot,
+        icp_snapshot,
+    )
+    runs.update_run_status(run_id, status="running")
+    background_tasks.add_task(monitor_pipeline, run_id, process)
+
+    logger.info(
+        "Run %s (re-run of %s) started by '%s' (%d rows)",
+        run_id, source_run_id, operator, source_status.records_input,
+    )
+    return run_id
+
+
 async def orchestrate_ingest(
     file,
     source_type: str,

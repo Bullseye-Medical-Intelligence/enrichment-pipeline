@@ -1689,6 +1689,27 @@ async def retry_with_browser(
     return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
 
 
+@router.post("/runs/{run_id}/rerun")
+async def rerun(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Start a fresh full enrichment run using this run's original input CSV."""
+    try:
+        new_run_id = await runner.orchestrate_rerun(
+            source_run_id=run_id,
+            operator=username,
+            background_tasks=background_tasks,
+        )
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice={e}&notice_type=error", status_code=303
+        )
+    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+
+
 @router.post("/runs/{run_id}/enrich-all")
 async def enrich_all(
     run_id: str,

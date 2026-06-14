@@ -86,6 +86,11 @@
       {% if status.status == "complete" %}
       <a href="/dashboard/{{ run_id }}/link-check" class="btn btn-secondary" title="Verify evidence source links still resolve before shipping a deliverable.">Check Evidence Links</a>
       {% endif %}
+      {% if status.status in ("complete", "failed") %}
+      <form method="post" action="/runs/{{ run_id }}/rerun" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+        <button type="submit" class="btn btn-secondary" title="Start a new enrichment run using this run's original input file and the current project config.">Re-run</button>
+      </form>
+      {% endif %}
       <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
     </div>
     {% else %}
