@@ -36,9 +36,20 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 from config import OUTPUT_RUNS_PATH
+# Matching/normalization is shared with registry_update via practice_matching —
+# the single source of truth (MATCHING_NOTES.md). Imported under the existing
+# private names so the call sites below are unchanged.
+import practice_matching
+from practice_matching import (
+    normalize_domain as _normalize_domain,
+    normalize_phone as _normalize_phone,
+    normalize_name as _normalize_name,
+    normalize_address as _normalize_address,
+    name_address_key as _name_address_key,
+    build_match_indexes as _build_indexes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,48 +97,8 @@ def _first(row: dict, cols: tuple[str, ...]) -> str:
     return ""
 
 
-# ---------------------------------------------------------------------------
-# Normalization
-# DUPLICATED: registry_update.py carries an identical copy of these helpers and
-# the match priority. Any change here MUST be mirrored there. See MATCHING_NOTES.md.
-# ---------------------------------------------------------------------------
-
-def _normalize_domain(url: str) -> str:
-    """Extract bare hostname from a URL; strip www. and port."""
-    if not url:
-        return ""
-    try:
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-        host = urlparse(url).netloc.lower()
-        # Strip port
-        host = host.split(":")[0]
-        if host.startswith("www."):
-            host = host[4:]
-        return host
-    except Exception:
-        return ""
-
-
-def _normalize_phone(phone: str) -> str:
-    """Strip everything except digits; keep last 10 (US standard)."""
-    digits = re.sub(r"\D", "", phone or "")
-    return digits[-10:] if len(digits) >= 10 else digits
-
-
-def _normalize_name(name: str) -> str:
-    """Lowercase, strip punctuation, collapse whitespace."""
-    s = re.sub(r"[^\w\s]", " ", (name or "").lower())
-    return re.sub(r"\s+", " ", s).strip()
-
-
-def _normalize_address(full_address: str, city: str, state: str, zip_: str) -> str:
-    """Concatenate available address parts into one normalized string."""
-    if full_address:
-        combined = full_address.lower()
-    else:
-        combined = " ".join(p.lower() for p in (city, state, zip_) if p)
-    return re.sub(r"[^\w\s]", " ", combined).strip()
+# Normalization helpers (_normalize_*) are imported from practice_matching
+# (above) under their existing private names. See MATCHING_NOTES.md.
 
 
 # ---------------------------------------------------------------------------
@@ -169,38 +140,8 @@ def save_registry(registry: dict) -> None:
     os.replace(tmp, REGISTRY_PATH)
 
 
-# ---------------------------------------------------------------------------
-# In-memory indexes
-# ---------------------------------------------------------------------------
-
-def _build_indexes(entries: dict) -> dict:
-    """Build four lookup dicts from entries (entry_id → entry dict)."""
-    by_place_id: dict[str, str] = {}
-    by_domain: dict[str, str] = {}
-    by_phone: dict[str, str] = {}
-    by_name_address: dict[str, str] = {}
-    for entry_id, entry in entries.items():
-        if pid := (entry.get("google_place_id") or ""):
-            by_place_id[pid] = entry_id
-        if dom := (entry.get("website_domain") or ""):
-            by_domain[dom] = entry_id
-        if ph := (entry.get("phone_digits") or ""):
-            by_phone[ph] = entry_id
-        na = _name_address_key(
-            entry.get("name_normalized") or "",
-            entry.get("address_normalized") or "",
-        )
-        if na:
-            by_name_address[na] = entry_id
-    return {"place_id": by_place_id, "domain": by_domain,
-            "phone": by_phone, "name_address": by_name_address}
-
-
-def _name_address_key(name_norm: str, addr_norm: str) -> str:
-    """Composite lookup key; empty when both sides are empty."""
-    if not name_norm and not addr_norm:
-        return ""
-    return f"{name_norm}|{addr_norm}"
+# In-memory indexes (_build_indexes) and name_address_key are imported from
+# practice_matching (above). See MATCHING_NOTES.md.
 
 
 # ---------------------------------------------------------------------------
@@ -242,27 +183,12 @@ def find_match(
     indexes: dict,
     entries: dict,
 ) -> tuple[Optional[str], Optional[str]]:
-    """Return (entry_id, match_basis) for the best registry match, or (None, None)."""
-    if pid := row_fields.get("google_place_id"):
-        if pid in indexes["place_id"]:
-            return indexes["place_id"][pid], "google_place_id"
+    """Return (entry_id, match_basis) for the best registry match, or (None, None).
 
-    if dom := row_fields.get("website_domain"):
-        if dom in indexes["domain"]:
-            return indexes["domain"][dom], "website_domain"
-
-    ph = row_fields.get("phone_digits") or ""
-    if len(ph) >= 10 and ph in indexes["phone"]:
-        return indexes["phone"][ph], "phone"
-
-    na = _name_address_key(
-        row_fields.get("name_normalized") or "",
-        row_fields.get("address_normalized") or "",
-    )
-    if na and na in indexes["name_address"]:
-        return indexes["name_address"][na], "name_address"
-
-    return None, None
+    Legacy 3-arg shim → practice_matching.find_match (the shared source of truth).
+    `entries` is unused (kept for signature compatibility with old callers).
+    """
+    return practice_matching.find_match(row_fields, indexes)
 
 
 def _detect_changes(row_fields: dict, entry: dict) -> list[dict]:

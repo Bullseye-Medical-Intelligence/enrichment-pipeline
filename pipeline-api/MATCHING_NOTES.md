@@ -1,41 +1,49 @@
-# Practice Matching — Architecture Note (known tech debt)
+# Practice Matching — Architecture Note
 
-Status: **documented, not yet refactored.** Do not refactor opportunistically;
-treat this as a tracked TODO with a guarding regression test.
+Status: **API-side duplication resolved.** There is now one API-side source of
+truth: `pipeline-api/practice_matching.py`. One copy remains in the engine, by
+necessity (see below).
 
-## The duplication
+## The single source of truth (API side)
 
-Practice-matching normalization and the match-priority logic currently live in
-**two API-level places** (plus the engine copy behind the subprocess boundary):
+`pipeline-api/practice_matching.py` owns all API-side normalization + match logic:
+`normalize_domain`, `normalize_phone`, `normalize_name`, `normalize_address`,
+`name_address_key`, `build_match_indexes`, `match_candidates`, `find_match`
+(first-priority-wins, for discovery delta) and `match_with_ambiguity`
+(ambiguity-aware, for registry update). It imports nothing from the enrichment
+pipeline and nothing from the repo-root `discovery` package — it is pure, I/O-free,
+and config-free.
 
-1. `pipeline-api/discovery.py` — `_normalize_domain`, `_normalize_phone`,
-   `_normalize_name`, `_normalize_address`, `_name_address_key`,
-   `_build_indexes`, `find_match`.
-   **Legacy / non-runtime.** Since the persistent discovery-runs flow shipped,
-   nothing imports this module at runtime — the live flow is `discovery_runs.py`
-   (which runs the repo-root `discovery` package via `discovery_cli.py`). The file
-   is kept only because `tests/test_matching_parity.py` loads it by path to guard
-   the duplication, and deleting/refactoring it is out of scope. Do not add new
-   runtime behavior here; its `compute_delta` / `preregister_discovery_rows` /
-   `upsert_from_run` helpers are dead code retained for reference.
+Both API consumers import from it (no local copies remain):
 
-2. `pipeline-api/registry_update.py` — the same-named helpers plus
-   `_build_indexes` and `match_entry`.
-   Used by the explicit registry-update endpoint
-   (`POST /enrichment-runs/{run_id}/update-registry`).
+1. `pipeline-api/registry_update.py` — imports the helpers under their existing
+   private names (`_normalize_domain`, `_build_indexes`, `match_entry =
+   match_with_ambiguity`, …). Used by `POST /enrichment-runs/{run_id}/update-registry`.
 
-3. (For completeness) `discovery/matcher.py` in the repo-root `discovery`
-   package — the discovery engine's own copy, reached only via the
-   `discovery_cli.py` **subprocess** boundary, never imported by the API.
+2. `pipeline-api/discovery.py` — **legacy / non-runtime.** Nothing imports it at
+   runtime (the live discovery flow is `discovery_runs.py` → `discovery_cli.py` →
+   the repo-root `discovery` package). It now imports the shared helpers too, and
+   its `find_match` is a thin shim onto `practice_matching.find_match`. The file is
+   retained only because `tests/test_matching_parity.py` loads it by path to prove
+   it still delegates to the shared util. Its `compute_delta` /
+   `preregister_discovery_rows` / `upsert_from_run` helpers are dead code retained
+   for reference. Do not add new runtime behavior here.
 
-### Why it is duplicated (not a mistake)
+## The remaining copy: the engine
+
+`discovery/matcher.py` in the repo-root `discovery` package is the discovery
+**engine's** own copy, reached only via the `discovery_cli.py` **subprocess**
+boundary — the API never imports it. This copy cannot be merged with
+`practice_matching.py` without crossing that boundary (which is forbidden), so it
+stays separate **by necessity**. It must be kept behaviorally consistent with
+`practice_matching.py` by hand.
+
+### Why the API/engine split exists
 
 The module name `discovery` is shared by `pipeline-api/discovery.py` and the
-repo-root `discovery/` package, so importing matching helpers across that
-boundary is fragile (the wrong module can win in `sys.modules`). The project
-already duplicates shared constants at the API boundary for the same reason
-(e.g. `ALL_KNOWN_EXCLUSION_RULE_NAMES` in `config.py`). Reimplementing the small
-matching helpers locally was the deliberate, lower-risk choice.
+repo-root `discovery/` package, so importing across that boundary is fragile (the
+wrong module can win in `sys.modules`) — and crossing the subprocess boundary is
+disallowed regardless. Hence one API-side util + one engine-side copy.
 
 ## Invariants that MUST hold across all copies
 
@@ -51,25 +59,28 @@ matching helpers locally was the deliberate, lower-risk choice.
 
 ## The rule for future changes
 
-**Any change to normalization or match priority MUST be applied to every
-API-level copy in the same change** (`discovery.py` and `registry_update.py`),
-and kept consistent with the engine copy in `discovery/matcher.py`. A change to
-one copy alone is a bug: discovery and registry update would silently disagree
-about whether two practices are "the same".
+**Change API-side matching in exactly one place: `practice_matching.py`.** Both
+`discovery.py` and `registry_update.py` import from it, so they cannot drift. The
+only manual-sync obligation that remains is keeping the **engine copy**
+(`discovery/matcher.py`) behaviorally consistent — if you change the priority or
+normalization, mirror it there too.
 
-`tests/test_matching_parity.py` guards this: it asserts the two API-level copies
-produce identical normalization output and identical match decisions for a
-representative input set. If you intentionally change matching, update both
-copies and update that test in the same commit.
+`tests/test_matching_parity.py` guards this: it asserts (by identity) that both
+`discovery.py` and `registry_update.py` use the `practice_matching` functions, and
+covers the matcher's behavior + the fixed priority directly. If you intentionally
+change matching, update `practice_matching.py` and this test in the same commit
+(and mirror the engine copy).
 
-## Long-term fix
+## Status of the long-term fix
 
-Extract a single **API-safe** matching utility (e.g.
-`pipeline-api/practice_matching.py`) that both `discovery.py` and
-`registry_update.py` import. It must NOT import enrichment-pipeline internals and
-must NOT import the repo-root `discovery` package (subprocess-only boundary).
-Once that exists, delete the duplicated helpers and point the parity test at the
-single source.
+**Done (API side):** the shared `practice_matching.py` utility now exists and both
+API consumers import it; the duplicated local helpers were removed. It imports no
+enrichment internals and not the repo-root `discovery` package.
+
+**Remaining:** the engine copy (`discovery/matcher.py`) stays separate by
+necessity (subprocess boundary). `discovery.py` is now a thin legacy shim and
+becomes deletable once `tests/test_matching_parity.py` no longer needs to load it
+by path to prove delegation.
 
 ## Known limitation: `google_place_id` is lost on the enrichment path
 

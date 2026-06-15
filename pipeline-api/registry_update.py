@@ -33,7 +33,6 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
@@ -41,6 +40,18 @@ from fastapi.responses import JSONResponse
 import auth
 import record_adapter
 import runs
+# Matching/normalization is shared with discovery via practice_matching — the
+# single source of truth (MATCHING_NOTES.md). These aliases keep the existing
+# private call sites in this module unchanged.
+from practice_matching import (
+    normalize_domain as _normalize_domain,
+    normalize_phone as _normalize_phone,
+    normalize_name as _normalize_name,
+    normalize_address as _normalize_address,
+    name_address_key as _name_address_key,
+    build_match_indexes as _build_indexes,
+    match_with_ambiguity as match_entry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,51 +83,8 @@ def registry_path() -> Path:
     return runs.OUTPUT_RUNS_PATH.parent / REGISTRY_FILENAME
 
 
-# ---------------------------------------------------------------------------
-# Normalization (mirrors discovery's matching priority)
-# DUPLICATED: discovery.py carries an identical copy. Any change here MUST be
-# mirrored there, and stay consistent with discovery/matcher.py (the engine copy
-# behind the subprocess boundary). See MATCHING_NOTES.md.
-# ---------------------------------------------------------------------------
-
-def _normalize_domain(url: str) -> str:
-    """Extract bare hostname from a URL; strip scheme, www., and port."""
-    if not url:
-        return ""
-    try:
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-        host = urlparse(url).netloc.lower().split(":")[0]
-        return host[4:] if host.startswith("www.") else host
-    except Exception:
-        return ""
-
-
-def _normalize_phone(phone: str) -> str:
-    """Strip non-digits; keep the last 10 (US standard)."""
-    digits = re.sub(r"\D", "", phone or "")
-    return digits[-10:] if len(digits) >= 10 else digits
-
-
-def _normalize_name(name: str) -> str:
-    """Lowercase, strip punctuation, collapse whitespace."""
-    s = re.sub(r"[^\w\s]", " ", (name or "").lower())
-    return re.sub(r"\s+", " ", s).strip()
-
-
-def _normalize_address(full_address: str, city: str, state: str, zip_: str) -> str:
-    """Concatenate available address parts into one normalized string."""
-    combined = full_address.lower() if full_address else " ".join(
-        p.lower() for p in (city, state, zip_) if p
-    )
-    return re.sub(r"[^\w\s]", " ", combined).strip()
-
-
-def _name_address_key(name_norm: str, addr_norm: str) -> str:
-    """Composite lookup key; empty when both sides are empty."""
-    if not name_norm and not addr_norm:
-        return ""
-    return f"{name_norm}|{addr_norm}"
+# Normalization + name_address_key are imported from practice_matching (above)
+# under their existing private names, so all call sites in this module are unchanged.
 
 
 # ---------------------------------------------------------------------------
@@ -163,55 +131,9 @@ def save_registry(registry: dict, path: Path) -> None:
         raise
 
 
-# ---------------------------------------------------------------------------
-# Indexing & matching
-# ---------------------------------------------------------------------------
-
-def _build_indexes(entries: dict) -> dict:
-    """Build the four lookup dicts from registry entries (entry_id → entry)."""
-    idx = {"place_id": {}, "domain": {}, "phone": {}, "name_address": {}}
-    for entry_id, entry in entries.items():
-        if pid := (entry.get("google_place_id") or ""):
-            idx["place_id"][pid] = entry_id
-        if dom := (entry.get("website_domain") or ""):
-            idx["domain"][dom] = entry_id
-        if ph := (entry.get("phone_digits") or ""):
-            idx["phone"][ph] = entry_id
-        na = _name_address_key(entry.get("name_normalized") or "",
-                               entry.get("address_normalized") or "")
-        if na:
-            idx["name_address"][na] = entry_id
-    return idx
-
-
-def match_entry(fields: dict, indexes: dict) -> tuple[Optional[str], bool]:
-    """Return (entry_id, ambiguous).
-
-    entry_id is the best match by discovery priority, or None. ambiguous is True
-    when different identifiers point to *different* existing entries — the caller
-    rejects those as needs_manual_merge rather than guessing.
-    """
-    candidates: list[str] = []
-    pid = fields.get("google_place_id") or ""
-    if pid and pid in indexes["place_id"]:
-        candidates.append(indexes["place_id"][pid])
-    dom = fields.get("website_domain") or ""
-    if dom and dom in indexes["domain"]:
-        candidates.append(indexes["domain"][dom])
-    ph = fields.get("phone_digits") or ""
-    if len(ph) >= 10 and ph in indexes["phone"]:
-        candidates.append(indexes["phone"][ph])
-    na = _name_address_key(fields.get("name_normalized") or "",
-                           fields.get("address_normalized") or "")
-    if na and na in indexes["name_address"]:
-        candidates.append(indexes["name_address"][na])
-
-    distinct = list(dict.fromkeys(candidates))
-    if not distinct:
-        return None, False
-    if len(distinct) > 1:
-        return None, True
-    return distinct[0], False
+# Indexing (_build_indexes) and matching (match_entry) are imported from
+# practice_matching (above). _build_indexes = build_match_indexes;
+# match_entry = match_with_ambiguity. See MATCHING_NOTES.md.
 
 
 # ---------------------------------------------------------------------------
