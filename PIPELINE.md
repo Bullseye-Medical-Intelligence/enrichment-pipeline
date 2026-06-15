@@ -594,6 +594,11 @@ Optional keys:
 - `subpage_keywords`: relevance keywords for subpage crawl scoring. Keep
   specialty-specific terms here, never hardcoded in source. Omit to use the
   generic default set in `extraction/web_extractor.py:DEFAULT_SUBPAGE_KEYWORDS`.
+  Within the per-practice page budget, candidate pages are ranked by page-type
+  value (services/procedures/treatments highest, then provider bios, then
+  about/contact); operator-supplied specialty terms default to the high tier.
+  Blog/news/taxonomy/careers paths are skipped even when their slug matches a
+  keyword.
 
 Env: `LLM_REQUEST_TIMEOUT_SECONDS` (default 60) caps every Claude/GPT call so a
 stalled socket can never hang a run.

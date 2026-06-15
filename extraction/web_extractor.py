@@ -46,6 +46,33 @@ DEFAULT_SUBPAGE_KEYWORDS = [
     "speciali", "contact",
 ]
 
+# Subpage-relevance weights by page-type value (higher = crawl first). A page
+# naming a service, procedure, or treatment is first-hand evidence of clinical
+# capability; provider/people pages (bios) come next; administrative pages
+# (about, contact) are weakest. This mirrors the evidence hierarchy the
+# signal-extraction prompt applies, so the limited per-practice page budget is
+# spent on the pages that carry the most scoring weight. Any keyword not listed
+# here (operator-supplied specialty terms from run_config "subpage_keywords")
+# defaults to the high tier, since those are intentional clinical/service terms.
+SUBPAGE_KEYWORD_WEIGHTS = {
+    "about": 1, "our-practice": 1, "contact": 1, "care": 1,
+    "team": 2, "our-team": 2, "staff": 2,
+    "provider": 2, "providers": 2, "physician": 2, "physicians": 2, "doctor": 2,
+    "service": 3, "services": 3, "procedure": 3, "procedures": 3,
+    "treatment": 3, "treatments": 3, "speciali": 3,
+}
+DEFAULT_SUBPAGE_KEYWORD_WEIGHT = 3
+
+# URL path segments that mark non-evidence pages (blog posts, news, taxonomy,
+# careers). These can still match a specialty subpage keyword in their slug
+# (e.g. /blog/iui-explained matches "iui"), so without this filter a blog post
+# could consume a crawl slot meant for a services or provider page. Matched as
+# whole path segments, so a real "/services" page is never caught.
+SKIP_PATH_SEGMENTS = frozenset({
+    "blog", "news", "events", "press", "careers", "jobs",
+    "category", "categories", "tag", "tags", "author", "authors",
+})
+
 # Max characters of text to extract per page (before combining)
 MAX_CHARS_PER_PAGE = 8000
 
@@ -216,12 +243,20 @@ def _extract_visible_text(html: str) -> str:
     return cleaned[:MAX_CHARS_PER_PAGE]
 
 
+def _subpage_keyword_weight(keyword: str) -> int:
+    """Page-value weight for a subpage keyword (higher = crawled first)."""
+    return SUBPAGE_KEYWORD_WEIGHTS.get(keyword, DEFAULT_SUBPAGE_KEYWORD_WEIGHT)
+
+
 def _find_relevant_subpages(html: str, base_url: str,
                               max_pages: int = 5,
                               keywords: list[str] = None) -> list[str]:
     """
     Parse the homepage HTML and find internal links to relevant subpages.
-    Returns a list of absolute URLs to crawl (excluding base_url itself).
+    Returns a list of absolute URLs to crawl (excluding base_url itself),
+    ranked by page-type value so the strongest-evidence pages (services,
+    procedures, provider bios) are crawled before weaker ones (about, contact)
+    within the page budget.
     """
     if not html:
         return []
@@ -233,7 +268,7 @@ def _find_relevant_subpages(html: str, base_url: str,
     parsed_base = urlparse(base_url)
     base_domain = parsed_base.netloc.lower()
 
-    candidates = {}  # url -> relevance score
+    candidates = {}  # url -> (max_keyword_weight, total_keyword_weight)
 
     for a_tag in soup.find_all("a", href=True):
         href = a_tag.get("href", "").strip()
@@ -255,16 +290,24 @@ def _find_relevant_subpages(html: str, base_url: str,
         if abs_url == base_url.rstrip("/"):
             continue
 
-        # Score by keyword presence in URL path + link text
+        # Skip blog/news/taxonomy/careers pages even when their slug happens to
+        # match a keyword - they are not first-hand evidence of capability.
+        path_segments = {seg for seg in parsed.path.lower().split("/") if seg}
+        if path_segments & SKIP_PATH_SEGMENTS:
+            continue
+
+        # Score by keyword value in URL path + link text. Rank by the highest-
+        # value page type matched (max), then by how many keywords match (sum),
+        # so a focused /procedures page outranks a keyword-rich /about-our-team.
         combined = f"{parsed.path.lower()} {link_text}"
-        score = sum(1 for kw in keywords if kw in combined)
+        matched = [_subpage_keyword_weight(kw) for kw in keywords if kw in combined]
 
-        if score > 0 and abs_url not in candidates:
-            candidates[abs_url] = score
+        if matched and abs_url not in candidates:
+            candidates[abs_url] = (max(matched), sum(matched))
 
-    # Sort by relevance score, take top N (excluding base)
+    # Rank by (top page-type value, total value), descending; reserve 1 slot for homepage.
     sorted_urls = sorted(candidates.keys(), key=lambda u: candidates[u], reverse=True)
-    return sorted_urls[: max_pages - 1]  # reserve 1 slot for homepage
+    return sorted_urls[: max_pages - 1]
 
 
 def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
