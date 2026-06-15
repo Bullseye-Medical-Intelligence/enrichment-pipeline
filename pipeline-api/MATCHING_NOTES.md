@@ -34,10 +34,11 @@ stays separate **by necessity**. It must be kept behaviorally consistent with
 
 ### Why the API/engine split exists
 
-The module name `discovery` is shared by `pipeline-api/discovery.py` and the
-repo-root `discovery/` package, so importing across that boundary is fragile (the
-wrong module can win in `sys.modules`) — and crossing the subprocess boundary is
-disallowed regardless. Hence one API-side util + one engine-side copy.
+The subprocess boundary between the API and the repo-root `discovery` package is
+intentional and permanent (same isolation model as enrichment). The module name
+`discovery` was also shared with the now-deleted `pipeline-api/discovery.py`, which
+made direct imports fragile. Both reasons remain: one API-side util + one
+engine-side copy.
 
 ## Invariants that MUST hold across all copies
 

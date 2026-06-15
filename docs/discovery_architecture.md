@@ -61,8 +61,8 @@ enrichment pipeline (this repo's CLI: pipeline.py, enrichment/, discovery/ packa
 The discovery engine lives in the repo-root `discovery` package. The API spawns
 `discovery_cli.py` (cwd = repo root) so the engine runs in a clean process. This
 keeps the API/engine boundary identical to enrichment and sidesteps a module-name
-collision: `pipeline-api/discovery.py` (a legacy, non-runtime file) shares the
-name `discovery` with the repo-root package.
+collision: a `discovery` module name conflict existed with the now-deleted
+`pipeline-api/discovery.py` legacy shim.
 
 ## The persistent discovery-runs flow (current)
 
@@ -77,9 +77,9 @@ API endpoints (`pipeline-api/discovery_runs.py`):
 UI (`pipeline-api/ui.py`, server-rendered): `/discovery` landing,
 `/discovery/runs/{id}` results, `/discovery/runs/{id}/send`.
 
-> Legacy note: `pipeline-api/discovery.py` (the older in-memory `compute_delta`
-> flow) is no longer used at runtime. It is retained only because the matching
-> parity test loads it by path. See `pipeline-api/MATCHING_NOTES.md`.
+> The older `pipeline-api/discovery.py` (in-memory `compute_delta` flow) has
+> been deleted. The persistent discovery flow described above replaced it entirely.
+> See `pipeline-api/MATCHING_NOTES.md`.
 
 ## Matching
 
