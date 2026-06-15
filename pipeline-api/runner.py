@@ -135,18 +135,10 @@ async def monitor_pipeline(
                     **counts,
                 )
                 logger.info("Run %s finished with status '%s'", run_id, success_status)
-                if success_status == "complete":
-                    try:
-                        import discovery
-                        enriched_path = OUTPUT_RUNS_PATH / run_id / "enriched_targets.json"
-                        await loop.run_in_executor(
-                            None, discovery.upsert_from_run, run_id, enriched_path
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to update practice registry for run %s",
-                            run_id, exc_info=True,
-                        )
+                # The master practice registry is NOT updated here. Registry
+                # updates are explicit, operator-triggered actions only
+                # (POST /enrichment-runs/{run_id}/update-registry) so a completed
+                # run never mutates platform-level memory without review.
         else:
             error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
             runs.update_run_status(

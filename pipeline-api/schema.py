@@ -57,6 +57,11 @@ class RunStatus(BaseModel):
     source_discovery_run_id: Optional[str] = None
     source_discovery_selection_count: Optional[int] = None
     source_discovery_selection_mode: Optional[str] = None
+    # Explicit registry update (set by POST /enrichment-runs/{id}/update-registry).
+    # None until an operator has pushed this run's records into the registry.
+    registry_updated_at: Optional[str] = None
+    registry_update_count: Optional[int] = None
+    registry_update_log_path: Optional[str] = None
 
 
 class RunSummary(BaseModel):

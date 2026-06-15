@@ -177,6 +177,10 @@ app.include_router(ui_router)
 from discovery_runs import router as discovery_runs_router  # noqa: E402
 app.include_router(discovery_runs_router)
 
+# Register explicit registry-update route (operator-triggered, never automatic)
+from registry_update import router as registry_update_router  # noqa: E402
+app.include_router(registry_update_router)
+
 
 # ---------------------------------------------------------------------------
 # Exception handlers
