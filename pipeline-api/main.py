@@ -173,6 +173,10 @@ async def add_security_headers(request: Request, call_next):
 from ui import router as ui_router  # noqa: E402 — after app creation
 app.include_router(ui_router)
 
+# Register Discovery Run routes (Market Radar: upload CSV, compare to registry)
+from discovery_runs import router as discovery_runs_router  # noqa: E402
+app.include_router(discovery_runs_router)
+
 
 # ---------------------------------------------------------------------------
 # Exception handlers

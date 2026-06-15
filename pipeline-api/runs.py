@@ -149,6 +149,11 @@ def list_runs(
         try:
             with open(status_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            # Discovery runs share the runs/ directory but are not enrichment
+            # runs (no enriched_targets.json, different status.json shape). Keep
+            # them out of the enrichment run listing so the dashboard is unaffected.
+            if data.get("run_type") == "discovery":
+                continue
             archived = bool(data.get("archived", False))
             if archived and not include_archived:
                 continue

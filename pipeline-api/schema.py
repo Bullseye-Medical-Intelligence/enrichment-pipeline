@@ -86,6 +86,34 @@ class RunCreateResponse(BaseModel):
     status: str
 
 
+class DiscoveryRunSummary(BaseModel):
+    """Summary of a discovery run, returned by the /discovery-runs endpoints.
+
+    A discovery run compares an uploaded Outscraper CSV against the master
+    practice registry; it performs no enrichment, scoring, or LLM work. Counts
+    are per-classification (new / changed / known / possible duplicate /
+    insufficient data). output_paths maps each artifact name to its filename
+    inside the run directory.
+    """
+
+    run_id: str
+    run_type: str = "discovery"
+    status: str  # complete | failed
+    source_type: str = "outscraper"
+    created_at: str
+    completed_at: Optional[str] = None
+    operator: str = ""
+    input_filename: str = ""
+    total_imported: int = 0
+    new_count: int = 0
+    changed_count: int = 0
+    known_count: int = 0
+    possible_duplicate_count: int = 0
+    insufficient_data_count: int = 0
+    output_paths: dict[str, str] = {}
+    error_summary: str = ""
+
+
 class ErrorResponse(BaseModel):
     """Standard error response body."""
 
