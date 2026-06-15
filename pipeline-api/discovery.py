@@ -2,6 +2,18 @@
 discovery.py
 Market Radar / Discovery: delta detection against the master practice registry.
 
+LEGACY / NON-RUNTIME MODULE — nothing imports this at runtime anymore. The
+persistent discovery flow (the one wired into the API and UI) lives in
+`discovery_runs.py` (which drives the repo-root `discovery` package via
+`discovery_cli.py`). This file is retained only because:
+  - tests/test_matching_parity.py loads it by path to assert its normalization
+    and match priority stay identical to registry_update.py (see MATCHING_NOTES.md);
+  - deleting/refactoring it is out of scope for the current work.
+
+Do NOT add new runtime behavior here. New discovery/registry behavior belongs in
+`discovery_runs.py` / `registry_update.py`. If the matching helpers below change,
+update the parity test and the other copies per MATCHING_NOTES.md.
+
 Compares an uploaded Outscraper CSV against master_practice_registry.json to
 classify each row as new, changed, or known. Selected rows flow into the existing
 enrichment subprocess path unchanged.

@@ -11,8 +11,13 @@ Practice-matching normalization and the match-priority logic currently live in
 1. `pipeline-api/discovery.py` — `_normalize_domain`, `_normalize_phone`,
    `_normalize_name`, `_normalize_address`, `_name_address_key`,
    `_build_indexes`, `find_match`.
-   Used by Market Radar delta (`compute_delta`), `preregister_discovery_rows`,
-   and `upsert_from_run`.
+   **Legacy / non-runtime.** Since the persistent discovery-runs flow shipped,
+   nothing imports this module at runtime — the live flow is `discovery_runs.py`
+   (which runs the repo-root `discovery` package via `discovery_cli.py`). The file
+   is kept only because `tests/test_matching_parity.py` loads it by path to guard
+   the duplication, and deleting/refactoring it is out of scope. Do not add new
+   runtime behavior here; its `compute_delta` / `preregister_discovery_rows` /
+   `upsert_from_run` helpers are dead code retained for reference.
 
 2. `pipeline-api/registry_update.py` — the same-named helpers plus
    `_build_indexes` and `match_entry`.
