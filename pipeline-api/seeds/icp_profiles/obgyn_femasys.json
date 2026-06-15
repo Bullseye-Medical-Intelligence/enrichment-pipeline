@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys",
   "name": "Femasys \u2014 OBGYN Office-Based Procedures",
-  "version": "obgyn-femasys-v6",
+  "version": "obgyn-femasys-v7",
   "default_specialty": "OBGYN",
   "default_geography": [
     "TX",
@@ -95,6 +95,14 @@
       "positive_weight": 22,
       "not_found_weight": -8,
       "note": "Strong fit signal \u2014 Femasys devices require ultrasound guidance. In-house capability means the practice can use the product without patient referral for imaging."
+    },
+    {
+      "signal_id": "S-ICP-011",
+      "signal_label": "Elective / aesthetic cash-pay service line",
+      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Look for: vaginal rejuvenation or energy-based intimate devices (for example Votiva, ThermiVa, MonaLisa Touch, FemiLift, diVa, Emsella); aesthetic gynecology or cosmetic genital surgery (labiaplasty, vaginoplasty, labial reduction); a co-located med spa or aesthetic center; injectable aesthetics (Botox, Dysport, dermal fillers); body contouring (CoolSculpting, Emsculpt, truSculpt); energy-based skin devices or laser hair removal; or keepsake or elective 3D/4D ultrasound packages. Answer yes only when one or more such services are explicitly named on the site.",
+      "positive_weight": 0,
+      "reinforces": "S-ICP-009",
+      "note": "Strong definitional cash-pay proxy. Elective aesthetic services are patient-pay in routine commercial practice, so their presence confirms direct-billing infrastructure even when no explicit cash-pay language appears on the site. Weight 0: it works purely by inferring S-ICP-009 (cash-pay readiness) when that signal is not directly stated, mirroring the open-aligner reinforcement pattern, so it does not independently inflate fit."
     }
   ]
 }
