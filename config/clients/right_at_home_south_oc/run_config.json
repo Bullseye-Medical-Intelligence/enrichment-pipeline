@@ -7,5 +7,6 @@
   "allowed_zips": ["92660", "92661", "92662", "92663", "92861", "92886", "92887"],
   "bullseye_min_score": 75,
   "contender_min_score": 50,
+  "io_concurrency": 10,
   "notes": "Internal Medicine and Family Medicine require geriatric_signal_confirmed = yes to advance past Gate 3. Geriatric Medicine passes Gate 3 automatically."
 }
