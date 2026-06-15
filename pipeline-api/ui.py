@@ -1998,6 +1998,136 @@ async def publish_brief_route(
     return JSONResponse({"public_url": result["public_url"]})
 
 
+# ---------------------------------------------------------------------------
+# Market Radar / Discovery routes
+# ---------------------------------------------------------------------------
+
+@router.get("/discovery", response_class=HTMLResponse)
+async def discovery_page(
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Render the Market Radar upload form."""
+    return _render(
+        "discovery.html",
+        username=username,
+        projects=projects.list_projects(),
+        delta=None,
+        discovery_id=None,
+        error=None,
+    )
+
+
+@router.post("/discovery/upload")
+async def discovery_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    username: str = Depends(auth.require_session),
+):
+    """Accept an Outscraper CSV, compute the delta, and render results."""
+    import discovery as disc
+
+    content = await file.read()
+    try:
+        new_rows, changed_rows, known_rows = disc.compute_delta(content)
+    except Exception as exc:
+        logger.warning("discovery_upload: delta computation failed", exc_info=True)
+        return _render(
+            "discovery.html",
+            status_code=400,
+            username=username,
+            projects=projects.list_projects(),
+            delta=None,
+            discovery_id=None,
+            error=f"Could not parse CSV: {exc}",
+        )
+
+    discovery_id = disc.save_discovery_csv(content)
+    delta = {
+        "new_rows": [disc.display_fields(r) for r in new_rows],
+        "changed_rows": [disc.display_fields(r) for r in changed_rows],
+        "known_rows": [disc.display_fields(r) for r in known_rows],
+        "new_count": len(new_rows),
+        "changed_count": len(changed_rows),
+        "known_count": len(known_rows),
+    }
+    return _render(
+        "discovery.html",
+        username=username,
+        projects=projects.list_projects(),
+        delta=delta,
+        discovery_id=discovery_id,
+        error=None,
+    )
+
+
+@router.post("/discovery/enrich")
+async def discovery_enrich(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    discovery_id: str = Form(...),
+    row_idx: list[int] = Form(default=[]),
+    project_id: str = Form(...),
+    operator: str = Form(...),
+    username: str = Depends(auth.require_session),
+):
+    """Build a CSV from selected discovery rows and spawn an ingest run."""
+    import discovery as disc
+
+    csv_bytes = disc.read_discovery_csv(discovery_id)
+    if csv_bytes is None:
+        return _render(
+            "discovery.html",
+            status_code=400,
+            username=username,
+            projects=projects.list_projects(),
+            delta=None,
+            discovery_id=None,
+            error="Discovery session expired or not found. Please re-upload the CSV.",
+        )
+
+    all_rows = disc.parse_discovery_rows(csv_bytes)
+    selected_set = set(row_idx)
+    selected_rows = [r for i, r in enumerate(all_rows) if i in selected_set]
+
+    if not selected_rows:
+        return _render(
+            "discovery.html",
+            status_code=400,
+            username=username,
+            projects=projects.list_projects(),
+            delta=None,
+            discovery_id=None,
+            error="No practices selected. Check at least one practice to enrich.",
+        )
+
+    disc.preregister_discovery_rows(selected_rows)
+    enrich_csv = disc.build_enrich_csv(selected_rows)
+
+    class _MemFile:
+        filename = "discovery_selected.csv"
+
+        async def read(self) -> bytes:
+            return enrich_csv
+
+    try:
+        run_id, _row_count = await runner.orchestrate_ingest(
+            _MemFile(), "outscraper", project_id, operator, background_tasks
+        )
+    except ValueError as exc:
+        return _render(
+            "discovery.html",
+            status_code=400,
+            username=username,
+            projects=projects.list_projects(),
+            delta=None,
+            discovery_id=None,
+            error=str(exc),
+        )
+
+    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+
+
 @router.post("/api/ui/runs")
 async def ui_create_run(
     background_tasks: BackgroundTasks,
