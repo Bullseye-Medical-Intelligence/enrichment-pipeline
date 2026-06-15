@@ -76,6 +76,8 @@ def _first(row: dict, cols: tuple[str, ...]) -> str:
 
 # ---------------------------------------------------------------------------
 # Normalization
+# DUPLICATED: registry_update.py carries an identical copy of these helpers and
+# the match priority. Any change here MUST be mirrored there. See MATCHING_NOTES.md.
 # ---------------------------------------------------------------------------
 
 def _normalize_domain(url: str) -> str:

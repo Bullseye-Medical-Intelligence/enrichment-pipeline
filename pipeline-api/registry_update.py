@@ -74,6 +74,9 @@ def registry_path() -> Path:
 
 # ---------------------------------------------------------------------------
 # Normalization (mirrors discovery's matching priority)
+# DUPLICATED: discovery.py carries an identical copy. Any change here MUST be
+# mirrored there, and stay consistent with discovery/matcher.py (the engine copy
+# behind the subprocess boundary). See MATCHING_NOTES.md.
 # ---------------------------------------------------------------------------
 
 def _normalize_domain(url: str) -> str:
