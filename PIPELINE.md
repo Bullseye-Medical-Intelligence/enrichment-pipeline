@@ -185,6 +185,7 @@ Outscraper field names must NOT leak into pipeline logic, scoring, or output. Th
 | `site` | `website_url` |
 | `type` | Used for specialty matching only; discarded after mapping |
 | `npi` (if present) | `npi_optional` |
+| `place_id` / `google_place_id` | `google_place_id` (empty string when absent) |
 
 Fields not present in the Outscraper export default to empty string or empty list. Do not error on missing optional fields.
 
@@ -320,6 +321,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "provider_names": ["Dr. Jane Smith, MD, OBGYN", "Sarah Lee, NP"],
   "specialty": "OBGYN",
   "npi_optional": "",
+  "google_place_id": "",
   "website_url": "https://example-practice.com",
   "phone": "555-000-0000",
   "address_city": "Dallas",
@@ -485,6 +487,7 @@ The OBGYN Femasys cartridge maps `207VE0102X` → `rei_on_staff` via this mechan
 - `npi_entity_type`: null if no confident NPPES match
 - `npi_provider_count`: null if no confident NPPES match
 - `npi_practice_name`: null if no confident NPPES match
+- `google_place_id`: empty string `""` when unknown; never null. Stable Google Places identifier from Outscraper; used as priority-1 match key in registry update.
 - `internal_notes`: empty string `""`, not null
 - `analyst_note` on signals: empty string `""`, not null
 

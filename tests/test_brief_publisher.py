@@ -119,11 +119,21 @@ def test_upload_sftp_success_never_touches_ftp(monkeypatch):
 
 
 def test_pinned_host_key_unset_returns_none(monkeypatch):
-    """No pinned key configured → None (verification skipped with a warning)."""
+    """No pinned key configured → None."""
     import config
     monkeypatch.setattr(config, "HOSTINGER_SFTP_HOST_KEY", "")
     paramiko = pytest.importorskip("paramiko")
     assert brief_publisher._pinned_host_key(paramiko) is None
+
+
+def test_sftp_upload_raises_when_host_key_unset(monkeypatch):
+    """_sftp_upload must raise RuntimeError when no host key is configured."""
+    import config
+    monkeypatch.setattr(config, "HOSTINGER_SFTP_HOST_KEY", "")
+    # paramiko is needed for _sftp_upload to import; skip if not installed
+    pytest.importorskip("paramiko")
+    with pytest.raises(RuntimeError, match="HOSTINGER_SFTP_HOST_KEY is not configured"):
+        brief_publisher._sftp_upload(b"data", "briefs/test.html")
 
 
 def test_pinned_host_key_malformed_raises(monkeypatch):

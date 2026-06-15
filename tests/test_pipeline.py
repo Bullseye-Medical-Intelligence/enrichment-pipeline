@@ -808,6 +808,29 @@ class TestZipLookup:
         assert records[0]["address_city"] == "Dallas"
         assert records[0]["address_state"] == "TX"
 
+    def test_google_place_id_preserved_through_ingest(self, tmp_path):
+        """place_id column from Outscraper flows into google_place_id on the record."""
+        from ingestion.outscraper_adapter import load_outscraper_csv
+        csv_path = tmp_path / "in.csv"
+        csv_path.write_text(
+            "name,postal_code,site,place_id\n"
+            "Atlanta Clinic,30301,https://x.com,ChIJtest123\n",
+            encoding="utf-8",
+        )
+        records = load_outscraper_csv(str(csv_path))
+        assert records[0]["google_place_id"] == "ChIJtest123"
+
+    def test_google_place_id_defaults_empty_string_when_absent(self, tmp_path):
+        """When place_id column is not in the CSV, google_place_id defaults to ''."""
+        from ingestion.outscraper_adapter import load_outscraper_csv
+        csv_path = tmp_path / "in.csv"
+        csv_path.write_text(
+            "name,postal_code,site\nAtlanta Clinic,30301,https://x.com\n",
+            encoding="utf-8",
+        )
+        records = load_outscraper_csv(str(csv_path))
+        assert records[0].get("google_place_id") == ""
+
 
 # ---------------------------------------------------------------------------
 # Geography exclusion

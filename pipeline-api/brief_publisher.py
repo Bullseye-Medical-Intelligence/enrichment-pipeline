@@ -153,9 +153,10 @@ def _sftp_upload(data: bytes, remote_path: str) -> None:
 
     hostkey = _pinned_host_key(paramiko)
     if hostkey is None:
-        logger.warning(
-            "SFTP host key is not pinned (HOSTINGER_SFTP_HOST_KEY unset) — "
-            "server identity will not be verified."
+        raise RuntimeError(
+            "HOSTINGER_SFTP_HOST_KEY is not configured — refusing to upload without "
+            "server identity verification. Set it to the server's host key. "
+            "See .env.example for the required format (run: ssh-keyscan <host>)."
         )
 
     transport = paramiko.Transport((config.HOSTINGER_SFTP_HOST, config.HOSTINGER_SFTP_PORT))

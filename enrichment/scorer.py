@@ -168,6 +168,9 @@ def validate_and_finalize(record: dict) -> dict:
     if "npi_practice_name" not in record:
         record["npi_practice_name"] = None
 
+    if "google_place_id" not in record:
+        record["google_place_id"] = ""
+
     # internal_notes: empty string, not null
     if record.get("internal_notes") is None:
         record["internal_notes"] = ""

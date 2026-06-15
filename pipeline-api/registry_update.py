@@ -237,7 +237,6 @@ def _new_entry(
     """Construct a fresh registry entry from an enriched record."""
     return {
         "practice_registry_id": registry_id,
-        "entry_id": registry_id,  # kept for discovery.py compatibility
         "google_place_id": fields["google_place_id"],
         "website_domain": fields["website_domain"],
         "phone_digits": fields["phone_digits"],

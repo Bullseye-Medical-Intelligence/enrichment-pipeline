@@ -65,6 +65,8 @@ OUTSCRAPER_FIELD_MAP = {
     "website": "website_url",          # alternate column name in some exports
     "type": "_type_raw",               # used for specialty matching, then discarded
     "npi": "npi_optional",
+    "place_id": "google_place_id",
+    "google_place_id": "google_place_id",
     # Additional Outscraper columns that sometimes appear:
     "owner_name": "_owner_name_raw",
     "description": "_description_raw",
@@ -280,6 +282,7 @@ def _map_row(row: dict, row_num: int) -> dict:
     )
     type_raw = (row.get("type") or row.get("category") or row.get("business_type") or "").strip()
     npi = (row.get("npi") or "").strip() or None
+    google_place_id = (row.get("place_id") or row.get("google_place_id") or "").strip()
 
     # If city/state/zip are missing, try to parse from full_address
     if not address_city or not address_state or not address_zip:
@@ -309,6 +312,7 @@ def _map_row(row: dict, row_num: int) -> dict:
         "provider_names": [],          # Outscraper doesn't reliably provide this
         "specialty": specialty,
         "npi_optional": npi or None,
+        "google_place_id": google_place_id,
         "website_url": website_url,
         "phone": phone,
         "address_city": address_city,

@@ -115,6 +115,37 @@ def test_insert_new_bullseye_clear_record(client):
     assert entry["change_history"] == []
 
 
+def test_google_place_id_stored_in_registry_entry(client):
+    """An enriched record with google_place_id carries it into the registry entry."""
+    c, runs_dir = client
+    _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa",
+                         [_record("T-1", google_place_id="ChIJtest456")])
+    r = _update(c, "RUN-20260615-100000-aaaa", selection_mode="bullseye_only")
+    assert r.status_code == 200
+    entry = next(iter(_load_registry(runs_dir)["entries"].values()))
+    assert entry["google_place_id"] == "ChIJtest456"
+
+
+def test_google_place_id_used_as_priority_one_match(client):
+    """A second update matches the existing entry via google_place_id (priority 1)."""
+    c, runs_dir = client
+    # First insert creates an entry with a place_id.
+    _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa",
+                         [_record("T-1", google_place_id="ChIJprio1")])
+    _update(c, "RUN-20260615-100000-aaaa", selection_mode="bullseye_only")
+
+    # Second run: same place_id but a different phone (so phone-match would miss).
+    _seed_enrichment_run(runs_dir, "RUN-20260615-110000-bbbb",
+                         [_record("T-2", google_place_id="ChIJprio1",
+                                  phone="(404) 999-0000",
+                                  website_url="https://alpha-different.com")])
+    r = _update(c, "RUN-20260615-110000-bbbb", selection_mode="bullseye_only")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["updated_count"] == 1   # matched via place_id → update, not insert
+    assert body["inserted_count"] == 0
+
+
 def test_update_changed_website_preserves_history(client):
     c, runs_dir = client
     # First run inserts.
@@ -230,9 +261,9 @@ def test_ambiguous_duplicate_rejected(client):
     reg_path.parent.mkdir(parents=True, exist_ok=True)
     reg_path.write_text(json.dumps({
         "version": "1", "entries": {
-            "A": {"entry_id": "A", "website_domain": "alpha-clinic.com",
+            "A": {"practice_registry_id": "A", "website_domain": "alpha-clinic.com",
                   "phone_digits": "", "name_normalized": "", "address_normalized": ""},
-            "B": {"entry_id": "B", "website_domain": "", "phone_digits": "4045551000",
+            "B": {"practice_registry_id": "B", "website_domain": "", "phone_digits": "4045551000",
                   "name_normalized": "", "address_normalized": ""},
         }}), encoding="utf-8")
     before = reg_path.read_bytes()
