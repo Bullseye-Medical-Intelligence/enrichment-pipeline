@@ -49,6 +49,14 @@ class RunStatus(BaseModel):
     llm_input_tokens: Optional[int] = None
     llm_output_tokens: Optional[int] = None
     llm_call_count: Optional[int] = None
+    # Run kind. "enrichment" for normal runs; discovery runs write "discovery"
+    # in their own status.json shape. Default keeps pre-existing runs as enrichment.
+    run_type: str = "enrichment"
+    # Discovery → enrichment traceability (set when a run is created from a
+    # discovery run's selected records). None for runs created from a raw upload.
+    source_discovery_run_id: Optional[str] = None
+    source_discovery_selection_count: Optional[int] = None
+    source_discovery_selection_mode: Optional[str] = None
 
 
 class RunSummary(BaseModel):
