@@ -25,5 +25,10 @@
     "speciali", "gynecol", "obstet", "women", "reproduct",
     "contraception", "iud", "infertil", "hormones", "pcos",
     "contact"
-  ]
+  ],
+  "drive_sync": {
+    "enabled": true,
+    "remote": "gdrive:BEMI-Runs",
+    "rclone_path": "rclone"
+  }
 }

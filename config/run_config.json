@@ -25,5 +25,11 @@
     "service", "procedure", "treatment", "care",
     "provider", "physician", "doctor", "staff", "team", "about",
     "contact"
-  ]
+  ],
+  "_comment_drive_sync": "Optional. Sync the output directory to Google Drive after each run using rclone. Run scripts/setup_drive_sync.sh once per machine to install rclone and authorize Drive access.",
+  "drive_sync": {
+    "enabled": false,
+    "remote": "gdrive:BEMI-Runs",
+    "rclone_path": "rclone"
+  }
 }

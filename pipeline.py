@@ -329,6 +329,36 @@ def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -
         record["source_confidence"] = "partial"
 
 
+def _sync_to_drive(output_dir: str, drive_config: dict) -> None:
+    """Sync the output directory to Google Drive via rclone (best-effort, never blocks the run)."""
+    import subprocess
+
+    remote = drive_config.get("remote", "gdrive:BEMI-Runs")
+    rclone_bin = drive_config.get("rclone_path", "rclone")
+    try:
+        result = subprocess.run(
+            [
+                rclone_bin, "copy", output_dir, remote,
+                "--exclude", "step4_checkpoint.ndjson",
+                "--exclude", "progress.json",
+                "--transfers", "8",
+            ],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode == 0:
+            print(f"  Drive sync: output uploaded to {remote}")
+        else:
+            print(f"  [WARN] Drive sync failed (rclone exit {result.returncode}): "
+                  f"{result.stderr.strip()[:200]}")
+    except FileNotFoundError:
+        print(f"  [WARN] Drive sync skipped: rclone not found at {rclone_bin!r}. "
+              "Run scripts/setup_drive_sync.sh to install it.")
+    except subprocess.TimeoutExpired:
+        print("  [WARN] Drive sync timed out after 180s — output may be partially uploaded.")
+    except Exception as e:
+        print(f"  [WARN] Drive sync error: {e}")
+
+
 def _capture_evidence(records: list[dict], output_dir: str) -> int:
     """Write Evidence Vault snapshots for every record that has crawled pages.
 
@@ -975,6 +1005,15 @@ def run_pipeline(input_file: str, source_type: str,
     )
 
     elapsed = time.time() - start_time
+
+    # Optional: sync output directory to Google Drive after every run.
+    # Enable with drive_sync.enabled: true in run_config.json.
+    drive_cfg = run_config.get("drive_sync") or {}
+    if drive_cfg.get("enabled"):
+        print(f"\n{'-'*40}")
+        print("DRIVE SYNC")
+        print(f"{'-'*40}")
+        _sync_to_drive(output_dir, drive_cfg)
 
     print(f"\n{'='*60}")
     print(f"RUN COMPLETE: {run_id}")
