@@ -84,6 +84,17 @@ ul, ol { padding-left: 1.4em; }
   letter-spacing: 0.02em;
 }
 .nav-logo:hover { color: var(--white); text-decoration: none; }
+.nav-logo-mark {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  margin-right: 10px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: url('/static/bullseye-mark.svg') no-repeat center / contain;
+  mask: url('/static/bullseye-mark.svg') no-repeat center / contain;
+}
 .nav-subtitle {
   color: var(--muted-dark);
   font-size: 11px;

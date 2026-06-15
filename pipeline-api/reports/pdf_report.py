@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
+_MAIN_STATIC_DIR = Path(__file__).parent.parent / "static"
 
 _jinja_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
@@ -89,6 +90,7 @@ def build_executive_report_html(
         ),
         "logo_light": _logo_data_uri("light"),
         "logo_dark": _logo_data_uri("dark"),
+        "favicon_uri": _mark_data_uri("bullseye-favicon.svg"),
     }
 
     template = _jinja_env.get_template("executive_target_report.html")
@@ -143,6 +145,8 @@ def build_bullseye_cards_html(
             "Based on publicly available signals only. "
             "No PHI or patient data used."
         ),
+        "mark_uri": _mark_data_uri("bullseye-mark.svg"),
+        "favicon_uri": _mark_data_uri("bullseye-favicon.svg"),
     }
 
     template = _jinja_env.get_template("bullseye_cards.html")
@@ -256,6 +260,8 @@ def build_sales_handoff_html(
         "screened": screened,
         "tier_sections": tier_sections,
         "logo_light": _logo_data_uri("light"),
+        "mark_uri": _mark_data_uri("bullseye-mark.svg"),
+        "favicon_uri": _mark_data_uri("bullseye-favicon.svg"),
     }
 
     template = _jinja_env.get_template("sales_handoff.html")
@@ -381,4 +387,15 @@ def _logo_data_uri(variant: str) -> str:
         return f"data:image/svg+xml;base64,{b64}"
     except OSError:
         logger.warning("Logo not accessible: %s", path)
+        return ""
+
+
+def _mark_data_uri(filename: str) -> str:
+    """Return a base64 data URI for a canonical SVG asset from the main static dir."""
+    path = _MAIN_STATIC_DIR / filename
+    try:
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:image/svg+xml;base64,{b64}"
+    except OSError:
+        logger.warning("SVG asset not accessible: %s", path)
         return ""

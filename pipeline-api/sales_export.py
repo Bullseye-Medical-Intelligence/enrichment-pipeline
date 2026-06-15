@@ -16,6 +16,7 @@ Two builds serve different audiences:
                                  assembling the client ZIP.
 """
 
+import base64
 import json
 import logging
 import os
@@ -36,6 +37,20 @@ logger = logging.getLogger(__name__)
 
 # Jinja2 env for standalone templates (sales_brief.html) that don't extend base.html.
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _svg_data_uri(filename: str) -> str:
+    """Return a base64 data URI for an SVG file in the static directory."""
+    path = _STATIC_DIR / filename
+    try:
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:image/svg+xml;base64,{b64}"
+    except OSError:
+        logger.warning("SVG asset not accessible: %s", path)
+        return ""
+
+
 _brief_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),
@@ -163,6 +178,8 @@ def build_sales_brief(
         bullseye=_sanitize_sales_angles(bullseye_rec),
         contender=_sanitize_sales_angles(contender_rec),
         excluded=_sanitize_sales_angles(excluded_rec),
+        mark_data_uri=_svg_data_uri("bullseye-mark.svg"),
+        favicon_data_uri=_svg_data_uri("bullseye-favicon.svg"),
     )
     logger.info(
         "Built Sales Brief for run %s: bullseye=%s contender=%s excluded=%s (%d bytes)",

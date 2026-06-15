@@ -8,6 +8,7 @@ Exposes one public function:
 
 from __future__ import annotations
 
+import base64
 import html
 import re
 from pathlib import Path
@@ -19,6 +20,17 @@ from markupsafe import Markup
 from .models import Account, Confidence, HandoffRun, Tier
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
+_STATIC_DIR = Path(__file__).parent.parent / "pipeline-api" / "static"
+
+
+def _svg_data_uri(filename: str) -> str:
+    """Return a base64 data URI for a canonical SVG asset."""
+    path = _STATIC_DIR / filename
+    try:
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:image/svg+xml;base64,{b64}"
+    except OSError:
+        return ""
 
 _TIER_DISPLAY = {
     Tier.BULLSEYE: {
@@ -166,4 +178,6 @@ def render_handoff(run: HandoffRun, client_facing: bool = True) -> str:
         expiry_date=_format_date(run.expiry_date),
         client_facing=client_facing,
         Tier=Tier,
+        mark_data_uri=_svg_data_uri("bullseye-mark.svg"),
+        favicon_data_uri=_svg_data_uri("bullseye-favicon.svg"),
     )

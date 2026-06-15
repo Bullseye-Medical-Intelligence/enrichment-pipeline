@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BEMI Intelligence Brief{% if specialty %} — {{ specialty }}{% endif %}</title>
+  <link rel="icon" href="{{ favicon_data_uri }}" type="image/svg+xml">
   <style>
     :root {
       --ink: #0a0a0a;
@@ -216,15 +217,7 @@
   {# ── Header ────────────────────────────────────────────────────────── #}
   <div class="brief-header">
     <div style="display:flex;align-items:center;gap:12px;">
-      <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bullseye Medical Intelligence">
-        <line x1="18" y1="24.5" x2="7" y2="9" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="18" y1="24.5" x2="18" y2="6" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="18" y1="24.5" x2="29" y2="9" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
-        <circle cx="7" cy="8.5" r="2.4" fill="#f7f6f4" stroke="#0a0a0a" stroke-width="1.5"/>
-        <circle cx="18" cy="5.5" r="2.4" fill="#f7f6f4" stroke="#0a0a0a" stroke-width="1.5"/>
-        <circle cx="29" cy="8.5" r="2.4" fill="#f7f6f4" stroke="#0a0a0a" stroke-width="1.5"/>
-        <circle cx="18" cy="25" r="3.4" fill="#c84b2f"/>
-      </svg>
+      <img src="{{ mark_data_uri }}" width="32" height="32" alt="Bullseye Medical Intelligence" style="display:block;filter:brightness(0);">
       <div>
         <div class="brief-wordmark">Bullseye Medical Intelligence</div>
         <div class="brief-tagline">Intelligence Brief</div>
