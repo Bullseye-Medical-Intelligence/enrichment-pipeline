@@ -1,5 +1,5 @@
 {
-  "version": "obgyn-femasys-v7",
+  "version": "obgyn-femasys-v8",
   "signals": [
     {
       "signal_id": "S-ICP-001",
@@ -43,8 +43,7 @@
       "signal_label": "Hormone therapy / PCOS listed",
       "prompt_instruction": "Does this practice list hormone therapy, PCOS management, or hormone-related services?",
       "positive_weight": 12,
-      "reinforces": "S-ICP-009",
-      "note": "Broadens the office-based women's-health service line. Hormone/PCOS treatments are frequently out-of-pocket, making this a proxy for cash-pay capability when S-ICP-009 is not directly stated."
+      "note": "Broadens the office-based women's-health service line. Does not reinforce cash-pay (S-ICP-009): routine hormone/PCOS care is often insurance-covered, so it was too loose a proxy. The elective-aesthetic signal S-ICP-011 now carries the definitional cash-pay inference."
     },
     {
       "signal_id": "S-ICP-007",
