@@ -14,9 +14,9 @@
 /runs/
 /projects/
 
-# Discovery — runtime registry and temp files (operator data, not source)
+# Discovery — runtime registry and temp session files (operator data, not source)
 /master_practice_registry.json
-/discovery/
+/output/discovery/
 
 # Python
 __pycache__/
