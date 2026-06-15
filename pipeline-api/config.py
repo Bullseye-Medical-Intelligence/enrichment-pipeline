@@ -89,6 +89,8 @@ DEFAULT_MAX_PAGES_PER_PRACTICE: int = 5
 DEFAULT_REQUEST_TIMEOUT_SECONDS: int = 60
 DEFAULT_REQUEST_RETRIES: int = 3
 DEFAULT_IO_CONCURRENCY: int = 6
+DEFAULT_LLM_CONCURRENCY: int = 3
+DEFAULT_NEAR_MISS_BAND: int = 0
 DEFAULT_EXCLUSION_RULES: tuple[str, ...] = (
     "wrong_specialty",
     "outside_geography",
@@ -96,6 +98,23 @@ DEFAULT_EXCLUSION_RULES: tuple[str, ...] = (
     "hospital_owned",
     "health_system_affiliated",
 )
+
+# All exclusion rule names recognised by the pipeline engine.
+# Kept in sync with enrichment/exclusion_checker.py::ALL_KNOWN_EXCLUSION_RULES.
+# Defined here to avoid importing enrichment internals into pipeline-api.
+ALL_KNOWN_EXCLUSION_RULE_NAMES: frozenset[str] = frozenset({
+    # Hard rules (always active)
+    "wrong_specialty",
+    "outside_geography",
+    "practice_closed",
+    "academic_medical_center",
+    # Configurable rules (active when listed in active_exclusion_rules)
+    "hospital_owned",
+    "health_system_affiliated",
+    "no_web_presence",
+    "competitor_conflict",
+    "no_relevant_service_line",
+})
 DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
     "services",
     "providers",

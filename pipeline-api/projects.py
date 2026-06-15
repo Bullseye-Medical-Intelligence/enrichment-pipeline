@@ -72,10 +72,12 @@ def default_project_config() -> dict:
         "target_geography": [],
         "active_exclusion_rules": list(config.DEFAULT_EXCLUSION_RULES),
         "bullseye_min_score": config.DEFAULT_BULLSEYE_MIN_SCORE,
+        "verify_near_miss_band": config.DEFAULT_NEAR_MISS_BAND,
         "max_pages_per_practice": config.DEFAULT_MAX_PAGES_PER_PRACTICE,
         "request_timeout_seconds": config.DEFAULT_REQUEST_TIMEOUT_SECONDS,
         "request_retries": config.DEFAULT_REQUEST_RETRIES,
         "io_concurrency": config.DEFAULT_IO_CONCURRENCY,
+        "llm_concurrency": config.DEFAULT_LLM_CONCURRENCY,
         "subpage_keywords": list(config.DEFAULT_SUBPAGE_KEYWORDS),
         "notes": "",
     }
@@ -96,25 +98,58 @@ def validate_project_config(data: dict) -> None:
         if not str(data.get(field, "")).strip():
             raise ValueError(f"{field} is required and cannot be empty.")
 
-    if not isinstance(data.get("target_geography"), list):
+    geo = data.get("target_geography")
+    if not isinstance(geo, list):
         raise ValueError("target_geography must be a list.")
-    if not isinstance(data.get("active_exclusion_rules"), list):
+    bad_geo = [g for g in geo if not isinstance(g, str) or len(g) != 2 or not g.isupper()]
+    if bad_geo:
+        raise ValueError(
+            f"target_geography contains invalid state code(s): {sorted(bad_geo)}. "
+            "Each entry must be a 2-letter uppercase US state code."
+        )
+
+    rules = data.get("active_exclusion_rules")
+    if not isinstance(rules, list):
         raise ValueError("active_exclusion_rules must be a list.")
+    unknown_rules = sorted(set(rules) - config.ALL_KNOWN_EXCLUSION_RULE_NAMES)
+    if unknown_rules:
+        raise ValueError(
+            f"active_exclusion_rules contains unrecognized rule name(s): {unknown_rules}. "
+            f"Known rules: {sorted(config.ALL_KNOWN_EXCLUSION_RULE_NAMES)}."
+        )
 
     keywords = data.get("subpage_keywords")
     if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
         raise ValueError("subpage_keywords must be a list of strings.")
 
     _validate_int(data, "bullseye_min_score", minimum=0, maximum=100)
+    _validate_int(data, "verify_near_miss_band", minimum=0, optional=True)
     _validate_int(data, "max_pages_per_practice", minimum=1)
     _validate_int(data, "request_timeout_seconds", minimum=1)
     _validate_int(data, "request_retries", minimum=0)
     _validate_int(data, "io_concurrency", minimum=1)
+    _validate_int(data, "llm_concurrency", minimum=1, optional=True)
 
 
-def _validate_int(data: dict, field: str, minimum: int, maximum: Optional[int] = None) -> None:
-    """Raise ValueError if a config field is not an int within [minimum, maximum]."""
-    value = data.get(field)
+def _validate_int(
+    data: dict,
+    field: str,
+    minimum: int,
+    maximum: Optional[int] = None,
+    *,
+    optional: bool = False,
+) -> None:
+    """Raise ValueError if a config field is not an int within [minimum, maximum].
+
+    When optional=True the check is skipped if the field is absent from data.
+    Use this for fields that have a default value and may be missing in configs
+    created before the field was added.
+    """
+    if field not in data:
+        if optional:
+            return
+        raise ValueError(f"{field} is required and must be an integer.")
+    value = data[field]
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{field} must be an integer.")
     if value < minimum or (maximum is not None and value > maximum):
