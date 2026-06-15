@@ -23,6 +23,7 @@ For each signal, determine:
 - evidence_text: A direct quote or close paraphrase from the WEBSITE TEXT section above. Must be traceable to a specific sentence in the provided text. If you cannot point to exact text, the signal is "not_found".
 - source_url: The [Source: URL] from the WEBSITE TEXT section where the evidence appears. Required for every "yes" signal. If you cannot identify the source URL, use "not_found".
 - confidence: "high" = direct explicit text, word-for-word or near-verbatim; "medium" = clearly implied by a specific passage in the text; "low" = weak or indirect hint — use "not_found" instead when unsure
+- Weight evidence by the kind of page it came from (visible in the [Source: URL] path). A services, procedures, treatments, or provider-bio page is first-hand evidence that the practice actually performs or offers something — this can support a "yes" at any confidence. A blog post, news article, patient-education page, or general-information page describing a condition or procedure shows only awareness of a topic, NOT that the practice performs it — treat such evidence as "low" confidence at most, and prefer "not_found" unless a services/procedures/bio page corroborates it.
 
 After evaluating signals, generate:
 1. sales_angle: 3-5 suggested angles that help a rep prepare, written about the practice in the third person as observations about what was found. Operators use these to review and categorize the account — they are analytical notes, not rep scripts. Every bullet must describe what the PRACTICE does or is, never what the rep should say or do.
@@ -72,7 +73,9 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
 
 CRITICAL RULES:
 - signal_state must be EXACTLY "yes", "no", or "not_found" — never null, true, false, 1, 0, or any other value
+- Evaluate using ONLY the WEBSITE TEXT provided below. Do not rely on any outside or prior knowledge you may have about this specific practice, its providers, or its reputation. If it is not in the provided text, it does not exist for this evaluation.
 - NEVER GUESS. Every "yes" must be traceable to specific text in the WEBSITE TEXT section above. If the text does not say it, the answer is "not_found".
+- A procedure or service mentioned only on a blog, news, or patient-education page is not proof the practice performs it. Mark such cases "low" confidence at most, or "not_found", unless a services, procedures, or provider-bio page confirms it.
 - Specialty does not imply service capability. Only mark "yes" if the website text explicitly names the service.
 - A "yes" signal MUST have a non-empty evidence_text (direct quote or close paraphrase from the text above) AND a non-empty source_url (the [Source: URL] where the evidence appears). If either is missing, use "not_found".
 - When in doubt between "yes" and "not_found", use "not_found". False negatives are recoverable; false positives waste a rep's time.
