@@ -73,7 +73,9 @@ Every score bound, weight, threshold, and blend factor lives in
 ## The 8 Steps (`pipeline.py`)
 
 1. **Ingest** — load CSV, normalize to canonical schema, dedup, drop rows missing `practice_name`.
-   **Structural pre-filter** — immediately after ingest, `check_structural_exclusions` drops records that are wrong specialty or outside geography before any crawl or LLM spend. Pre-excluded records skip Steps 2–6 and rejoin at Step 6 as Excluded, preserving them in output without wasting API budget on them.
+   **Step 1b — NPI enrichment (opt-in)**: populates taxonomy codes and exclusion flags from the public NPPES registry before the structural pre-filter runs. Runs even in `--ingest-only` mode so the roster carries NPI fields. Skip via `npi_enrichment_enabled: false` in run_config.
+   **Step 1c — Customer suppression (opt-in)**: excludes existing customers before any crawl or LLM spend. Runs even in `--ingest-only` mode so suppressed records appear as EXCLUDED in every roster view. Triggered by `suppression_list_path` in run_config.
+   **Structural pre-filter** — after Steps 1b–1c, `check_structural_exclusions` drops records that are wrong specialty or outside geography before any crawl or LLM spend. Pre-excluded records skip Steps 2–6 and rejoin at Step 6 as Excluded. (Does NOT run in `--ingest-only` mode.)
 2. **URL validate** — reachability check (`extraction/url_validator.py`), `io_concurrency` workers.
 3. **Web extract** — crawl homepage + relevant subpages (`extraction/web_extractor.py`), `io_concurrency` workers.
    **Auto browser-retry (Step 3b, opt-in)** — with `--auto-browser-retry` (CLI) or `auto_browser_retry: true` (run_config), records that come back blocked/thin from the standard crawler (`source_confidence` limited/failed, or under `MIN_CONTEXT_CHARS` of text) are re-crawled once with headless Chromium before Step 4. `_records_needing_browser_retry` targets only the blocked subset, so most records keep the fast HTTP path; no-op when the whole run is already `--playwright`. This recovers bot-gated sites automatically instead of waiting for an operator to click "Re-crawl with Browser". Exposed in the API as a checkbox on "Enrich All".
@@ -85,10 +87,12 @@ Every score bound, weight, threshold, and blend factor lives in
 8. **Output** — write JSON, CSV, run_log.json (`output/`, atomic writes).
 
 ### `--ingest-only` (roster pass, no spend)
-`--ingest-only` runs Step 1 + structural exclusions only, then writes the full
-roster (`enrichment_status = "not_enriched"`, scores 0, no signals) via Step 8
-and exits before any crawl or LLM call (`_finalize_ingest_only`). It lets an
-operator load and review the list before spending crawl/LLM budget; enrichment
+`--ingest-only` runs Step 1 → Step 1b (NPI enrichment) → Step 1c (customer
+suppression) → Step 8 (output), then exits before any crawl or LLM call
+(`_finalize_ingest_only`). The structural pre-filter does NOT run (it fires
+later in the full flow); customer-suppressed records are written as EXCLUDED.
+Writes the full roster (`enrichment_status = "not_enriched"`, scores 0, no
+signals). Lets an operator review the list before spending budget; enrichment
 is triggered as a separate full run over the same `input.csv`. The API exposes
 this as upload → `ingested` status → "Enrich All" (`pipeline-api/runner.py`:
 `orchestrate_ingest` / `orchestrate_enrich_all`).
@@ -171,7 +175,9 @@ never in engine code (RULE 3).
 | `verification_required` | bool | When `not_found` (and not inferred), caps a would-be Bullseye at `"Needs Verification"`. |
 | `required_for_bullseye` | bool | Must-have gate. When the signal is **not** confirmed `"yes"` and **not** inferred: a confirmed `"no"` caps the tier at `"Contender"`; a `not_found` caps at `"Needs Verification"`. Supersedes `verification_required` (also covers the `not_found` case), so a must-have signal needs only this flag. |
 | `cap_tier` | `"Contender"` \| `"Needs Verification"` | When the signal is `"yes"`, caps the tier at this ceiling regardless of score (e.g. confirmed hospital affiliation → `"Contender"`). |
+| `floor_tier` | `"Contender"` \| `"Needs Verification"` | When the signal is `"yes"`, guarantees the record reaches at least this tier, bypassing the low-score Manual Review gate. Use for a confirmed primary qualifier that always warrants a call even on a thin overall score (e.g. confirmed cash-pay → at least Contender). |
 | `exclude_if_yes` | bool | When the signal is confirmed `"yes"`, the record is immediately EXCLUDED via the normal exclusion path. The only signal-driven route to `Excluded` (e.g. telehealth-only practice). Default off. |
+| `inhibited_by` | string `signal_id` | Used alongside `exclude_if_yes`. When the named signal is also `"yes"`, this exclusion is suppressed — for mutually-exclusive pairs where the companion signal logically invalidates the exclusion. |
 | `reinforces` | string `signal_id` | When this signal is `"yes"` and the named target is `not_found`, the target is marked `state_inferred`. Must reference a signal_id in the same profile. |
 
 **Reinforcement** lets an observable signal stand in for one rarely printed
@@ -211,22 +217,30 @@ TIER_RANK = {"Excluded": 0, "Contender": 1, "Needs Verification": 2, "Bullseye":
 (The middle tier was renamed from "Watchlist" to "Contender". A legacy alias maps
 any stale `"Watchlist"` value to `"Contender"` so frozen snapshots still resolve.)
 
-0. **Zero-evidence gate (first):** a CLEAR record with no confirmed `"yes"` signal
-   and nothing `state_inferred` is `Manual Review` — not a fit verdict. It is kept
-   out of the call queue and client exports until an operator acts. (Not-enriched
-   roster rows from `--ingest-only` are exempt.) The steps below apply only to
-   records that have at least one piece of confirmed evidence.
+0. **Evidence gate (first):** a CLEAR record is sent directly to `Manual Review`
+   if either of these holds — it is kept out of the call queue and client exports
+   until an operator acts:
+   - No confirmed `"yes"` signal and nothing `state_inferred` (zero evidence), OR
+   - `bullseye_score` is below `LOW_SCORE_MANUAL_REVIEW_THRESHOLD` (50) and no
+     `"yes"` signal carries a `floor_tier` guarantee.
+   (Not-enriched roster rows from `--ingest-only` are exempt.) The steps below
+   apply only to records that clear this gate.
 1. Start at `Bullseye` if `score >= bullseye_min`, else `Contender`.
-2. Any `"yes"` signal with a `cap_tier` pulls the ceiling down (`min`).
-3. **Source confidence gate**: `source_confidence = "limited"` or `"failed"` caps at
-   `Needs Verification` — a record with insufficient crawl data must be confirmed
-   before calling, regardless of score.
+2. Any `"yes"` signal with a `cap_tier` pulls the ceiling down (`min`). A `"yes"`
+   signal with a `floor_tier` lifts the minimum rank past the low-score
+   Manual Review threshold (e.g. a confirmed cash-pay signal guarantees at least
+   Contender even when the overall score is thin).
+3. **Source confidence gate**: `source_confidence = "limited"` or `"failed"`
+   returns `Manual Review` — the site could not be reliably crawled; the operator
+   should trigger a browser re-crawl or paste content before calling.
 4. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
    caps the tier: confirmed `"no"` → `Contender`, `not_found` → `Needs Verification`.
    This is how "Bullseye = all must-haves confirmed present" is enforced.
 5. A `verification_required` signal that is `not_found` **and not** `state_inferred`
    caps a would-be Bullseye at `Needs Verification`.
-6. Caps only ever pull down (`min`); nothing lifts a low-score Contender.
+6. `cap_tier` constraints only ever pull down; `floor_tier` guarantees only ever
+   lift the low-score floor — neither can override the score-based Bullseye
+   threshold in step 1.
 
 `"Excluded"` is never assigned here — it comes only from an exclusion rule (a
 structural/LLM trigger, or a signal flagged `exclude_if_yes` that is confirmed

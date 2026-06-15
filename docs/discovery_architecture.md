@@ -98,9 +98,11 @@ If different identifiers point to **different** existing entries, the match is
 **ambiguous**: registry update rejects it and logs it as `needs_manual_merge`
 rather than guessing. (There is no merge UI yet — by design.)
 
-> The normalization + priority logic is currently duplicated across
-> `discovery.py`, `registry_update.py`, and the engine's `discovery/matcher.py`.
-> Any change must update all copies; `tests/test_matching_parity.py` guards this.
+> The API-side normalization + priority logic lives in one place:
+> `pipeline-api/practice_matching.py`. `registry_update.py` imports from it
+> directly and cannot drift. A separate engine-side copy in `discovery/matcher.py`
+> must be kept in sync by hand (subprocess boundary prevents sharing).
+> `tests/test_matching_parity.py` guards the identity assertion.
 > See `pipeline-api/MATCHING_NOTES.md`.
 
 ## Handoff: discovery → enrichment

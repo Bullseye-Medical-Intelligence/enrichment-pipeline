@@ -277,6 +277,19 @@ POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record fro
 POST   /api/ui/runs                              Create run from browser upload
 POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 POST   /icp-profiles/simulate                     Dry-run score preview (no LLM, no crawl); shells out to simulate_icp.py
+
+Market Radar (Discovery) routes:
+GET    /discovery                                 Discovery landing — upload form + recent runs list
+POST   /discovery/upload                          Upload Outscraper CSV → create discovery run → redirect to results
+GET    /discovery/runs/{run_id}                   Discovery results page — summary cards + classified record table + send actions
+POST   /discovery/runs/{run_id}/send              Send selected / new / changed records → create ingested enrichment run
+
+Registry Update routes (explicit operator action only):
+GET    /dashboard/{run_id}/registry-update        Registry update form for a completed enrichment run
+POST   /dashboard/{run_id}/registry-update        Execute registry update → show inserted/updated/rejected summary
+
+API (Bearer auth, called by dashboard or automation):
+POST   /enrichment-runs/{run_id}/update-registry  Explicit registry update; body: selection_mode, selected_record_ids, options
 ```
 
 Phase 2 additions (do not build now):

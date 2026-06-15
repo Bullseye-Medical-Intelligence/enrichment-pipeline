@@ -12,11 +12,9 @@ way a record reaches the registry is this explicit action:
 
 Matching uses the same priority as discovery (google_place_id → website domain →
 phone → name+address; NPI is a supporting identifier only, never a match key).
-The normalization/matching primitives are reimplemented here rather than imported
-from discovery.py: the API and engine share a module name with the repo-root
-`discovery` package, and importing across that boundary is fragile. Keeping a
-small local copy mirrors the established pattern of duplicating shared constants
-at the API boundary.
+Normalization and matching helpers are imported from `practice_matching.py` —
+the single API-side source of truth for all normalization + match logic.
+See `pipeline-api/MATCHING_NOTES.md`.
 
 Every update writes an auditable registry_update_log.json into the run folder and
 stamps registry_updated_at / registry_update_count / registry_update_log_path onto

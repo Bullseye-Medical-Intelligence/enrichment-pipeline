@@ -128,16 +128,25 @@ Every record goes through Claude Sonnet for:
 
 ### Verification layer: GPT (OpenAI API)
 
-Records where Claude scores `bullseye_score >= 75` (Bullseye-tier) go through a second GPT call for:
-- Independent signal state verification (agree / disagree / insufficient data)
-- Score cross-check: does GPT independently assess this as high-fit?
-- Disagreement flag: if models substantially disagree, record is flagged for analyst review
+GPT verification is **selective** — it only runs where it adds the most value.
+`_select_verification_records(records, bullseye_min, near_miss_band)` picks the
+records that enter GPT:
+
+- **Near-miss records** (score in `[bullseye_min − near_miss_band, bullseye_min)`)
+  are always verified — these are the highest-value calls since they are genuinely
+  borderline. Controlled by `verify_near_miss_band` in run_config (default 0).
+- **Uncertain Bullseyes** (score ≥ `bullseye_min` with at least one confirmed-YES
+  signal at `low` confidence) are verified. High-confidence Bullseyes are skipped
+  — GPT would only agree, wasting spend.
+- **Thin-context records** (`source_confidence` `limited`/`failed`) always skip
+  GPT — they land in Manual Review at tier assignment regardless, and GPT sees
+  the same too-thin text.
 
 **Verification disagreement rules:**
-- If both models agree on Bullseye: `enrichment_status = "complete"`, proceed to output
-- If GPT disagrees (would score < 75 or flags a signal differently): `enrichment_status = "needs_review"`, flag for analyst, document disagreement in `internal_notes`
-- Verification is not a vote — Claude's output is the primary. GPT is a quality gate, not an override.
-- Records that fail verification are still included in output. They are flagged for human review, not dropped.
+- Verification informs the tier and flags disagreement for the analyst; it never
+  auto-promotes a record and never overrides Claude's output.
+- If GPT disagrees: `enrichment_status = "needs_review"`, document in `internal_notes`.
+- Records that fail verification are included in output, flagged for human review.
 
 ### Prompt versioning
 
@@ -278,10 +287,10 @@ Step 5: BULLSEYE VERIFICATION (GPT API — conditional)
 Step 6: EXCLUSION CHECK
   Apply exclusion rules from project config (equivalent of active_exclusion_rules in project.json)
   Hard exclusions always active:
-    hospital_owned, health_system_affiliated, wrong_specialty, outside_geography,
-    practice_closed, academic_medical_center
-  Configurable exclusions applied only if listed in run config:
-    rei_on_staff, no_web_presence, competitor_conflict, no_relevant_service_line
+    wrong_specialty, outside_geography, practice_closed, academic_medical_center
+  Configurable exclusions applied only if listed in active_exclusion_rules:
+    hospital_owned, health_system_affiliated, no_web_presence, competitor_conflict,
+    no_relevant_service_line
   Set exclusion_status = "EXCLUDED" and exclusion_reason if any rule fires
 
 Step 7: SCORING VALIDATION
