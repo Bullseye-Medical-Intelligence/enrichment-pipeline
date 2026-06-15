@@ -82,6 +82,7 @@ def extract_fields(row: dict) -> dict:
         "phone": phone_raw,
         "google_category": _first(row, _CATEGORY_COLS),
         "npi": _first(row, _NPI_COLS),
+        "address_full": full_address,
         "address_city": city,
         "address_state": state,
         "address_zip": zip_,

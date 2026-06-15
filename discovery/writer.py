@@ -73,6 +73,7 @@ def _write_results_json(
             "website_domain": fields.get("website_domain", ""),
             "phone": fields.get("phone", ""),
             "phone_digits": fields.get("phone_digits", ""),
+            "address_full": fields.get("address_full", ""),
             "address_city": fields.get("address_city", ""),
             "address_state": fields.get("address_state", ""),
             "address_zip": fields.get("address_zip", ""),
