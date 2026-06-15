@@ -62,10 +62,10 @@ def validate_icp(icp_data: dict, *, source_label: str = "ICP config") -> None:
       - not_found_weight, no_weight (if present) are numeric
       - source_type (if present) is not set to 'static_lookup' or any other
         unsupported value
-      - cap_tier (if present) is 'Contender' or 'Needs Verification'
+      - cap_tier, floor_tier (if present) are 'Contender' or 'Needs Verification'
       - verification_required, required_for_bullseye, exclude_if_yes (if present)
         are boolean
-      - reinforces (if present) references an existing signal_id in this profile
+      - reinforces, inhibited_by (if present) reference an existing signal_id
     """
     signals = icp_data.get("signals")
     if not isinstance(signals, list):
@@ -130,14 +130,15 @@ def validate_icp(icp_data: dict, *, source_label: str = "ICP config") -> None:
                 f"No signal source_types are currently implemented; remove the field."
             )
 
-        # cap_tier
-        if "cap_tier" in sig:
-            ct = sig["cap_tier"]
-            if ct not in VALID_CAP_TIERS:
-                raise ValueError(
-                    f"{source_label}: signal '{sid}' cap_tier='{ct}' is invalid. "
-                    f"Must be one of: {sorted(VALID_CAP_TIERS)}."
-                )
+        # cap_tier / floor_tier — both constrained to the same tier set.
+        for tier_field in ("cap_tier", "floor_tier"):
+            if tier_field in sig:
+                tv = sig[tier_field]
+                if tv not in VALID_CAP_TIERS:
+                    raise ValueError(
+                        f"{source_label}: signal '{sid}' {tier_field}='{tv}' is invalid. "
+                        f"Must be one of: {sorted(VALID_CAP_TIERS)}."
+                    )
 
         # Boolean flags
         for bool_field in ("verification_required", "required_for_bullseye", "exclude_if_yes"):
@@ -147,19 +148,20 @@ def validate_icp(icp_data: dict, *, source_label: str = "ICP config") -> None:
                     f"got {sig[bool_field]!r}."
                 )
 
-        # reinforces — must reference another signal_id in this profile
-        if "reinforces" in sig:
-            ref = sig["reinforces"]
-            if not isinstance(ref, str) or not ref:
-                raise ValueError(
-                    f"{source_label}: signal '{sid}' 'reinforces' must be a non-empty "
-                    f"signal_id string."
-                )
-            if ref not in all_ids:
-                raise ValueError(
-                    f"{source_label}: signal '{sid}' 'reinforces' references unknown "
-                    f"signal_id '{ref}'."
-                )
+        # reinforces / inhibited_by — must reference another signal_id in this profile
+        for ref_field in ("reinforces", "inhibited_by"):
+            if ref_field in sig:
+                ref = sig[ref_field]
+                if not isinstance(ref, str) or not ref:
+                    raise ValueError(
+                        f"{source_label}: signal '{sid}' '{ref_field}' must be a non-empty "
+                        f"signal_id string."
+                    )
+                if ref not in all_ids:
+                    raise ValueError(
+                        f"{source_label}: signal '{sid}' '{ref_field}' references unknown "
+                        f"signal_id '{ref}'."
+                    )
 
 
 def _assert_numeric(value: object, source_label: str, sid: str, field: str) -> None:

@@ -352,6 +352,42 @@ def test_icp_validation_rejects_non_string_reinforces():
         icp_profiles.validate_icp_profile(_icp_with_signal(reinforces=123))
 
 
+def test_icp_validation_rejects_static_lookup_source_type():
+    """API rejects source_type='static_lookup' (parity with CLI validator)."""
+    with pytest.raises(ValueError, match="static_lookup"):
+        icp_profiles.validate_icp_profile(_icp_with_signal(source_type="static_lookup"))
+
+
+def test_icp_validation_rejects_any_source_type():
+    with pytest.raises(ValueError, match="source_type"):
+        icp_profiles.validate_icp_profile(_icp_with_signal(source_type="api_lookup"))
+
+
+def test_icp_validation_rejects_duplicate_signal_id():
+    """API rejects duplicate signal_ids (parity with CLI validator)."""
+    profile = {
+        "icp_id": "t", "name": "T", "version": "v1",
+        "signals": [
+            {"signal_id": "S-1", "signal_label": "a",
+             "prompt_instruction": "?", "positive_weight": 10},
+            {"signal_id": "S-1", "signal_label": "b",
+             "prompt_instruction": "?", "positive_weight": 20},
+        ],
+    }
+    with pytest.raises(ValueError, match="duplicate"):
+        icp_profiles.validate_icp_profile(profile)
+
+
+def test_icp_validation_rejects_bad_floor_tier():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(floor_tier="Bullseye"))
+
+
+def test_icp_validation_rejects_inhibited_by_unknown_signal():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(inhibited_by="S-nope"))
+
+
 def test_save_icp_profile_rejects_duplicate_without_overwrite(store):
     icp_profiles.save_icp_profile(dict(_VALID_ICP))
     with pytest.raises(ValueError):

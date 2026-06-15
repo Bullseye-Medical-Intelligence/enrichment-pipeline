@@ -90,12 +90,40 @@ def validate_icp_profile(data: dict) -> None:
     if not isinstance(signals, list) or not signals:
         raise ValueError("ICP profile 'signals' must be a non-empty list.")
     signal_ids = {s.get("signal_id") for s in signals if isinstance(s, dict)}
+    # Duplicate signal_ids silently shadow each other downstream — reject them
+    # here so the API never accepts a profile the pipeline subprocess would.
+    seen_ids: dict[str, int] = {}
+    for i, signal in enumerate(signals):
+        if isinstance(signal, dict):
+            sid = signal.get("signal_id")
+            if isinstance(sid, str) and sid:
+                if sid in seen_ids:
+                    raise ValueError(
+                        f"ICP profile has duplicate signal_id '{sid}' "
+                        f"(signals #{seen_ids[sid]} and #{i + 1})."
+                    )
+                seen_ids[sid] = i + 1
     for i, signal in enumerate(signals):
         if not isinstance(signal, dict):
             raise ValueError(f"ICP signal #{i + 1} must be an object.")
         for field in _REQUIRED_SIGNAL_FIELDS:
             if field not in signal:
                 raise ValueError(f"ICP signal #{i + 1} is missing '{field}'.")
+        # source_type is not implemented in the pipeline — reject it here so a
+        # profile the subprocess would refuse never passes API validation.
+        if "source_type" in signal:
+            st = signal["source_type"]
+            if st == "static_lookup":
+                raise ValueError(
+                    f"ICP signal #{i + 1} ({signal.get('signal_id', '?')}) has "
+                    f"source_type='static_lookup', which is not implemented. "
+                    f"Remove source_type before saving."
+                )
+            raise ValueError(
+                f"ICP signal #{i + 1} ({signal.get('signal_id', '?')}) has "
+                f"unsupported source_type='{st}'. No signal source_types are "
+                f"currently implemented; remove the field."
+            )
         if not signal.get("prompt_instruction"):
             raise ValueError(
                 f"ICP signal #{i + 1} ({signal.get('signal_id', '?')}) "

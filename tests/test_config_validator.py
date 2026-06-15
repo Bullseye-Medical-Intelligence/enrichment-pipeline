@@ -18,7 +18,6 @@ from enrichment.config_validator import (
     validate_run_config,
     validate_all,
     VALID_CAP_TIERS,
-    US_STATE_CODES,
 )
 
 
@@ -245,6 +244,13 @@ class TestICPCapTier:
         for tier in VALID_CAP_TIERS:
             validate_icp(_minimal_icp(_minimal_signal(cap_tier=tier)))
 
+    def test_invalid_floor_tier_fails(self):
+        msg = _raises(validate_icp, _minimal_icp(_minimal_signal(floor_tier="Bullseye")))
+        assert "floor_tier" in msg or "Bullseye" in msg
+
+    def test_valid_floor_tier_passes(self):
+        validate_icp(_minimal_icp(_minimal_signal(floor_tier="Contender")))
+
 
 # ---------------------------------------------------------------------------
 # ICP — boolean flags
@@ -308,6 +314,17 @@ class TestICPReinforces:
         s = _minimal_signal(signal_id="S-001", reinforces="S-001")
         # Self-reference IS in signal_ids so it should pass (not a documented failure)
         validate_icp(_minimal_icp(s))
+
+    def test_inhibited_by_unknown_signal_id_fails(self):
+        msg = _raises(validate_icp, _minimal_icp(
+            _minimal_signal(signal_id="S-001", inhibited_by="S-999")
+        ))
+        assert "inhibited_by" in msg
+
+    def test_inhibited_by_known_signal_id_passes(self):
+        s1 = _minimal_signal(signal_id="S-001")
+        s2 = _minimal_signal(signal_id="S-002", inhibited_by="S-001")
+        validate_icp(_minimal_icp(s1, s2))   # must not raise
 
 
 # ---------------------------------------------------------------------------
