@@ -98,8 +98,8 @@ OUTPUT_FILENAMES: dict[str, str] = {
 }
 
 # Discovery compares against the same registry the rest of the system maintains:
-# a sibling of the runs/ directory (matches pipeline-api/discovery.py). Resolved
-# at call time so tests that repoint runs.OUTPUT_RUNS_PATH are honored.
+# a sibling of the runs/ directory. Resolved at call time so tests that repoint
+# runs.OUTPUT_RUNS_PATH are honored.
 _REGISTRY_FILENAME = "master_practice_registry.json"
 
 

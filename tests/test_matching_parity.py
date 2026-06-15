@@ -2,20 +2,14 @@
 tests/test_matching_parity.py
 Guards that practice matching has a single source of truth: practice_matching.py.
 
-After the shared-utility extraction, both discovery.py (legacy) and
-registry_update.py import their normalization + matching helpers from
+registry_update.py imports its normalization + matching helpers from
 practice_matching. This test asserts:
-  1. Each module's helper IS the shared practice_matching function (identity), so
-     they cannot drift.
+  1. registry_update's helpers ARE the shared practice_matching functions (identity),
+     so they cannot drift.
   2. The shared matcher's behavior is correct across representative inputs and the
      fixed match priority (place_id → domain → phone → name+address; NPI never a key).
-
-The local pipeline-api/discovery.py is loaded by explicit file path under a unique
-module name, because the bare name `discovery` also resolves to the repo-root
-discovery package (a different module).
 """
 
-import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -37,21 +31,8 @@ import practice_matching as pm  # noqa: E402  (the single source of truth)
 import registry_update  # noqa: E402
 
 
-def _load_local_discovery():
-    """Load pipeline-api/discovery.py by path under a unique, non-colliding name."""
-    spec = importlib.util.spec_from_file_location(
-        "pa_discovery_local", str(_API_DIR / "discovery.py")
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_DISC = _load_local_discovery()
-
-
 # ---------------------------------------------------------------------------
-# Single source of truth — both modules delegate to practice_matching
+# Single source of truth — registry_update delegates to practice_matching
 # ---------------------------------------------------------------------------
 
 def test_registry_update_uses_shared_helpers():
@@ -62,23 +43,6 @@ def test_registry_update_uses_shared_helpers():
     assert registry_update._name_address_key is pm.name_address_key
     assert registry_update._build_indexes is pm.build_match_indexes
     assert registry_update.match_entry is pm.match_with_ambiguity
-
-
-def test_discovery_uses_shared_helpers():
-    assert _DISC._normalize_domain is pm.normalize_domain
-    assert _DISC._normalize_phone is pm.normalize_phone
-    assert _DISC._normalize_name is pm.normalize_name
-    assert _DISC._normalize_address is pm.normalize_address
-    assert _DISC._name_address_key is pm.name_address_key
-    assert _DISC._build_indexes is pm.build_match_indexes
-
-
-def test_discovery_find_match_delegates_to_shared():
-    """discovery.find_match (3-arg legacy shim) returns the shared result."""
-    entries = {"E": {"website_domain": "alpha.com"}}
-    indexes = pm.build_match_indexes(entries)
-    fields = {"website_domain": "alpha.com"}
-    assert _DISC.find_match(fields, indexes, entries) == pm.find_match(fields, indexes)
 
 
 # ---------------------------------------------------------------------------
