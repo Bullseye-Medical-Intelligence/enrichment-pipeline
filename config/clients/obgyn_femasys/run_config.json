@@ -17,7 +17,7 @@
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
   "request_retries": 3,
-  "io_concurrency": 10,
+  "io_concurrency": 8,
   "llm_concurrency": 6,
   "subpage_keywords": [
     "service", "procedure", "treatment", "care",
