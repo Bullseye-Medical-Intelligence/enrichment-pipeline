@@ -263,6 +263,37 @@ def get_discovery_summary(run_id: str) -> Optional[DiscoveryRunSummary]:
     return DiscoveryRunSummary(**data)
 
 
+def list_discovery_runs(limit: int = 50) -> list[DiscoveryRunSummary]:
+    """Return discovery runs (newest first) for the Market Radar landing page.
+
+    Scans the runs directory for status.json files carrying run_type=discovery.
+    Separate from runs.list_runs(), which intentionally excludes discovery runs
+    from the enrichment dashboard.
+    """
+    base = runs.OUTPUT_RUNS_PATH
+    if not base.exists():
+        return []
+    out: list[DiscoveryRunSummary] = []
+    for entry in base.iterdir():
+        if not entry.is_dir():
+            continue
+        path = entry / config.STATUS_FILENAME
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if data.get("run_type") != RUN_TYPE:
+            continue
+        try:
+            out.append(DiscoveryRunSummary(**data))
+        except Exception:
+            continue
+    out.sort(key=lambda s: s.created_at, reverse=True)
+    return out[:limit]
+
+
 def read_discovery_results(run_id: str) -> Optional[dict]:
     """Read a discovery run's discovery_results.json, or None if absent."""
     if not runs.is_valid_run_id(run_id):

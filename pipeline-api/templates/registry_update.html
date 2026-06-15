@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Update Registry — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2>Update Master Practice Registry</h2>
+    <p class="page-subtitle">From enrichment run <span style="font-family:monospace;font-size:12px;">{{ run_id }}</span></p>
+  </div>
+  <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% if not result %}
+<div class="card">
+  <h4 style="margin-top:0;">Explicit, operator-triggered update</h4>
+  <p style="color:#4b5563;">
+    The registry is <strong>never</strong> updated automatically. This action adds this
+    run's <strong>reviewable</strong> records (CLEAR, not failed, not needs-review) to the
+    Master Practice Registry, inserting new practices and recording changes to existing
+    ones. <strong>Excluded</strong> and <strong>needs-review</strong> records are not included.
+  </p>
+  {% if status.status != "complete" %}
+  <div class="alert alert-error" style="margin-top:8px;">
+    This run is <strong>{{ status.status }}</strong>. The registry can only be updated from a completed enrichment run.
+  </div>
+  {% else %}
+  {% if status.registry_updated_at %}
+  <p class="form-hint">
+    Last updated to registry: {{ status.registry_updated_at[:16] | replace('T', ' ') }}
+    ({{ status.registry_update_count }} record(s)). Re-running is idempotent — unchanged
+    records will not duplicate history.
+  </p>
+  {% endif %}
+  <form method="post" action="/dashboard/{{ run_id }}/registry-update">
+    <button type="submit" class="btn btn-submit"
+            onclick="this.disabled=true;this.textContent='Updating…';this.form.submit();">
+      Update Master Practice Registry
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% else %}
+<div class="card">
+  <h4 style="margin-top:0;">Registry Updated</h4>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 16px;">
+    <div class="stat-pill stat-pill-new"><span class="stat-num">{{ result.inserted_count }}</span><span class="stat-label">Inserted</span></div>
+    <div class="stat-pill stat-pill-changed"><span class="stat-num">{{ result.updated_count }}</span><span class="stat-label">Updated</span></div>
+    <div class="stat-pill stat-pill-known"><span class="stat-num">{{ result.rejected | length }}</span><span class="stat-label">Rejected</span></div>
+    <div class="stat-pill stat-pill-dup"><span class="stat-num">{{ result.needs_manual_merge | length }}</span><span class="stat-label">Needs Merge</span></div>
+  </div>
+
+  {% if result.rejected %}
+  <h5>Rejected</h5>
+  <ul style="font-size:13px;color:#6b7280;">
+    {% for r in result.rejected %}<li><code>{{ r.record_id }}</code> — {{ r.reason }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if result.needs_manual_merge %}
+  <h5>Needs Manual Merge</h5>
+  <ul style="font-size:13px;color:#86198f;">
+    {% for r in result.needs_manual_merge %}<li><code>{{ r.record_id }}</code> — {{ r.reason }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <p class="form-hint" style="margin-top:12px;">
+    Audit log: <code>{{ result.registry_update_log_path }}</code>
+  </p>
+  <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+</div>
+{% endif %}
+
+<style>
+.stat-pill { display:inline-flex;flex-direction:column;align-items:center;padding:10px 18px;border-radius:8px;min-width:78px; }
+.stat-pill .stat-num { font-size:24px;font-weight:700;line-height:1; }
+.stat-pill .stat-label { font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-top:4px; }
+.stat-pill-new { background:#d1fae5;color:#065f46; }
+.stat-pill-changed { background:#fef3c7;color:#92400e; }
+.stat-pill-known { background:#f3f4f6;color:#6b7280; }
+.stat-pill-dup { background:#fae8ff;color:#86198f; }
+</style>
+{% endblock %}

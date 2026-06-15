@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Discovery Results — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2>Discovery Results</h2>
+    <p class="page-subtitle" style="font-family:monospace;font-size:12px;">{{ run_id }}</p>
+  </div>
+  <a href="/discovery" class="btn btn-secondary">← Market Radar</a>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{# ── Summary cards ── #}
+<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px;">
+  <div class="stat-pill stat-pill-total"><span class="stat-num">{{ summary.total_imported }}</span><span class="stat-label">Imported</span></div>
+  <div class="stat-pill stat-pill-new"><span class="stat-num">{{ summary.new_count }}</span><span class="stat-label">New</span></div>
+  <div class="stat-pill stat-pill-changed"><span class="stat-num">{{ summary.changed_count }}</span><span class="stat-label">Changed</span></div>
+  <div class="stat-pill stat-pill-known"><span class="stat-num">{{ summary.known_count }}</span><span class="stat-label">Known</span></div>
+  <div class="stat-pill stat-pill-dup"><span class="stat-num">{{ summary.possible_duplicate_count }}</span><span class="stat-label">Possible Dup</span></div>
+  <div class="stat-pill stat-pill-insufficient"><span class="stat-num">{{ summary.insufficient_data_count }}</span><span class="stat-label">Insufficient</span></div>
+</div>
+
+<form method="post" action="/discovery/runs/{{ run_id }}/send" id="send-form">
+  {# ── Send action panel ── #}
+  <div class="card" style="margin-bottom:18px;">
+    <h4 style="margin-top:0;">Send to Enrichment</h4>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="form-group" style="margin:0;flex:1;min-width:220px;">
+        <label for="project_id">Project</label>
+        <select id="project_id" name="project_id" required {% if not projects %}disabled{% endif %}>
+          <option value="" disabled selected>— Select a project —</option>
+          {% for p in projects %}
+          <option value="{{ p.project_id }}">{{ p.project_id }} — {{ p.client_name }} ({{ p.target_specialty }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;min-width:160px;">
+        <label for="operator">Your Name</label>
+        <input type="text" id="operator" name="operator" value="{{ username }}" required>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+      <button type="submit" name="selection_mode" value="new_only" class="btn btn-submit">Send NEW ({{ summary.new_count }})</button>
+      <button type="submit" name="selection_mode" value="new_and_changed" class="btn btn-submit">Send NEW + CHANGED ({{ summary.new_count + summary.changed_count }})</button>
+      <button type="submit" name="selection_mode" value="" class="btn btn-secondary" id="send-selected-btn">Send Selected</button>
+    </div>
+    <p class="form-hint" style="margin-top:12px;margin-bottom:0;">
+      Records load as a roster (ingest-first). Review the list on the next screen, then click <strong>Enrich All</strong> to spend crawl/LLM budget.
+      KNOWN and INSUFFICIENT DATA records are never sent in bulk; a POSSIBLE DUPLICATE can only go via <strong>Send Selected</strong>.
+    </p>
+  </div>
+
+  {# ── Records table ── #}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="data-table" style="margin:0;">
+      <thead>
+        <tr>
+          <th style="width:36px;"></th>
+          <th>Practice</th>
+          <th>City / State</th>
+          <th>Website</th>
+          <th>Phone</th>
+          <th>Status</th>
+          <th>Reason</th>
+          <th>Changed Fields</th>
+          <th>Matched Record</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in records %}
+        {% set status = row.classification %}
+        {% set selectable = status in ("NEW", "CHANGED", "POSSIBLE_DUPLICATE") %}
+        <tr{% if not selectable %} style="opacity:0.6;"{% endif %}>
+          <td style="text-align:center;">
+            {% if selectable %}
+            <input type="checkbox" name="row_idx" value="{{ row.row_idx }}" class="rec-checkbox">
+            {% endif %}
+          </td>
+          <td><strong>{{ row.practice_name or '—' }}</strong></td>
+          <td style="font-size:12px;color:#6b7280;">{{ row.address_city or '' }}{% if row.address_city and row.address_state %}, {% endif %}{{ row.address_state or '' }}</td>
+          <td style="font-size:12px;">
+            {% if row.website_url %}
+            <a href="{{ row.website_url }}" target="_blank" rel="noopener" style="color:#2563eb;word-break:break-all;">{{ row.website_url | truncate(36, true, '…') }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;white-space:nowrap;">{{ row.phone or '—' }}</td>
+          <td><span class="disc-badge disc-{{ status | lower }}">{{ status | replace('_', ' ') | title }}</span></td>
+          <td style="font-size:12px;color:#6b7280;">
+            {% if status == 'NEW' %}No registry match
+            {% elif status == 'CHANGED' %}Changed{% if row.match_basis %} (by {{ row.match_basis | replace('_', ' ') }}){% endif %}
+            {% elif status == 'KNOWN' %}Already known
+            {% elif status == 'POSSIBLE_DUPLICATE' %}Possible dup{% if row.duplicate_of_row_idx is not none %} of row {{ row.duplicate_of_row_idx }}{% endif %}
+            {% elif status == 'INSUFFICIENT_DATA' %}Not enough data
+            {% endif %}
+          </td>
+          <td style="font-size:12px;">
+            {% if row.changed_fields %}
+              {% for ch in row.changed_fields %}
+              <div style="margin-bottom:3px;">
+                <span style="color:#92400e;font-weight:600;">{{ ch.label or ch.field }}:</span>
+                <span style="color:#6b7280;text-decoration:line-through;">{{ (ch.old or '') | truncate(24, true, '…') }}</span>
+                → <span style="color:#065f46;">{{ (ch.new or '') | truncate(24, true, '…') }}</span>
+              </div>
+              {% endfor %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:11px;color:#9ca3af;font-family:monospace;">{{ row.entry_id or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<style>
+.stat-pill { display:inline-flex;flex-direction:column;align-items:center;padding:10px 18px;border-radius:8px;min-width:78px; }
+.stat-pill .stat-num { font-size:24px;font-weight:700;line-height:1; }
+.stat-pill .stat-label { font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-top:4px; }
+.stat-pill-total { background:#eef2ff;color:#3730a3; }
+.stat-pill-new { background:#d1fae5;color:#065f46; }
+.stat-pill-changed { background:#fef3c7;color:#92400e; }
+.stat-pill-known { background:#f3f4f6;color:#6b7280; }
+.stat-pill-dup { background:#fae8ff;color:#86198f; }
+.stat-pill-insufficient { background:#f3f4f6;color:#9ca3af; }
+.disc-badge { display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap; }
+.disc-new { background:#d1fae5;color:#065f46; }
+.disc-changed { background:#fef3c7;color:#92400e; }
+.disc-known { background:#f3f4f6;color:#6b7280; }
+.disc-possible_duplicate { background:#fae8ff;color:#86198f; }
+.disc-insufficient_data { background:#f3f4f6;color:#9ca3af; }
+</style>
+
+<script>
+(function () {
+  var form = document.getElementById('send-form');
+  var selBtn = document.getElementById('send-selected-btn');
+  if (form && selBtn) {
+    selBtn.addEventListener('click', function (e) {
+      var checked = form.querySelectorAll('input[name="row_idx"]:checked').length;
+      if (checked === 0) {
+        e.preventDefault();
+        alert('Select at least one record, or use a "Send NEW" bulk action.');
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -29,15 +29,18 @@ import brief_publisher
 import client_exports
 import sales_export
 import config
+import discovery_runs
 import exports
 import icp_profiles
 import llm_pricing
 import projects
 import record_adapter
+import registry_update
 import reviews
 import runner
 import runs
 import validator
+from fastapi.concurrency import run_in_threadpool
 from crawl_compressor import compress_crawl
 from narrative_generator import generate_narrative, generate_hypothesis
 from schema import ReviewEdit
@@ -2005,16 +2008,15 @@ async def publish_brief_route(
 @router.get("/discovery", response_class=HTMLResponse)
 async def discovery_page(
     request: Request,
+    error: str = "",
     username: str = Depends(auth.require_session),
 ):
-    """Render the Market Radar upload form."""
+    """Market Radar landing: upload a new discovery run + list recent ones."""
     return _render(
         "discovery.html",
         username=username,
-        projects=projects.list_projects(),
-        delta=None,
-        discovery_id=None,
-        error=None,
+        recent_runs=discovery_runs.list_discovery_runs(),
+        error=error or None,
     )
 
 
@@ -2024,108 +2026,150 @@ async def discovery_upload(
     file: UploadFile = File(...),
     username: str = Depends(auth.require_session),
 ):
-    """Accept an Outscraper CSV, compute the delta, and render results."""
-    import discovery as disc
-
-    content = await file.read()
+    """Create a persistent discovery run, then redirect to its results page."""
     try:
-        new_rows, changed_rows, known_rows = disc.compute_delta(content)
-    except Exception as exc:
-        logger.warning("discovery_upload: delta computation failed", exc_info=True)
-        return _render(
-            "discovery.html",
-            status_code=400,
-            username=username,
-            projects=projects.list_projects(),
-            delta=None,
-            discovery_id=None,
-            error=f"Could not parse CSV: {exc}",
-        )
-
-    discovery_id = disc.save_discovery_csv(content)
-    delta = {
-        "new_rows": [disc.display_fields(r) for r in new_rows],
-        "changed_rows": [disc.display_fields(r) for r in changed_rows],
-        "known_rows": [disc.display_fields(r) for r in known_rows],
-        "new_count": len(new_rows),
-        "changed_count": len(changed_rows),
-        "known_count": len(known_rows),
-    }
-    return _render(
-        "discovery.html",
-        username=username,
-        projects=projects.list_projects(),
-        delta=delta,
-        discovery_id=discovery_id,
-        error=None,
-    )
-
-
-@router.post("/discovery/enrich")
-async def discovery_enrich(
-    background_tasks: BackgroundTasks,
-    request: Request,
-    discovery_id: str = Form(...),
-    row_idx: list[int] = Form(default=[]),
-    project_id: str = Form(...),
-    operator: str = Form(...),
-    username: str = Depends(auth.require_session),
-):
-    """Build a CSV from selected discovery rows and spawn an ingest run."""
-    import discovery as disc
-
-    csv_bytes = disc.read_discovery_csv(discovery_id)
-    if csv_bytes is None:
-        return _render(
-            "discovery.html",
-            status_code=400,
-            username=username,
-            projects=projects.list_projects(),
-            delta=None,
-            discovery_id=None,
-            error="Discovery session expired or not found. Please re-upload the CSV.",
-        )
-
-    all_rows = disc.parse_discovery_rows(csv_bytes)
-    selected_set = set(row_idx)
-    selected_rows = [r for i, r in enumerate(all_rows) if i in selected_set]
-
-    if not selected_rows:
-        return _render(
-            "discovery.html",
-            status_code=400,
-            username=username,
-            projects=projects.list_projects(),
-            delta=None,
-            discovery_id=None,
-            error="No practices selected. Check at least one practice to enrich.",
-        )
-
-    disc.preregister_discovery_rows(selected_rows)
-    enrich_csv = disc.build_enrich_csv(selected_rows)
-
-    class _MemFile:
-        filename = "discovery_selected.csv"
-
-        async def read(self) -> bytes:
-            return enrich_csv
-
-    try:
-        run_id, _row_count = await runner.orchestrate_ingest(
-            _MemFile(), "outscraper", project_id, operator, background_tasks
+        content, _row_count = await validator.validate_csv_upload(
+            file, "outscraper", discovery_runs.RUN_TYPE
         )
     except ValueError as exc:
         return _render(
             "discovery.html",
             status_code=400,
             username=username,
-            projects=projects.list_projects(),
-            delta=None,
-            discovery_id=None,
-            error=str(exc),
+            recent_runs=discovery_runs.list_discovery_runs(),
+            error=f"Could not process CSV: {exc}",
         )
 
-    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+    filename = getattr(file, "filename", None) or "upload.csv"
+    try:
+        summary = await run_in_threadpool(
+            discovery_runs.create_discovery_run, content, filename, username
+        )
+    except ValueError as exc:
+        return _render(
+            "discovery.html",
+            status_code=500,
+            username=username,
+            recent_runs=discovery_runs.list_discovery_runs(),
+            error=f"Discovery run failed: {exc}",
+        )
+
+    return RedirectResponse(url=f"/discovery/runs/{summary.run_id}", status_code=303)
+
+
+@router.get("/discovery/runs/{run_id}", response_class=HTMLResponse)
+async def discovery_results_page(
+    request: Request,
+    run_id: str,
+    error: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Render a discovery run's classified results with selection + send actions."""
+    summary = discovery_runs.get_discovery_summary(run_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail=f"Discovery run '{run_id}' not found")
+    results = discovery_runs.read_discovery_results(run_id) or {"records": []}
+    return _render(
+        "discovery_results.html",
+        username=username,
+        run_id=run_id,
+        summary=summary,
+        records=results.get("records", []),
+        projects=projects.list_projects(),
+        error=error or None,
+    )
+
+
+@router.post("/discovery/runs/{run_id}/send")
+async def discovery_send(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    run_id: str,
+    project_id: str = Form(...),
+    operator: str = Form(...),
+    selection_mode: str = Form(""),
+    row_idx: list[int] = Form(default=[]),
+    username: str = Depends(auth.require_session),
+):
+    """Send selected discovery records to a new (ingest-first) enrichment run."""
+    kwargs: dict = {}
+    if selection_mode:
+        kwargs["selection_mode"] = selection_mode
+    else:
+        kwargs["selected_record_ids"] = row_idx
+
+    try:
+        result = await discovery_runs.send_to_enrichment(
+            run_id, project_id, operator, background_tasks, **kwargs
+        )
+    except (LookupError, ValueError) as exc:
+        return RedirectResponse(
+            url=f"/discovery/runs/{run_id}?error={urllib.parse.quote(str(exc))}",
+            status_code=303,
+        )
+
+    # Land on the existing enrichment run page (ingested / ready for Enrich All).
+    return RedirectResponse(url=f"/dashboard/{result['enrichment_run_id']}", status_code=303)
+
+
+@router.get("/dashboard/{run_id}/registry-update", response_class=HTMLResponse)
+async def registry_update_page(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Show the explicit 'Update Master Practice Registry' action for a run."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return _render(
+        "registry_update.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        result=None,
+        error=None,
+    )
+
+
+@router.post("/dashboard/{run_id}/registry-update")
+async def registry_update_action(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Run the explicit, conservative registry update and show the summary.
+
+    Conservative defaults: all_reviewable (CLEAR, not failed/needs_review),
+    excluded and needs_review are NOT included.
+    """
+    status = runs.get_run(run_id)
+    try:
+        result = await run_in_threadpool(
+            registry_update.update_registry_from_run,
+            run_id,
+            selection_mode="all_reviewable",
+            include_needs_review=False,
+            include_excluded=False,
+        )
+    except (LookupError, ValueError) as exc:
+        return _render(
+            "registry_update.html",
+            status_code=400,
+            username=username,
+            run_id=run_id,
+            status=status,
+            result=None,
+            error=str(exc),
+        )
+    return _render(
+        "registry_update.html",
+        username=username,
+        run_id=run_id,
+        status=runs.get_run(run_id),
+        result=result,
+        error=None,
+    )
 
 
 @router.post("/api/ui/runs")

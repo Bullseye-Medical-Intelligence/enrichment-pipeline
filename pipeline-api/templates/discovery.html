@@ -4,291 +4,70 @@
 {% block content %}
 <div class="page-header">
   <h2>Market Radar</h2>
-  <p class="page-subtitle">Upload an Outscraper CSV to detect new or changed practices since your last run.</p>
+  <p class="page-subtitle">Upload a fresh market CSV to find new or changed practices against the Master Practice Registry.</p>
 </div>
 
 {% if error %}
 <div class="alert alert-error">{{ error }}</div>
 {% endif %}
 
-{% if not delta %}
-{# ──────────────────────────────────────────────
-   Upload form (initial state)
-   ────────────────────────────────────────────── #}
 <div class="card upload-card">
+  <h4 style="margin-top:0;">New Discovery Run</h4>
   <form method="post" action="/discovery/upload" enctype="multipart/form-data" class="upload-form">
     <div class="form-group">
       <label for="file">Outscraper CSV File</label>
       <input type="file" id="file" name="file" accept=".csv" required>
       <p class="form-hint">
-        Upload your latest Outscraper pull. The system compares each row against all
-        previously enriched practices and classifies it as <strong>New</strong>,
-        <strong>Changed</strong>, or <strong>Known</strong>.
+        Same format as a normal pipeline run. Each row is matched against the
+        master practice registry by Google Place ID, website domain, phone, or
+        name + address, then classified as New, Changed, Known, Possible
+        Duplicate, or Insufficient Data. No enrichment budget is spent here.
       </p>
     </div>
     <div class="form-actions">
-      <button type="submit" class="btn btn-submit">Check for Changes</button>
+      <button type="submit" class="btn btn-submit">Run Discovery</button>
       <a href="/" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
 </div>
 
-<div class="card info-card">
-  <h4>How it works</h4>
-  <ol class="step-list">
-    <li>Upload any Outscraper CSV — same format as a normal pipeline run.</li>
-    <li>Each row is matched against the master practice registry using Google Place ID, website domain, phone, or name + address.</li>
-    <li>New and changed practices are shown first. Select the ones you want to enrich and choose a project.</li>
-    <li>The selected rows flow into the normal enrichment pipeline — roster loads first, then you trigger enrichment from the results page.</li>
-  </ol>
+<div class="card" style="padding:0;overflow:hidden;">
+  <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;">
+    <h4 style="margin:0;">Recent Discovery Runs</h4>
+  </div>
+  {% if recent_runs %}
+  <table class="data-table" style="margin:0;">
+    <thead>
+      <tr>
+        <th>Run</th>
+        <th>When</th>
+        <th>Imported</th>
+        <th>New</th>
+        <th>Changed</th>
+        <th>Known</th>
+        <th>Possible Dup</th>
+        <th>Insufficient</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recent_runs %}
+      <tr>
+        <td style="font-family:monospace;font-size:12px;">{{ r.run_id }}</td>
+        <td style="font-size:12px;color:#6b7280;">{{ (r.created_at or '')[:16] | replace('T', ' ') }}</td>
+        <td>{{ r.total_imported }}</td>
+        <td>{{ r.new_count }}</td>
+        <td>{{ r.changed_count }}</td>
+        <td style="color:#6b7280;">{{ r.known_count }}</td>
+        <td style="color:#6b7280;">{{ r.possible_duplicate_count }}</td>
+        <td style="color:#6b7280;">{{ r.insufficient_data_count }}</td>
+        <td><a href="/discovery/runs/{{ r.run_id }}" class="btn btn-secondary" style="padding:2px 10px;font-size:12px;">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="padding:18px;color:#6b7280;margin:0;">No discovery runs yet. Upload a CSV above to get started.</p>
+  {% endif %}
 </div>
-
-{% else %}
-{# ──────────────────────────────────────────────
-   Delta results + enrich action
-   ────────────────────────────────────────────── #}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-  <div style="display:flex;gap:16px;flex-wrap:wrap;">
-    <div class="stat-pill stat-pill-new">
-      <span class="stat-num">{{ delta.new_count }}</span>
-      <span class="stat-label">New</span>
-    </div>
-    <div class="stat-pill stat-pill-changed">
-      <span class="stat-num">{{ delta.changed_count }}</span>
-      <span class="stat-label">Changed</span>
-    </div>
-    <div class="stat-pill stat-pill-known">
-      <span class="stat-num">{{ delta.known_count }}</span>
-      <span class="stat-label">Known</span>
-    </div>
-  </div>
-  <a href="/discovery" class="btn btn-secondary" style="white-space:nowrap;">Upload New CSV</a>
-</div>
-
-<form method="post" action="/discovery/enrich" id="enrich-form">
-  <input type="hidden" name="discovery_id" value="{{ discovery_id }}">
-
-  {# ── New practices ── #}
-  {% if delta.new_rows %}
-  <div style="margin-bottom:28px;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <h3 style="margin:0;">New Practices</h3>
-      <span class="tier-badge tier-unknown" style="font-size:11px;">{{ delta.new_count }} records</span>
-      <label style="margin-left:auto;font-size:12px;color:#6b7280;cursor:pointer;">
-        <input type="checkbox" id="select-all-new" style="margin-right:4px;">
-        Select all new
-      </label>
-    </div>
-    <div class="card" style="padding:0;overflow:hidden;">
-      <table class="data-table" style="margin:0;">
-        <thead>
-          <tr>
-            <th style="width:36px;"></th>
-            <th>Practice</th>
-            <th>Location</th>
-            <th>Website</th>
-            <th>Phone</th>
-            <th>Category</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in delta.new_rows %}
-          <tr>
-            <td style="text-align:center;">
-              <input type="checkbox" name="row_idx" value="{{ row.row_idx }}" class="new-checkbox">
-            </td>
-            <td><strong>{{ row.name or '—' }}</strong></td>
-            <td style="color:#6b7280;font-size:12px;">{{ row.location or '—' }}</td>
-            <td style="font-size:12px;">
-              {% if row.website %}
-              <a href="{{ row.website }}" target="_blank" rel="noopener" style="color:#2563eb;word-break:break-all;">
-                {{ row.website | truncate(40, true, '…') }}
-              </a>
-              {% else %}—{% endif %}
-            </td>
-            <td style="font-size:12px;white-space:nowrap;">{{ row.phone or '—' }}</td>
-            <td style="font-size:12px;color:#6b7280;">{{ row.category or '—' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  {# ── Changed practices ── #}
-  {% if delta.changed_rows %}
-  <div style="margin-bottom:28px;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <h3 style="margin:0;">Changed Practices</h3>
-      <span class="tier-badge tier-watchlist" style="font-size:11px;">{{ delta.changed_count }} records</span>
-      <label style="margin-left:auto;font-size:12px;color:#6b7280;cursor:pointer;">
-        <input type="checkbox" id="select-all-changed" style="margin-right:4px;">
-        Select all changed
-      </label>
-    </div>
-    <div class="card" style="padding:0;overflow:hidden;">
-      <table class="data-table" style="margin:0;">
-        <thead>
-          <tr>
-            <th style="width:36px;"></th>
-            <th>Practice</th>
-            <th>Location</th>
-            <th>Last Tier</th>
-            <th>What Changed</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in delta.changed_rows %}
-          <tr>
-            <td style="text-align:center;">
-              <input type="checkbox" name="row_idx" value="{{ row.row_idx }}" class="changed-checkbox">
-            </td>
-            <td>
-              <strong>{{ row.name or '—' }}</strong>
-              {% if row.website %}
-              <br><a href="{{ row.website }}" target="_blank" rel="noopener" style="font-size:11px;color:#6b7280;">
-                {{ row.website | truncate(40, true, '…') }}
-              </a>
-              {% endif %}
-            </td>
-            <td style="color:#6b7280;font-size:12px;">{{ row.location or '—' }}</td>
-            <td style="font-size:12px;">
-              {% if row.last_tier %}
-              <span class="tier-badge tier-{{ row.last_tier | lower | replace(' ', '-') }}">{{ row.last_tier }}</span>
-              {% if row.last_seen_at %}<br><span style="color:#9ca3af;font-size:11px;">{{ row.last_seen_at }}</span>{% endif %}
-              {% else %}—{% endif %}
-            </td>
-            <td style="font-size:12px;">
-              {% for ch in row.changes %}
-              <div style="margin-bottom:4px;">
-                <span style="color:#92400e;font-weight:600;">{{ ch.label }}:</span>
-                <span style="color:#6b7280;text-decoration:line-through;">{{ ch.old | truncate(30, true, '…') }}</span>
-                → <span style="color:#065f46;">{{ ch.new | truncate(30, true, '…') }}</span>
-              </div>
-              {% endfor %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  {# ── Known (no changes) — collapsed ── #}
-  {% if delta.known_rows %}
-  <div style="margin-bottom:28px;">
-    <details>
-      <summary style="cursor:pointer;font-weight:600;font-size:14px;color:#6b7280;padding:8px 0;">
-        Known — No Changes ({{ delta.known_count }} practices, not selectable)
-      </summary>
-      <div class="card" style="padding:0;overflow:hidden;margin-top:8px;">
-        <table class="data-table" style="margin:0;">
-          <thead>
-            <tr>
-              <th>Practice</th>
-              <th>Location</th>
-              <th>Last Tier</th>
-              <th>Last Seen</th>
-              <th>Matched Via</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in delta.known_rows %}
-            <tr style="opacity:0.65;">
-              <td>{{ row.name or '—' }}</td>
-              <td style="font-size:12px;color:#6b7280;">{{ row.location or '—' }}</td>
-              <td style="font-size:12px;">
-                {% if row.last_tier %}
-                <span class="tier-badge tier-{{ row.last_tier | lower | replace(' ', '-') }}">{{ row.last_tier }}</span>
-                {% else %}—{% endif %}
-              </td>
-              <td style="font-size:12px;color:#9ca3af;">{{ row.last_seen_at or '—' }}</td>
-              <td style="font-size:12px;color:#9ca3af;">{{ row.match_basis | replace('_', ' ') }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  </div>
-  {% endif %}
-
-  {# ── Enrich action panel ── #}
-  {% if delta.new_count > 0 or delta.changed_count > 0 %}
-  <div class="card" style="margin-top:8px;">
-    <h4 style="margin-top:0;">Enrich Selected Practices</h4>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
-      <div class="form-group" style="margin:0;flex:1;min-width:200px;">
-        <label for="project_id">Project</label>
-        <select id="project_id" name="project_id" required {% if not projects %}disabled{% endif %}>
-          <option value="" disabled selected>— Select a project —</option>
-          {% for p in projects %}
-          <option value="{{ p.project_id }}">{{ p.project_id }} — {{ p.client_name }} ({{ p.target_specialty }})</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group" style="margin:0;min-width:160px;">
-        <label for="operator">Your Name</label>
-        <input type="text" id="operator" name="operator" value="{{ username }}" required>
-      </div>
-      <div style="padding-bottom:1px;">
-        <button type="submit" class="btn btn-submit" id="enrich-btn">Enrich Selected</button>
-      </div>
-    </div>
-    <p class="form-hint" style="margin-top:12px;margin-bottom:0;">
-      Checked practices will be loaded as a roster. Review the list on the next screen, then click <strong>Enrich All</strong> to start the pipeline.
-    </p>
-  </div>
-  {% endif %}
-
-</form>
-{% endif %}
-
-<style>
-.stat-pill { display:inline-flex;flex-direction:column;align-items:center;padding:10px 20px;border-radius:8px;min-width:80px; }
-.stat-pill .stat-num { font-size:24px;font-weight:700;line-height:1; }
-.stat-pill .stat-label { font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-top:4px; }
-.stat-pill-new { background:#d1fae5;color:#065f46; }
-.stat-pill-changed { background:#fef3c7;color:#92400e; }
-.stat-pill-known { background:#f3f4f6;color:#6b7280; }
-.tier-badge { display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap; }
-.tier-bullseye { background:#d1fae5;color:#065f46; }
-.tier-contender,.tier-watchlist { background:#fef3c7;color:#92400e; }
-.tier-needs-verification { background:#e0f2fe;color:#0c4a6e; }
-.tier-excluded { background:#fee2e2;color:#991b1b; }
-.tier-unknown,.tier-manual-review { background:#f3f4f6;color:#6b7280; }
-</style>
-
-<script>
-(function () {
-  var allNew = document.getElementById('select-all-new');
-  if (allNew) {
-    allNew.addEventListener('change', function () {
-      document.querySelectorAll('.new-checkbox').forEach(function (cb) { cb.checked = allNew.checked; });
-    });
-  }
-  var allChanged = document.getElementById('select-all-changed');
-  if (allChanged) {
-    allChanged.addEventListener('change', function () {
-      document.querySelectorAll('.changed-checkbox').forEach(function (cb) { cb.checked = allChanged.checked; });
-    });
-  }
-
-  var form = document.getElementById('enrich-form');
-  var btn = document.getElementById('enrich-btn');
-  if (form && btn) {
-    form.addEventListener('submit', function () {
-      var checked = form.querySelectorAll('input[name="row_idx"]:checked').length;
-      if (checked === 0) {
-        alert('Please select at least one practice to enrich.');
-        return false;
-      }
-      btn.disabled = true;
-      btn.textContent = 'Loading…';
-    });
-  }
-})();
-</script>
 {% endblock %}

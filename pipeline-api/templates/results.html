@@ -85,6 +85,7 @@
       <a href="/dashboard/{{ run_id }}/cartridge" class="btn btn-secondary" title="Read-only view of the frozen config and ICP signals this run used.">Cartridge</a>
       {% if status.status == "complete" %}
       <a href="/dashboard/{{ run_id }}/link-check" class="btn btn-secondary" title="Verify evidence source links still resolve before shipping a deliverable.">Check Evidence Links</a>
+      <a href="/dashboard/{{ run_id }}/registry-update" class="btn btn-secondary" title="Explicitly add this run's reviewable records to the Master Practice Registry. Never runs automatically.">Update Registry</a>
       {% endif %}
       {% if status.status in ("complete", "failed") %}
       <form method="post" action="/runs/{{ run_id }}/rerun" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
