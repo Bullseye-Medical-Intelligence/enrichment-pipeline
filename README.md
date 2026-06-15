@@ -10,11 +10,38 @@ public websites, and outputs `enriched_targets.json` for dashboard import.
 ## 1. What This Pipeline Does
 
 The pipeline takes a list of medical practices from an Outscraper CSV or manual CSV,
-visits each practice's public website, sends the text to Claude (Anthropic API) for
-signal analysis, and produces a scored, structured output file. Borderline and
-low-confidence Bullseye records may receive selective verification by a second LLM
-(OpenAI GPT) — thin-context records and high-confidence Bullseyes are skipped to
-avoid wasted spend. The output file is imported into the review dashboard for human QC.
+visits each practice's **public-facing website footprint only**, sends the text to
+Claude (Anthropic API) for signal analysis, and produces a scored, structured output
+file. The output file is imported into the review dashboard for human QC.
+
+### GPT verification is selective, not universal
+
+A second LLM (OpenAI GPT) acts as a **quality gate, not a guarantee**, and only runs
+on the records where it adds the most value. It does not re-score every record:
+
+- **Near-miss records** (score just below the Bullseye threshold, within
+  `verify_near_miss_band`) are verified — this is the highest-value GPT spend.
+- **Uncertain Bullseyes** — a would-be Bullseye that rests on at least one
+  low-confidence "yes" signal — are verified. High-confidence Bullseyes are skipped
+  (GPT would only agree).
+- **Thin-context records** (`source_confidence` `limited`/`failed`) **skip GPT**
+  entirely — the tier is capped at "Needs Verification" regardless, and GPT would
+  see the same too-thin text.
+
+Verification informs the tier and flags disagreement for the analyst; it never
+auto-promotes a record and it does not make the output "verified-correct." Human QC
+in the dashboard remains the authority. See `CLAUDE.md` → "The 8 Steps" (Step 5) for
+the exact selection logic.
+
+### Market Radar (discovery) — optional operator workflow
+
+Before enrichment, an operator can run **Market Radar / Discovery**: upload an
+Outscraper CSV and compare it against the Master Practice Registry to see which
+practices are NEW, CHANGED, KNOWN, POSSIBLE_DUPLICATE, or INSUFFICIENT_DATA, then
+send only the actionable ones into enrichment. Discovery never spends crawl/LLM
+budget and never mutates the registry. See
+[`docs/operator_market_radar_workflow.md`](docs/operator_market_radar_workflow.md)
+and [`docs/discovery_architecture.md`](docs/discovery_architecture.md).
 
 ---
 
