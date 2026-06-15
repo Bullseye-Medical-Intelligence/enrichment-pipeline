@@ -246,7 +246,22 @@ See `config/clients/obgyn_femasys/` for a complete reference implementation.
 
 ---
 
-## 8. What This Pipeline Does NOT Do
+## 8. Testing & CI
+
+Run the test suite:
+```
+python -m pytest tests/ -q
+```
+
+**Tests are deterministic and do not call LLM APIs or external websites.** They
+require no `.env`, no `ANTHROPIC_API_KEY`, and no `OPENAI_API_KEY`, and they never
+launch a browser. GitHub Actions (`.github/workflows/ci.yml`) runs the same suite
+plus an ingest-only `--dry-run` smoke test on every push to `main` and every pull
+request.
+
+---
+
+## 9. What This Pipeline Does NOT Do
 
 - **No PHI.** The pipeline only reads public-facing practice websites. It does not
   access patient data, EMRs, appointment records, or any login-gated system.

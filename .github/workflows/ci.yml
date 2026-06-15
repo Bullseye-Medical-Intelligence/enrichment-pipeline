@@ -1,3 +1,7 @@
+# Deterministic CI. The test suite makes no LLM calls and no external HTTP
+# requests, and requires no secrets — .env, ANTHROPIC_API_KEY, and
+# OPENAI_API_KEY are all unnecessary. No Playwright browser binary is installed:
+# the tests never launch a browser (the startup probe fails gracefully).
 name: CI
 
 on:
@@ -9,6 +13,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +24,20 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        # pipeline-api/requirements.txt pulls in the root requirements via
+        # `-r ../requirements.txt`; both are installed for clarity.
         run: |
           pip install -r requirements.txt
           pip install -r pipeline-api/requirements.txt
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        # `python -m pytest` (not the `pytest` console script) guarantees the
+        # tests run under the same interpreter pip installed into. Matches the
+        # documented command in CLAUDE.md.
+        run: python -m pytest tests/ -v --tb=short
 
       - name: Dry-run smoke test
+        # --dry-run runs Step 1 (ingest) only: no LLM calls, no HTTP, no keys.
         run: |
           printf 'name,city,state\nTest Clinic,Austin,TX\n' > "${RUNNER_TEMP}/sample.csv"
           python pipeline.py \
