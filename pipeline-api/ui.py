@@ -2217,6 +2217,100 @@ async def trigger_verification(
     )
 
 
+@router.post("/dashboard/{run_id}/rescore", response_class=HTMLResponse)
+async def trigger_rescore(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Trigger the ICP re-scoring post-run pass on a completed run.
+
+    Shells out to rescore_run.py which re-runs Steps 6-7 (exclusion check and
+    scoring validation) using the run's frozen ICP snapshot. Zero LLM cost.
+    Signals are never modified — only scores and tiers change.
+    Redirects to the run dashboard on completion.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = runs.get_run(run_id)
+    if status is None or status.status != "complete":
+        raise HTTPException(status_code=400, detail="Re-scoring requires a completed run")
+
+    icp_path = run_directory / "icp_snapshot.json"
+    if not icp_path.exists():
+        raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
+
+    import subprocess, sys
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "rescore_run.py"),
+         "--run-dir", str(run_directory),
+         "--icp", str(icp_path)],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Re-scoring failed: {result.stderr[:300]}")
+
+    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+
+
+@router.post("/dashboard/{run_id}/recrawl", response_class=HTMLResponse)
+async def trigger_recrawl(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Trigger the post-run browser re-crawl pass on a completed run.
+
+    Shells out to recrawl_run.py which re-crawls blocked/thin records
+    (source_confidence limited or failed) with Playwright, then re-runs
+    signal extraction, exclusion check, and scoring on improved records.
+    Writes results back atomically and redirects to the run dashboard.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = runs.get_run(run_id)
+    if status is None or status.status != "complete":
+        raise HTTPException(status_code=400, detail="Browser re-crawl requires a completed run")
+
+    import subprocess, sys, json as _json
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "recrawl_run.py"),
+         "--run-dir", str(run_directory)],
+        capture_output=True, text=True, timeout=900,
+    )
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Browser re-crawl failed: {result.stderr[:300]}",
+        )
+
+    # Parse the stats from the last JSON line in stdout
+    stats = {}
+    for line in reversed(result.stdout.strip().splitlines()):
+        try:
+            stats = _json.loads(line)
+            break
+        except Exception:
+            continue
+
+    improved = stats.get("improved", 0)
+    still_blocked = stats.get("still_blocked", 0)
+    notice = (
+        f"Browser re-crawl complete: {improved} record(s) improved, "
+        f"{still_blocked} still blocked."
+    )
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+        status_code=303,
+    )
+
+
 @router.get("/dashboard/{run_id}/confirm-queue", response_class=HTMLResponse)
 async def confirm_queue(
     request: Request,
