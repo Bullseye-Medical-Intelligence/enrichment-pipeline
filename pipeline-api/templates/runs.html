@@ -26,6 +26,36 @@
 <div class="alert alert-error">{{ delete_error }}</div>
 {% endif %}
 
+{% if health and health.status != "ok" %}
+{% set is_error = health.status == "error" %}
+<details class="card" style="margin-bottom:16px;padding:0;" {% if is_error %}open{% endif %}>
+  <summary style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;user-select:none;">
+    <span style="font-size:16px;">{% if is_error %}🔴{% else %}🟡{% endif %}</span>
+    <span style="font-weight:600;font-size:13px;">
+      System Health: {{ "Configuration errors detected" if is_error else "Warnings" }}
+    </span>
+    <span style="font-size:12px;color:#888;margin-left:auto;">click to {% if is_error %}collapse{% else %}expand{% endif %}</span>
+  </summary>
+  <div style="padding:0 16px 14px;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      {% for c in health.checks %}
+      <tr style="border-top:1px solid #eee;">
+        <td style="padding:6px 8px 6px 0;width:180px;font-weight:500;">{{ c.label }}</td>
+        <td style="padding:6px 4px;width:48px;text-align:center;">
+          {% if c.status == "ok" %}<span style="color:#166534;">✓</span>
+          {% elif c.status == "warn" %}<span style="color:#b45309;">⚠</span>
+          {% else %}<span style="color:#b91c1c;">✗</span>{% endif %}
+        </td>
+        <td style="padding:6px 0;color:{% if c.status == 'error' %}#b91c1c{% elif c.status == 'warn' %}#b45309{% else %}#166534{% endif %};">
+          {{ c.message }}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</details>
+{% endif %}
+
 {% if runs %}
 <form method="post" action="/dashboard/bulk-delete" id="bulk-form"
       onsubmit="return confirmBulkDelete()">

@@ -33,6 +33,7 @@ import discovery_runs
 import exports
 import icp_profiles
 import llm_pricing
+import preflight
 import projects
 import record_adapter
 import registry_update
@@ -918,6 +919,36 @@ async def upload_page(
 # Run list
 # ---------------------------------------------------------------------------
 
+@router.get("/preflight")
+async def preflight_check(
+    username: str = Depends(auth.require_session),
+):
+    """Return a JSON system health check: API keys, paths, profiles, projects."""
+    result = preflight.run_checks(
+        anthropic_api_key=config.ANTHROPIC_API_KEY,
+        pipeline_repo_path=config.PIPELINE_REPO_PATH,
+        pipeline_script=config.PIPELINE_SCRIPT,
+        output_runs_path=config.OUTPUT_RUNS_PATH,
+        icp_profiles_path=config.ICP_PROFILES_PATH,
+        projects_path=config.PROJECTS_PATH,
+        session_secret_key=config.SESSION_SECRET_KEY,
+    )
+    return JSONResponse(result)
+
+
+def _run_preflight() -> dict:
+    """Run preflight checks and return summary dict (called on dashboard render)."""
+    return preflight.run_checks(
+        anthropic_api_key=config.ANTHROPIC_API_KEY,
+        pipeline_repo_path=config.PIPELINE_REPO_PATH,
+        pipeline_script=config.PIPELINE_SCRIPT,
+        output_runs_path=config.OUTPUT_RUNS_PATH,
+        icp_profiles_path=config.ICP_PROFILES_PATH,
+        projects_path=config.PROJECTS_PATH,
+        session_secret_key=config.SESSION_SECRET_KEY,
+    )
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def runs_page(
     request: Request,
@@ -927,8 +958,10 @@ async def runs_page(
     """Render the full run list. Archived runs hidden by default."""
     all_runs = runs.list_runs(include_archived=show_archived)
     archived_count = len(runs.list_runs(include_archived=True)) - len(runs.list_runs())
+    health = _run_preflight()
     return _render("runs.html", username=username, runs=all_runs,
-                   show_archived=show_archived, archived_count=archived_count)
+                   show_archived=show_archived, archived_count=archived_count,
+                   health=health)
 
 
 @router.post("/dashboard/{run_id}/delete", response_class=HTMLResponse)
