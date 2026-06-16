@@ -1,30 +1,42 @@
 """
-verifier.py
-GPT-based second pass: Bullseye verification + practice-specific sales brief.
+enrichment/verifier.py
+Post-run Needs Verification pass.
 
-Verification (Bullseye only): independent quality gate — not a vote, not an override.
-Sales brief (all enriched CLEAR records): GPT generates practice-specific talking
-points grounded in confirmed signals, replacing the generic Claude-generated angles.
+Operates on a completed run's enriched_targets.json. Targets only records
+in the Needs Verification tier. Two phases per record:
+
+  a. Anchor-check (free): confirm each "yes" signal's evidence_text appears
+     verbatim (normalized whitespace+case) in the stored _context_text.
+     Anchor-failed signals are demoted to not_found. Records with any
+     anchor failure skip GPT — compromised evidence is not worth re-checking.
+
+  b. Blind GPT re-extraction (survivors): feed GPT the raw page text + ICP
+     signal definitions only. No Claude verdicts shown. Get independent
+     per-signal verdicts and determine recommended_action.
+
+Results are written as an additive "verification" object on each record.
+Original signals/scores/tier are never overwritten.
+
+Idempotent: records with an existing verification.verified_at are skipped.
 """
+
+from __future__ import annotations
 
 import json
 import os
+import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import openai
 from dotenv import load_dotenv
 
 load_dotenv()
 
-PROMPT_VERSION = "verification_v1"
-PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "verification_v1.txt"
-
-_SALES_BRIEF_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "sales_brief_gpt_v1.txt"
-_CONTEXT_EXCERPT_CHARS = 3000
-
-# Per-call LLM timeout (seconds). Prevents a stalled socket from hanging a run.
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("LLM_REQUEST_TIMEOUT_SECONDS", "60"))
+_MAX_CONTEXT_CHARS = 12000  # trim context before sending to GPT
 
 
 def _get_client() -> openai.OpenAI:
@@ -40,84 +52,114 @@ def _get_model() -> str:
     return os.environ.get("OPENAI_MODEL", "gpt-4.1")
 
 
-def _load_prompt_template() -> str:
-    with open(PROMPT_PATH, "r", encoding="utf-8") as f:
-        return f.read()
+def _normalize(text: str) -> str:
+    """Lowercase and collapse all whitespace to single spaces for anchor comparison."""
+    return re.sub(r"\s+", " ", text.lower()).strip()
 
 
-def _format_primary_signals(signals: list[dict]) -> str:
-    """Format signal list for insertion into the verification prompt."""
-    lines = []
-    for s in signals:
-        lines.append(
-            f"- [{s['signal_id']}] {s['signal_label']}: {s['signal_state'].upper()} "
-            f"(confidence: {s['confidence']})\n"
-            f"  Evidence: {s['evidence_text']}"
-        )
-    return "\n".join(lines) if lines else "(No signals returned by primary model)"
+def _anchor_check(evidence_text: str, context_text: str) -> bool:
+    """Return True if evidence_text appears (normalized) within context_text."""
+    if not evidence_text or not context_text:
+        return False
+    return _normalize(evidence_text) in _normalize(context_text)
 
 
-def _build_prompt(record: dict, context_text: str) -> str:
+def _find_gating_signal_ids(record: dict, icp_signals: list[dict]) -> list[str]:
+    """Return signal_ids whose not_found state caused the Needs Verification tier cap.
+
+    A gating signal is one that is required_for_bullseye or verification_required,
+    is not_found on the record, and is not state_inferred.
     """
-    Build the verification prompt for a record.
-    Uses explicit str.replace() instead of .format() so that JSON examples
-    in the prompt template (which contain { and }) are left untouched.
-    """
-    template = _load_prompt_template()
-    replacements = {
-        "{practice_name}": record.get("practice_name", "Unknown"),
-        "{specialty}": record.get("specialty", "Unknown"),
-        "{address_city}": record.get("address_city", ""),
-        "{address_state}": record.get("address_state", ""),
-        "{website_url}": record.get("website_url", ""),
-        "{bullseye_score}": str(record.get("bullseye_score", 0)),
-        "{fit_signal_score}": str(record.get("fit_signal_score", 0)),
-        "{confidence_score}": str(record.get("confidence_score", 0)),
-        "{primary_signals}": _format_primary_signals(record.get("signals", [])),
-        "{context_text}": context_text or "(No website text available)",
+    record_signal_map = {
+        s.get("signal_id"): s
+        for s in (record.get("signals") or [])
     }
-    result = template
-    for placeholder, value in replacements.items():
-        result = result.replace(placeholder, str(value))
-    return result
+    gating = []
+    for icp_sig in icp_signals:
+        sid = icp_sig.get("signal_id")
+        if not sid:
+            continue
+        if not (icp_sig.get("required_for_bullseye") or icp_sig.get("verification_required")):
+            continue
+        rec_sig = record_signal_map.get(sid, {})
+        if rec_sig.get("signal_state") == "not_found" and not rec_sig.get("state_inferred"):
+            gating.append(sid)
+    return gating
 
 
-def _call_gpt(prompt: str, client: openai.OpenAI, model: str,
-               retries: int = 3) -> str:
+def _format_icp_signal_definitions(icp_signals: list[dict]) -> str:
+    """Format ICP signal definitions for the blind extraction prompt."""
+    lines = []
+    for s in icp_signals:
+        sid = s.get("signal_id", "?")
+        label = s.get("signal_label", "?")
+        instruction = s.get("prompt_instruction", "")
+        exclude = " [EXCLUDE IF CONFIRMED YES]" if s.get("exclude_if_yes") else ""
+        lines.append(f"- [{sid}] {label}{exclude}: {instruction}")
+    return "\n".join(lines) if lines else "(no signals defined)"
+
+
+def _build_blind_extraction_prompt(record: dict, context_text: str, icp_signals: list[dict]) -> str:
+    """Build the blind GPT re-extraction prompt. No Claude verdicts included."""
+    trimmed = context_text[:_MAX_CONTEXT_CHARS]
+    if len(context_text) > _MAX_CONTEXT_CHARS:
+        trimmed += "\n\n[... content trimmed for token budget ...]"
+    signal_defs = _format_icp_signal_definitions(icp_signals)
+    return f"""You are an independent medical practice intelligence analyst performing a fresh evaluation.
+
+Your task: determine whether each ICP signal below is present at this practice based ONLY on the website text provided. Do not infer from context outside this text. Do not assume anything not stated.
+
+Practice: {record.get("practice_name", "Unknown")}
+Website: {record.get("website_url", "")}
+
+--- WEBSITE TEXT ---
+{trimmed}
+--- END WEBSITE TEXT ---
+
+ICP Signals to evaluate:
+{signal_defs}
+
+For each signal return:
+- signal_id (string, exact as listed above)
+- signal_state: "yes" if clearly evidenced, "no" if explicitly contradicted, "not_found" if unclear or absent
+- confidence: "high" if verbatim quote, "medium" if clearly implied, "low" if weak/indirect (only when signal_state is "yes")
+- evidence_text: exact short quote from the website text supporting a "yes" verdict (only when signal_state is "yes", empty string otherwise)
+
+Return a JSON object with no other text:
+{{
+  "signal_verdicts": [
+    {{"signal_id": "...", "signal_state": "yes"|"no"|"not_found", "confidence": "high"|"medium"|"low"|null, "evidence_text": "..."}}
+  ],
+  "notes": ""
+}}"""
+
+
+def _call_gpt(prompt: str, retries: int = 3) -> str:
     """Call GPT with retry logic. Returns raw text response."""
+    client = _get_client()
+    model = _get_model()
     last_error = None
 
     for attempt in range(retries + 1):
         if attempt > 0:
             wait = 2 ** attempt
-            print(f"    GPT retry {attempt}/{retries} after {wait}s...")
+            print(f"    GPT retry {attempt}/{retries} after {wait}s…")
             time.sleep(wait)
-
         try:
-            # o-series reasoning models (o1, o3, o4-*) require max_completion_tokens
-            # and do not accept temperature. Standard chat models accept both param
-            # names; max_completion_tokens is the current preferred form.
-            is_reasoning = model.startswith("o1") or model.startswith("o3") or model.startswith("o4")
+            is_reasoning = model.startswith(("o1", "o3", "o4"))
             kwargs: dict = {
                 "model": model,
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an independent medical sales intelligence analyst "
-                            "performing quality verification. Be rigorous and independent."
-                        ),
-                    },
+                    {"role": "system", "content": "You are an independent medical practice intelligence analyst. Return only valid JSON."},
                     {"role": "user", "content": prompt},
                 ],
                 "max_completion_tokens": 2048,
                 "timeout": REQUEST_TIMEOUT_SECONDS,
             }
             if not is_reasoning:
-                kwargs["temperature"] = 0.2
+                kwargs["temperature"] = 0.1
             response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
-
         except openai.RateLimitError as e:
             last_error = f"Rate limit: {e}"
             time.sleep(15)
@@ -131,221 +173,213 @@ def _call_gpt(prompt: str, client: openai.OpenAI, model: str,
     raise RuntimeError(f"GPT API failed after {retries} retries: {last_error}")
 
 
-def _parse_verification_response(raw: str) -> dict:
-    """Parse GPT's JSON response into a structured dict."""
+def _parse_blind_extraction_response(raw: str) -> dict:
+    """Parse GPT's blind extraction JSON response."""
     text = raw.strip()
     if text.startswith("```"):
         lines = text.splitlines()
-        text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     parsed = json.loads(text)
-
-    required_keys = ["verification_result", "verifier_would_score_bullseye",
-                      "signal_verifications"]
-    for key in required_keys:
-        if key not in parsed:
-            raise ValueError(f"Verification response missing key: '{key}'")
-
-    # Normalize verification_result — store the lowered/stripped value so the
-    # downstream == "agree" comparison cannot be defeated by casing/whitespace.
-    result = str(parsed["verification_result"]).lower().strip()
-    parsed["verification_result"] = result if result in ("agree", "disagree") else "disagree"
-
-    # Normalize verifier_would_score_bullseye when the model returns a string
-    # ("true"/"false") instead of a JSON boolean.
-    verdict = parsed["verifier_would_score_bullseye"]
-    if isinstance(verdict, str):
-        parsed["verifier_would_score_bullseye"] = verdict.lower().strip() == "true"
-
+    if "signal_verdicts" not in parsed:
+        raise ValueError("Blind extraction response missing 'signal_verdicts'")
     return parsed
 
 
-def verify_bullseye_record(record: dict, context_text: str) -> dict:
+def _verify_record(record: dict, icp_signals: list[dict]) -> dict:
+    """Run the full anchor + GPT pass on one Needs Verification record.
+
+    Returns the record with a new `verification` object added.
+    Never modifies signals, target_tier, or score fields.
     """
-    Run GPT verification for a single Bullseye-tier record.
-    Mutates and returns the record with verification results.
+    context_text = record.get("_context_text") or ""
+    record_signals = record.get("signals") or []
+    model = _get_model()
+    now = datetime.now(timezone.utc).isoformat()
 
-    Rules:
-    - If both agree: no change to enrichment_status
-    - If GPT disagrees: set enrichment_status = "needs_review", document in internal_notes
-    - Verification failure (API error): log in internal_notes, don't change status
+    per_signal_verdicts = []
+    anchor_failures = []
 
-    Args:
-        record: Enriched canonical record (already scored by Claude).
-        context_text: Original extracted website text.
+    # --- Phase a: anchor-check all yes-signals ---
+    for sig in record_signals:
+        if sig.get("signal_state") != "yes":
+            continue
+        evidence = (sig.get("evidence_text") or "").strip()
+        found = _anchor_check(evidence, context_text)
+        verdict = {
+            "signal_id": sig.get("signal_id"),
+            "anchor_found": found,
+            "anchor_failed": not found,
+            "gpt_verdict": None,
+            "gpt_confidence": None,
+            "gpt_evidence": None,
+        }
+        per_signal_verdicts.append(verdict)
+        if not found:
+            anchor_failures.append(sig.get("signal_id"))
 
-    Returns:
-        Updated record dict.
-    """
-    gpt_model = _get_model()
+    if anchor_failures:
+        return {
+            **record,
+            "verification": {
+                "verified_at": now,
+                "verifier_model": model,
+                "method": "anchor",
+                "per_signal_verdicts": per_signal_verdicts,
+                "anchor_failures": anchor_failures,
+                "recommended_action": "hold",
+                "notes": (
+                    f"Anchor-check failed for {len(anchor_failures)} signal(s): "
+                    f"{', '.join(anchor_failures)}. GPT skipped — compromised evidence."
+                ),
+            },
+        }
 
-    try:
-        client = _get_client()
-    except EnvironmentError as e:
-        # No OpenAI key - log and skip verification
-        note = f"[Verification skipped: {e}]"
-        record["internal_notes"] = f"{record.get('internal_notes', '')} {note}".strip()
-        print(f"    Verification skipped: {e}")
-        return record
+    # --- Phase b: blind GPT re-extraction ---
+    gating_ids = _find_gating_signal_ids(record, icp_signals)
+    if not gating_ids:
+        # No identifiable gating signal — nothing to promote
+        return {
+            **record,
+            "verification": {
+                "verified_at": now,
+                "verifier_model": model,
+                "method": "anchor",
+                "per_signal_verdicts": per_signal_verdicts,
+                "anchor_failures": [],
+                "recommended_action": "hold",
+                "notes": "No unconfirmed gating signals identified. No GPT call made.",
+            },
+        }
 
-    try:
-        prompt = _build_prompt(record, context_text)
-        print(f"    Calling GPT ({gpt_model}) for verification...")
+    prompt = _build_blind_extraction_prompt(record, context_text, icp_signals)
+    print(f"    Blind GPT re-extraction ({model})…")
+    raw_response = _call_gpt(prompt)
+    parsed = _parse_blind_extraction_response(raw_response)
 
-        raw_response = _call_gpt(prompt, client, gpt_model)
-        verification = _parse_verification_response(raw_response)
+    gpt_verdicts = {v["signal_id"]: v for v in parsed.get("signal_verdicts", [])}
+    exclude_if_yes_ids = {s.get("signal_id") for s in icp_signals if s.get("exclude_if_yes")}
 
-        verification_result = verification["verification_result"]
-        verifier_scores_bullseye = verification["verifier_would_score_bullseye"]
-        disagreements = verification.get("disagreements", [])
-        overall_notes = verification.get("overall_notes", "")
-
-        if verification_result == "agree" and verifier_scores_bullseye:
-            # Models agree - enrichment_status unchanged (remains "complete")
-            note = f"[GPT verification: AGREE. {overall_notes}]".strip()
-            print("    [OK] Verification: AGREE")
+    # Update per_signal_verdicts with GPT results
+    all_verdict_ids = {v["signal_id"] for v in per_signal_verdicts}
+    for sig_id, gv in gpt_verdicts.items():
+        if sig_id in all_verdict_ids:
+            for v in per_signal_verdicts:
+                if v["signal_id"] == sig_id:
+                    v["gpt_verdict"] = gv.get("signal_state")
+                    v["gpt_confidence"] = gv.get("confidence")
+                    v["gpt_evidence"] = gv.get("evidence_text") or ""
         else:
-            # Disagreement - flag for human review
-            record["enrichment_status"] = "needs_review"
-            disagreement_detail = "; ".join(
-                f"{d.get('signal_id', '?')}: {d.get('verifier_note', '')}"
-                for d in disagreements
-            ) if disagreements else "GPT scored below Bullseye threshold"
+            per_signal_verdicts.append({
+                "signal_id": sig_id,
+                "anchor_found": None,
+                "anchor_failed": False,
+                "gpt_verdict": gv.get("signal_state"),
+                "gpt_confidence": gv.get("confidence"),
+                "gpt_evidence": gv.get("evidence_text") or "",
+            })
 
-            note = (
-                f"[GPT verification: DISAGREE. "
-                f"GPT would score Bullseye: {verifier_scores_bullseye}. "
-                f"Disagreements: {disagreement_detail}. "
-                f"Notes: {overall_notes}]"
-            ).strip()
-            print("    [FAIL] Verification: DISAGREE - flagged needs_review")
-
-        # Append to internal_notes
-        existing = record.get("internal_notes") or ""
-        record["internal_notes"] = f"{existing} {note}".strip()
-
-    except (json.JSONDecodeError, ValueError) as e:
-        note = f"[GPT verification parse error: {str(e)[:150]}]"
-        existing = record.get("internal_notes") or ""
-        record["internal_notes"] = f"{existing} {note}".strip()
-        record["enrichment_status"] = "needs_review"
-        print(f"    [FAIL] GPT response parse failed: {e}")
-
-    except RuntimeError as e:
-        note = f"[GPT verification API error: {str(e)[:150]}]"
-        existing = record.get("internal_notes") or ""
-        record["internal_notes"] = f"{existing} {note}".strip()
-        print(f"    [FAIL] GPT API failed: {e}")
-        # Don't change enrichment_status on API failure - not a disagreement
-
-    return record
-
-
-# ---------------------------------------------------------------------------
-# Practice-specific sales brief generation (all enriched CLEAR records)
-# ---------------------------------------------------------------------------
-
-def _format_confirmed_signals(signals: list[dict]) -> str:
-    """Format confirmed positive signals for the sales brief prompt."""
-    lines = [
-        f"- {s['signal_label']}: {s.get('evidence_text', '').strip()}"
-        for s in signals
-        if s.get("signal_state") == "yes" and (s.get("positive_weight", 0) or 0) > 0
+    # Determine recommended_action
+    # Disqualify if any exclude_if_yes signal confirmed yes by GPT
+    disqualifying = [
+        sid for sid in exclude_if_yes_ids
+        if gpt_verdicts.get(sid, {}).get("signal_state") == "yes"
     ]
-    return "\n".join(lines) if lines else "(none confirmed)"
+    if disqualifying:
+        recommended_action = "disqualify"
+        notes = f"GPT confirmed exclusion signal(s): {', '.join(disqualifying)}."
+    elif all(gpt_verdicts.get(sid, {}).get("signal_state") == "yes" for sid in gating_ids):
+        recommended_action = "promote"
+        notes = (
+            f"GPT independently confirmed gating signal(s): {', '.join(gating_ids)}. "
+            f"Operator confirmation required before client export."
+        )
+    else:
+        still_missing = [
+            sid for sid in gating_ids
+            if gpt_verdicts.get(sid, {}).get("signal_state") != "yes"
+        ]
+        recommended_action = "hold"
+        notes = f"GPT did not confirm gating signal(s): {', '.join(still_missing)}."
 
-
-def _format_friction_signals(signals: list[dict]) -> str:
-    """Format confirmed friction/negative signals for the sales brief prompt."""
-    lines = [
-        f"- {s['signal_label']}: {s.get('evidence_text', '').strip()}"
-        for s in signals
-        if s.get("signal_state") == "yes" and (s.get("positive_weight", 0) or 0) <= 0
-    ]
-    return "\n".join(lines) if lines else "(none)"
-
-
-def _build_sales_brief_prompt(record: dict, context_text: str, run_config: dict) -> str:
-    """Build the practice-specific sales brief prompt."""
-    template = _SALES_BRIEF_PROMPT_PATH.read_text(encoding="utf-8")
-    signals = record.get("signals") or []
-    replacements = {
-        "{client_name}": run_config.get("client_name") or "the company",
-        "{product_name}": run_config.get("product_name") or "the product",
-        "{target_specialty}": run_config.get("target_specialty") or "the target specialty",
-        "{practice_name}": record.get("practice_name", "Unknown"),
-        "{specialty}": record.get("specialty", "Unknown"),
-        "{address_city}": record.get("address_city", ""),
-        "{address_state}": record.get("address_state", ""),
-        "{website_url}": record.get("website_url", ""),
-        "{confirmed_signals}": _format_confirmed_signals(signals),
-        "{friction_signals}": _format_friction_signals(signals),
-        "{context_excerpt}": (context_text or "")[:_CONTEXT_EXCERPT_CHARS],
+    return {
+        **record,
+        "verification": {
+            "verified_at": now,
+            "verifier_model": model,
+            "method": "anchor+gpt",
+            "per_signal_verdicts": per_signal_verdicts,
+            "anchor_failures": [],
+            "recommended_action": recommended_action,
+            "notes": notes,
+        },
     }
-    result = template
-    for placeholder, value in replacements.items():
-        result = result.replace(placeholder, str(value))
-    return result
 
 
-def _parse_sales_brief_response(raw: str) -> dict:
-    """Parse GPT's sales brief JSON response."""
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-    parsed = json.loads(text)
-    angles = parsed.get("sales_angle")
-    if not isinstance(angles, list):
-        raise ValueError("sales_brief response missing 'sales_angle' list")
-    return parsed
+def run_verification_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
+    """Run the post-run Needs Verification pass on a completed run.
 
+    Reads enriched_targets.json, verifies eligible records, writes the file
+    back atomically. Returns counts: {promoted, held, disqualified, skipped, errors}.
 
-def generate_sales_brief(record: dict, context_text: str, run_config: dict) -> dict:
-    """Generate a practice-specific sales brief via GPT and update the record.
-
-    Replaces the Claude-generated sales_angle with GPT-authored practice-specific
-    talking points. Also updates call_brief.why_contact with the GPT summary.
-    On API failure the existing Claude-generated content is preserved unchanged.
-
-    Args:
-        record: Enriched record (after Step 4 signal extraction).
-        context_text: Extracted website text for the practice.
-        run_config: Pipeline run configuration (provides product/client context).
-
-    Returns:
-        Updated record dict.
+    Eligible: target_tier == "Needs Verification", enrichment_status == "complete",
+              no existing verification.verified_at (idempotent).
     """
-    gpt_model = _get_model()
-    try:
-        client = _get_client()
-    except EnvironmentError as e:
-        print(f"    Sales brief skipped: {e}")
-        return record
+    targets_path = run_dir / "enriched_targets.json"
+    if not targets_path.exists():
+        raise FileNotFoundError(f"enriched_targets.json not found in {run_dir}")
 
-    try:
-        prompt = _build_sales_brief_prompt(record, context_text, run_config)
-        print(f"    Calling GPT ({gpt_model}) for sales brief...")
-        raw_response = _call_gpt(prompt, client, gpt_model)
-        parsed = _parse_sales_brief_response(raw_response)
+    with open(targets_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
 
-        angles = [str(a).strip() for a in parsed["sales_angle"] if a]
-        why = str(parsed.get("why_contact") or "").strip()
+    if isinstance(payload, dict):
+        records = payload.get("records", [])
+    else:
+        records = payload
 
-        # Only update if GPT returned substantive content.
-        if angles:
-            record["sales_angle"] = angles
-        if why:
-            brief = record.get("call_brief") or {}
-            brief["why_contact"] = why
-            record["call_brief"] = brief
+    stats = {"promoted": 0, "held": 0, "disqualified": 0, "skipped": 0, "errors": 0}
 
-        print(f"    [OK] Sales brief generated ({len(angles)} angles)")
+    for i, record in enumerate(records):
+        if record.get("target_tier") != "Needs Verification":
+            stats["skipped"] += 1
+            continue
+        if record.get("enrichment_status") != "complete":
+            stats["skipped"] += 1
+            continue
+        if record.get("verification", {}).get("verified_at"):
+            stats["skipped"] += 1
+            continue
 
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"    [FAIL] Sales brief parse failed: {e}")
+        name = record.get("practice_name", f"record[{i}]")
+        print(f"\n  [VER] {name}")
+        try:
+            record = _verify_record(record, icp_signals)
+            action = record["verification"]["recommended_action"]
+            print(f"    → {action}")
+            if action == "promote":
+                stats["promoted"] += 1
+            elif action == "disqualify":
+                stats["disqualified"] += 1
+            else:
+                stats["held"] += 1
+        except EnvironmentError as e:
+            print(f"    [SKIP] {e}")
+            stats["skipped"] += 1
+        except Exception as e:
+            print(f"    [ERROR] {str(e)[:150]}")
+            stats["errors"] += 1
 
-    except RuntimeError as e:
-        print(f"    [FAIL] Sales brief GPT error: {e}")
+        records[i] = record
 
-    return record
+    # Atomic write
+    if isinstance(payload, dict):
+        payload["records"] = records
+        out = payload
+    else:
+        out = records
+
+    tmp = targets_path.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=2, default=str)
+    os.replace(tmp, targets_path)
+
+    return stats

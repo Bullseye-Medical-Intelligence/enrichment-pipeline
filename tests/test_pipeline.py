@@ -45,7 +45,6 @@ from pipeline import (
     _finalize_ingest_only,
     _records_needing_browser_retry,
     _load_manual_content,
-    _select_verification_records,
 )
 
 
@@ -1582,69 +1581,6 @@ class TestBrowserRetrySelection:
         assert _records_needing_browser_retry(recs) == []
 
 
-class TestVerificationRecordSelection:
-    """_select_verification_records smart-skips confident Bullseye records."""
-
-    def _rec(self, name, score, confidence="high", source_conf="ok"):
-        signals = [{"signal_id": "S-01", "signal_state": "yes", "confidence": confidence}]
-        return {
-            "practice_name": name,
-            "bullseye_score": score,
-            "signals": signals,
-            "source_confidence": source_conf,
-        }
-
-    def test_high_confidence_bullseye_skipped(self):
-        # All-high-confidence Bullseye: GPT will agree, skip the call.
-        records = [self._rec("A", 95, "high"), self._rec("B", 90, "high")]
-        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=0)
-        assert selected == []
-
-    def test_low_confidence_bullseye_verified(self):
-        # A Bullseye with a low-confidence YES signal warrants a second pass.
-        records = [self._rec("A", 95, "high"), self._rec("B", 90, "low")]
-        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=0)
-        assert [r["practice_name"] for r in selected] == ["B"]
-
-    def test_near_miss_always_verified_regardless_of_confidence(self):
-        # Near-miss records get verified regardless of signal confidence.
-        records = [self._rec("C", 85, "high"), self._rec("D", 79, "high")]
-        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=10)
-        assert [r["practice_name"] for r in selected] == ["C"]
-
-    def test_below_band_excluded(self):
-        # Record outside the band entirely is never selected.
-        records = [self._rec("D", 79, "low")]
-        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=10)
-        assert selected == []
-
-    def test_thin_context_skipped_even_when_low_confidence(self):
-        # Thin-context records skip GPT — same limited text, tier capped in Step 6 anyway.
-        records = [self._rec("A", 90, "low", source_conf="limited")]
-        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=0)
-        assert selected == []
-
-    def test_near_miss_with_thin_context_also_skipped(self):
-        # Near-miss band does not override the thin-context skip.
-        records = [self._rec("C", 85, "high", source_conf="failed")]
-        selected = _select_verification_records(records, bullseye_min=90, near_miss_band=10)
-        assert selected == []
-
-    def test_mixed_confidence_bullseye_verified_when_any_low(self):
-        # One low-confidence signal among medium/high is enough to warrant verification.
-        rec = {
-            "practice_name": "X",
-            "bullseye_score": 92,
-            "source_confidence": "ok",
-            "signals": [
-                {"signal_id": "S-01", "signal_state": "yes", "confidence": "high"},
-                {"signal_id": "S-02", "signal_state": "yes", "confidence": "low"},
-            ],
-        }
-        selected = _select_verification_records([rec], bullseye_min=90, near_miss_band=0)
-        assert [r["practice_name"] for r in selected] == ["X"]
-
-
 class TestChallengeDetection:
     """_looks_like_challenge flags bot/security interstitials, not real content."""
 
@@ -2045,55 +1981,6 @@ class TestTaxonomyStructuralGate:
         assert result["exclusion_status"] == "EXCLUDED"
         assert result["target_tier"] == "Excluded"
         assert result.get("exclusion_reason")
-
-
-# ---------------------------------------------------------------------------
-# GPT Verification Response Normalization
-# ---------------------------------------------------------------------------
-
-class TestVerifierResponseNormalization:
-    """_parse_verification_response must store the normalized verdict so the
-    downstream == "agree" comparison survives casing/whitespace variants."""
-
-    def _parse(self, payload):
-        from enrichment.verifier import _parse_verification_response
-        import json as _json
-        return _parse_verification_response(_json.dumps(payload))
-
-    def _payload(self, result, bullseye=True):
-        return {
-            "verification_result": result,
-            "verifier_would_score_bullseye": bullseye,
-            "signal_verifications": [],
-        }
-
-    def test_uppercase_agree_normalized(self):
-        parsed = self._parse(self._payload("AGREE"))
-        assert parsed["verification_result"] == "agree"
-
-    def test_whitespace_agree_normalized(self):
-        parsed = self._parse(self._payload("  agree  "))
-        assert parsed["verification_result"] == "agree"
-
-    def test_mixed_case_disagree_normalized(self):
-        parsed = self._parse(self._payload("Disagree"))
-        assert parsed["verification_result"] == "disagree"
-
-    def test_unknown_verdict_defaults_to_disagree(self):
-        parsed = self._parse(self._payload("maybe"))
-        assert parsed["verification_result"] == "disagree"
-
-    def test_string_boolean_true_normalized(self):
-        parsed = self._parse(self._payload("agree", bullseye="true"))
-        assert parsed["verifier_would_score_bullseye"] is True
-
-    def test_string_boolean_false_normalized(self):
-        parsed = self._parse(self._payload("agree", bullseye="False"))
-        assert parsed["verifier_would_score_bullseye"] is False
-
-    def test_real_boolean_untouched(self):
-        parsed = self._parse(self._payload("agree", bullseye=True))
-        assert parsed["verifier_would_score_bullseye"] is True
 
 
 # ---------------------------------------------------------------------------

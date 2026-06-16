@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Confirm Queue — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2>Confirm Queue</h2>
+    <p class="page-subtitle">Run <span style="font-family:monospace;font-size:12px;">{{ run_id }}</span></p>
+  </div>
+  <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="margin-top:0;">Verification Pass Summary</h4>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 0;">
+    <div class="stat-pill stat-pill-promoted"><span class="stat-num">{{ promoted_count }}</span><span class="stat-label">Promoted</span></div>
+    <div class="stat-pill stat-pill-held"><span class="stat-num">{{ held_count }}</span><span class="stat-label">Held</span></div>
+    <div class="stat-pill stat-pill-disqualified"><span class="stat-num">{{ disqualified_count }}</span><span class="stat-label">Disqualified</span></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="margin-top:0;">Pending Bullseye Confirmation</h4>
+  {% if pending_bullseyes %}
+  <p style="color:#4b5563;font-size:13px;">These records scored Bullseye but have not yet been approved for client export.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="border-bottom:2px solid #e5e7eb;">
+        <th style="text-align:left;padding:6px 8px;">Practice</th>
+        <th style="text-align:left;padding:6px 8px;">City</th>
+        <th style="text-align:right;padding:6px 8px;">Score</th>
+        <th style="text-align:left;padding:6px 8px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in pending_bullseyes %}
+      {% set rec = item.record %}
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:6px 8px;font-weight:500;">{{ rec.practice_name }}</td>
+        <td style="padding:6px 8px;color:#6b7280;">{{ rec.address_city or "" }}{% if rec.address_state %}, {{ rec.address_state }}{% endif %}</td>
+        <td style="padding:6px 8px;text-align:right;">{{ rec.bullseye_score }}</td>
+        <td style="padding:6px 8px;"><a href="/dashboard/{{ run_id }}#{{ rec.id }}" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">Review</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#6b7280;font-size:13px;">No pending Bullseye records.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0;">Verification-Promoted Records</h4>
+  {% if promoted_records %}
+  <p style="color:#4b5563;font-size:13px;">GPT independently confirmed the gating signal(s) for these records. Operator confirmation required before client export.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="border-bottom:2px solid #e5e7eb;">
+        <th style="text-align:left;padding:6px 8px;">Practice</th>
+        <th style="text-align:left;padding:6px 8px;">City</th>
+        <th style="text-align:left;padding:6px 8px;">GPT Notes</th>
+        <th style="text-align:left;padding:6px 8px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in promoted_records %}
+      {% set rec = item.record %}
+      {% set ver = item.verification %}
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:6px 8px;font-weight:500;">{{ rec.practice_name }}</td>
+        <td style="padding:6px 8px;color:#6b7280;">{{ rec.address_city or "" }}{% if rec.address_state %}, {{ rec.address_state }}{% endif %}</td>
+        <td style="padding:6px 8px;color:#059669;font-size:12px;">{{ ver.notes or "" }}</td>
+        <td style="padding:6px 8px;"><a href="/dashboard/{{ run_id }}#{{ rec.id }}" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">Review</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#6b7280;font-size:13px;">No verification-promoted records.</p>
+  {% endif %}
+</div>
+
+<style>
+.stat-pill { display:inline-flex;flex-direction:column;align-items:center;padding:10px 18px;border-radius:8px;min-width:78px; }
+.stat-pill .stat-num { font-size:24px;font-weight:700;line-height:1; }
+.stat-pill .stat-label { font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-top:4px; }
+.stat-pill-promoted { background:#d1fae5;color:#065f46; }
+.stat-pill-held { background:#fef3c7;color:#92400e; }
+.stat-pill-disqualified { background:#fee2e2;color:#991b1b; }
+</style>
+{% endblock %}

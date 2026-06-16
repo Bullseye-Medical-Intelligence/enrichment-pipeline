@@ -2172,6 +2172,104 @@ async def registry_update_action(
     )
 
 
+@router.post("/dashboard/{run_id}/verify", response_class=HTMLResponse)
+async def trigger_verification(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Trigger the post-run Needs Verification pass on a completed run."""
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = runs.get_run(run_id)
+    if status is None or status.status != "complete":
+        raise HTTPException(status_code=400, detail="Verification requires a completed run")
+
+    icp_path = run_directory / "icp_snapshot.json"
+    if not icp_path.exists():
+        raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
+
+    import subprocess, sys, json as _json
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "verify_run.py"),
+         "--run-dir", str(run_directory),
+         "--icp", str(icp_path)],
+        capture_output=True, text=True, timeout=600,
+    )
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {result.stderr[:300]}")
+
+    # Parse the stats from the last JSON line in stdout
+    stats = {}
+    for line in reversed(result.stdout.strip().splitlines()):
+        try:
+            stats = _json.loads(line)
+            break
+        except Exception:
+            continue
+
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}/confirm-queue?promoted={stats.get('promoted', 0)}&held={stats.get('held', 0)}&disqualified={stats.get('disqualified', 0)}",
+        status_code=303,
+    )
+
+
+@router.get("/dashboard/{run_id}/confirm-queue", response_class=HTMLResponse)
+async def confirm_queue(
+    request: Request,
+    run_id: str,
+    promoted: int = 0,
+    held: int = 0,
+    disqualified: int = 0,
+    username: str = Depends(auth.require_session),
+):
+    """Pending Bullseye confirmation queue: original Bullseyes + verification-promoted records."""
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    import json as _json
+    targets_path = run_directory / "enriched_targets.json"
+    if not targets_path.exists():
+        raise HTTPException(status_code=404, detail="enriched_targets.json not found")
+
+    with open(targets_path, "r", encoding="utf-8") as f:
+        payload = _json.load(f)
+    raw_records = payload.get("records", payload) if isinstance(payload, dict) else payload
+
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    status = runs.get_run(run_id)
+
+    pending_bullseyes = []
+    promoted_records = []
+
+    for rec in raw_records:
+        rec_id = record_adapter.get_record_id(rec)
+        review = all_reviews.get(rec_id, {})
+        effective = record_adapter.effective_tier(rec, all_reviews)
+        verification = rec.get("verification") or {}
+
+        if effective == "Bullseye" and not exports.is_approved(rec, review):
+            pending_bullseyes.append({"record": rec, "review": review})
+        elif verification.get("recommended_action") == "promote":
+            promoted_records.append({"record": rec, "review": review, "verification": verification})
+
+    return _render(
+        "confirm_queue.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        pending_bullseyes=pending_bullseyes,
+        promoted_records=promoted_records,
+        promoted_count=promoted,
+        held_count=held,
+        disqualified_count=disqualified,
+    )
+
+
 @router.post("/api/ui/runs")
 async def ui_create_run(
     background_tasks: BackgroundTasks,

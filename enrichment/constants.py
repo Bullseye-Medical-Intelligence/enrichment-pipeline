@@ -41,9 +41,9 @@ CONFIDENCE_WEIGHT = 0.4
 DEFAULT_BULLSEYE_MIN_SCORE = 90     # fallback when run_config omits bullseye_min_score
 EXCLUDED_SCORE_CAP = 40             # max bullseye_score retained on excluded records
 
-# Opt-in: how many points below bullseye_min to ALSO send to GPT verification, so
-# near-miss records (just under the Bullseye line) get a second opinion that can
-# catch false negatives. 0 = disabled (verify Bullseye only — the default behavior).
+# Kept for backward compatibility with existing run_config.json files that set this
+# field. No longer drives inline pipeline behavior — verification runs as a separate
+# post-run pass via verify_run.py.
 DEFAULT_NEAR_MISS_BAND = 0
 
 # Records scoring below this threshold have insufficient signal evidence to support

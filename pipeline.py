@@ -52,7 +52,6 @@ from enrichment.constants import (
 )
 from enrichment.config_validator import validate_icp, validate_run_config
 from enrichment.signal_extractor import extract_signals
-from enrichment.verifier import verify_bullseye_record, generate_sales_brief
 from enrichment.exclusion_checker import apply_exclusions, check_structural_exclusions
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from output.json_writer import write_json
@@ -207,58 +206,6 @@ def _records_needing_browser_retry(records: list[dict]) -> list[dict]:
         if thin_context or weak_source:
             blocked.append(record)
     return blocked
-
-
-def _record_has_uncertain_signal(record: dict) -> bool:
-    """Return True when a Bullseye record has at least one low-confidence YES signal.
-
-    Low-confidence extraction is the false-positive risk GPT is designed to catch.
-    All-medium/high-confidence records skip GPT — when Claude is certain, GPT agrees
-    and the API call wastes spend.
-    """
-    signals = record.get("signals") or []
-    return any(
-        s.get("signal_state") == "yes" and s.get("confidence") == "low"
-        for s in signals
-    )
-
-
-def _select_verification_records(
-    records: list[dict], bullseye_min: int, near_miss_band: int
-) -> list[dict]:
-    """Select records for GPT verification (Step 5).
-
-    Thin-context records (`source_confidence` limited/failed) are always skipped:
-    the tier will be capped at Needs Verification in Step 6 regardless, and GPT
-    sees the same limited text Claude already processed.
-
-    Near-miss records (score in [bullseye_min - near_miss_band, bullseye_min))
-    are always verified — borderline scores are the highest-value GPT target.
-
-    Bullseye records (score >= bullseye_min) are only verified when Claude showed
-    genuine uncertainty: at least one confirmed-YES signal extracted at low
-    confidence. All-medium/high-confidence Bullseyes are skipped.
-
-    band 0 (default): only uncertain Bullseye records are verified.
-    band N > 0: also verifies records scoring [bullseye_min − N, bullseye_min).
-    """
-    near_miss_band = max(0, near_miss_band)
-    verification_floor = bullseye_min - near_miss_band
-    result = []
-    for r in records:
-        score = r.get("bullseye_score", 0)
-        if score < verification_floor:
-            continue
-        # Thin-context: skip at all score levels — same reasoning, same limited text.
-        if r.get("source_confidence") in ("limited", "failed"):
-            continue
-        if score >= bullseye_min:
-            if _record_has_uncertain_signal(r):
-                result.append(r)
-        else:
-            # Near-miss band: always verify regardless of confidence level.
-            result.append(r)
-    return result
 
 
 def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -> None:
@@ -458,7 +405,6 @@ def run_pipeline(input_file: str, source_type: str,
     retries = run_config.get("request_retries", 3)
     max_pages = run_config.get("max_pages_per_practice", 5)
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
-    near_miss_band = run_config.get("verify_near_miss_band", DEFAULT_NEAR_MISS_BAND)
     subpage_keywords = run_config.get("subpage_keywords") or None
     io_concurrency = int(run_config.get("io_concurrency", 6))
     llm_concurrency = int(run_config.get("llm_concurrency", 3))
@@ -818,85 +764,7 @@ def run_pipeline(input_file: str, source_type: str,
             records[idx] = record
             _write_step4_checkpoint(output_dir, record)
 
-    # -------------------------------------------------------------------------
-    # STEP 5: GPT SECOND PASS — verification (Bullseye) + sales brief (all)
-    # -------------------------------------------------------------------------
-    verification_floor = bullseye_min - max(0, near_miss_band)
-    bullseye_records = _select_verification_records(records, bullseye_min, near_miss_band)
-    # Sales brief candidates: enriched records with confirmed signals that aren't
-    # already flagged as LLM-detected exclusions (avoid spending GPT on soon-to-
-    # be-excluded records). Bullseye records get both verification + sales brief.
-    brief_candidates = [
-        r for r in records
-        if r.get("enrichment_status") not in ("not_enriched", "failed")
-        and not r.get("_llm_exclusion_triggers")
-        and any(
-            s.get("signal_state") == "yes"
-            for s in (r.get("signals") or [])
-        )
-    ]
-    print(f"\n{'-'*40}")
-    print("STEP 5: GPT SECOND PASS")
-    print(f"{'-'*40}")
-    if near_miss_band > 0:
-        print(f"  {len(bullseye_records)} records scored >= {verification_floor} "
-              f"(Bullseye {bullseye_min} + near-miss band {near_miss_band}) → verification")
-    else:
-        print(f"  {len(bullseye_records)} Bullseye records → verification")
-    print(f"  {len(brief_candidates)} records → practice-specific sales brief")
-
-    _write_progress(output_dir, 5, "GPT second pass", 0,
-                    len(bullseye_records) + len(brief_candidates))
-
-    # 5a — Bullseye verification
-    if bullseye_records:
-        for i, record in enumerate(bullseye_records):
-            print(f"\n  [V {i+1}/{len(bullseye_records)}] {record.get('practice_name', 'Unknown')} "
-                  f"(score: {record.get('bullseye_score', 0)})")
-            context_text = record.get("_context_text", "")
-            try:
-                record = verify_bullseye_record(record, context_text)
-            except Exception as e:
-                error_msg = str(e)[:200]
-                print(f"    [FAIL] Verification error: {error_msg}")
-                all_errors.append({
-                    "record_id": record.get("id", "unknown"),
-                    "step": "verification",
-                    "error": error_msg,
-                    "resolution": "Verification skipped, status unchanged",
-                })
-            time.sleep(0.5)
-
-        needs_review = sum(
-            1 for r in bullseye_records if r.get("enrichment_status") == "needs_review"
-        )
-        if needs_review > 0:
-            all_warnings.append(
-                f"{needs_review} Bullseye-tier records triggered LLM disagreement "
-                f"and are flagged needs_review"
-            )
-    else:
-        print(f"  No records scored >= {verification_floor} — verification skipped")
-
-    # 5b — Practice-specific sales brief for all enriched candidates
-    if brief_candidates:
-        for i, record in enumerate(brief_candidates):
-            print(f"\n  [B {i+1}/{len(brief_candidates)}] {record.get('practice_name', 'Unknown')}")
-            context_text = record.get("_context_text", "")
-            try:
-                record = generate_sales_brief(record, context_text, run_config)
-            except Exception as e:
-                error_msg = str(e)[:200]
-                print(f"    [FAIL] Sales brief error: {error_msg}")
-                all_errors.append({
-                    "record_id": record.get("id", "unknown"),
-                    "step": "sales_brief",
-                    "error": error_msg,
-                    "resolution": "Sales brief skipped, Claude-generated content preserved",
-                })
-            time.sleep(0.3)
-    else:
-        print("  No enriched records with confirmed signals — sales brief skipped")
+    # Verification (Step 5) runs as a separate post-run pass via verify_run.py.
 
     # -------------------------------------------------------------------------
     # STEP 6: EXCLUSION CHECK
