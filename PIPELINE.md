@@ -775,6 +775,20 @@ for ingest-only runs and runs predating capture, so the API can distinguish
 "no spend" from "not measured". Captured in `signal_extractor._call_claude`,
 summed in pipeline.py before internal-field stripping — never a record field.
 
+### Post-run pass CLIs
+
+All post-run CLIs follow the same pattern: load `enriched_targets.json`, process eligible records, write atomically, print a JSON summary to stdout. All are triggered by the API via subprocess (same pattern as `simulate_icp.py`). All support `--preview` for a dry-run count with no writes.
+
+**`rescore_run.py`** — re-runs Steps 6-7 (exclusion check + scoring validation) with updated ICP weights. Zero LLM cost. Signals are never modified; only scores and tiers change. Skips `not_enriched` records. Also supports `--preview` mode which returns tier transition counts without writing.
+
+**`verify_run.py`** — anchor-check + blind GPT re-extraction on `Needs Verification` records. Writes an additive `verification` object on each record; never overwrites signals or tier. Skips records with an existing `verified_at`. LLM cost (OpenAI).
+
+**`recrawl_run.py`** — re-crawls `source_confidence limited/failed` records with Playwright, then re-runs Steps 4, 6, 7. Fixes bot-blocked sites that the standard HTTP crawler could not read.
+
+**`reextract_run.py`** — re-runs Claude signal extraction (Step 4) on stored `_context_text` for each enriched record, using a supplied ICP. Immediately re-runs Steps 6-7 on the updated signals. Skips `not_enriched` records and records with no stored `_context_text`. Primary use case: new ICP signals added after a run — re-evaluate existing crawled content without re-crawling. LLM cost (Claude). Concurrent via `ThreadPoolExecutor` with `llm_concurrency` workers.
+
+**`suppress_run.py`** — re-checks all non-suppressed records against an updated customer suppression CSV (`load_suppression_list` / `check_suppression`). Newly matched records are marked EXCLUDED and `_customer_suppressed=True`; already-suppressed records are left unchanged. Only writes when at least one new match is found. Zero LLM cost.
+
 ### check_links.py (evidence link checker CLI)
 
 `check_links.py` (repo root) verifies evidence source URLs still resolve:
@@ -840,6 +854,8 @@ in client deliverables.
 | Version | Date | What Changed |
 |---|---|---|
 | 1.0 | May 2026 | Initial spec. Locked Python stack, dual-LLM architecture (Claude Sonnet primary + GPT verification), requests+BeautifulSoup extraction, Outscraper CSV with source-flexible ingestion layer, 8-step processing pipeline, full output schema, error handling rules, run log spec. |
+| 1.1 | Jun 2026 | Market Radar / Discovery workflow (discovery.py, discovery_runs.py, registry_update.py). Multi-key registry matching (place_id > domain > phone > name+address). `google_place_id` preserved through enrichment. SFTP hard-fail on missing host key. Full lifecycle integration test. Stale `entry_id` alias removed. |
+| 1.2 | Jun 2026 | QoL operator tooling: rescore preview mode, ICP version diff (diff_icp.py), pre-enrichment cost estimate (llm_pricing.estimate_run_cost), system health preflight (preflight.py), run-complete browser notification, bulk approve in confirm queue (reviews.bulk_approve), run comparison view (/dashboard/compare), signal re-extraction pass (reextract_run.py), suppression re-check pass (suppress_run.py). |
 
 ---
 

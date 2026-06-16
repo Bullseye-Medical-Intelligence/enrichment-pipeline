@@ -141,7 +141,8 @@ to open a run directory and understand what happened.
   validator.py       ← pre-flight CSV validation
   schema.py          ← Pydantic models for all request/response types
   config.py          ← environment variable loading, path constants; includes Hostinger SFTP/FTP settings; BUILD_VERSION/BUILD_DATE
-  llm_pricing.py     ← the ONE home for LLM pricing constants (operator-maintained LAST_VERIFIED); cost-per-run estimate
+  llm_pricing.py     ← the ONE home for LLM pricing constants (operator-maintained LAST_VERIFIED); cost-per-run estimate via estimate_run_cost() (averages past run token usage, falls back to defaults)
+  preflight.py       ← system health checks: ANTHROPIC_API_KEY, pipeline repo, output dir writability, ICP profiles, projects, session key; returns CheckResult NamedTuples; overall status = worst individual check
   ui.py              ← server-rendered HTML routes (session auth)
   requirements.txt
   .env.example
@@ -218,6 +219,18 @@ No per-record cost fields exist.
 
 **Site Blocked — Needs Re-crawl section**: a dedicated table section (below the main scored table, above Excluded) for records where `source_confidence in ("limited", "failed")`. These records are removed from the main scored table entirely — they were never scored, so showing them alongside Bullseyes and Contenders was misleading. The section header shows a count badge and a "Retry All with Browser" button that fires the existing `POST /runs/{run_id}/retry-with-browser` route. `stats.blocked` tracks this count (replaces the former `stats.thin_context`). Blocked records are excluded from tier stats and from Pending Review — they need a re-crawl, not a QC sign-off.
 
+**System Health banner** (`/dashboard` run list): shown when `preflight.run_checks()` returns status other than `"ok"`. Auto-expanded for errors, collapsed for warnings. Shows a table of individual check results (✓/⚠/✗). Hidden entirely when all checks pass. Health is re-evaluated on every page load.
+
+**Pre-enrichment cost estimate**: on the run results page for ingested (not-yet-enriched) runs, the "Enrich All" button triggers a fetch to `GET /runs/{run_id}/enrich-estimate` before submitting. The estimate is computed by `llm_pricing.estimate_run_cost()` — averages token usage across up to 20 past completed runs; falls back to conservative defaults (6k input / 750 output tokens per record) when no history exists. Shown inline next to the button; clicking a second time confirms and submits.
+
+**Run browser notification**: when the operator starts an enrichment run and the page auto-reloads every 5 seconds, a `sessionStorage` key tracks the watched run ID. When the status transitions to `complete` or `failed`, a toast banner and flashing tab title alert the operator — even if they've navigated away and returned. No server push or websocket required.
+
+**Bulk approve in confirm queue**: the confirm queue header shows "Approve High-Confidence (N)" and "Approve All (N)" buttons when pending Bullseyes exist. Both POST to `/dashboard/{run_id}/confirm-queue/bulk-approve` with `confidence_filter=high|all`. The `high` filter only approves records where every confirmed `"yes"` signal is at `medium` or `high` confidence. Single atomic `reviews.json` write for the whole batch.
+
+**Run comparison view** (`/dashboard/compare`): side-by-side tier comparison between any two completed runs. Records are matched by `(practice_name.lower(), address_city.lower())` key — not by `record_id` (which differs across runs). Shows tier changes (with ↑/↓/→ direction), unchanged records (collapsed), and records only in one run (collapsed). No writes.
+
+**Post-run pass buttons** (complete runs, secondary header row): "Re-extract Signals" shells out to `reextract_run.py` — re-runs Claude signal extraction from stored `_context_text` without re-crawling, using the run's frozen ICP snapshot. "Re-check Suppression" shells out to `suppress_run.py` — re-applies the project suppression list with no LLM cost; button only shown when the run's project config has `suppression_list_path` set and the file exists.
+
 ---
 
 ## enriched_targets.json Schema
@@ -254,9 +267,12 @@ GET    /projects/new                             Create-project form
 POST   /projects                                 Create a project
 GET    /projects/{project_id}                    Project detail
 GET    /icp-profiles                             List loaded ICP profiles
-GET    /dashboard                                Run list
+GET    /dashboard                                Run list (with system health banner)
+GET    /dashboard/compare                        Side-by-side tier comparison between two completed runs
 GET    /dashboard/{run_id}                       Results + inline review
 GET    /dashboard/{run_id}/queue                 Contact Queue (rep call sheet, sorted by priority)
+GET    /dashboard/{run_id}/confirm-queue         Analyst confirm queue (Bullseye + Contender pending review)
+POST   /dashboard/{run_id}/confirm-queue/bulk-approve  Bulk-approve pending Bullseyes; body: confidence_filter=all|high
 GET    /dashboard/{run_id}/evidence/{record_id}  Evidence Vault snapshot viewer (?url= picks the page, ?q= highlights the quote)
 GET    /dashboard/{run_id}/cartridge             Read-only Cartridge view: the frozen config + ICP snapshot the run used
 GET    /dashboard/{run_id}/link-check            Evidence link check report (flagged URLs only)
@@ -268,6 +284,7 @@ GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-exc
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
 GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs; requires all Bullseye/Contender reviewed)
 GET    /runs/{run_id}/download/sales-brief       Prospect-facing methodology brief (select 1 Bullseye, 1 Contender, 1 Excluded via query params)
+GET    /runs/{run_id}/enrich-estimate            JSON cost estimate for enriching an ingested run (reads token history from past runs)
 POST   /runs/{run_id}/publish/{brief_type}       Publish brief HTML to Hostinger; saves URL to published_briefs.json
                                                    brief_type: sales-handoff | sales-brief | executive-report | bullseye-report
                                                    sales-brief requires: ?bullseye_id=&contender_id=&excluded_id=
@@ -277,6 +294,7 @@ POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record fro
 POST   /api/ui/runs                              Create run from browser upload
 POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 POST   /icp-profiles/simulate                     Dry-run score preview (no LLM, no crawl); shells out to simulate_icp.py
+GET    /preflight                                 JSON system health check (API keys, pipeline repo, output dir, ICP profiles, projects, session key)
 
 Market Radar (Discovery) routes:
 GET    /discovery                                 Discovery landing — upload form + recent runs list
@@ -287,6 +305,14 @@ POST   /discovery/runs/{run_id}/send              Send selected / new / changed 
 Registry Update routes (explicit operator action only):
 GET    /dashboard/{run_id}/registry-update        Registry update form for a completed enrichment run
 POST   /dashboard/{run_id}/registry-update        Execute registry update → show inserted/updated/rejected summary
+
+Post-run pass routes (complete runs only; each shells out to a CLI at repo root):
+POST   /dashboard/{run_id}/verify                 GPT verification pass on Needs Verification records (verify_run.py)
+POST   /dashboard/{run_id}/rescore                Re-score with frozen ICP weights — Steps 6-7 only, no LLM (rescore_run.py)
+POST   /dashboard/{run_id}/rescore-preview        Preview rescore tier transitions without writing (rescore_run.py --preview)
+POST   /dashboard/{run_id}/reextract              Re-run Claude signal extraction from stored _context_text (reextract_run.py); LLM cost
+POST   /dashboard/{run_id}/resuppress             Re-check all records against the project suppression list (suppress_run.py); no LLM
+POST   /dashboard/{run_id}/recrawl                Re-crawl all blocked/thin records with Playwright (recrawl_run.py)
 
 API (Bearer auth, called by dashboard or automation):
 POST   /enrichment-runs/{run_id}/update-registry  Explicit registry update; body: selection_mode, selected_record_ids, options
