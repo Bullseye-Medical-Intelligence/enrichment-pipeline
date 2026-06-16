@@ -859,6 +859,189 @@ async def orchestrate_manual_content_recrawl(
     )
 
 
+def _write_multi_record_csv(scratch_dir: Path, records: list[dict]) -> Path:
+    """Write a multi-row manual-format input.csv into the scratch dir."""
+    import csv
+    import io
+
+    fieldnames = ["id", "practice_name", "website_url", "phone",
+                  "address_city", "address_state", "address_zip", "specialty",
+                  "npi_optional"]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for record in records:
+        url = record_adapter.normalize_homepage_url(record.get("website_url", "")) or ""
+        writer.writerow({
+            "id": record.get("id") or record.get("record_id") or "",
+            "practice_name": record.get("practice_name", ""),
+            "website_url": url,
+            "phone": record.get("phone", ""),
+            "address_city": record.get("address_city", ""),
+            "address_state": record.get("address_state", ""),
+            "address_zip": record.get("address_zip", ""),
+            "specialty": record.get("specialty", ""),
+            "npi_optional": record.get("npi_optional") or record.get("npi") or "",
+        })
+    input_path = scratch_dir / "input.csv"
+    input_path.write_bytes(buf.getvalue().encode("utf-8"))
+    return input_path
+
+
+async def orchestrate_batch_reenrich(
+    source_run_id: str,
+    record_ids: list[str],
+    operator: str,
+    background_tasks,
+) -> int:
+    """Queue selected records for a full re-crawl and re-enrich in the background.
+
+    Writes a multi-row CSV for the selected records, spawns the full pipeline on
+    them in a hidden scratch dir (so no new run appears in the dashboard), and
+    merges results back into the source run when the pipeline exits. The source
+    run stays 'complete' throughout; enriched_targets.json is updated atomically
+    when the merge is done.
+
+    Returns the number of records queued.
+
+    Raises:
+        FileNotFoundError if the run or any requested record is not found.
+        ValueError if the run is not complete or its config snapshots are missing.
+    """
+    source_status = runs.get_run(source_run_id)
+    if source_status is None:
+        raise FileNotFoundError(f"Run '{source_run_id}' not found")
+    if source_status.status != "complete":
+        raise ValueError(
+            f"Source run is {source_status.status!r} — only complete runs support batch re-enrich."
+        )
+
+    source_dir = runs.run_dir(source_run_id)
+    results_path = source_dir / "enriched_targets.json"
+    if not results_path.exists():
+        raise ValueError("Source run has no enriched_targets.json")
+
+    with open(results_path, "r", encoding="utf-8") as f:
+        all_records = record_adapter.normalize_records_payload(json.load(f))
+
+    id_set = set(record_ids)
+    selected = [r for r in all_records if record_adapter.get_record_id(r) in id_set]
+    if not selected:
+        raise ValueError("None of the requested record IDs were found in this run.")
+
+    config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
+    icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
+    if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
+        raise ValueError("Source run is missing config snapshots.")
+
+    # Prefer the live ICP profile over the frozen snapshot so updated signals apply.
+    try:
+        config_data = json.loads(config_snapshot_src.read_text(encoding="utf-8"))
+        icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
+        if icp_id:
+            live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
+            if live_icp.exists():
+                icp_snapshot_src = live_icp
+    except Exception:
+        pass
+
+    scratch_dir = source_dir / f".batch_{secrets.token_hex(4)}"
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+
+    input_path = _write_multi_record_csv(scratch_dir, selected)
+    process = spawn_pipeline(
+        source_run_id,
+        input_path,
+        "manual",
+        scratch_dir,
+        config_snapshot_src,
+        icp_snapshot_src,
+    )
+    logger.info(
+        "Batch re-enrich of %d records in run %s started by '%s'",
+        len(selected), source_run_id, operator,
+    )
+    background_tasks.add_task(
+        _monitor_batch_reenrich, source_run_id, scratch_dir, list(id_set), process
+    )
+    return len(selected)
+
+
+async def _monitor_batch_reenrich(
+    source_run_id: str,
+    scratch_dir: Path,
+    record_ids: list[str],
+    process: subprocess.Popen,
+) -> None:
+    """Background task: wait for the batch pipeline, then merge all results in place.
+
+    Each re-enriched record replaces its counterpart in the source run's
+    enriched_targets.json (matched by stable record ID). Analyst review fields
+    are preserved via stamp_reenriched(). The source run stays 'complete'.
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
+        if process.returncode != 0:
+            error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
+            logger.error(
+                "Batch re-enrich of run %s failed (exit %d): %.500s",
+                source_run_id, process.returncode, error_text,
+            )
+            return
+
+        failure = _validate_output_dir(scratch_dir)
+        if failure:
+            logger.error(
+                "Batch re-enrich of run %s: scratch output invalid: %s",
+                source_run_id, failure,
+            )
+            return
+
+        with open(scratch_dir / "enriched_targets.json", "r", encoding="utf-8") as f:
+            new_records = record_adapter.normalize_records_payload(json.load(f))
+        new_by_id = {record_adapter.get_record_id(r): r for r in new_records}
+
+        source_dir = runs.run_dir(source_run_id)
+        enriched_path = source_dir / "enriched_targets.json"
+        with open(enriched_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        records = record_adapter.normalize_records_payload(payload)
+
+        merged_count = 0
+        for i, r in enumerate(records):
+            rid = record_adapter.get_record_id(r)
+            if rid in new_by_id:
+                records[i] = new_by_id[rid]
+                reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
+                _copy_recrawl_evidence(scratch_dir, source_dir, rid)
+                merged_count += 1
+
+        if isinstance(payload, dict):
+            payload["records"] = records
+            payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+            payload["record_count"] = len(records)
+            out_payload = payload
+        else:
+            out_payload = records
+        reviews._atomic_write(enriched_path, out_payload)
+
+        counts = _recompute_counts_from_records(records)
+        runs.update_run_status(source_run_id, status="complete", **counts)
+
+        logger.info(
+            "Batch re-enrich of run %s: merged %d / %d requested records.",
+            source_run_id, merged_count, len(record_ids),
+        )
+    except Exception:
+        logger.exception(
+            "Batch re-enrich of run %s failed during merge; run left untouched.",
+            source_run_id,
+        )
+    finally:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
 async def _run_inplace_update(
     source_run_id: str,
     scratch_dir: Path,

@@ -2701,6 +2701,52 @@ async def trigger_reextract(
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
+@router.post("/dashboard/{run_id}/rerun-selected")
+async def rerun_selected(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Batch re-enrich selected records in place, running the full pipeline on each.
+
+    Accepts record_ids as repeated form fields. Writes a multi-row CSV, spawns
+    the pipeline in a hidden scratch dir, and merges results back when complete.
+    The source run stays 'complete' throughout; the page can be reloaded after
+    a few minutes to see updated tiers and signals. Analyst reviews are preserved.
+    """
+    if not runs.is_valid_run_id(run_id) or not runs.run_dir(run_id).exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    form = await request.form()
+    record_ids = list(form.getlist("record_ids"))
+    if not record_ids:
+        notice = "No records selected for re-enrichment."
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+            status_code=303,
+        )
+
+    try:
+        count = await runner.orchestrate_batch_reenrich(
+            run_id, record_ids, username, background_tasks
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    noun = "record" if count == 1 else "records"
+    notice = (
+        f"Re-enriching {count} {noun} in the background — "
+        "reload in a few minutes to see updated tiers and signals."
+    )
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+        status_code=303,
+    )
+
+
 @router.post("/dashboard/{run_id}/recrawl", response_class=HTMLResponse)
 async def trigger_recrawl(
     request: Request,

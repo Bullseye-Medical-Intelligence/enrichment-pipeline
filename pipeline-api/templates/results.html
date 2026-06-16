@@ -352,6 +352,11 @@
         <td style="text-align:center;" onclick="event.stopPropagation()">
           <input type="checkbox" class="roster-cb" data-rid="{{ rid }}" onchange="updateDeleteCount()">
         </td>
+        {% elif status.status == 'complete' %}
+        <td class="expand-icon" style="text-align:center; white-space:nowrap; padding:0 4px;">
+          <input type="checkbox" class="reenrich-cb" data-rid="{{ rid }}" onchange="updateReenrichCount()" onclick="event.stopPropagation()" style="vertical-align:middle;">
+          <span id="icon-{{ rid }}" style="font-size:0.75em; vertical-align:middle; color:#bbb; margin-left:2px;">▶</span>
+        </td>
         {% else %}
         <td class="expand-icon" id="icon-{{ rid }}">▶</td>
         {% endif %}
@@ -690,7 +695,7 @@
   <table class="data-table results-table" id="results-table">
     <thead>
       <tr>
-        <th style="width:2em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-cb" onclick="toggleSelectAll(this)" title="Select all">{% endif %}</th>
+        <th style="width:3em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-cb" onclick="toggleSelectAll(this)" title="Select all">{% elif status.status == 'complete' %}<input type="checkbox" id="reenrich-all-cb" onclick="toggleReenrichAll(this)" title="Select all for re-enrich">{% endif %}</th>
         <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
         <th class="sortable" onclick="sortRecords('location', this)">Location</th>
         <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
@@ -1110,5 +1115,62 @@ function closeDropdowns() {
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.dropdown')) closeDropdowns();
 });
+
+{% if status.status == 'complete' %}
+function updateReenrichCount() {
+  var cbs = document.querySelectorAll('.reenrich-cb:checked');
+  var n = cbs.length;
+  var bar = document.getElementById('reenrich-bar');
+  var label = document.getElementById('reenrich-bar-label');
+  var btn = document.getElementById('reenrich-submit-btn');
+  if (n > 0) {
+    bar.style.display = 'flex';
+    label.textContent = n + ' record' + (n === 1 ? '' : 's') + ' selected';
+    if (btn) { btn.textContent = '↺ Re-enrich Selected (' + n + ')'; btn.disabled = false; }
+  } else {
+    bar.style.display = 'none';
+    if (btn) { btn.textContent = '↺ Re-enrich Selected (0)'; btn.disabled = true; }
+  }
+  var allCbs = document.querySelectorAll('.reenrich-cb');
+  var masterCb = document.getElementById('reenrich-all-cb');
+  if (masterCb) masterCb.checked = allCbs.length > 0 && n === allCbs.length;
+}
+function toggleReenrichAll(masterCb) {
+  document.querySelectorAll('.reenrich-cb').forEach(function(cb) { cb.checked = masterCb.checked; });
+  updateReenrichCount();
+}
+function clearReenrichSelection() {
+  document.querySelectorAll('.reenrich-cb').forEach(function(cb) { cb.checked = false; });
+  updateReenrichCount();
+}
+function prepareReenrichSubmit(form) {
+  var cbs = document.querySelectorAll('.reenrich-cb:checked');
+  var n = cbs.length;
+  if (n === 0) return false;
+  if (!confirm('Re-enrich ' + n + ' record' + (n === 1 ? '' : 's') + '?\n\nEach site will be re-crawled and re-run through Claude signal extraction. Analyst reviews are preserved; scores and tiers will update.\n\nThis uses LLM credits and runs in the background — reload in a few minutes.')) return false;
+  var container = document.getElementById('reenrich-ids-container');
+  container.innerHTML = '';
+  cbs.forEach(function(cb) {
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'record_ids'; inp.value = cb.dataset.rid;
+    container.appendChild(inp);
+  });
+  var btn = document.getElementById('reenrich-submit-btn');
+  if (btn) { btn.textContent = 'Starting…'; btn.disabled = true; }
+  return true;
+}
+{% endif %}
 </script>
+
+{% if status.status == 'complete' %}
+<div id="reenrich-bar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:500; background:#1a2030; color:#fff; padding:12px 24px; align-items:center; gap:16px; box-shadow:0 -4px 20px rgba(0,0,0,0.3);">
+  <span id="reenrich-bar-label" style="font-size:14px; font-weight:600; flex:1;">0 selected</span>
+  <form method="post" action="/dashboard/{{ run_id }}/rerun-selected" id="reenrich-form" style="display:inline; margin:0;" onsubmit="return prepareReenrichSubmit(this)">
+    <div id="reenrich-ids-container"></div>
+    <button type="submit" id="reenrich-submit-btn" class="btn btn-submit" disabled style="white-space:nowrap;">↺ Re-enrich Selected (0)</button>
+  </form>
+  <button type="button" onclick="clearReenrichSelection()" class="btn btn-secondary" style="white-space:nowrap; font-size:13px;">Clear</button>
+</div>
+{% endif %}
+
 {% endblock %}
