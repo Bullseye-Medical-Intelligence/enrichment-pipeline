@@ -3,10 +3,10 @@ update_site_logos.py — download every HTML page from Hostinger, update logo
 references to the new bullseye ring mark, and re-upload.
 
 Patterns replaced:
-  1. Inline fan-geometry SVG (x1="18" y1="24.5" probe lines) → ring SVG inline
-  2. Old <img> logo references (logo.svg, logo-light.svg, etc.) → /assets/bullseye-mark-ink.svg
-  3. Missing or wrong favicon → /bullseye-favicon.svg
-  4. Missing brand-name text that should read "Bullseye Medical Intelligence"
+  1. Fan-geometry SVG variant A (36×36, x1="18" y1="24.5" probe lines)
+  2. Fan-geometry SVG variant B (28×28, convergence at cx=14 cy=17) — used on homepage
+  3. Old <img> logo references (logo.svg, logo-light.svg, etc.)
+  4. Missing or wrong favicon → /bullseye-favicon.svg
 
 Run from the repo root on your local machine:
     python update_site_logos.py
@@ -40,25 +40,17 @@ REMOTE_ROOT = ""  # FTP home is already the web root on Hostinger
 if not all([HOST, USER, PASSWORD]):
     sys.exit("Missing HOSTINGER_SFTP_HOST / USER / PASSWORD in pipeline-api/.env")
 
-# ── New bullseye ring SVG (inline, light-on-dark) ────────────
-NEW_MARK_SVG = (
-    '<svg class="logomark" width="30" height="30" viewBox="0 0 36 36" fill="none" '
-    'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-    '<circle cx="18" cy="18" r="15.5" stroke="currentColor" stroke-width="1.8"/>'
-    '<circle cx="18" cy="18" r="8.5" stroke="currentColor" stroke-width="1.8"/>'
-    '<circle cx="18" cy="18" r="3" fill="currentColor"/>'
-    '<line x1="18" y1="1.5" x2="18" y2="8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '<line x1="18" y1="27.5" x2="18" y2="34.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '<line x1="1.5" y1="18" x2="8.5" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '<line x1="27.5" y1="18" x2="34.5" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '</svg>'
-)
-
 # ── Regex patterns for old logo marks ────────────────────────
 
-# Old fan-geometry SVG block (multi-line): starts with <svg ... and contains the fan probe line
-_FAN_SVG_RE = re.compile(
-    r'<svg\b[^>]*>(?:(?!</svg>).)*x1="18"\s+y1="24\.5"(?:(?!</svg>).)*</svg>',
+# Fan variant A: 36×36, probe lines converge at y=24.5
+_FAN_SVG_A_RE = re.compile(
+    r'<svg\b[^>]*>(?:(?!</svg>).)*y1="24\.5"(?:(?!</svg>).)*</svg>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+# Fan variant B: 28×28, probe lines converge at cx=14 cy=17 (homepage / nav / footer)
+_FAN_SVG_B_RE = re.compile(
+    r'<svg\b[^>]*viewBox="0 0 28 28"[^>]*>(?:(?!</svg>).)*cy="17"(?:(?!</svg>).)*</svg>',
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -77,23 +69,47 @@ _FAVICON_OLD_RE = re.compile(
 FAVICON_NEW = '<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">'
 
 
+def _svg_is_white(svg_text: str) -> bool:
+    """Return True if the SVG uses white strokes (dark-background context)."""
+    return bool(re.search(r'stroke="#fff(?:fff)?"|stroke="white"', svg_text, re.IGNORECASE))
+
+
+def _img_for_svg(svg_text: str, default_size: str = "28") -> str:
+    """Build an <img> replacement for an old fan SVG, preserving size and adding correct filter."""
+    w_m = re.search(r'\bwidth="(\d+)"', svg_text)
+    h_m = re.search(r'\bheight="(\d+)"', svg_text)
+    w = w_m.group(1) if w_m else default_size
+    h = h_m.group(1) if h_m else default_size
+    style_m = re.search(r'\bstyle="([^"]*)"', svg_text)
+    extra_style = style_m.group(1).rstrip(";") + ";" if style_m else ""
+    if _svg_is_white(svg_text):
+        extra_style += "filter:brightness(0) invert(1);"
+    style_attr = f' style="display:block;{extra_style}"' if extra_style else ' style="display:block;"'
+    return f'<img src="/assets/bullseye-mark-ink.svg" width="{w}" height="{h}" alt=""{style_attr}>'
+
+
 def _update_html(html: str, filename: str) -> tuple[str, list[str]]:
     """Apply logo replacements to one HTML string. Returns (new_html, list_of_changes)."""
     changes = []
     original = html
 
-    # 1. Replace inline fan-geometry SVG with ring SVG
-    def _replace_fan(m):
-        changes.append("replaced inline fan-geometry SVG with ring mark")
-        return NEW_MARK_SVG
-    html = _FAN_SVG_RE.sub(_replace_fan, html)
+    # 1a. Fan variant A: 36×36 (y1="24.5" probe lines)
+    def _replace_fan_a(m):
+        changes.append("replaced 36×36 fan SVG with ring mark img")
+        return _img_for_svg(m.group(0), "30")
+    html = _FAN_SVG_A_RE.sub(_replace_fan_a, html)
+
+    # 1b. Fan variant B: 28×28 (convergence at cy=17, used on homepage nav/footer/eyebrow)
+    def _replace_fan_b(m):
+        changes.append("replaced 28×28 fan SVG with ring mark img")
+        return _img_for_svg(m.group(0), "28")
+    html = _FAN_SVG_B_RE.sub(_replace_fan_b, html)
 
     # 2. Replace old <img> logo references pointing at logo*.svg files
     def _replace_img_logo(m):
         src_match = re.search(r'src=["\']([^"\']+)["\']', m.group(0), re.IGNORECASE)
         old_src = src_match.group(1) if src_match else "?"
         changes.append(f"replaced <img src=\"{old_src}\"> with /assets/bullseye-mark-ink.svg")
-        # Preserve width/height/alt/style attrs if present
         attrs = ""
         for attr in ("width", "height", "alt", "style", "class"):
             am = re.search(rf'{attr}=["\']([^"\']*)["\']', m.group(0), re.IGNORECASE)
