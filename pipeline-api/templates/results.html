@@ -20,18 +20,20 @@
               title="Remove checked records from the roster before enrichment — saves crawl and LLM budget">
         Delete Selected (<span id="delete-count">0</span>)
       </button>
-      <form method="post" action="/runs/{{ run_id }}/enrich-all"
-            style="display:inline-flex; align-items:center; gap:10px;"
-            onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+      <form id="enrich-all-form" method="post" action="/runs/{{ run_id }}/enrich-all"
+            style="display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; cursor:pointer;"
                title="After the standard crawl, re-crawl bot-blocked sites once with a headless browser. Slower, but recovers sites that block the fast crawler.">
           <input type="checkbox" name="auto_browser_retry" value="1">
           Auto browser-retry blocked sites
         </label>
-        <button type="submit" class="btn btn-submit"
-                title="Run crawl + signal extraction over the loaded roster">
+        <button type="button" id="enrich-estimate-btn" class="btn btn-submit"
+                data-label="Enrich All ({{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }})"
+                onclick="fetchEnrichEstimate('{{ run_id }}', this)"
+                title="Preview estimated Claude cost before starting enrichment">
           Enrich All ({{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }})
         </button>
+        <div id="enrich-estimate-slot" style="display:none; flex-basis:100%; margin-top:8px;"></div>
       </form>
     </div>
     {% endif %}
@@ -944,6 +946,45 @@ async function republishSalesBrief(bId, cId, eId, btn) {
 })();
 
 {% if is_ingested %}
+function fetchEnrichEstimate(runId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Estimating cost…';
+  fetch('/runs/' + runId + '/enrich-estimate', {credentials: 'same-origin'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.style.display = 'none';
+      var slot = document.getElementById('enrich-estimate-slot');
+      var costStr = '$' + data.estimated_cost_usd.toFixed(2);
+      var basis = data.using_defaults
+        ? 'no prior runs to average from — using conservative defaults'
+        : (data.history_run_count + ' prior run' + (data.history_run_count === 1 ? '' : 's') + ' averaged');
+      var tokNote = '~' + data.avg_input_tokens_per_record.toLocaleString() + ' input tokens/record · ' + basis;
+      slot.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;background:#f7f6f4;border:1px solid #e0ddd9;border-radius:6px;">' +
+        '<span style="font-size:13px;">' +
+        '<strong>Estimated Claude cost: ' + costStr + '</strong>' +
+        ' &nbsp;<span style="color:#888;font-size:12px;">(' + data.record_count + ' records · ' + tokNote + ')</span>' +
+        '</span>' +
+        '<button type="submit" class="btn btn-submit" style="white-space:nowrap;"' +
+        ' onclick="this.disabled=true; this.textContent=\'Starting…\';">Confirm — Start Enrichment</button>' +
+        '<button type="button" class="btn btn-secondary" style="white-space:nowrap;"' +
+        ' onclick="cancelEnrichEstimate()">Cancel</button>' +
+        '</div>';
+      slot.style.display = 'block';
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = btn.getAttribute('data-label');
+    });
+}
+
+function cancelEnrichEstimate() {
+  var btn = document.getElementById('enrich-estimate-btn');
+  var slot = document.getElementById('enrich-estimate-slot');
+  if (btn) { btn.style.display = ''; btn.disabled = false; btn.textContent = btn.getAttribute('data-label'); }
+  if (slot) { slot.style.display = 'none'; slot.innerHTML = ''; }
+}
+
 function updateDeleteCount() {
   var n = document.querySelectorAll('.roster-cb:checked').length;
   var countEl = document.getElementById('delete-count');

@@ -1787,6 +1787,41 @@ async def rerun(
     return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
 
 
+@router.get("/runs/{run_id}/enrich-estimate")
+async def enrich_estimate(
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Return a JSON cost estimate for enriching an ingested run.
+
+    Scans past completed runs for per-record token averages; falls back to
+    conservative defaults when no history is available. Covers Claude signal
+    extraction only (Step 4).
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "ingested":
+        raise HTTPException(status_code=400, detail="Run is not in ingested status")
+
+    run_directory = runs.run_dir(run_id)
+    results_path = run_directory / "enriched_targets.json"
+    record_count = status.records_input
+    if results_path.exists():
+        try:
+            with open(results_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            records = record_adapter.normalize_records_payload(payload)
+            record_count = sum(
+                1 for r in records if r.get("exclusion_status") != "EXCLUDED"
+            )
+        except Exception:
+            pass  # fall back to records_input
+
+    estimate = llm_pricing.estimate_run_cost(record_count, config.OUTPUT_RUNS_PATH)
+    return JSONResponse(estimate)
+
+
 @router.post("/runs/{run_id}/enrich-all")
 async def enrich_all(
     run_id: str,
