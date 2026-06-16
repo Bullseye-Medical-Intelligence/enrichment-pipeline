@@ -1,0 +1,106 @@
+<!--
+  og-image.svg — Bullseye Medical Intelligence default OG/link-preview image.
+  Dimensions: 1200×630 (standard Open Graph image size).
+
+  TO EXPORT TO PNG for Hostinger upload:
+    Option A (Inkscape CLI):
+      inkscape og-image.svg --export-type=png --export-filename=og-image.png --export-width=1200
+
+    Option B (rsvg-convert):
+      rsvg-convert -w 1200 -h 630 og-image.svg -o og-image.png
+
+    Option C (browser):
+      Open this file in Chrome/Firefox, right-click -> Save As or use
+      DevTools screenshot at 1200×630 with device pixel ratio 1.
+
+    Option D (Figma / Canva):
+      Import this SVG, export as PNG at 1x.
+
+  After exporting, upload og-image.png to Hostinger at:
+    /assets/og-image.png  (i.e. https://www.bullseyemedical.ai/assets/og-image.png)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <!-- Subtle warm radial glow from the left-center area -->
+    <radialGradient id="warm-glow" cx="20%" cy="55%" r="55%">
+      <stop offset="0%"   stop-color="rgba(200,75,47,0.12)"/>
+      <stop offset="100%" stop-color="rgba(200,75,47,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Dark background -->
+  <rect width="1200" height="630" fill="#0a0a0a"/>
+
+  <!-- Radial warm accent over background -->
+  <rect width="1200" height="630" fill="url(#warm-glow)"/>
+
+  <!-- Left vertical accent bar — terracotta brand stripe -->
+  <rect x="0" y="0" width="6" height="630" fill="#c84b2f"/>
+
+  <!-- Decorative large mark watermark — right side, very faint -->
+  <!-- Same 3-line geometry scaled to ~480×480, opacity 0.05 -->
+  <g transform="translate(780,80) scale(16)" opacity="0.05">
+    <line x1="10" y1="3"  x2="15" y2="15" stroke="#f7f6f4" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="3"  y1="24" x2="15" y2="15" stroke="#f7f6f4" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="28" y1="18" x2="15" y2="15" stroke="#f7f6f4" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="15" cy="15" r="3" fill="#c84b2f"/>
+  </g>
+
+  <!-- Brand mark — scaled to ~80×80, positioned top-left -->
+  <!-- Canonical 30×30 geometry, scaled 2.67× to reach ~80px -->
+  <g transform="translate(72,72) scale(2.67)">
+    <line x1="10" y1="3"  x2="15" y2="15" stroke="#f7f6f4" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="3"  y1="24" x2="15" y2="15" stroke="#f7f6f4" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="28" y1="18" x2="15" y2="15" stroke="#f7f6f4" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="15" cy="15" r="3" fill="#c84b2f"/>
+  </g>
+
+  <!-- Wordmark — right of mark, vertically centered on mark midpoint (~112px from top) -->
+  <!-- Mark spans y=72 to y=152 (80px tall), center at y=112; baseline at y=125 -->
+  <text
+    x="190" y="125"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="48"
+    font-weight="700"
+    fill="#f7f6f4"
+  >Bullseye Medical Intelligence</text>
+
+  <!-- Eyebrow label — terracotta, uppercase, tracked -->
+  <text
+    x="72" y="290"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="13"
+    font-weight="600"
+    letter-spacing="3"
+    fill="#c84b2f"
+  >PHYSICIAN TARGETING RESEARCH</text>
+
+  <!-- Main headline — two tspans: normal weight + italic on "Selling." -->
+  <text
+    x="72" y="350"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="64"
+    font-weight="400"
+    fill="#f7f6f4"
+  ><tspan>Your Reps Should Be </tspan><tspan font-style="italic">Selling.</tspan></text>
+
+  <!-- Sub line — muted, smaller -->
+  <text
+    x="72" y="400"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="22"
+    fill="rgba(247,246,244,0.4)"
+  >Not researching.</text>
+
+  <!-- Horizontal rule — very faint divider -->
+  <line x1="72" y1="460" x2="600" y2="460" stroke="rgba(247,246,244,0.08)" stroke-width="1"/>
+
+  <!-- Domain — very muted, tracked -->
+  <text
+    x="72" y="530"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="16"
+    letter-spacing="2"
+    fill="rgba(247,246,244,0.25)"
+  >bullseyemedical.ai</text>
+</svg>
