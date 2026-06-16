@@ -504,8 +504,39 @@ All UI in this repo must match the BEMI Dashboard identity. These rules are perm
 - **UI text**: `DM Sans` (Google Fonts) — all body copy, labels, buttons
 - **Eyebrow labels**: 10–11px, `font-weight: 600`, `letter-spacing: 0.12em`, `text-transform: uppercase`, color `--accent`
 
+### Brand Mark (Canonical — Never Deviate)
+
+The Bullseye mark is **three probe lines converging inward to a central terracotta dot**.
+`viewBox="0 0 30 30"` — three files in `pipeline-api/static/` and mirrored in `/assets/` on the live site:
+
+| File | Stroke | Use on |
+|------|--------|--------|
+| `bullseye-mark-paper.svg` | `#f7f6f4` | Dark / ink backgrounds |
+| `bullseye-mark-ink.svg` | `#0a0a0a` | Light / surface backgrounds |
+| `bullseye-mark.svg` | `currentColor` | CSS/inline context where color is inherited |
+| `bullseye-favicon.svg` | `#c84b2f` | Browser tab favicon only |
+
+Exact geometry (do not reconstruct from memory — copy from the files):
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" width="30" height="30" fill="none">
+  <line x1="10" y1="3"  x2="15" y2="15" stroke="…" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="3"  y1="24" x2="15" y2="15" stroke="…" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="28" y1="18" x2="15" y2="15" stroke="…" stroke-width="1.4" stroke-linecap="round"/>
+  <circle cx="15" cy="15" r="3" fill="#c84b2f"/>
+</svg>
+```
+
+**Rules:**
+- Never use a ring/crosshair/concentric-circle design — that was a previous wrong design.
+- Never recreate the geometry from memory; always read it from the files above.
+- Inline SVGs in templates must use `viewBox="0 0 30 30"` and the coordinates above.
+- For dark navbars, use paper variant strokes (`#f7f6f4`) inline.
+- For light backgrounds (login, reports on white), use ink variant strokes (`#0a0a0a`).
+- Reports embed marks as base64 data URIs from `pipeline-api/static/` via `_mark_data_uri()`.
+- The full logo (mark + wordmark text) lives in `pipeline-api/reports/static/logo_dark.svg` and `logo_light.svg` — same geometry, placed in a `220×36` viewport with text at `x=44`.
+
 ### Components
-- **Navbar**: ink background, SVG bullseye logomark + "Bullseye Medical Intelligence" in `Instrument Serif` surface color
+- **Navbar**: ink background, paper-variant mark (inline SVG) + "Bullseye Medical Intelligence" in `Instrument Serif` surface color
 - **Stat blocks**: ink background, `Instrument Serif` 28px numerals in surface color, labels in `--muted-dark`
 - **Badges**: `border-radius: 100px`, 10px uppercase text — tier/status/QC
 - **Primary button**: ink background, surface text, `border-radius: 100px`
