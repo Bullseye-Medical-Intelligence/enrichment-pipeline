@@ -35,7 +35,7 @@ if _env_path.exists():
 HOST = os.environ.get("HOSTINGER_SFTP_HOST", "")
 USER = os.environ.get("HOSTINGER_SFTP_USER", "")
 PASSWORD = os.environ.get("HOSTINGER_SFTP_PASSWORD", "")
-REMOTE_ROOT = "public_html"
+REMOTE_ROOT = ""  # FTP home is already the web root on Hostinger
 
 if not all([HOST, USER, PASSWORD]):
     sys.exit("Missing HOSTINGER_SFTP_HOST / USER / PASSWORD in pipeline-api/.env")
@@ -130,16 +130,16 @@ def _connect() -> ftplib.FTP:
 
 
 def _list_html(ftp: ftplib.FTP, remote_dir: str) -> list[str]:
-    """Recursively list all .html files under remote_dir."""
+    """Recursively list all .html files under remote_dir (empty string = FTP root)."""
     results = []
     try:
-        entries = ftp.mlsd(remote_dir)
+        entries = list(ftp.mlsd(remote_dir if remote_dir else None))
     except ftplib.error_perm:
         return results
     for name, facts in entries:
         if name in (".", ".."):
             continue
-        path = f"{remote_dir}/{name}"
+        path = f"{remote_dir}/{name}" if remote_dir else name
         if facts.get("type") == "dir":
             results.extend(_list_html(ftp, path))
         elif name.lower().endswith(".html") or name.lower().endswith(".htm"):
@@ -176,6 +176,8 @@ def main() -> None:
     ftp = _connect()
     print(f"Connected. Scanning {REMOTE_ROOT}/ for HTML files …\n")
 
+    # Print the top-level directory so we can verify the structure
+    print("  Root contents:", ftp.nlst())
     html_files = _list_html(ftp, REMOTE_ROOT)
     if not html_files:
         print("No HTML files found under", REMOTE_ROOT)
