@@ -2256,6 +2256,72 @@ async def trigger_rescore(
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
+@router.post("/dashboard/{run_id}/rescore-preview", response_class=HTMLResponse)
+async def trigger_rescore_preview(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Preview what an ICP re-scoring pass WOULD do, without writing anything.
+
+    Shells out to rescore_run.py --preview, which scores deep copies of each
+    record and never rewrites enriched_targets.json. Redirects back to the run
+    dashboard with a counts-only flash message summarizing the tier transitions
+    an operator would see if they ran the real rescore. Read-only.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = runs.get_run(run_id)
+    if status is None or status.status != "complete":
+        raise HTTPException(status_code=400, detail="Re-scoring requires a completed run")
+
+    icp_path = run_directory / "icp_snapshot.json"
+    if not icp_path.exists():
+        raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
+
+    import subprocess, sys, json as _json
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "rescore_run.py"),
+         "--run-dir", str(run_directory),
+         "--icp", str(icp_path),
+         "--preview"],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Rescore preview failed: {result.stderr[:300]}")
+
+    # Parse the stats from the last JSON line in stdout.
+    stats = {}
+    for line in reversed(result.stdout.strip().splitlines()):
+        try:
+            stats = _json.loads(line)
+            break
+        except Exception:
+            continue
+
+    transitions = stats.get("tier_transitions") or {}
+    if transitions:
+        moves = "; ".join(f"{count} {label}" for label, count in transitions.items())
+        notice = f"Rescore preview (nothing saved): {moves}."
+    else:
+        notice = "Rescore preview (nothing saved): no tier changes."
+    extra = []
+    if stats.get("score_changed_only"):
+        extra.append(f"{stats['score_changed_only']} score-only change(s)")
+    if stats.get("unchanged"):
+        extra.append(f"{stats['unchanged']} unchanged")
+    if extra:
+        notice += " " + ", ".join(extra) + "."
+
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+        status_code=303,
+    )
+
+
 @router.post("/dashboard/{run_id}/recrawl", response_class=HTMLResponse)
 async def trigger_recrawl(
     request: Request,

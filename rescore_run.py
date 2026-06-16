@@ -17,6 +17,7 @@ Reads credentials from pipeline-api/.env when present.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -177,6 +178,62 @@ def run_rescore_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     return {"rescored": rescored, "tier_changes": tier_changes}
 
 
+def run_rescore_preview(run_dir: Path, icp_signals: list[dict]) -> dict:
+    """Compute what a rescore WOULD do, without writing anything.
+
+    Strictly read-only: each record is deep-copied before scoring, so neither
+    enriched_targets.json on disk nor the in-memory list is ever mutated. The
+    file is never rewritten. Returns a counts-only summary — the per-tier
+    transitions an operator would see if they ran the real rescore.
+
+    Skips not_enriched records (no signals to score), matching run_rescore_pass.
+    """
+    targets_path = run_dir / "enriched_targets.json"
+    if not targets_path.exists():
+        raise FileNotFoundError(f"enriched_targets.json not found in {run_dir}")
+
+    raw = json.loads(targets_path.read_text(encoding="utf-8"))
+    records = raw.get("records", []) if isinstance(raw, dict) else raw
+
+    run_config = _load_run_config(run_dir)
+
+    rescored = 0
+    tier_transitions: dict[str, int] = {}
+    score_changed_only = 0
+    unchanged = 0
+
+    for record in records:
+        if record.get("enrichment_status") == "not_enriched":
+            continue
+
+        old_tier = record.get("target_tier", "")
+        old_score = record.get("bullseye_score", 0)
+
+        # Score a deep copy so the original record is never touched.
+        candidate = copy.deepcopy(record)
+        _rescore_record(candidate, icp_signals, run_config)
+
+        new_tier = candidate.get("target_tier", "")
+        new_score = candidate.get("bullseye_score", 0)
+        rescored += 1
+
+        if old_tier != new_tier:
+            key = f"{old_tier or '—'} → {new_tier or '—'}"
+            tier_transitions[key] = tier_transitions.get(key, 0) + 1
+        elif old_score != new_score:
+            score_changed_only += 1
+        else:
+            unchanged += 1
+
+    return {
+        "preview": True,
+        "rescored": rescored,
+        "tier_transitions": tier_transitions,
+        "score_changed_only": score_changed_only,
+        "unchanged": unchanged,
+    }
+
+
 def main() -> None:
     """Entry point for the rescore CLI."""
     parser = argparse.ArgumentParser(description="ICP re-scoring post-run pass")
@@ -186,6 +243,11 @@ def main() -> None:
         required=False,
         default=None,
         help="Path to the ICP checklist JSON (defaults to icp_snapshot.json in the run dir)",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Show what would change without writing anything (read-only).",
     )
     args = parser.parse_args()
 
@@ -205,8 +267,12 @@ def main() -> None:
     if not icp_signals:
         sys.exit(f"No signals found in ICP file: {icp_path}")
 
-    print(f"Re-scoring run {run_dir.name} with {len(icp_signals)} ICP signals...")
-    stats = run_rescore_pass(run_dir, icp_signals)
+    if args.preview:
+        print(f"Previewing rescore of run {run_dir.name} with {len(icp_signals)} ICP signals (nothing will be saved)...")
+        stats = run_rescore_preview(run_dir, icp_signals)
+    else:
+        print(f"Re-scoring run {run_dir.name} with {len(icp_signals)} ICP signals...")
+        stats = run_rescore_pass(run_dir, icp_signals)
     print(json.dumps(stats))
 
 

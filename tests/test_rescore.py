@@ -15,7 +15,7 @@ from pathlib import Path
 # Ensure project root is on the path regardless of where pytest is invoked
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from rescore_run import run_rescore_pass
+from rescore_run import run_rescore_pass, run_rescore_preview
 
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
@@ -358,3 +358,90 @@ class TestExcludeIfYesReapplied:
             f"Expected Excluded but got {updated['target_tier']!r}"
         )
         assert updated["exclusion_status"] == "EXCLUDED"
+
+
+class TestRescorePreview:
+
+    def test_preview_does_not_write_file(self, tmp_path):
+        """Preview must never modify enriched_targets.json on disk."""
+        signal = _make_signal("S-01", positive_weight=10,
+                               state="yes", confidence="high",
+                               evidence_text="Listed.", source_url="https://x.com")
+        record = _make_record("T-001", signals=[signal],
+                              bullseye_score=30, target_tier="Contender")
+        run_dir = _write_run(tmp_path, [record])
+
+        before = (run_dir / "enriched_targets.json").read_text(encoding="utf-8")
+
+        # A much higher weight would change tiers if applied.
+        new_icp = [_make_icp_signal("S-01", positive_weight=100)]
+        run_rescore_preview(run_dir, new_icp)
+
+        after = (run_dir / "enriched_targets.json").read_text(encoding="utf-8")
+        assert before == after, "Preview must not rewrite the file"
+
+    def test_preview_no_tmp_file_left(self, tmp_path):
+        """Preview must not leave a .tmp artifact behind."""
+        signal = _make_signal("S-01", positive_weight=20, state="yes",
+                              confidence="high", evidence_text="e",
+                              source_url="https://x.com")
+        record = _make_record("T-001", signals=[signal])
+        run_dir = _write_run(tmp_path, [record])
+
+        run_rescore_preview(run_dir, [_make_icp_signal("S-01", positive_weight=20)])
+
+        assert not (run_dir / "enriched_targets.json.tmp").exists()
+
+    def test_preview_reports_counts_only(self, tmp_path):
+        """Preview returns the counts-only shape with preview flag set."""
+        signal = _make_signal("S-01", positive_weight=10, state="yes",
+                              confidence="high", evidence_text="Listed.",
+                              source_url="https://x.com")
+        record = _make_record("T-001", signals=[signal],
+                              bullseye_score=30, target_tier="Contender")
+        run_dir = _write_run(tmp_path, [record], config=dict(_BASE_RUN_CONFIG, bullseye_min_score=50))
+
+        stats = run_rescore_preview(run_dir, [_make_icp_signal("S-01", positive_weight=100)])
+
+        assert stats["preview"] is True
+        assert stats["rescored"] == 1
+        assert isinstance(stats["tier_transitions"], dict)
+        assert "score_changed_only" in stats
+        assert "unchanged" in stats
+        # No per-record detail leaks into the counts-only summary.
+        assert "tier_changes" not in stats
+
+    def test_preview_matches_apply_outcome(self, tmp_path):
+        """Counts in the preview must match what an actual rescore would produce."""
+        signal = _make_signal("S-01", positive_weight=10, state="yes",
+                              confidence="high", evidence_text="Listed.",
+                              source_url="https://x.com")
+        record = _make_record("T-001", signals=[signal],
+                              bullseye_score=30, target_tier="Contender")
+        config = dict(_BASE_RUN_CONFIG, bullseye_min_score=50)
+
+        (tmp_path / "p").mkdir()
+        (tmp_path / "a").mkdir()
+        preview_dir = _write_run(tmp_path / "p", [copy.deepcopy(record)], config=config)
+        apply_dir = _write_run(tmp_path / "a", [copy.deepcopy(record)], config=config)
+        new_icp = [_make_icp_signal("S-01", positive_weight=100)]
+
+        preview = run_rescore_preview(preview_dir, new_icp)
+        applied = run_rescore_pass(apply_dir, new_icp)
+
+        # The number of records that changed tier in the apply pass must equal
+        # the total tier transitions counted in the preview.
+        applied_tier_moves = sum(
+            1 for c in applied["tier_changes"] if c["old_tier"] != c["new_tier"]
+        )
+        preview_tier_moves = sum(preview["tier_transitions"].values())
+        assert preview_tier_moves == applied_tier_moves
+
+    def test_preview_skips_not_enriched(self, tmp_path):
+        """not_enriched records are excluded from the preview count, as in apply."""
+        ingest_only = _make_record("T-ingest", enrichment_status="not_enriched",
+                                   bullseye_score=0, target_tier="", signals=[])
+        run_dir = _write_run(tmp_path, [ingest_only])
+
+        stats = run_rescore_preview(run_dir, [_make_icp_signal("S-01", positive_weight=80)])
+        assert stats["rescored"] == 0
