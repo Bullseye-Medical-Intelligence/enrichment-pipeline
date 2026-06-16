@@ -964,6 +964,138 @@ async def runs_page(
                    health=health)
 
 
+def _compare_runs(run_id_a: str, run_id_b: str) -> list[dict]:
+    """Build a row-per-practice comparison between two completed runs.
+
+    Records are matched by (practice_name, city) key, case-insensitively.
+    Returns a list of dicts ready for the template, sorted: changed tiers
+    first (by severity), then unchanged, then only-in-one-run.
+    """
+    import json as _json
+
+    def _load(run_id: str):
+        rd = runs.run_dir(run_id)
+        path = rd / "enriched_targets.json"
+        with open(path, "r", encoding="utf-8") as f:
+            payload = _json.load(f)
+        recs = record_adapter.normalize_records_payload(payload)
+        all_rev = reviews.get_reviews(run_id, rd)
+        return {
+            (
+                (r.get("practice_name") or "").lower().strip(),
+                (r.get("address_city") or "").lower().strip(),
+            ): (r, all_rev.get(record_adapter.get_record_id(r), {}))
+            for r in recs
+        }
+
+    map_a = _load(run_id_a)
+    map_b = _load(run_id_b)
+    all_keys = sorted(set(map_a) | set(map_b))
+
+    _tier_rank = {
+        "Bullseye": 5, "Contender": 4, "Needs Verification": 3,
+        "Manual Review": 2, "Excluded": 1, "—": 0,
+    }
+
+    def _delta_sort_key(row):
+        if row["only_in"] == "a":
+            return (2, 0)
+        if row["only_in"] == "b":
+            return (2, 1)
+        ra = _tier_rank.get(row["tier_a"], 0)
+        rb = _tier_rank.get(row["tier_b"], 0)
+        if ra == rb:
+            return (1, 0)
+        if rb > ra:
+            return (0, -rb)   # improved: first
+        return (0, ra)        # downgraded: also first but separate
+
+    rows = []
+    for key in all_keys:
+        name_key, city_key = key
+        if key in map_a and key in map_b:
+            rec_a, rev_a = map_a[key]
+            rec_b, rev_b = map_b[key]
+            tier_a = record_adapter.effective_tier(rec_a, {record_adapter.get_record_id(rec_a): rev_a})
+            tier_b = record_adapter.effective_tier(rec_b, {record_adapter.get_record_id(rec_b): rev_b})
+            rows.append({
+                "practice_name": rec_a.get("practice_name") or rec_b.get("practice_name"),
+                "address_city": rec_a.get("address_city", ""),
+                "address_state": rec_a.get("address_state", ""),
+                "tier_a": tier_a,
+                "score_a": rec_a.get("bullseye_score"),
+                "tier_b": tier_b,
+                "score_b": rec_b.get("bullseye_score"),
+                "only_in": None,
+                "changed": tier_a != tier_b,
+            })
+        elif key in map_a:
+            rec_a, _ = map_a[key]
+            tier_a = record_adapter.effective_tier(rec_a, {})
+            rows.append({
+                "practice_name": rec_a.get("practice_name"),
+                "address_city": rec_a.get("address_city", ""),
+                "address_state": rec_a.get("address_state", ""),
+                "tier_a": tier_a,
+                "score_a": rec_a.get("bullseye_score"),
+                "tier_b": "—",
+                "score_b": None,
+                "only_in": "a",
+                "changed": False,
+            })
+        else:
+            rec_b, _ = map_b[key]
+            tier_b = record_adapter.effective_tier(rec_b, {})
+            rows.append({
+                "practice_name": rec_b.get("practice_name"),
+                "address_city": rec_b.get("address_city", ""),
+                "address_state": rec_b.get("address_state", ""),
+                "tier_a": "—",
+                "score_a": None,
+                "tier_b": tier_b,
+                "score_b": rec_b.get("bullseye_score"),
+                "only_in": "b",
+                "changed": False,
+            })
+
+    rows.sort(key=_delta_sort_key)
+    return rows
+
+
+@router.get("/dashboard/compare", response_class=HTMLResponse)
+async def run_compare(
+    request: Request,
+    a: str = "",
+    b: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Side-by-side tier comparison between two completed runs."""
+    all_runs = runs.list_runs(include_archived=True)
+    complete_runs = [r for r in all_runs if r.status == "complete"]
+
+    comparison = None
+    error = None
+    if a and b:
+        if a == b:
+            error = "Select two different runs to compare."
+        elif not runs.is_valid_run_id(a) or not runs.is_valid_run_id(b):
+            error = "Invalid run ID."
+        else:
+            try:
+                comparison = _compare_runs(a, b)
+            except Exception as exc:
+                error = f"Could not load comparison: {exc}"
+
+    return _render(
+        "run_compare.html",
+        username=username,
+        complete_runs=complete_runs,
+        a=a, b=b,
+        comparison=comparison,
+        error=error,
+    )
+
+
 @router.post("/dashboard/{run_id}/delete", response_class=HTMLResponse)
 async def delete_run_route(
     run_id: str,

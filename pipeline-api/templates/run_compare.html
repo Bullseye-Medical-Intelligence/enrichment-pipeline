@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Compare Runs — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Compare Runs</h2>
+    <p class="page-subtitle">Side-by-side tier comparison between two completed enrichment runs.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:20px;">
+  <form method="get" action="/dashboard/compare" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <div style="flex:1;min-width:220px;">
+      <label class="eyebrow" for="sel-a">Baseline (A)</label>
+      <select name="a" id="sel-a" required style="width:100%;padding:6px;">
+        <option value="">Select a run…</option>
+        {% for run in complete_runs %}
+        <option value="{{ run.run_id }}" {% if run.run_id == a %}selected{% endif %}>
+          {{ run.run_id }} — {{ run.client_name or run.project_id or "?" }} ({{ run.bullseye_count }}B / {{ run.contender_count }}C)
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:220px;">
+      <label class="eyebrow" for="sel-b">New (B)</label>
+      <select name="b" id="sel-b" required style="width:100%;padding:6px;">
+        <option value="">Select a run…</option>
+        {% for run in complete_runs %}
+        <option value="{{ run.run_id }}" {% if run.run_id == b %}selected{% endif %}>
+          {{ run.run_id }} — {{ run.client_name or run.project_id or "?" }} ({{ run.bullseye_count }}B / {{ run.contender_count }}C)
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-submit" style="white-space:nowrap;">Compare</button>
+  </form>
+</div>
+
+{% if comparison is not none %}
+{% set changed_rows = comparison | selectattr('changed') | list %}
+{% set only_a = comparison | selectattr('only_in', 'equalto', 'a') | list %}
+{% set only_b = comparison | selectattr('only_in', 'equalto', 'b') | list %}
+{% set same_rows = comparison | rejectattr('changed') | rejectattr('only_in') | list %}
+
+<div class="card" style="margin-bottom:16px;padding:14px 18px;">
+  <p class="eyebrow" style="margin-bottom:8px;">Summary</p>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:13px;">
+    <span><strong>{{ comparison | length }}</strong> total practices</span>
+    <span style="color:#b45309;"><strong>{{ changed_rows | length }}</strong> tier changed</span>
+    <span style="color:#166534;"><strong>{{ same_rows | length }}</strong> unchanged</span>
+    <span style="color:#6b7280;"><strong>{{ only_a | length }}</strong> only in A &nbsp;·&nbsp; <strong>{{ only_b | length }}</strong> only in B</span>
+  </div>
+</div>
+
+{% if changed_rows %}
+<div class="card table-card" style="margin-bottom:16px;">
+  <p class="eyebrow" style="color:#b45309;margin-bottom:8px;">Tier Changes ({{ changed_rows | length }})</p>
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Practice</th>
+        <th>Location</th>
+        <th>A Tier</th>
+        <th style="text-align:right;">A Score</th>
+        <th style="text-align:center;">→</th>
+        <th>B Tier</th>
+        <th style="text-align:right;">B Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in changed_rows %}
+      {% set tier_a = row.tier_a %}
+      {% set tier_b = row.tier_b %}
+      {% set tier_rank = {"Bullseye": 5, "Contender": 4, "Needs Verification": 3, "Manual Review": 2, "Excluded": 1, "—": 0} %}
+      {% set ra = tier_rank.get(tier_a, 0) %}
+      {% set rb = tier_rank.get(tier_b, 0) %}
+      <tr>
+        <td style="font-weight:500;">{{ row.practice_name }}</td>
+        <td style="color:#6b7280;">{{ row.address_city }}{% if row.address_state %}, {{ row.address_state }}{% endif %}</td>
+        <td><span class="badge badge-tier-{{ tier_a | lower | replace(' ', '-') }}">{{ tier_a }}</span></td>
+        <td style="text-align:right;color:#6b7280;">{{ row.score_a if row.score_a is not none else "—" }}</td>
+        <td style="text-align:center;font-weight:600;color:{% if rb > ra %}#166534{% elif rb < ra %}#b91c1c{% else %}#888{% endif %};">
+          {% if rb > ra %}↑{% elif rb < ra %}↓{% else %}→{% endif %}
+        </td>
+        <td><span class="badge badge-tier-{{ tier_b | lower | replace(' ', '-') }}">{{ tier_b }}</span></td>
+        <td style="text-align:right;color:#6b7280;">{{ row.score_b if row.score_b is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+{% if same_rows %}
+<details class="card" style="margin-bottom:16px;padding:0;">
+  <summary style="padding:12px 16px;cursor:pointer;font-weight:600;font-size:13px;list-style:none;">
+    Unchanged ({{ same_rows | length }}) — same tier in both runs
+  </summary>
+  <div style="padding:0 0 8px;">
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Practice</th>
+        <th>Location</th>
+        <th>Tier (both)</th>
+        <th style="text-align:right;">Score A</th>
+        <th style="text-align:right;">Score B</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in same_rows | sort(attribute='practice_name') %}
+      <tr>
+        <td style="font-weight:500;">{{ row.practice_name }}</td>
+        <td style="color:#6b7280;">{{ row.address_city }}{% if row.address_state %}, {{ row.address_state }}{% endif %}</td>
+        <td><span class="badge badge-tier-{{ row.tier_a | lower | replace(' ', '-') }}">{{ row.tier_a }}</span></td>
+        <td style="text-align:right;color:#6b7280;">{{ row.score_a if row.score_a is not none else "—" }}</td>
+        <td style="text-align:right;color:#6b7280;">{{ row.score_b if row.score_b is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  </div>
+</details>
+{% endif %}
+
+{% if only_a or only_b %}
+<details class="card" style="padding:0;">
+  <summary style="padding:12px 16px;cursor:pointer;font-weight:600;font-size:13px;list-style:none;">
+    Only in one run ({{ (only_a | length) + (only_b | length) }})
+  </summary>
+  <div style="padding:0 0 8px;">
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Practice</th>
+        <th>Location</th>
+        <th>Present In</th>
+        <th>Tier</th>
+        <th style="text-align:right;">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in (only_a + only_b) | sort(attribute='practice_name') %}
+      {% set present = "A only" if row.only_in == 'a' else "B only" %}
+      {% set tier = row.tier_a if row.only_in == 'a' else row.tier_b %}
+      {% set score = row.score_a if row.only_in == 'a' else row.score_b %}
+      <tr>
+        <td style="font-weight:500;">{{ row.practice_name }}</td>
+        <td style="color:#6b7280;">{{ row.address_city }}{% if row.address_state %}, {{ row.address_state }}{% endif %}</td>
+        <td style="color:#6b7280;font-size:12px;">{{ present }}</td>
+        <td><span class="badge badge-tier-{{ tier | lower | replace(' ', '-') }}">{{ tier }}</span></td>
+        <td style="text-align:right;color:#6b7280;">{{ score if score is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  </div>
+</details>
+{% endif %}
+
+{% elif a and b and not error %}
+<div class="card empty-state"><p>No records to compare.</p></div>
+{% endif %}
+{% endblock %}
