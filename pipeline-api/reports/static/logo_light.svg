@@ -1,16 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 36" width="220" height="36">
-  <!-- Outer ring -->
-  <circle cx="18" cy="18" r="15.5" fill="none" stroke="#c84b2f" stroke-width="1.8"/>
-  <!-- Middle ring -->
-  <circle cx="18" cy="18" r="8.5" fill="none" stroke="#c84b2f" stroke-width="1.8"/>
-  <!-- Center dot -->
-  <circle cx="18" cy="18" r="3" fill="#c84b2f"/>
-  <!-- Crosshairs -->
-  <line x1="18" y1="1.5" x2="18" y2="8.5" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="18" y1="27.5" x2="18" y2="34.5" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="1.5" y1="18" x2="8.5" y2="18" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="27.5" y1="18" x2="34.5" y2="18" stroke="#c84b2f" stroke-width="1.5" stroke-linecap="round"/>
-  <!-- Company name -->
+  <line x1="18" y1="24.5" x2="7" y2="9" stroke="#f7f6f4" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="18" y1="24.5" x2="18" y2="6" stroke="#f7f6f4" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="18" y1="24.5" x2="29" y2="9" stroke="#f7f6f4" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="7" cy="8.5" r="2.4" fill="#0a0a0a" stroke="#f7f6f4" stroke-width="1.5"/>
+  <circle cx="18" cy="5.5" r="2.4" fill="#0a0a0a" stroke="#f7f6f4" stroke-width="1.5"/>
+  <circle cx="29" cy="8.5" r="2.4" fill="#0a0a0a" stroke="#f7f6f4" stroke-width="1.5"/>
+  <circle cx="18" cy="25" r="3.4" fill="#c84b2f"/>
   <text x="44" y="14" font-family="'Liberation Sans', Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff">Bullseye Medical</text>
   <text x="44" y="28" font-family="'Liberation Sans', Arial, Helvetica, sans-serif" font-size="9.5" font-weight="400" fill="#aaaaaa" letter-spacing="1.8">INTELLIGENCE</text>
 </svg>
