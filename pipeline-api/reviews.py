@@ -12,7 +12,6 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from schema import VALID_OVERRIDE_TIERS, VALID_QC_STATUSES, ReviewEdit
 
@@ -135,6 +134,49 @@ def save_review(
         run_id, record_id, username, edit.qc_status, edit.override_tier,
     )
     return entry
+
+
+def bulk_approve(
+    run_id: str,
+    record_ids: list[str],
+    username: str,
+    run_directory: Path,
+) -> int:
+    """Approve a batch of records in a single atomic reviews.json write.
+
+    Skips any record_id that is already approved. Records that have no existing
+    review entry get a minimal approved entry with no override. Returns the
+    count of newly approved records.
+    """
+    if not record_ids:
+        return 0
+
+    now = datetime.now(timezone.utc).isoformat()
+    all_reviews = get_reviews(run_id, run_directory)
+    approved_count = 0
+
+    for record_id in record_ids:
+        existing = all_reviews.get(record_id, {})
+        if existing.get("qc_status") == "approved":
+            continue
+        all_reviews[record_id] = {
+            "analyst_note": existing.get("analyst_note", ""),
+            "override_tier": existing.get("override_tier"),
+            "override_reason": existing.get("override_reason"),
+            "qc_status": "approved",
+            "reviewed_by": username,
+            "reviewed_at": now,
+        }
+        approved_count += 1
+
+    if approved_count:
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+        logger.info(
+            "Bulk approved %d record(s) in run=%s by %s",
+            approved_count, run_id, username,
+        )
+
+    return approved_count
 
 
 def _validate_edit(edit: ReviewEdit) -> None:

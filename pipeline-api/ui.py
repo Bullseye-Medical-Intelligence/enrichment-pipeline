@@ -2526,6 +2526,7 @@ async def confirm_queue(
     promoted: int = 0,
     held: int = 0,
     disqualified: int = 0,
+    notice: str = "",
     username: str = Depends(auth.require_session),
 ):
     """Pending Bullseye confirmation queue: original Bullseyes + verification-promoted records."""
@@ -2569,6 +2570,62 @@ async def confirm_queue(
         promoted_count=promoted,
         held_count=held,
         disqualified_count=disqualified,
+        notice=notice,
+    )
+
+
+@router.post("/dashboard/{run_id}/confirm-queue/bulk-approve")
+async def confirm_queue_bulk_approve(
+    run_id: str,
+    request: Request,
+    confidence_filter: str = Form(default="all"),
+    username: str = Depends(auth.require_session),
+):
+    """Approve all pending Bullseye records in one action.
+
+    confidence_filter: "all" approves every pending Bullseye; "high" restricts
+    to records whose confidence_band is "High".
+    """
+    import json as _json
+
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    targets_path = run_directory / "enriched_targets.json"
+    if not targets_path.exists():
+        raise HTTPException(status_code=404, detail="enriched_targets.json not found")
+
+    with open(targets_path, "r", encoding="utf-8") as f:
+        payload = _json.load(f)
+    raw_records = payload.get("records", payload) if isinstance(payload, dict) else payload
+
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+
+    to_approve: list[str] = []
+    for rec in raw_records:
+        rec_id = record_adapter.get_record_id(rec)
+        review = all_reviews.get(rec_id, {})
+        if record_adapter.effective_tier(rec, all_reviews) != "Bullseye":
+            continue
+        if exports.is_approved(rec, review):
+            continue
+        if confidence_filter == "high":
+            band = record_adapter.effective_confidence_band(rec)
+            if band != "High":
+                continue
+        to_approve.append(rec_id)
+
+    approved = reviews.bulk_approve(run_id, to_approve, username, run_directory)
+    notice = (
+        f"Approved {approved} Bullseye record(s)."
+        if approved
+        else "No new records to approve."
+    )
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}/confirm-queue?"
+            + urllib.parse.urlencode({"notice": notice, "promoted": 0, "held": 0, "disqualified": 0}),
+        status_code=303,
     )
 
 

@@ -7,8 +7,38 @@
     <h2>Confirm Queue</h2>
     <p class="page-subtitle">Run <span style="font-family:monospace;font-size:12px;">{{ run_id }}</span></p>
   </div>
-  <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+  <div class="header-actions">
+    {% if pending_bullseyes %}
+    {% set high_count = namespace(n=0) %}
+    {% for item in pending_bullseyes %}{% if item.record.get('confidence_band','') == 'High' or item.record.get('confidence_score', 0) >= 65 %}{% set high_count.n = high_count.n + 1 %}{% endif %}{% endfor %}
+    {% if high_count.n > 0 %}
+    <form method="post" action="/dashboard/{{ run_id }}/confirm-queue/bulk-approve"
+          style="display:inline-flex;align-items:center;gap:8px;"
+          onsubmit="this.querySelectorAll('button').forEach(function(b){b.disabled=true;});">
+      <input type="hidden" name="confidence_filter" value="high">
+      <button type="submit" class="btn btn-secondary" style="font-size:12px;"
+              title="Set qc_status=approved on pending Bullseye records with High confidence band">
+        Approve High-Confidence ({{ high_count.n }})
+      </button>
+    </form>
+    {% endif %}
+    <form method="post" action="/dashboard/{{ run_id }}/confirm-queue/bulk-approve"
+          style="display:inline;"
+          onsubmit="if(!confirm('Approve all {{ pending_bullseyes | length }} pending Bullseye record(s)?')){return false;} this.querySelector('button').disabled=true;">
+      <input type="hidden" name="confidence_filter" value="all">
+      <button type="submit" class="btn btn-submit" style="font-size:12px;"
+              title="Set qc_status=approved on all pending Bullseye records">
+        Approve All ({{ pending_bullseyes | length }})
+      </button>
+    </form>
+    {% endif %}
+    <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+  </div>
 </div>
+
+{% if notice %}
+<div class="alert alert-info">{{ notice }}</div>
+{% endif %}
 
 <div class="card" style="margin-bottom:16px;">
   <h4 style="margin-top:0;">Verification Pass Summary</h4>
