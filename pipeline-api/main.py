@@ -155,6 +155,7 @@ app = FastAPI(
 _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+    app.mount("/assets", StaticFiles(directory=str(_static_dir)), name="assets")
 
 
 @app.middleware("http")
