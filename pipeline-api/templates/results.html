@@ -122,6 +122,9 @@
       <form method="post" action="/dashboard/{{ run_id }}/rescore" style="display:inline;" onsubmit="if(!confirm('Apply the current ICP weights to this run? This overwrites the saved scores and tiers (signals are not changed).')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Applying…';">
         <button type="submit" class="btn btn-secondary" title="Re-score this run with the current ICP weights and save the result. Signals are not changed.">Apply Rescore</button>
       </form>
+      <form method="post" action="/dashboard/{{ run_id }}/reextract" style="display:inline;" onsubmit="if(!confirm('Re-run Claude signal extraction on all stored page text? This uses LLM credits and overwrites existing signals, scores, and tiers.')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Re-extracting…';">
+        <button type="submit" class="btn btn-secondary" title="Re-run signal extraction using stored page text and the frozen ICP. Use after adding new signals to re-evaluate without re-crawling. Costs Claude API credits.">Re-extract Signals</button>
+      </form>
       {% endif %}
       {% if status.status in ("complete", "failed") %}
       <form method="post" action="/runs/{{ run_id }}/rerun" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">

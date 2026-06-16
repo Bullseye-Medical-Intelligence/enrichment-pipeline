@@ -2596,6 +2596,44 @@ async def trigger_rescore_preview(
     )
 
 
+@router.post("/dashboard/{run_id}/reextract", response_class=HTMLResponse)
+async def trigger_reextract(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Trigger signal re-extraction from stored _context_text on a completed run.
+
+    Shells out to reextract_run.py which re-runs Claude signal extraction (Step 4)
+    on stored page text, then re-runs Steps 6-7. Uses the run's frozen ICP snapshot.
+    Makes Claude API calls (LLM cost). Redirects to the run dashboard on completion.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = runs.get_run(run_id)
+    if status is None or status.status != "complete":
+        raise HTTPException(status_code=400, detail="Re-extraction requires a completed run")
+
+    icp_path = run_directory / "icp_snapshot.json"
+    if not icp_path.exists():
+        raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
+
+    import subprocess, sys
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "reextract_run.py"),
+         "--run-dir", str(run_directory),
+         "--icp", str(icp_path)],
+        capture_output=True, text=True, timeout=600,
+    )
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Re-extraction failed: {result.stderr[:300]}")
+
+    return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
+
+
 @router.post("/dashboard/{run_id}/recrawl", response_class=HTMLResponse)
 async def trigger_recrawl(
     request: Request,
