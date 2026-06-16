@@ -91,9 +91,6 @@ ul, ol { padding-left: 1.4em; }
   vertical-align: middle;
   margin-right: 10px;
   flex-shrink: 0;
-  background-color: currentColor;
-  -webkit-mask: url('/static/bullseye-mark.svg') no-repeat center / contain;
-  mask: url('/static/bullseye-mark.svg') no-repeat center / contain;
 }
 .nav-subtitle {
   color: var(--muted-dark);
