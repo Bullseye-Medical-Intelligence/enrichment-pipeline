@@ -3,6 +3,34 @@
 
 {% block content %}
 {% set is_ingested = status.status == "ingested" %}
+<script>
+(function(){
+  var runId = '{{ run_id }}';
+  var currentStatus = '{{ status.status }}';
+  var watching = sessionStorage.getItem('bemi_run_watching');
+  if (watching === runId && (currentStatus === 'complete' || currentStatus === 'failed')) {
+    sessionStorage.removeItem('bemi_run_watching');
+    var isOk = currentStatus === 'complete';
+    var prefix = isOk ? '✓ Done' : '✗ Failed';
+    document.title = prefix + ' — ' + runId;
+    // Restore original title after 8 seconds
+    setTimeout(function(){ document.title = 'Results: ' + runId + ' — BEMI Pipeline'; }, 8000);
+    // Toast banner
+    var toast = document.createElement('div');
+    toast.style.cssText = [
+      'position:fixed', 'top:18px', 'right:18px', 'z-index:9999',
+      'padding:12px 20px', 'border-radius:8px', 'font-size:14px',
+      'font-weight:600', 'box-shadow:0 4px 16px rgba(0,0,0,0.18)',
+      'cursor:pointer', 'transition:opacity 0.4s',
+      isOk ? 'background:#166534;color:#fff;' : 'background:#b91c1c;color:#fff;'
+    ].join(';');
+    toast.textContent = isOk ? '✓ Enrichment complete — ' + runId : '✗ Run failed — ' + runId;
+    toast.onclick = function(){ toast.style.opacity = '0'; setTimeout(function(){ toast.remove(); }, 400); };
+    document.body.appendChild(toast);
+    setTimeout(function(){ toast.style.opacity = '0'; setTimeout(function(){ toast.remove(); }, 400); }, 6000);
+  }
+})();
+</script>
 <div class="page-header">
   <div>
     <h2>{{ run_id }}</h2>
@@ -193,6 +221,7 @@
           (m > 0 ? m+"m " : "") + s + "s elapsed";
       }
       tick(); setInterval(tick, 1000);
+      sessionStorage.setItem('bemi_run_watching', '{{ run_id }}');
       setTimeout(function(){ location.reload(); }, 5000);
     })();
   </script>
