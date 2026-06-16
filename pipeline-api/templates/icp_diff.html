@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Compare ICP Versions — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Compare ICP Versions</h2>
+    <p class="page-subtitle">Field-level diff between two saved ICP profiles — what was added, removed, or changed.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/icp-profiles" class="btn btn-secondary">← ICP Profiles</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:24px;">
+  <form method="get" action="/icp-profiles/diff" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <div style="flex:1;min-width:200px;">
+      <label class="eyebrow" for="a">Baseline (A)</label>
+      <select name="a" id="a" required style="width:100%;padding:6px;">
+        <option value="">Select a profile…</option>
+        {% for p in profiles %}
+        <option value="{{ p.icp_id }}" {% if p.icp_id == a %}selected{% endif %}>{{ p.name }} (v{{ p.version }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:200px;">
+      <label class="eyebrow" for="b">New (B)</label>
+      <select name="b" id="b" required style="width:100%;padding:6px;">
+        <option value="">Select a profile…</option>
+        {% for p in profiles %}
+        <option value="{{ p.icp_id }}" {% if p.icp_id == b %}selected{% endif %}>{{ p.name }} (v{{ p.version }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-submit" style="white-space:nowrap;">Compare</button>
+  </form>
+</div>
+
+{% if diff is not none %}
+<div class="card">
+  <p class="eyebrow">Comparing</p>
+  <h3 class="card-title">{{ a_name }} ({{ a }}) → {{ b_name }} ({{ b }})</h3>
+
+  {% if diff.profile_changes %}
+  <p class="eyebrow" style="margin-top:16px;">Profile-Level Changes</p>
+  <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+    <thead><tr style="text-align:left;border-bottom:1px solid #ddd;"><th>Field</th><th>Was</th><th>Now</th></tr></thead>
+    <tbody>
+      {% for field, change in diff.profile_changes.items() %}
+      <tr style="border-bottom:1px solid #f0f0f0;">
+        <td><code>{{ field }}</code></td>
+        <td style="color:#9a3823;">{{ change.old if change.old is not none else "—" }}</td>
+        <td style="color:#166534;">{{ change.new if change.new is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <p class="eyebrow" style="margin-top:20px;">
+    Summary: {{ diff.added | length }} added · {{ diff.removed | length }} removed · {{ diff.changed | length }} changed · {{ diff.unchanged_count }} unchanged
+  </p>
+
+  {% if diff.added %}
+  <p class="eyebrow" style="margin-top:16px;color:#166534;">Added Signals ({{ diff.added | length }})</p>
+  <ul>
+    {% for s in diff.added %}
+    <li><code>{{ s.signal_id }}</code> — {{ s.signal_label }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if diff.removed %}
+  <p class="eyebrow" style="margin-top:16px;color:#b91c1c;">Removed Signals ({{ diff.removed | length }})</p>
+  <ul>
+    {% for s in diff.removed %}
+    <li><code>{{ s.signal_id }}</code> — {{ s.signal_label }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if diff.changed %}
+  <p class="eyebrow" style="margin-top:16px;color:#b45309;">Changed Signals ({{ diff.changed | length }})</p>
+  {% for s in diff.changed %}
+  <div style="margin-bottom:14px;">
+    <strong><code>{{ s.signal_id }}</code> — {{ s.signal_label }}</strong>
+    <table style="width:100%;border-collapse:collapse;font-size:0.88em;margin-top:4px;">
+      <thead><tr style="text-align:left;border-bottom:1px solid #ddd;"><th>Field</th><th>Was</th><th>Now</th></tr></thead>
+      <tbody>
+        {% for field, change in s.fields.items() %}
+        <tr style="border-bottom:1px solid #f0f0f0;">
+          <td><code>{{ field }}</code></td>
+          <td style="color:#9a3823;">{{ change.old if change.old is not none else "—" }}</td>
+          <td style="color:#166534;">{{ change.new if change.new is not none else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if not diff.added and not diff.removed and not diff.changed and not diff.profile_changes %}
+  <p style="margin-top:16px;">No differences — these two profiles are identical across all compared fields.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

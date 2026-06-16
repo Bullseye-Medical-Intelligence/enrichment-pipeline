@@ -680,6 +680,80 @@ async def icp_profiles_page(
     )
 
 
+@router.get("/icp-profiles/diff", response_class=HTMLResponse)
+def icp_diff_page(
+    request: Request,
+    a: str = "",
+    b: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Show a field-level diff between two saved ICP profiles.
+
+    With no a/b query params, renders two pickers. With both set, loads each
+    profile (normalized + validated by icp_profiles) and shells out to the
+    pipeline's diff_icp.py so the comparison stays out of the API. Sync def so
+    FastAPI runs the blocking subprocess in its threadpool.
+    """
+    profiles = icp_profiles.list_icp_profiles()
+    diff = None
+    error = None
+    a_name = ""
+    b_name = ""
+
+    if a and b:
+        if a == b:
+            error = "Pick two different profiles to compare."
+        else:
+            try:
+                profile_a = icp_profiles.get_icp_profile(a)
+                profile_b = icp_profiles.get_icp_profile(b)
+            except ValueError as exc:
+                error = str(exc)
+            else:
+                a_name = profile_a.get("name", a)
+                b_name = profile_b.get("name", b)
+                try:
+                    proc = subprocess.run(
+                        [config.PYTHON_EXECUTABLE, str(config.PIPELINE_REPO_PATH / "diff_icp.py")],
+                        input=json.dumps({"a": profile_a, "b": profile_b}).encode("utf-8"),
+                        capture_output=True,
+                        cwd=str(config.PIPELINE_REPO_PATH),
+                        timeout=30,
+                    )
+                except subprocess.TimeoutExpired:
+                    logger.error("ICP diff timed out.")
+                    error = "diff timed out"
+                else:
+                    if proc.returncode != 0:
+                        logger.error(
+                            "ICP diff exited %d: %.500s",
+                            proc.returncode, proc.stderr.decode("utf-8", "replace"),
+                        )
+                        error = "diff failed"
+                    else:
+                        try:
+                            diff = json.loads(proc.stdout.decode("utf-8"))
+                        except json.JSONDecodeError:
+                            logger.error("ICP diff returned non-JSON: %.300s", proc.stdout[:300])
+                            error = "bad diff output"
+                        else:
+                            if diff.get("error"):
+                                error = diff["error"]
+                                diff = None
+
+    return _render(
+        "icp_diff.html",
+        username=username,
+        profiles=profiles,
+        a=a,
+        b=b,
+        a_name=a_name,
+        b_name=b_name,
+        diff=diff,
+        error=error,
+    )
+
+
 @router.post("/icp-profiles/import", response_class=HTMLResponse)
 async def icp_import(
     request: Request,
