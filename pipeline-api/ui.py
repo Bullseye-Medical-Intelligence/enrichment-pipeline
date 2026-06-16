@@ -1243,6 +1243,11 @@ async def results_page(
     run_directory = runs.run_dir(run_id)
     published_briefs = brief_publisher.get_published_briefs(run_directory)
     evidence_ids = _records_with_evidence(run_directory, merged_records)
+    run_config_snap = projects.read_config_snapshot(run_directory) or {}
+    suppression_path_str = run_config_snap.get("suppression_list_path")
+    has_suppression_list = bool(
+        suppression_path_str and Path(suppression_path_str).exists()
+    )
     return _render(
         "results.html",
         cost_summary=llm_pricing.cost_summary(status),
@@ -1261,6 +1266,7 @@ async def results_page(
         published_briefs=published_briefs,
         handoff_stale=_brief_stale(run_id, run_directory, "sales-handoff"),
         evidence_ids=evidence_ids,
+        has_suppression_list=has_suppression_list,
     )
 
 
@@ -2590,6 +2596,67 @@ async def trigger_rescore_preview(
     if extra:
         notice += " " + ", ".join(extra) + "."
 
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+        status_code=303,
+    )
+
+
+@router.post("/dashboard/{run_id}/resuppress", response_class=HTMLResponse)
+async def trigger_resuppress(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Re-check a completed run against the project's suppression list.
+
+    Reads the suppression_list_path from the run's frozen project config snapshot.
+    Newly matched records are marked EXCLUDED. Already-suppressed records are
+    left unchanged. No LLM calls. Redirects to the run dashboard on completion.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = runs.get_run(run_id)
+    if status is None or status.status != "complete":
+        raise HTTPException(status_code=400, detail="Suppression re-check requires a completed run")
+
+    run_config = projects.read_config_snapshot(run_directory) or {}
+    suppression_path = run_config.get("suppression_list_path")
+    if not suppression_path:
+        raise HTTPException(
+            status_code=400,
+            detail="This run has no suppression list configured (suppression_list_path not set in project config)",
+        )
+    suppression_path = Path(suppression_path)
+    if not suppression_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Suppression list not found at configured path: {suppression_path}",
+        )
+
+    import subprocess, sys, json as _json
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "suppress_run.py"),
+         "--run-dir", str(run_directory),
+         "--suppression", str(suppression_path)],
+        capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Suppression re-check failed: {result.stderr[:300]}")
+
+    stats = {}
+    for line in reversed(result.stdout.strip().splitlines()):
+        try:
+            stats = _json.loads(line)
+            break
+        except Exception:
+            continue
+
+    newly = stats.get("newly_suppressed", 0)
+    notice = f"{newly} record(s) newly suppressed." if newly else "No new matches against the suppression list."
     return RedirectResponse(
         url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
         status_code=303,
