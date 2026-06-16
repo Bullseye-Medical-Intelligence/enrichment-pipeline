@@ -276,7 +276,7 @@ def _update_html(html: str, ftp_path: str) -> tuple[str, list[str]]:
     # 1. Nav link
     nav_result = _apply_nav(soup, ftp_path)
     if nav_result is None:
-        print(f"    [WARN] No <ul class='nav-links'> found — skipping nav change")
+        print("    [WARN] No <ul class='nav-links'> found -- skipping nav change")
     elif nav_result == "skip":
         pass  # already present, no log noise
     else:
@@ -285,7 +285,7 @@ def _update_html(html: str, ftp_path: str) -> tuple[str, list[str]]:
     # 2. Footer column
     footer_result = _apply_footer(soup, ftp_path)
     if footer_result is None:
-        print(f"    [WARN] No footer-links div found — skipping footer change")
+        print("    [WARN] No footer-links div found -- skipping footer change")
     elif footer_result == "skip":
         pass  # already present, no log noise
     else:
