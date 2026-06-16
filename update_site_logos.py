@@ -54,6 +54,12 @@ _FAN_SVG_B_RE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 
+# Fan variant C: 30×30, probe lines converge at cx=15 cy=15 (intelligence pages)
+_FAN_SVG_C_RE = re.compile(
+    r'<svg\b[^>]*viewBox="0 0 30 30"[^>]*>(?:(?!</svg>).)*cy="15"(?:(?!</svg>).)*</svg>',
+    re.DOTALL | re.IGNORECASE,
+)
+
 # Old <img> logo references
 _IMG_LOGO_RE = re.compile(
     r'<img\b[^>]*src=["\'](?:[^"\']*/)?(logo[\w\-]*\.svg|bullseye[\w\-]*logo[\w\-]*\.svg)["\'][^>]*>',
@@ -105,6 +111,12 @@ def _update_html(html: str, filename: str) -> tuple[str, list[str]]:
         return _img_for_svg(m.group(0), "28")
     html = _FAN_SVG_B_RE.sub(_replace_fan_b, html)
 
+    # 1c. Fan variant C: 30×30 (convergence at cy=15, used on intelligence pages)
+    def _replace_fan_c(m):
+        changes.append("replaced 30×30 fan SVG with ring mark img")
+        return _img_for_svg(m.group(0), "28")
+    html = _FAN_SVG_C_RE.sub(_replace_fan_c, html)
+
     # 2. Replace old <img> logo references pointing at logo*.svg files
     def _replace_img_logo(m):
         src_match = re.search(r'src=["\']([^"\']+)["\']', m.group(0), re.IGNORECASE)
@@ -117,6 +129,14 @@ def _update_html(html: str, filename: str) -> tuple[str, list[str]]:
                 attrs += f' {attr}="{am.group(1)}"'
         return f'<img src="/assets/bullseye-mark-ink.svg"{attrs}>'
     html = _IMG_LOGO_RE.sub(_replace_img_logo, html)
+
+    # 2b. Fix CSS specificity bug on intelligence pages: .light .prose p overrides
+    #     .answer p causing white-on-black boxes to show black text.
+    old_answer_p = ".answer p{font-size:17px"
+    new_answer_p = ".answer p,.light .prose .answer p{font-size:17px"
+    if old_answer_p in html:
+        html = html.replace(old_answer_p, new_answer_p, 1)
+        changes.append("fixed .answer p CSS specificity bug")
 
     # 3. Update favicon
     if _FAVICON_OLD_RE.search(html):
