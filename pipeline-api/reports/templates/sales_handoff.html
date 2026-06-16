@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-mode="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,15 +11,70 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Color tokens ───────────────────────────────────────── */
+:root {
+  --bg:            #0a0a0a;
+  --bg-card:       #161616;
+  --surface:       rgba(247,246,244,0.04);
+  --surface-mid:   rgba(247,246,244,0.06);
+  --border:        rgba(247,246,244,0.10);
+  --border-faint:  rgba(247,246,244,0.07);
+  --border-card:   rgba(247,246,244,0.08);
+  --text:          #f7f6f4;
+  --t85:  rgba(247,246,244,0.85);
+  --t75:  rgba(247,246,244,0.75);
+  --t60:  rgba(247,246,244,0.60);
+  --t50:  rgba(247,246,244,0.50);
+  --t45:  rgba(247,246,244,0.45);
+  --t40:  rgba(247,246,244,0.40);
+  --t35:  rgba(247,246,244,0.35);
+  --t30:  rgba(247,246,244,0.30);
+  --t25:  rgba(247,246,244,0.25);
+  --t22:  rgba(247,246,244,0.22);
+  --t20:  rgba(247,246,244,0.20);
+  --t12:  rgba(247,246,244,0.12);
+  --t06:  rgba(247,246,244,0.06);
+  --t02:  rgba(247,246,244,0.02);
+  --logo-filter: none;
+  --mark-filter: brightness(0) invert(1);
+}
+[data-mode="light"] {
+  --bg:            #f5f5f2;
+  --bg-card:       #ffffff;
+  --surface:       rgba(10,10,10,0.04);
+  --surface-mid:   rgba(10,10,10,0.05);
+  --border:        rgba(10,10,10,0.10);
+  --border-faint:  rgba(10,10,10,0.07);
+  --border-card:   rgba(10,10,10,0.08);
+  --text:          #0a0a0a;
+  --t85:  rgba(10,10,10,0.85);
+  --t75:  rgba(10,10,10,0.75);
+  --t60:  rgba(10,10,10,0.60);
+  --t50:  rgba(10,10,10,0.50);
+  --t45:  rgba(10,10,10,0.45);
+  --t40:  rgba(10,10,10,0.40);
+  --t35:  rgba(10,10,10,0.35);
+  --t30:  rgba(10,10,10,0.30);
+  --t25:  rgba(10,10,10,0.25);
+  --t22:  rgba(10,10,10,0.22);
+  --t20:  rgba(10,10,10,0.20);
+  --t12:  rgba(10,10,10,0.12);
+  --t06:  rgba(10,10,10,0.05);
+  --t02:  rgba(10,10,10,0.02);
+  --logo-filter: brightness(0);
+  --mark-filter: none;
+}
+
 body {
-  background: #0a0a0a;
-  color: #f7f6f4;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'DM Sans', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   padding: 40px 32px 60px;
   max-width: 1100px;
   margin: 0 auto;
+  transition: background 0.2s, color 0.2s;
 }
 
 /* ── Header ─────────────────────────────────────────────── */
@@ -28,19 +83,22 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   padding-bottom: 32px;
-  border-bottom: 1px solid rgba(247,246,244,0.12);
+  border-bottom: 1px solid var(--border);
   margin-bottom: 40px;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo { filter: var(--logo-filter); transition: filter 0.2s; }
 .brand-mark {
   width: 28px; height: 28px;
   display: block;
   flex-shrink: 0;
+  filter: var(--mark-filter);
+  transition: filter 0.2s;
 }
 .brand-name {
   font-family: 'Instrument Serif', Georgia, serif;
   font-size: 18px;
-  color: #f7f6f4;
+  color: var(--text);
   letter-spacing: 0.04em;
 }
 .report-meta { text-align: right; }
@@ -52,7 +110,28 @@ body {
   color: #c84b2f;
   margin-bottom: 4px;
 }
-.report-subtitle { font-size: 12px; color: rgba(247,246,244,0.5); }
+.report-subtitle { font-size: 12px; color: var(--t50); }
+
+/* ── Mode toggle ─────────────────────────────────────────── */
+#mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--t50);
+  border-radius: 100px;
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: border-color 0.15s, color 0.15s;
+}
+#mode-toggle:hover { border-color: var(--t40); color: var(--t75); }
 
 /* ── Run summary strip ─────────────────────────────────── */
 .run-summary {
@@ -61,9 +140,9 @@ body {
   gap: 32px;
   margin-bottom: 40px;
   padding: 18px 24px;
-  background: rgba(247,246,244,0.04);
+  background: var(--surface);
   border-radius: 8px;
-  border: 1px solid rgba(247,246,244,0.08);
+  border: 1px solid var(--border-card);
 }
 .summary-item { display: flex; flex-direction: column; gap: 2px; }
 .summary-label {
@@ -71,7 +150,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.4);
+  color: var(--t40);
 }
 .summary-value { font-size: 15px; font-weight: 500; }
 
@@ -83,7 +162,7 @@ body {
   gap: 12px;
   margin-bottom: 20px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(247,246,244,0.1);
+  border-bottom: 1px solid var(--border);
 }
 .tier-header-label {
   font-size: 11px;
@@ -95,22 +174,23 @@ body {
 }
 .tier-header-count {
   font-size: 11px;
-  color: rgba(247,246,244,0.4);
+  color: var(--t40);
 }
 .tier-header-line {
   flex: 1;
   height: 1px;
-  background: rgba(247,246,244,0.06);
+  background: var(--t06);
 }
 
 /* ── Account card ──────────────────────────────────────── */
 .account-card {
-  background: #161616;
+  background: var(--bg-card);
   border-radius: 12px;
-  border: 1px solid rgba(247,246,244,0.1);
+  border: 1px solid var(--border);
   margin-bottom: 20px;
   overflow: hidden;
   page-break-inside: avoid;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 /* ── Card header ───────────────────────────────────────── */
@@ -123,10 +203,10 @@ body {
   user-select: none;
 }
 .account-card.suppressed .card-header { cursor: default; }
-.account-card:not(.suppressed) .card-header:hover { background: rgba(247,246,244,0.02); }
+.account-card:not(.suppressed) .card-header:hover { background: var(--t02); }
 .expand-icon {
   font-size: 11px;
-  color: rgba(247,246,244,0.35);
+  color: var(--t35);
   margin-top: 4px;
   flex-shrink: 0;
   transition: transform 0.18s ease;
@@ -156,9 +236,9 @@ body {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.5);
-  background: rgba(247,246,244,0.05);
-  border: 1px solid rgba(247,246,244,0.12);
+  color: var(--t50);
+  background: var(--surface-mid);
+  border: 1px solid var(--t12);
   border-radius: 100px;
   padding: 3px 10px;
 }
@@ -166,19 +246,19 @@ body {
   font-family: 'Instrument Serif', Georgia, serif;
   font-size: 24px;
   line-height: 1.2;
-  color: #f7f6f4;
+  color: var(--text);
   margin-bottom: 5px;
 }
 .provider-meta {
   font-size: 12px;
-  color: rgba(247,246,244,0.45);
+  color: var(--t45);
 }
 .provider-meta a {
-  color: rgba(247,246,244,0.45);
+  color: var(--t45);
   text-decoration: none;
 }
-.provider-meta a:hover { color: #f7f6f4; }
-.meta-sep { margin: 0 6px; color: rgba(247,246,244,0.2); }
+.provider-meta a:hover { color: var(--text); }
+.meta-sep { margin: 0 6px; color: var(--t20); }
 
 /* ── Card body grid ────────────────────────────────────── */
 .card-body {
@@ -186,7 +266,7 @@ body {
   display: none;
   grid-template-columns: 1fr 260px;
   gap: 24px;
-  border-top: 1px solid rgba(247,246,244,0.07);
+  border-top: 1px solid var(--border-faint);
 }
 .account-card.expanded .card-body { display: grid; }
 
@@ -196,7 +276,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.35);
+  color: var(--t35);
   margin-bottom: 10px;
 }
 
@@ -210,14 +290,14 @@ body {
 .signal-pill {
   font-size: 11px;
   font-weight: 500;
-  color: #f7f6f4;
-  background: rgba(247,246,244,0.06);
-  border: 1px solid rgba(247,246,244,0.14);
+  color: var(--text);
+  background: var(--surface-mid);
+  border: 1px solid var(--t12);
   border-radius: 100px;
   padding: 4px 12px;
 }
 .signal-pill.inferred {
-  color: rgba(247,246,244,0.55);
+  color: var(--t50);
   border-style: dashed;
 }
 
@@ -245,7 +325,7 @@ body {
 }
 .call-brief-note {
   font-size: 10px;
-  color: rgba(247,246,244,0.3);
+  color: var(--t30);
   font-style: italic;
 }
 .brief-row { margin-bottom: 11px; }
@@ -255,12 +335,12 @@ body {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.3);
+  color: var(--t30);
   margin-bottom: 3px;
 }
 .brief-field-text {
   font-size: 13px;
-  color: rgba(247,246,244,0.85);
+  color: var(--t85);
   line-height: 1.5;
 }
 
@@ -273,7 +353,7 @@ body {
 }
 .coaching-list li {
   font-size: 13px;
-  color: rgba(247,246,244,0.75);
+  color: var(--t75);
   padding-left: 16px;
   position: relative;
   line-height: 1.45;
@@ -289,8 +369,8 @@ body {
 
 /* ── Analyst review panel ──────────────────────────────── */
 .analyst-panel {
-  background: rgba(247,246,244,0.04);
-  border: 1px solid rgba(247,246,244,0.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px 18px;
   display: flex;
@@ -303,7 +383,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.35);
+  color: var(--t35);
 }
 .qc-badge {
   display: inline-block;
@@ -331,19 +411,19 @@ body {
 }
 .analyst-note-text {
   font-size: 13px;
-  color: rgba(247,246,244,0.75);
+  color: var(--t75);
   line-height: 1.5;
   font-style: italic;
 }
 .analyst-override {
   font-size: 11px;
-  color: rgba(247,246,244,0.5);
+  color: var(--t50);
   line-height: 1.4;
 }
-.analyst-override strong { color: rgba(247,246,244,0.7); }
+.analyst-override strong { color: var(--t75); }
 .analyst-reviewer {
   font-size: 11px;
-  color: rgba(247,246,244,0.3);
+  color: var(--t30);
 }
 .expand-hint {
   margin-top: 7px;
@@ -351,19 +431,19 @@ body {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.22);
+  color: var(--t22);
 }
 .account-card.expanded .expand-hint { display: none; }
 .analyst-pending {
   font-size: 12px;
-  color: rgba(247,246,244,0.3);
+  color: var(--t30);
   font-style: italic;
 }
 
 /* ── Suppressed card (Excluded / Manual Review) ────────── */
 .account-card.suppressed {
   opacity: 0.5;
-  border-color: rgba(247,246,244,0.06);
+  border-color: var(--t06);
 }
 .account-card.suppressed .card-header {
   padding: 14px 24px;
@@ -375,16 +455,16 @@ body {
 }
 .suppressed-reason {
   font-size: 13px;
-  color: rgba(247,246,244,0.6);
+  color: var(--t60);
   padding: 10px 24px 14px;
-  border-top: 1px solid rgba(247,246,244,0.05);
+  border-top: 1px solid var(--t06);
 }
 .suppressed-label {
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(247,246,244,0.3);
+  color: var(--t30);
   margin-bottom: 3px;
 }
 
@@ -392,10 +472,10 @@ body {
 .report-footer {
   margin-top: 60px;
   padding-top: 24px;
-  border-top: 1px solid rgba(247,246,244,0.1);
+  border-top: 1px solid var(--border);
   text-align: center;
   font-size: 11px;
-  color: rgba(247,246,244,0.25);
+  color: var(--t25);
 }
 .footer-badge {
   display: inline-block;
@@ -411,8 +491,9 @@ body {
 }
 
 @media print {
-  body { background: #fff; color: #000; padding: 20px; }
-  .account-card { background: #f9f9f9; border-color: #ddd; page-break-inside: avoid; }
+  body { background: #fff !important; color: #000 !important; padding: 20px; }
+  .account-card { background: #f9f9f9 !important; border-color: #ddd !important; page-break-inside: avoid; }
+  #mode-toggle { display: none; }
 }
 @page { margin: 20mm; }
 
@@ -432,15 +513,16 @@ body {
 <div class="report-header">
   <div class="brand">
     {% if logo_light %}
-    <img src="{{ logo_light }}" alt="BEMI" height="28">
+    <img class="brand-logo" src="{{ logo_light }}" alt="BEMI" height="28">
     {% elif mark_uri %}
-    <img class="brand-mark" src="{{ mark_uri }}" width="28" height="28" alt="" style="filter:brightness(0) invert(1);">
+    <img class="brand-mark" src="{{ mark_uri }}" width="28" height="28" alt="">
     {% endif %}
     <span class="brand-name">Bullseye Medical Intelligence</span>
   </div>
   <div class="report-meta">
     <div class="report-title">Sales Handoff</div>
     <div class="report-subtitle">{{ client_name }} &middot; {{ generated_date }}</div>
+    <button id="mode-toggle" onclick="toggleMode()">&#9788; Day</button>
   </div>
 </div>
 
@@ -611,7 +693,7 @@ body {
 {% endfor %}
 
 {% if not tier_sections %}
-<p style="text-align:center;color:rgba(247,246,244,0.3);padding:60px 0;">No records found for this run.</p>
+<p style="text-align:center;color:var(--t30);padding:60px 0;">No records found for this run.</p>
 {% endif %}
 
 <div class="report-footer">
@@ -621,6 +703,7 @@ body {
 
 <script>
 (function() {
+  /* ── Card expand/collapse ── */
   function attachToggle(card) {
     var header = card.querySelector('.card-header');
     if (!header || card.classList.contains('suppressed')) return;
@@ -629,6 +712,26 @@ body {
     });
   }
   document.querySelectorAll('.account-card').forEach(attachToggle);
+
+  /* ── Day / Night mode toggle ── */
+  var root = document.documentElement;
+  var btn  = document.getElementById('mode-toggle');
+
+  function applyMode(mode) {
+    root.setAttribute('data-mode', mode);
+    if (btn) btn.innerHTML = mode === 'light' ? '&#9790; Night' : '&#9788; Day';
+  }
+
+  /* Restore persisted preference */
+  var saved = (typeof localStorage !== 'undefined') && localStorage.getItem('bemi_handoff_mode');
+  if (saved === 'light' || saved === 'dark') applyMode(saved);
+
+  window.toggleMode = function() {
+    var current = root.getAttribute('data-mode') || 'dark';
+    var next = current === 'dark' ? 'light' : 'dark';
+    applyMode(next);
+    try { localStorage.setItem('bemi_handoff_mode', next); } catch(e) {}
+  };
 })();
 </script>
 </body>
