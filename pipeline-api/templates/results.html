@@ -49,7 +49,8 @@
         Delete Selected (<span id="delete-count">0</span>)
       </button>
       <form id="enrich-all-form" method="post" action="/runs/{{ run_id }}/enrich-all"
-            style="display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            style="display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap;"
+            onsubmit="this.querySelectorAll('button').forEach(function(b){b.disabled=true;}); var s=document.getElementById('enrich-estimate-slot'); if(s) s.innerHTML='<span style=\'font-size:13px;font-weight:600;\'>⏳ Starting enrichment — page will update shortly…</span>'">
         <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; cursor:pointer;"
                title="After the standard crawl, re-crawl bot-blocked sites once with a headless browser. Slower, but recovers sites that block the fast crawler.">
           <input type="checkbox" name="auto_browser_retry" value="1">
@@ -1003,7 +1004,7 @@ function fetchEnrichEstimate(runId, btn) {
         ' &nbsp;<span style="color:#888;font-size:12px;">(' + data.record_count + ' records · ' + tokNote + ')</span>' +
         '</span>' +
         '<button type="submit" class="btn btn-submit" style="white-space:nowrap;"' +
-        ' onclick="this.disabled=true; this.textContent=\'Starting…\';">Confirm — Start Enrichment</button>' +
+        ' onclick="this.textContent=\'Starting enrichment…\'; this.style.opacity=\'0.7\'; document.getElementById(\'enrich-estimate-slot\').querySelector(\'button[type=button]\').style.display=\'none\';">Confirm — Start Enrichment</button>' +
         '<button type="button" class="btn btn-secondary" style="white-space:nowrap;"' +
         ' onclick="cancelEnrichEstimate()">Cancel</button>' +
         '</div>';
