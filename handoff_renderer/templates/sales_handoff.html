@@ -122,6 +122,8 @@
   .foot b{color:var(--acc);}
   @media(max-width:820px){.twocol{grid-template-columns:1fr;}.verify{columns:1;}.exgrid{grid-template-columns:1fr 1fr;}.ahead{grid-template-columns:1fr auto;}.conf{display:none;}.rhead{flex-direction:column;gap:14px;}.rmeta{text-align:left;}body{padding:20px 16px 80px;}}
   @media(max-width:480px){.exgrid{grid-template-columns:1fr;}.body{padding:4px 14px 20px;}.aname{font-size:14.5px;}}
+  .exbadge{display:inline-block;margin-bottom:10px;padding:4px 12px;background:rgba(247,246,244,0.08);border:1px solid rgba(247,246,244,0.22);border-radius:100px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(247,246,244,0.6);}
+  .exexcerpt{font-size:12.5px;line-height:1.55;color:var(--txt);}
 </style>
 </head>
 <body>
@@ -202,12 +204,9 @@
     </div>
     <div class="body">
       {% if section.tier == Tier.EXCLUDED %}
-      <div class="exgrid">
-        <div class="c"><div class="l">Gate fired</div><div class="v">{{ acct.gate_fired or '—' }}</div></div>
-        <div class="c"><div class="l">Evidence</div><div class="v">{{ acct.evidence or '—' }}</div></div>
-        <div class="c"><div class="l">Reason to suppress</div><div class="v">{{ acct.suppress_reason or '—' }}</div></div>
-        <div class="c"><div class="l">Revisit if</div><div class="v">{{ acct.revisit_if or '—' }}</div></div>
-      </div>
+      {% if acct.gate_fired %}<span class="exbadge">{{ acct.gate_fired }}</span>{% endif %}
+      {% if acct.evidence %}<div class="exexcerpt">{{ acct.evidence }}</div>{% endif %}
+      {% if acct.revisit_if %}<div style="margin-top:10px;"><div class="ey">Revisit if</div><div style="font-size:12px;color:var(--mut);">{{ acct.revisit_if }}</div></div>{% endif %}
       <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by {{ acct.qc_reviewer }}</b></div>
       {% else %}
       {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}

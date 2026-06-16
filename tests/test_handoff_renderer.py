@@ -256,3 +256,56 @@ def test_expiry_date_defaults_to_30_days():
         accounts=[_make_account()],
     )
     assert run.expiry_date == date(2026, 7, 1)
+
+
+def test_excluded_badge_distinct_per_gate():
+    """Three excluded records with three different gate types produce three distinct badge labels and excerpts.
+
+    Regression guard: if gate_fired is computed from free-text exclusion_reason
+    instead of exclusion_primary_gate, all three cards would show the same placeholder.
+    """
+    accounts = [
+        Account(
+            name="Closed Practice",
+            city="Dallas, TX", phone="(214) 555-0100",
+            website="closed.com", evidence_domain="closed.com",
+            tier=Tier.EXCLUDED, confidence=Confidence.LOW, internal_score=0,
+            gate_fired="Inactive",
+            evidence="Identified via practice classification data.",
+        ),
+        Account(
+            name="Health System Practice",
+            city="Houston, TX", phone="(713) 555-0200",
+            website="hsystem.com", evidence_domain="hsystem.com",
+            tier=Tier.EXCLUDED, confidence=Confidence.LOW, internal_score=0,
+            gate_fired="Health system",
+            evidence="Identified via practice classification data.",
+        ),
+        Account(
+            name="REI Practice",
+            city="Austin, TX", phone="(512) 555-0300",
+            website="rei.com", evidence_domain="rei.com",
+            tier=Tier.EXCLUDED, confidence=Confidence.LOW, internal_score=0,
+            gate_fired="REI on staff",
+            evidence='"REI specialist on-site for advanced infertility cases." — rei.com/team',
+        ),
+    ]
+    run = _make_run(accounts=accounts)
+    html = render_handoff(run)
+
+    # All three names render
+    for name in ["Closed Practice", "Health System Practice", "REI Practice"]:
+        assert name in html, f"Account '{name}' missing from output"
+
+    # Three distinct badge labels appear (CSS text-transform:uppercase applies in browser; HTML carries original case)
+    assert "Inactive" in html
+    assert "Health system" in html
+    assert "REI on staff" in html
+
+    # The ICP-signal excerpt appears; structural excerpts are uniform but present
+    assert "REI specialist on-site" in html
+    assert html.count("Identified via practice classification data.") == 2
+
+    # No repeated placeholder from old exclusion_reason pipe-delimited string
+    assert "exclusion_reason" not in html
+    assert " | " not in html

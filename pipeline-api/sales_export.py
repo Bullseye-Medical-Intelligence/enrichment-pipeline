@@ -80,6 +80,54 @@ def _format_exclusion_parts(reason: str) -> list:
 
 _brief_env.filters["format_exclusion"] = _format_exclusion_parts
 
+# Fixed label map for structural exclusion gates (engine-generic, client-safe).
+_STRUCTURAL_GATE_LABELS: dict[str, str] = {
+    "practice_closed_or_inactive": "Inactive",
+    "out_of_scope_specialty": "Out of scope",
+    "health_system_affiliated": "Health system",
+    "hospital_employed_physician": "Hospital-employed",
+}
+
+
+def _badge_label_for_gate(gate: str, signals: list) -> str:
+    """Return the client-facing badge label for an exclusion_primary_gate key.
+
+    Structural gates use the fixed label map.
+    ICP exclude_if_yes signal gates use the signal's own configured label.
+    """
+    if not gate:
+        return ""
+    label = _STRUCTURAL_GATE_LABELS.get(gate)
+    if label:
+        return label
+    for sig in signals:
+        if sig.get("signal_id") == gate:
+            return sig.get("signal_label") or gate.replace("_", " ").title()
+    return gate.replace("_", " ").title()
+
+
+def _evidence_for_gate(gate: str, signals: list) -> str:
+    """Build the one-line evidence excerpt for the winning exclusion gate.
+
+    ICP signal gates: quote + source domain when available; source alone otherwise.
+    Structural gates: classification fallback — never fabricate a website quote.
+    """
+    if not gate:
+        return ""
+    if gate not in _STRUCTURAL_GATE_LABELS:
+        for sig in signals:
+            if sig.get("signal_id") == gate:
+                quote = (sig.get("evidence_text") or "").strip()
+                source = (sig.get("source_url") or "").strip()
+                if quote and source:
+                    return f'"{quote}" — {_extract_domain(source)}'
+                if quote:
+                    return f'"{quote}"'
+                if source:
+                    return f"Identified via {_extract_domain(source)}."
+                return ""
+    return "Identified via practice classification data."
+
 # Add the repo root to sys.path so we can import the handoff_renderer module.
 # pipeline-api/ is one level below the repo root; __file__ is inside pipeline-api/.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -355,11 +403,11 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         confirmed_signals=confirmed_signals,
         verify=verify,
         landmine=_build_landmine(brief),
-        # Excluded content
-        gate_fired=rec.get("exclusion_reason") or None,
-        evidence=_extract_domain(rec.get("website_url") or rec.get("website") or "") or None,
-        suppress_reason=rec.get("exclusion_reason") or None,
-        revisit_if=None,  # not in pipeline schema
+        # Excluded content — badge label and evidence from the primary gate
+        gate_fired=_badge_label_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,
+        evidence=_evidence_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,
+        suppress_reason=None,
+        revisit_if=None,
     )
 
 

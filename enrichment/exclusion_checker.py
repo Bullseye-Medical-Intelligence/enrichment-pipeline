@@ -284,6 +284,36 @@ def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[st
     return triggered, rationale_parts
 
 
+# Priority-ordered mapping of canonical gate keys to the raw rule names that
+# produce them. ICP exclude_if_yes signals (priority 3) are derived separately.
+_STRUCTURAL_GATE_PRIORITY: list[tuple[str, frozenset]] = [
+    ("practice_closed_or_inactive", frozenset({"practice_closed"})),
+    ("out_of_scope_specialty",      frozenset({"wrong_specialty", "outside_geography", "academic_medical_center"})),
+    ("health_system_affiliated",    frozenset({"health_system_affiliated"})),
+    ("hospital_employed_physician", frozenset({"hospital_owned"})),
+]
+
+
+def _primary_gate(triggered: list[str], exclude_if_yes_ids: set) -> str:
+    """Return the canonical exclusion_primary_gate key; highest priority wins.
+
+    Priority: 1=practice_closed_or_inactive, 2=out_of_scope_specialty,
+              3=ICP exclude_if_yes signals, 4=health_system_affiliated,
+              5=hospital_employed_physician.
+    """
+    triggered_set = set(triggered)
+    for canon, raw_set in _STRUCTURAL_GATE_PRIORITY[:2]:
+        if triggered_set & raw_set:
+            return canon
+    for sig_id in sorted(exclude_if_yes_ids):
+        if sig_id in triggered_set:
+            return sig_id
+    for canon, raw_set in _STRUCTURAL_GATE_PRIORITY[2:]:
+        if triggered_set & raw_set:
+            return canon
+    return triggered[0] if triggered else ""
+
+
 def apply_exclusions(record: dict, run_config: dict) -> dict:
     """
     Apply all active exclusion rules to a record.
@@ -311,6 +341,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
             record.get("_suppression_reason") or "Existing customer"
         )
         record["target_tier"] = "Excluded"
+        record["exclusion_primary_gate"] = ""
         if score > EXCLUDED_SCORE_CAP:
             record["bullseye_score"] = EXCLUDED_SCORE_CAP
         print("    [X] EXCLUDED: existing customer (suppression list)")
@@ -378,6 +409,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
 
     # --- Apply results ---
     score = record.get("bullseye_score", 0)
+    exclude_if_yes_ids = {t for t in triggered if t not in ALL_KNOWN_EXCLUSION_RULES}
 
     if triggered:
         record["exclusion_status"] = "EXCLUDED"
@@ -385,6 +417,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
             f"Exclusion rules triggered: {', '.join(triggered)}"
         )
         record["target_tier"] = "Excluded"
+        record["exclusion_primary_gate"] = _primary_gate(triggered, exclude_if_yes_ids)
 
         # Cap score for excluded records
         if score > EXCLUDED_SCORE_CAP:
@@ -396,6 +429,7 @@ def apply_exclusions(record: dict, run_config: dict) -> dict:
         # CLEAR records are tiered by score, signal caps, and verification flags.
         # Never "Excluded" — that tier requires exclusion_status == "EXCLUDED".
         record["exclusion_status"] = "CLEAR"
+        record["exclusion_primary_gate"] = ""
         record["exclusion_reason"] = None
         record["target_tier"] = _assign_tier(record, score, bullseye_min)
 
