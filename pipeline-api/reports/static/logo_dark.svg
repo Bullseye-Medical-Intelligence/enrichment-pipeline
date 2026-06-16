@@ -1,11 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 36" width="220" height="36">
-  <line x1="18" y1="24.5" x2="7" y2="9" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="18" y1="24.5" x2="18" y2="6" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="18" y1="24.5" x2="29" y2="9" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round"/>
-  <circle cx="7" cy="8.5" r="2.4" fill="#0a0a0a" stroke="#0a0a0a" stroke-width="1.5"/>
-  <circle cx="18" cy="5.5" r="2.4" fill="#0a0a0a" stroke="#0a0a0a" stroke-width="1.5"/>
-  <circle cx="29" cy="8.5" r="2.4" fill="#0a0a0a" stroke="#0a0a0a" stroke-width="1.5"/>
-  <circle cx="18" cy="25" r="3.4" fill="#c84b2f"/>
+  <line x1="10" y1="6" x2="15" y2="18" stroke="#0a0a0a" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="3" y1="27" x2="15" y2="18" stroke="#0a0a0a" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="28" y1="21" x2="15" y2="18" stroke="#0a0a0a" stroke-width="1.4" stroke-linecap="round"/>
+  <circle cx="15" cy="18" r="3" fill="#c84b2f"/>
   <text x="44" y="14" font-family="'Liberation Sans', Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#0a0a0a">Bullseye Medical</text>
   <text x="44" y="28" font-family="'Liberation Sans', Arial, Helvetica, sans-serif" font-size="9.5" font-weight="400" fill="#666666" letter-spacing="1.8">INTELLIGENCE</text>
 </svg>
