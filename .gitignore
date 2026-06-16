@@ -40,6 +40,9 @@ build/
 *.swp
 *.swo
 
+# Claude Code session data
+.claude/
+
 # macOS
 .DS_Store
 
