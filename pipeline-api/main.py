@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from jinja2 import select_autoescape as _jinja_autoescape
@@ -156,6 +156,12 @@ _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
     app.mount("/assets", StaticFiles(directory=str(_static_dir)), name="assets")
+
+
+@app.get("/bullseye-favicon.svg", include_in_schema=False)
+async def favicon_svg():
+    """Serve the favicon at the root path, mirroring the Hostinger site layout."""
+    return FileResponse(str(_static_dir / "bullseye-favicon.svg"), media_type="image/svg+xml")
 
 
 @app.middleware("http")
