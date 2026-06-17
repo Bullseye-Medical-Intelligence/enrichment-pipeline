@@ -47,6 +47,9 @@ class Account:
     confirmed_signals: list[str] = field(default_factory=list)
     verify: list[str] = field(default_factory=list)
     landmine: Optional[str] = None  # supports **bold** markdown span
+    cap_reason: Optional[str] = None       # why not Bullseye; Contender accounts only
+    hours_of_operation: Optional[str] = None  # office hours from call_brief
+    website_url: Optional[str] = None       # full URL for href; website holds display domain
 
     # Populated for EXCLUDED only
     gate_fired: Optional[str] = None

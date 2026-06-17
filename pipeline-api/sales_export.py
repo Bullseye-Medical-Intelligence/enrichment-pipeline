@@ -320,7 +320,7 @@ def _build_handoff_run(
     for rec in records:
         rec_id = record_adapter.get_record_id(rec)
         review = all_reviews.get(rec_id, {})
-        tier_str = record_adapter.effective_tier(rec, review)
+        tier_str = record_adapter.effective_tier(rec, all_reviews)
         if tier_str not in _CLIENT_TIERS:
             continue
         # Bullseye and Contender require analyst approval — rejected records must
@@ -386,12 +386,17 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         if label not in verify:
             verify.append(label)
 
+    website_raw = rec.get("website_url") or rec.get("website") or ""
+    # cap_reason only surfaced for Contender — for Bullseye (including overrides) omit it.
+    cap_reason = (rec.get("tier_cap_reason") or "").strip() if tier_str == "Contender" else ""
+
     return Account(
         name=rec.get("practice_name") or rec.get("name") or "Unknown Practice",
         city=_format_city(rec),
         phone=record_adapter.format_phone(rec.get("phone") or rec.get("phone_number") or ""),
-        website=_extract_domain(rec.get("website_url") or rec.get("website") or ""),
-        evidence_domain=_extract_domain(rec.get("website_url") or rec.get("website") or ""),
+        website=_extract_domain(website_raw),
+        website_url=website_raw or None,
+        evidence_domain=_extract_domain(website_raw),
         tier=tier,
         confidence=confidence,
         internal_score=int(rec.get("bullseye_score") or 0),
@@ -403,6 +408,8 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         confirmed_signals=confirmed_signals,
         verify=verify,
         landmine=_build_landmine(brief),
+        cap_reason=cap_reason or None,
+        hours_of_operation=(brief.get("hours_of_operation") or "").strip() or None,
         # Excluded content — badge label and evidence from the primary gate
         gate_fired=_badge_label_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,
         evidence=_evidence_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,

@@ -356,6 +356,13 @@
       </div>
       {% endif %}
 
+      {% if contender.tier_cap_reason %}
+      <div class="card-section">
+        <div class="card-section-label">Why Contender &mdash; Not Bullseye</div>
+        <div style="font-size:13px;color:rgba(247,246,244,0.7);line-height:1.55;">{{ contender.tier_cap_reason }}</div>
+      </div>
+      {% endif %}
+
       {% if contender.call_brief and contender.call_brief.missing_to_verify %}
       <div class="card-section">
         <div class="card-section-label">To Verify on Call</div>
