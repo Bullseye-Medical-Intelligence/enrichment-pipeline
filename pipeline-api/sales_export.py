@@ -379,6 +379,7 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
         for sig in signals
         if (sig.get("signal_state") == "yes" or sig.get("state_inferred"))
         and (sig.get("signal_label") or sig.get("label"))
+        and (sig.get("positive_weight") or 0) >= 0
     ]
 
     brief = rec.get("call_brief") or {}
