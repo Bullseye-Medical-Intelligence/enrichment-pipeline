@@ -37,7 +37,8 @@ No new tiers. Engine produces Bullseye / Contender / Excluded / Needs Verificati
 | S-OS-004 | spark_already_listed | 0 | routing flag only, no score/tier effect |
 | S-OS-005 | custom_bracket_competitor_listed | -5 | minor friction |
 | S-OS-006 | competitor_aligner_listed (non-Invisalign) | 0 | contextual |
-| S-OS-019 | invisalign_platinum_or_higher | -15 | friction + cap_tier: Contender; yes only for Platinum/Platinum Plus/Elite/Diamond/Diamond Plus/Top 1% |
+| S-OS-019 | invisalign_platinum_or_higher | -15 | friction + cap_tier: Contender; yes only for Platinum/Platinum Plus/Elite/Diamond/Diamond Plus |
+| S-OS-020 | invisalign_top_1pct_designee | 0 | exclude_if_yes: true — Align's highest commercial tier, not viable for displacement |
 
 ### Scanner Signals (competitive context, scored)
 
@@ -77,6 +78,7 @@ Note: `hours_of_operation` lives natively in `call_brief.hours_of_operation`
 |-----------|------|-------|
 | S-OS-017 | dso_competitor_locked | DSO with exclusive rival aligner contract |
 | S-OS-018 | gp_or_pediatric_only | No orthodontic services (orthodontist_only=true default) |
+| S-OS-020 | invisalign_top_1pct_designee | Invisalign Top 1% — maximum Align ecosystem lock-in, not viable for displacement |
 
 ### Chassis-Inherited Gates (active_exclusion_rules)
 
@@ -187,3 +189,4 @@ Build → validate → ingest → brief. Do not run a live brief off an empty po
 
 2026-06-17: invisalign_listed presence penalty (-10) retired as non-discriminating. Replaced with S-OS-019 invisalign_platinum_or_higher friction (-15, cap Contender) + S-OS-002 repurposed to weight-0 tier capture. bullseye_min 90->85 to restore headroom. iTero unchanged. Badge confirm = text + alt + manual locator; vision OCR deferred.
 2026-06-17d: Enabled auto_browser_retry in run_config (was relying on unchecked UI default). Root cause of 100% Manual Review: requests crawler returns <150 chars on JS-rendered/Cloudflare ortho sites, LLM skipped, all signals no_context. Browser-retry forces Chromium render on thin records. Prerequisite: Chromium installed locally via playwright.
+2026-06-17e: Added S-OS-020 invisalign_top_1pct_designee (exclude_if_yes: true). Top 1% is Align's highest commercial tier — maximum submission volume, maximum rebates, maximum ecosystem dependency; not viable for displacement. S-OS-019 prompt updated to exclude Top 1% (handled separately by S-OS-020). Dashboard ICP seed bumped to ormco-spark-v3.

@@ -139,10 +139,18 @@
     {
       "signal_id": "S-OS-019",
       "signal_label": "Invisalign Platinum-or-higher (Align lock-in)",
-      "prompt_instruction": "Mark 'yes' ONLY if the stated Invisalign tier is Platinum, Platinum Plus, Platinum Elite, Diamond, Diamond Plus, or any 'Top 1%' Invisalign designation. Detect from page text AND image alt/title attributes and image filenames. Gold, Gold Plus, Silver, Bronze are 'no'. If no tier is stated anywhere, mark 'not_found'.",
+      "prompt_instruction": "Mark 'yes' ONLY if the stated Invisalign tier is Platinum, Platinum Plus, Platinum Elite, Diamond, or Diamond Plus. Do NOT include 'Top 1%' here — that tier is captured by S-OS-020. Detect from page text AND image alt/title attributes and image filenames. Gold, Gold Plus, Silver, Bronze are 'no'. If no tier is stated anywhere, mark 'not_found'.",
       "positive_weight": -15,
       "cap_tier": "Contender",
-      "note": "FRICTION + CAP. Platinum+ signals deep Align lock-in. -15 drops a max-sophistication practice (90) into the displacement lane (75). cap_tier Contender permanently bars a high-tier Invisalign practice from acquisition Bullseye. Confirm against the Invisalign provider locator at QC when the only site evidence is a badge image."
+      "note": "FRICTION + CAP. Platinum through Diamond Plus signals deep Align lock-in. -15 drops a max-sophistication practice (90) into the displacement lane (75). cap_tier Contender permanently bars a high-tier Invisalign practice from acquisition Bullseye. Top 1% providers are separately captured by S-OS-020 (hard exclusion). Confirm against the Invisalign provider locator at QC when the only site evidence is a badge image."
+    },
+    {
+      "signal_id": "S-OS-020",
+      "signal_label": "Invisalign Top 1% designee",
+      "prompt_instruction": "Mark 'yes' if this practice is designated as an Invisalign 'Top 1%' provider — the highest Invisalign elite tier. Look for explicit 'Top 1%' text on the page, badge images with 'top-1', 'top1', or 'top 1' in alt text, title attributes, or image filenames, and any language describing an elite or highest-tier Invisalign status. Mark 'not_found' if no tier is stated or if the highest tier mentioned is Diamond Plus or below.",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "HARD EXCLUSION. Invisalign Top 1% is Align Technology's highest commercial tier — maximum submission volume, maximum rebates, maximum ecosystem dependency. These practices have made a substantial financial and workflow commitment to Align; commercial displacement is not viable in a near-term sales cycle. Route to long-term tracking only."
     }
   ]
 }

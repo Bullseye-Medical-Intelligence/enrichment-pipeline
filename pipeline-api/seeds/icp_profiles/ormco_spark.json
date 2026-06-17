@@ -1,7 +1,7 @@
 {
   "icp_id": "ormco_spark",
   "name": "Ormco — Spark Aligner (Orthodontic Specialists)",
-  "version": "ormco-spark-v2",
+  "version": "ormco-spark-v3",
   "client": "Ormco",
   "product": "Spark Aligners",
   "default_specialty": "Orthodontics",
@@ -14,7 +14,7 @@
   ],
   "contact_strategy": "Prefer the lead orthodontist or practice owner when associated with Damon system content, digital workflow pages, or CBCT technology — a named provider tied to the tech investment is the fastest path to a yes. If no such association is apparent, prefer the practice manager or treatment coordinator; they own scheduling and day-to-day workflow friction. Fall back to the first listed orthodontist. Role names in the brief should reference how Spark reduces their workflow friction, not product features.",
   "description": "Independent orthodontic specialists currently using the Damon bracket system or operating an open-ecosystem digital workflow. The ideal target is a Damon-trained orthodontist with non-iTero digital capture (3Shape, Medit, or similar) and in-house CBCT — clinically sophisticated, digitally committed, and not locked to Align Technology's ecosystem. Displacement candidates (Invisalign-exclusive practices) are a secondary call tier: they can A/B test Spark without renegotiating their bracket workflow.",
-  "scoring_notes": "max_positive = 90 (damon 40 + open_scanner 25 + cbct 25). bullseye_min_score = 85 (lowered from 90 on 2026-06-17 to restore headroom after the Invisalign presence penalty was retired). S-OS-002 (Invisalign tier capture) is now weight 0 — presence is near-universal; contextual only. S-OS-019 (Invisalign Platinum-or-higher) is friction (-15) and caps at Contender — signals deep Align lock-in. Damon listing is required_for_bullseye. Invisalign-exclusive (S-OS-003) is both capped and floored at Contender, pinning displacement candidates exactly in the call queue. MARPE and airway signals carry floor_tier: Contender — niche-fit practices never lost to Manual Review on low score. DSO-locked and GP/pedo-only are hard exclusions.",
+  "scoring_notes": "max_positive = 90 (damon 40 + open_scanner 25 + cbct 25). bullseye_min_score = 85 (lowered from 90 on 2026-06-17 to restore headroom after the Invisalign presence penalty was retired). S-OS-002 (Invisalign tier capture) is now weight 0 — presence is near-universal; contextual only. S-OS-019 (Invisalign Platinum-or-higher) is friction (-15) and caps at Contender — signals deep Align lock-in. Damon listing is required_for_bullseye. Invisalign-exclusive (S-OS-003) is both capped and floored at Contender, pinning displacement candidates exactly in the call queue. MARPE and airway signals carry floor_tier: Contender — niche-fit practices never lost to Manual Review on low score. DSO-locked and GP/pedo-only are hard exclusions. S-OS-020 (Invisalign Top 1%) is a hard exclusion — these practices are not viable displacement targets.",
   "hypothesis": {
     "ideal_practice_profile": "Single-location or small-group orthodontic specialist, physician-owned, currently using Damon brackets, with an open intraoral scanner (3Shape Trios, Medit, or similar) and on-site CBCT. Not Invisalign-exclusive. Not affiliated with a DSO with a competing aligner contract.",
     "commercial_fit_reasoning": "Damon practices already operate within Ormco's bracket system. Spark adds aligner continuity without disrupting the workflow or requiring a second brand relationship. Open digital capture (non-iTero) means the practice is not locked to Align Technology's ecosystem — they can scan to any aligner workflow. CBCT presence signals complex case investment and the precision-case profile where Spark's premium tiers earn the most margin.",
@@ -159,10 +159,18 @@
     {
       "signal_id": "S-OS-019",
       "signal_label": "Invisalign Platinum-or-higher (Align lock-in)",
-      "prompt_instruction": "Mark 'yes' ONLY if the stated Invisalign tier is Platinum, Platinum Plus, Platinum Elite, Diamond, Diamond Plus, or any 'Top 1%' Invisalign designation. Detect from page text AND image alt/title attributes and image filenames. Gold, Gold Plus, Silver, Bronze are 'no'. If no tier is stated anywhere, mark 'not_found'.",
+      "prompt_instruction": "Mark 'yes' ONLY if the stated Invisalign tier is Platinum, Platinum Plus, Platinum Elite, Diamond, or Diamond Plus. Do NOT include 'Top 1%' here — that tier is captured by S-OS-020. Detect from page text AND image alt/title attributes and image filenames. Gold, Gold Plus, Silver, Bronze are 'no'. If no tier is stated anywhere, mark 'not_found'.",
       "positive_weight": -15,
       "cap_tier": "Contender",
-      "note": "FRICTION + CAP. Platinum+ signals deep Align lock-in. -15 drops a max-sophistication practice (90) into the displacement lane (75). cap_tier Contender permanently bars a high-tier Invisalign practice from acquisition Bullseye. Confirm against the Invisalign provider locator at QC when the only site evidence is a badge image."
+      "note": "FRICTION + CAP. Platinum through Diamond Plus signals deep Align lock-in. -15 drops a max-sophistication practice (90) into the displacement lane (75). cap_tier Contender permanently bars a high-tier Invisalign practice from acquisition Bullseye. Top 1% providers are separately captured by S-OS-020 (hard exclusion). Confirm against the Invisalign provider locator at QC when the only site evidence is a badge image."
+    },
+    {
+      "signal_id": "S-OS-020",
+      "signal_label": "Invisalign Top 1% designee",
+      "prompt_instruction": "Mark 'yes' if this practice is designated as an Invisalign 'Top 1%' provider — the highest Invisalign elite tier. Look for explicit 'Top 1%' text on the page, badge images with 'top-1', 'top1', or 'top 1' in alt text, title attributes, or image filenames, and any language describing an elite or highest-tier Invisalign status. Mark 'not_found' if no tier is stated or if the highest tier mentioned is Diamond Plus or below.",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "HARD EXCLUSION. Invisalign Top 1% is Align Technology's highest commercial tier — maximum submission volume, maximum rebates, maximum ecosystem dependency. These practices have made a substantial financial and workflow commitment to Align; commercial displacement is not viable in a near-term sales cycle. Route to long-term tracking only."
     }
   ]
 }

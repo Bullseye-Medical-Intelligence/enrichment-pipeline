@@ -659,6 +659,7 @@
                      style="{% if not review.override_tier %}display:none{% endif %}">
                   <label>Override Reason <span class="required">*</span></label>
                   {% set _preset_reasons = [
+                    "No hard exclusion found",
                     "Website down / unreachable",
                     "Office closed or no longer operating",
                     "Wrong specialty confirmed",
