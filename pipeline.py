@@ -272,7 +272,7 @@ def _sync_to_drive(output_dir: str, drive_config: dict) -> None:
             capture_output=True, text=True, timeout=180,
         )
         if result.returncode == 0:
-            print(f"  Drive sync: output uploaded to {remote}")
+            print(f"  Drive sync: run output uploaded to {remote}")
         else:
             print(f"  [WARN] Drive sync failed (rclone exit {result.returncode}): "
                   f"{result.stderr.strip()[:200]}")
@@ -283,6 +283,56 @@ def _sync_to_drive(output_dir: str, drive_config: dict) -> None:
         print("  [WARN] Drive sync timed out after 180s — output may be partially uploaded.")
     except Exception as e:
         print(f"  [WARN] Drive sync error: {e}")
+
+
+def _sync_shared_data_to_drive(drive_config: dict) -> None:
+    """Sync ICP profiles, projects, and registry to Drive (best-effort, never blocks the run).
+
+    These three directories/files live outside the per-run output directory and are
+    needed for multi-device consistency. Synced to gdrive:BEMI-Data (configurable via
+    data_remote in drive_sync config) alongside the per-run output in gdrive:BEMI-Runs.
+
+    Pull from another machine with:
+        rclone copy gdrive:BEMI-Data/icp_profiles ./icp_profiles
+        rclone copy gdrive:BEMI-Data/projects ./projects
+        rclone copy gdrive:BEMI-Data/master_practice_registry.json .
+    """
+    import subprocess
+
+    repo_root = Path(__file__).parent
+    rclone_bin = drive_config.get("rclone_path", "rclone")
+    runs_remote = drive_config.get("remote", "gdrive:BEMI-Runs")
+    data_remote = drive_config.get("data_remote", runs_remote.replace("BEMI-Runs", "BEMI-Data"))
+
+    # Each entry: (local_path, rclone_dest, check_method)
+    items = [
+        (repo_root / "icp_profiles",                  f"{data_remote}/icp_profiles", "dir"),
+        (repo_root / "projects",                       f"{data_remote}/projects",     "dir"),
+        (repo_root / "master_practice_registry.json",  data_remote,                   "file"),
+    ]
+
+    for src, dest, kind in items:
+        if kind == "dir" and not src.is_dir():
+            continue
+        if kind == "file" and not src.is_file():
+            continue
+        try:
+            result = subprocess.run(
+                [rclone_bin, "copy", str(src), dest, "--transfers", "4"],
+                capture_output=True, text=True, timeout=60,
+            )
+            if result.returncode == 0:
+                print(f"  Drive sync: {src.name} → {dest}")
+            else:
+                print(f"  [WARN] Drive sync: {src.name} failed "
+                      f"(exit {result.returncode}): {result.stderr.strip()[:120]}")
+        except FileNotFoundError:
+            print(f"  [WARN] Drive sync: rclone not found — shared data not uploaded.")
+            return
+        except subprocess.TimeoutExpired:
+            print(f"  [WARN] Drive sync: {src.name} timed out after 60s.")
+        except Exception as e:
+            print(f"  [WARN] Drive sync: {src.name} error: {e}")
 
 
 def _capture_evidence(records: list[dict], output_dir: str) -> int:
@@ -862,6 +912,7 @@ def run_pipeline(input_file: str, source_type: str,
         print("DRIVE SYNC")
         print(f"{'-'*40}")
         _sync_to_drive(output_dir, drive_cfg)
+        _sync_shared_data_to_drive(drive_cfg)
 
     print(f"\n{'='*60}")
     print(f"RUN COMPLETE: {run_id}")
