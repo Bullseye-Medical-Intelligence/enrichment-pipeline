@@ -399,8 +399,12 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   package; operators pull it via `GET /runs/{run_id}/download/manifest`.
 - **Report generation.** `reports/pdf_report.py::build_bullseye_cards_html` renders
   `reports/templates/bullseye_cards.html` — a self-contained HTML file (embedded CSS,
-  no external assets). `Sales_Handoff.html` is the client-facing 3-tier handoff from
-  `handoff_renderer` (Bullseye, Contender, Excluded only — no analyst notes).
+  no external assets). `Sales_Handoff.html` is the client-facing handoff from
+  `handoff_renderer` covering all five tiers (Bullseye, Contender, Needs
+  Verification, Manual Review, Excluded) so the client sees the full screening
+  picture; Needs Verification / Manual Review are omitted only when an analyst
+  rejects them. No analyst notes. The client CSVs are unaffected — they still
+  ship approved Bullseye/Contender plus all Excluded only.
 - **Brief publishing.** `brief_publisher.py` uploads any brief HTML to Hostinger via
   SFTP (paramiko) with FTP fallback (ftplib). On first publish a tokenized URL is
   created; on republish the same file is overwritten in place so the shared URL never

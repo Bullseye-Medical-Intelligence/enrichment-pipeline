@@ -259,8 +259,12 @@ Client-facing surfaces show the **tier + band only** — the numeric `bullseye_s
 operator QC view but are stripped from every client export (PDF, HTML report,
 client CSVs, ZIP). Tier and band are orthogonal: a record can be `Bullseye` + `Low`.
 
-`"Needs Verification"` is UI-visible but **not** included in client exports until
-an analyst confirms it with an override.
+`"Needs Verification"` and `"Manual Review"` appear in the client **Sales Handoff
+HTML** (`handoff_renderer`) so the client sees the full screening picture — they
+are dropped only when an analyst explicitly rejects them (`qc_status == "rejected"`).
+They remain **excluded from the client CSVs** (`exports.is_approved` still gates
+them out without an analyst override), so the call-ready CSV lists stay limited to
+approved Bullseye/Contender plus all Excluded.
 
 ---
 

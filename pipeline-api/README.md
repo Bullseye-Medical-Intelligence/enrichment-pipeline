@@ -209,7 +209,7 @@ From a completed run, **Download Client Package** produces a ZIP built from the
 immutable enriched output plus the review overlay. It contains exactly 5 files:
 
 - `Bullseye_Target_Report.html` — self-contained Bullseye target report (HTML)
-- `Sales_Handoff.html` — client-facing 3-tier handoff (Bullseye, Contender, Excluded)
+- `Sales_Handoff.html` — client-facing handoff covering all 5 tiers (Bullseye, Contender, Needs Verification, Manual Review, Excluded; NV/MR omitted only if an analyst rejects them)
 - `bullseye_accounts.csv` — Bullseye-tier accounts
 - `contender_accounts.csv` — Contender-tier accounts
 - `excluded_targets.csv` — records whose effective tier is Excluded

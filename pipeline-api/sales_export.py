@@ -9,11 +9,13 @@ Two builds serve different audiences:
                                  Served by the operator "Download Sales HTML"
                                  button. NOT included in the client package ZIP.
 
-  _build_client_handoff_html()   Client-facing via handoff_renderer. Three
-                                 actionable tiers (Bullseye, Contender,
-                                 Excluded), no analyst notes, no internal
-                                 scores. Called by client_exports when
-                                 assembling the client ZIP.
+  _build_client_handoff_html()   Client-facing via handoff_renderer. All five
+                                 tiers (Bullseye, Contender, Needs Verification,
+                                 Manual Review, Excluded) so the client sees the
+                                 full screening picture; Needs Verification and
+                                 Manual Review appear unless the analyst rejects
+                                 them. No analyst notes, no internal scores.
+                                 Called by client_exports when assembling the ZIP.
 """
 
 import base64
@@ -242,8 +244,11 @@ def build_sales_brief(
 def _build_client_handoff_html(run_id: str, run_directory: Path, status) -> bytes:
     """Build the client-facing Sales Handoff HTML for the client package ZIP.
 
-    Three actionable tiers (Bullseye, Contender, Excluded), no analyst notes,
-    no internal scores. Uses handoff_renderer with client_facing=True.
+    All five tiers (Bullseye, Contender, Needs Verification, Manual Review,
+    Excluded) so the client sees the full screening picture. Needs Verification
+    and Manual Review appear unless an analyst rejects them; Bullseye and
+    Contender require analyst approval. No analyst notes, no internal scores.
+    Uses handoff_renderer with client_facing=True.
     """
     records = _load_records(run_directory)
     all_reviews = reviews.get_reviews(run_id, run_directory)
