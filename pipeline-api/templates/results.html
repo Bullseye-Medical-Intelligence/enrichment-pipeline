@@ -916,8 +916,8 @@
       <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Contender Account</label>
       <select id="brief-contender-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
         <option value="">— Select a Contender account —</option>
-        {% for r in records if r.displayed_tier == 'Contender' and r.review.qc_status != 'rejected' %}
-        <option value="{{ r.record_id }}">{{ r.practice_name | default('—') }}{% if r.address_city %} — {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}</option>
+        {% for r in records | sort(attribute="bullseye_score", reverse=True) if r.displayed_tier == 'Contender' and r.review.qc_status != 'rejected' %}
+        <option value="{{ r.record_id }}">{{ r.bullseye_score | int }} — {{ r.practice_name | default('—') }}{% if r.address_city %}, {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}</option>
         {% else %}
         <option value="" disabled>No Contender records available</option>
         {% endfor %}
