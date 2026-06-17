@@ -326,11 +326,13 @@ def _build_handoff_run(
         tier_str = record_adapter.effective_tier(rec, all_reviews)
         if tier_str not in _CLIENT_TIERS:
             continue
-        # Bullseye and Contender require analyst approval — rejected records must
-        # not appear in the handoff even though the run gate only checks for pending.
+        # Bullseye and Contender require positive analyst approval.
         if tier_str in ("Bullseye", "Contender") and not exports.is_approved(rec, review):
             continue
-        accounts.append(_record_to_account(rec, tier_str))
+        # NV and MR appear in the handoff unless the analyst explicitly rejected them.
+        if tier_str in ("Needs Verification", "Manual Review") and review.get("qc_status") == "rejected":
+            continue
+        accounts.append(_record_to_account(rec, tier_str, review))
 
     return HandoffRun(
         product_name=status.product_name or project.get("product_name") or "—",
@@ -360,8 +362,9 @@ def _nv_gate_label(rec: dict) -> str:
     return "Verify first"
 
 
-def _record_to_account(rec: dict, tier_str: str) -> Account:
+def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> Account:
     """Map a single pipeline record dict to a handoff_renderer Account."""
+    review = review or {}
     tier = _TIER_MAP.get(tier_str, Tier.MANUAL_REVIEW)
     confidence = _CONFIDENCE_MAP.get(rec.get("confidence_band") or "Low", Confidence.LOW)
 
@@ -428,9 +431,11 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         landmine=_build_landmine(brief),
         cap_reason=cap_reason or None,
         hours_of_operation=(brief.get("hours_of_operation") or "").strip() or None,
-        # Badge label: exclusion gate for Excluded; crawl-failure label for MR/NV.
+        # Badge label: ICP gate for pipeline-excluded; analyst override_reason for
+        # manually-suppressed records; crawl-failure label for MR/NV.
         gate_fired=(
             _badge_label_for_gate(rec.get("exclusion_primary_gate") or "", signals)
+            or (review.get("override_reason") if tier_str == "Excluded" else None)
             or (_manual_review_gate_label(rec) if tier_str == "Manual Review" else None)
             or (_nv_gate_label(rec) if tier_str == "Needs Verification" else None)
         ) or None,
