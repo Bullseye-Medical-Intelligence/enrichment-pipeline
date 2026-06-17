@@ -128,25 +128,27 @@ Every record goes through Claude Sonnet for:
 
 ### Verification layer: GPT (OpenAI API)
 
-GPT verification is **selective** — it only runs where it adds the most value.
-`_select_verification_records(records, bullseye_min, near_miss_band)` picks the
-records that enter GPT:
+GPT verification is **a separate, operator-triggered post-run pass** — it does
+NOT run inline during the main pipeline. (An earlier design selected near-miss /
+uncertain-Bullseye records inline during Step 5; that was replaced by the
+post-run pass below. The `verify_near_miss_band` run_config key is retained for
+backward compatibility but no longer drives any inline pipeline behavior — see
+`constants.DEFAULT_NEAR_MISS_BAND`.)
 
-- **Near-miss records** (score in `[bullseye_min − near_miss_band, bullseye_min)`)
-  are always verified — these are the highest-value calls since they are genuinely
-  borderline. Controlled by `verify_near_miss_band` in run_config (default 0).
-- **Uncertain Bullseyes** (score ≥ `bullseye_min` with at least one confirmed-YES
-  signal at `low` confidence) are verified. High-confidence Bullseyes are skipped
-  — GPT would only agree, wasting spend.
-- **Thin-context records** (`source_confidence` `limited`/`failed`) always skip
-  GPT — they land in Manual Review at tier assignment regardless, and GPT sees
-  the same too-thin text.
+`enrichment/verifier.py::run_verification_pass` (invoked by `verify_run.py`, which
+the API shells out to) targets only records already tiered **`"Needs
+Verification"`**. For each, it runs an anchor-check plus a blind GPT
+re-extraction and writes an additive `verification` object (see the post-run pass
+section for its shape). It never overwrites Claude's signals, scores, or tier and
+never auto-promotes — an operator override is still required to ship the record.
+Records with an existing `verified_at` are skipped (idempotent).
 
 **Verification disagreement rules:**
-- Verification informs the tier and flags disagreement for the analyst; it never
-  auto-promotes a record and never overrides Claude's output.
-- If GPT disagrees: `enrichment_status = "needs_review"`, document in `internal_notes`.
-- Records that fail verification are included in output, flagged for human review.
+- Verification informs the analyst; it never auto-promotes a record and never
+  overrides Claude's output.
+- Disagreement is surfaced in the `verification` object's `recommended_action`
+  and `notes`; the operator decides.
+- Verified records remain in output with the `verification` object attached.
 
 ### Prompt versioning
 
@@ -267,32 +269,27 @@ Step 4: SIGNAL EXTRACTION (Claude API)
     - Generate exclusion rationale if any exclusion trigger fires
     - Set enrichment_status based on success/partial/failure
 
-Step 5: BULLSEYE VERIFICATION (GPT API — conditional)
-  Record selection (`_select_verification_records`):
-    - Thin-context records (source_confidence "limited" or "failed") are ALWAYS skipped —
-      GPT has the same limited text the LLM had; verification adds nothing.
-    - Near-miss records (score in [bullseye_min − near_miss_band, bullseye_min)) are ALWAYS
-      verified — highest-value cross-check, genuinely borderline.
-    - Bullseye records (score >= bullseye_min) are verified ONLY when at least one confirmed
-      YES signal has confidence == "low" (`_record_has_uncertain_signal`). All-high/medium
-      confidence Bullseyes are skipped — GPT virtually always agrees and the call wastes spend.
-    - Records below the near-miss floor are skipped entirely.
-  For selected records:
-    - Build verification prompt (see /prompts/verification_v1.txt)
-    - Call GPT
-    - Compare signal states and scores
-    - If agreement: no change
-    - If disagreement: set enrichment_status = "needs_review", document in internal_notes
-    - Near-miss records that pass verification are NOT auto-promoted; operator override required.
+Step 5: BULLSEYE VERIFICATION — NOT inline.
+  Verification is a separate, operator-triggered post-run pass (verify_run.py →
+  enrichment/verifier.py::run_verification_pass), NOT a step of the main run.
+  See the DUAL-LLM ARCHITECTURE and "Post-run pass CLIs" sections. The main
+  pipeline proceeds directly from Step 4 to Step 6.
 
 Step 6: EXCLUSION CHECK
-  Apply exclusion rules from project config (equivalent of active_exclusion_rules in project.json)
-  Hard exclusions always active:
+  Apply exclusion rules from project config (active_exclusion_rules in run_config).
+  Hard exclusions (always active when triggered):
     wrong_specialty, outside_geography, practice_closed, academic_medical_center
+  Detection split (important): only wrong_specialty, outside_geography, and the
+    NPI-taxonomy rules have a DETERMINISTIC structural detector
+    (check_structural_exclusions, pre-crawl). practice_closed and
+    academic_medical_center have NO structural detector — they fire only if the
+    LLM emits the matching trigger during Step 4 (_llm_exclusion_triggers). So
+    they are "hard" in effect but LLM-driven in practice.
   Configurable exclusions applied only if listed in active_exclusion_rules:
     hospital_owned, health_system_affiliated, no_web_presence, competitor_conflict,
     no_relevant_service_line
-  Set exclusion_status = "EXCLUDED" and exclusion_reason if any rule fires
+  Plus: any ICP signal with exclude_if_yes confirmed "yes" (signal_id becomes the gate).
+  Set exclusion_status = "EXCLUDED" and exclusion_reason if any rule fires.
 
 Step 7: SCORING VALIDATION
   - Excluded records: cap bullseye_score at 40
@@ -338,6 +335,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 
   "exclusion_status": "CLEAR",
   "exclusion_reason": null,
+  "exclusion_primary_gate": "",
 
   "target_tier": "Bullseye",
   "tier_cap_reason": "",
@@ -352,10 +350,15 @@ The output schema is the contract between the pipeline and the dashboard. It mus
       "source_type": "practice_website",
       "confidence": "high",
       "positive_weight": 15,
+      "verification_required": false,
+      "required_for_bullseye": false,
+      "cap_tier": "",
+      "floor_tier": "",
+      "exclude_if_yes": false,
+      "inhibited_by": null,
       "state_inferred": false,
       "inferred_from": "",
       "not_found_reason": "",
-      "exclude_if_yes": false,
       "analyst_note": ""
     }
   ],
@@ -387,7 +390,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "source_pipeline_version": "v1.0",
   "raw_input_source": "outscraper_export_2026-05-27.csv",
   "llm_model_used": "claude-sonnet-4-6",
-  "llm_prompt_version": "signal_extraction_v2",
+  "llm_prompt_version": "signal_extraction_v3",
   "enrichment_status": "complete",
 
   "qc_status": "pending",
@@ -401,6 +404,15 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 ### Field rules carried over from dashboard CLAUDE.md:
 
 **signal_state:** `"yes"`, `"no"`, or `"not_found"` only. Never null, true, false, or empty string.
+
+**Per-signal tiering flags (echoed from the ICP onto every output signal):**
+`verification_required` (bool), `required_for_bullseye` (bool), `cap_tier`
+(`""` / `"Contender"` / `"Needs Verification"`), `floor_tier` (same value set,
+`""` = no floor), `exclude_if_yes` (bool), and `inhibited_by` (`signal_id` string
+or null). These are copied verbatim from the ICP signal definition by
+`signal_extractor` so the tier engine (and any downstream rescore) sees a complete,
+self-contained signal. Their meanings are defined under CONFIGURATION → "Optional
+signal tiering fields"; they default to off/empty when the ICP omits them.
 
 **positive_weight:** Carried over from the ICP signal definition. Positive for signals where a `"yes"` is good; negative where a `"yes"` is bad (e.g. "REI on staff"). Consumers use the sign to color a signal green or red: a `"no"` on a negative-weight signal is a positive indicator.
 
@@ -432,6 +444,11 @@ from the `providers` array in the LLM response; `key_contact` in `call_brief` is
 the rep-facing distillation of this same data.
 
 **exclusion_status:** `"CLEAR"` or `"EXCLUDED"` only.
+
+**exclusion_primary_gate:** The single rule name that drove an exclusion, set on
+every record by `apply_exclusions` (e.g. `"wrong_specialty"`, a taxonomy rule name,
+or an `exclude_if_yes` signal_id). `""` for CLEAR records. Operator/UI-facing
+(drives the exclusion badge label); internal only, never in client exports.
 
 **target_tier:** `"Bullseye"`, `"Needs Verification"`, `"Contender"`, `"Manual Review"`, or `"Excluded"` only (call-tier rank order, highest first: Bullseye > Needs Verification > Contender). `"Needs Verification"` is a CLEAR record that scored as a candidate but has an unconfirmed `verification_required`/must-have signal, or whose crawl evidence was thin (call to confirm before shipping). `"Contender"` is a solid-fit CLEAR record a notch below Bullseye. `"Manual Review"` is a CLEAR record with **zero confirmed evidence** (no `"yes"` signal and nothing inferred — e.g. a blocked or empty crawl): it is *not* a fit verdict, is kept out of the call queue and client exports, and waits for an operator to act. `"Excluded"` appears if and only if `exclusion_status == "EXCLUDED"`. (The Contender tier was formerly named "Watchlist".)
 
@@ -509,6 +526,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
   "records_excluded": 8,
   "records_needs_review": 3,
   "records_failed": 2,
+  "records_insufficient_context": 1,
   "records_skipped": 1,
   "llm_primary_model": "claude-sonnet-4-6",
   "llm_verification_model": "gpt-4.1",
@@ -541,14 +559,17 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
     url_validator.py        ← HEAD requests, redirect following, reachability check
   /enrichment
     signal_extractor.py     ← Claude API calls, prompt building, response parsing
-    verifier.py             ← GPT verification calls for Bullseye-tier records
-    exclusion_checker.py    ← Applies exclusion rules from run config
+    verifier.py             ← GPT post-run verification (Needs Verification records); prompt built inline
+    exclusion_checker.py    ← Applies exclusion rules from run config + tier assignment
     scorer.py               ← Scoring logic (bullseye_score, fit_signal_score, etc.)
-  /prompts
-    signal_extraction_v2.txt
+    config_validator.py     ← Validates run_config + ICP checklist before a run
+    constants.py            ← All scoring constants, weights, thresholds, tier ranks
+  /prompts                  ← (active templates loaded by signal_extractor; older v1/v2 kept for history)
+    signal_extraction_system_v3.txt   ← active system template
+    signal_extraction_user_v3.txt     ← active user template
     sales_angle_v1.txt
+    sales_brief_gpt_v1.txt
     exclusion_check_v1.txt
-    verification_v1.txt
   /output
     json_writer.py          ← Writes enriched_targets.json
     csv_writer.py           ← Writes enriched_targets.csv (flat, no signals)
@@ -781,7 +802,19 @@ All post-run CLIs follow the same pattern: load `enriched_targets.json`, process
 
 **`rescore_run.py`** — re-runs Steps 6-7 (exclusion check + scoring validation) with updated ICP weights. Zero LLM cost. Signals are never modified; only scores and tiers change. Skips `not_enriched` records. Also supports `--preview` mode which returns tier transition counts without writing.
 
-**`verify_run.py`** — anchor-check + blind GPT re-extraction on `Needs Verification` records. Writes an additive `verification` object on each record; never overwrites signals or tier. Skips records with an existing `verified_at`. LLM cost (OpenAI).
+**`verify_run.py`** — anchor-check + blind GPT re-extraction on `Needs Verification` records. Writes an additive `verification` object on each record; never overwrites signals or tier. Skips records with an existing `verified_at`. LLM cost (OpenAI). The `verification` object shape:
+
+```json
+"verification": {
+  "verified_at": "2026-06-17T12:00:00Z",
+  "verifier_model": "gpt-4.1",
+  "method": "anchor_check + blind_reextraction",
+  "per_signal_verdicts": [{"signal_id": "S-001", "claude_state": "yes", "gpt_state": "yes", "agree": true}],
+  "anchor_failures": [],
+  "recommended_action": "confirm",
+  "notes": ""
+}
+```
 
 **`recrawl_run.py`** — re-crawls `source_confidence limited/failed` records with Playwright, then re-runs Steps 4, 6, 7. Fixes bot-blocked sites that the standard HTTP crawler could not read.
 
@@ -854,7 +887,7 @@ in client deliverables.
 | Version | Date | What Changed |
 |---|---|---|
 | 1.0 | May 2026 | Initial spec. Locked Python stack, dual-LLM architecture (Claude Sonnet primary + GPT verification), requests+BeautifulSoup extraction, Outscraper CSV with source-flexible ingestion layer, 8-step processing pipeline, full output schema, error handling rules, run log spec. |
-| 1.1 | Jun 2026 | Market Radar / Discovery workflow (discovery.py, discovery_runs.py, registry_update.py). Multi-key registry matching (place_id > domain > phone > name+address). `google_place_id` preserved through enrichment. SFTP hard-fail on missing host key. Full lifecycle integration test. Stale `entry_id` alias removed. |
+| 1.1 | Jun 2026 | Market Radar / Discovery workflow (repo-root `discovery/` package + `discovery_cli.py`; API side `discovery_runs.py`, `registry_update.py`, `practice_matching.py`). Multi-key registry matching (place_id > domain > phone > name+address). `google_place_id` preserved through enrichment. SFTP hard-fail on missing host key. Full lifecycle integration test. Stale `entry_id` alias removed from registry_update.py. (The earlier single `discovery.py` module was split into the `discovery/` package; no `discovery.py` exists.) |
 | 1.2 | Jun 2026 | QoL operator tooling: rescore preview mode, ICP version diff (diff_icp.py), pre-enrichment cost estimate (llm_pricing.estimate_run_cost), system health preflight (preflight.py), run-complete browser notification, bulk approve in confirm queue (reviews.bulk_approve), run comparison view (/dashboard/compare), signal re-extraction pass (reextract_run.py), suppression re-check pass (suppress_run.py). |
 
 ---

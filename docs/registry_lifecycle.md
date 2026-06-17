@@ -81,15 +81,15 @@ Provenance / state: `first_seen_at`, `last_seen_at`, `first_discovery_run_id`,
 `current_tier`, `bullseye_score`, `exclusion_status`, `enrichment_status`,
 `source_pipeline_version`, `evidence_path`, `change_history[]`.
 
-## Limitation: `google_place_id` on the enrichment path
+## `google_place_id` on the enrichment path
 
-The enrichment pipeline drops `google_place_id` from `enriched_targets.json`, so
-registry entries created via an explicit update from enrichment match by
-domain/phone/name only; `place_id` is empty unless the matched entry already had
-one (e.g. from a prior discovery insert). Future work should recover `place_id`
-for discovery-originated records by joining back to `enrichment_handoff.csv` or
-`source_discovery_run_id` → `discovery_results.json`. See
-`pipeline-api/MATCHING_NOTES.md`.
+`google_place_id` flows through enrichment end-to-end and is the priority-1
+registry match key. `ingestion/outscraper_adapter.py` maps it on ingest,
+`enrichment/scorer.py` defaults it so it is always present in
+`enriched_targets.json`, and `registry_update.py` reads it and persists it as the
+first-priority match key. Registry entries created via an explicit update from
+enrichment therefore match by place_id → domain → phone → name+address, the same
+priority as discovery. See `pipeline-api/MATCHING_NOTES.md`.
 
 ## Developer guardrails
 

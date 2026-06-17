@@ -30,7 +30,10 @@ was extracted. The live discovery flow runs via `discovery_runs.py` →
 boundary — the API never imports it. This copy cannot be merged with
 `practice_matching.py` without crossing that boundary (which is forbidden), so it
 stays separate **by necessity**. It must be kept behaviorally consistent with
-`practice_matching.py` by hand.
+`practice_matching.py`, and `tests/test_matching_parity.py` now guards that
+consistency directly: new tests compare the engine copy's `normalize_*` functions
+against `practice_matching.py`, so the engine copy is no longer relying on
+hand-sync alone.
 
 ### Why the API/engine split exists
 
@@ -60,10 +63,11 @@ manual-sync obligation that remains is keeping the **engine copy**
 normalization, mirror it there too.
 
 `tests/test_matching_parity.py` guards this: it asserts (by identity) that
-`registry_update.py` uses the `practice_matching` functions, and covers the
-matcher's behavior + the fixed priority directly. If you intentionally change
-matching, update `practice_matching.py` and this test in the same commit (and
-mirror the engine copy).
+`registry_update.py` uses the `practice_matching` functions, covers the matcher's
+behavior + the fixed priority directly, and now also compares the engine copy's
+`normalize_*` functions (`discovery/matcher.py`) against `practice_matching.py`.
+If you intentionally change matching, update `practice_matching.py`, the engine
+copy, and this test in the same commit.
 
 ## Status
 
@@ -71,23 +75,16 @@ mirror the engine copy).
 imports from it; the legacy `discovery.py` shim has been deleted. The engine copy
 (`discovery/matcher.py`) stays separate by necessity (subprocess boundary).
 
-## Known limitation: `google_place_id` is lost on the enrichment path
+## `google_place_id` on the enrichment path
 
-When registry update runs from `enriched_targets.json`, `google_place_id` is
-**usually absent**: the enrichment pipeline does not preserve it in its output
-(it is dropped after ingestion). Consequences:
+`google_place_id` is preserved end-to-end through enrichment and is the
+priority-1 match key. `ingestion/outscraper_adapter.py` maps it on ingest,
+`enrichment/scorer.py` defaults it so it is always present in
+`enriched_targets.json`, and `registry_update.py` reads it
+(`rec.get("google_place_id")`) and persists it as the first-priority match key.
 
 - Registry entries created/updated via
   `POST /enrichment-runs/{run_id}/update-registry` match and merge by
-  domain → phone → name+address only; place_id is `""` unless the matched entry
-  already had one from a prior discovery insert.
-- This is consistent with the rest of the system today, but it weakens matching
-  for records that *did* originate from discovery (where a place_id was known).
-
-**Future work (do not fix now):** for records that originated from discovery,
-join the registry update back to the run's `enrichment_handoff.csv` (which
-preserves `place_id` per row) or to `source_discovery_run_id` →
-`discovery_results.json`, to recover `google_place_id` and strengthen matching.
-This is intentionally deferred — it requires a reliable row-to-record join
-(handoff row → enriched record id) that does not exist yet, so it is not a
-trivial, fully-testable change.
+  place_id → domain → phone → name+address — the same priority as discovery.
+- `tests/test_lifecycle.py` asserts place_id survives the discovery → enrichment
+  handoff and matches on registry update.

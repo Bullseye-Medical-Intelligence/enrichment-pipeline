@@ -34,7 +34,7 @@ copy .env.example .env
 Open `.env` in Notepad (or any text editor) and fill in these values:
 
 ```
-PIPELINE_API_KEY=        ← a long random string (your API secret)
+PIPELINE_API_KEY=        ← a long random string (kept in config; NOT used for login auth)
 PIPELINE_REPO_PATH=      ← full path to the enrichment folder (e.g. C:\users\rajiv\desktop\bemi\enrichment)
 OUTPUT_RUNS_PATH=        ← where run output goes (e.g. C:\users\rajiv\desktop\bemi\output\runs)
 UI_USERNAME=             ← your login name (e.g. rajiv)
@@ -46,7 +46,9 @@ To generate random strings, run:
 ```
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
-Run it twice — once for `PIPELINE_API_KEY`, once for `SESSION_SECRET_KEY`.
+Use it for `SESSION_SECRET_KEY` (which signs your login session). Login itself is
+session-cookie based, using `UI_USERNAME` / `UI_PASSWORD`; `PIPELINE_API_KEY` is
+not used for authentication.
 
 Also fill in your enrichment pipeline's `.env` in the parent folder:
 ```
@@ -129,7 +131,7 @@ The pipeline starts automatically. You are taken to the run status page.
 - 50 records: ~10–20 minutes
 - 200 records: ~45–90 minutes
 
-The page refreshes automatically every 8 seconds while the run is in progress.
+The page refreshes automatically every 5 seconds while the run is in progress.
 
 ---
 
@@ -138,7 +140,7 @@ The page refreshes automatically every 8 seconds while the run is in progress.
 When the run shows **complete**, click the run ID to open the results dashboard.
 
 You will see:
-- **Header stats**: total records, counts by tier (Bullseye, Strong, Warm, Cold, Watchlist, Excluded), and how many are pending review
+- **Header stats**: total records, counts by tier (Bullseye, Needs Verification, Contender, Manual Review, Excluded), and how many are pending review
 - **Filter bar**: click a tier button to show only those records
 - **Record table**: practice name, specialty, location, tier, score, QC status
 
@@ -184,7 +186,7 @@ From any completed run's results page:
 - **Download JSON**: full enriched output with all pipeline data (for import into other tools)
 - **Download CSV**: flat spreadsheet version
 
-Both files contain the original pipeline output only. Review edits (notes, overrides) are stored in `reviews.json` in the run folder on disk. A merged export with review data will be added in a future update.
+Both files contain the original pipeline output only. Review edits (notes, overrides) are stored in `reviews.json` in the run folder on disk. The **Download Client Package** ZIP already incorporates your review overlay — it ships the approved Bullseye/Contender CSVs and reports built from the immutable output plus your overrides.
 
 ---
 

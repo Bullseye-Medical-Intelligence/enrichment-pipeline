@@ -7,12 +7,16 @@ The BEMI Pipeline API is a thin process manager that sits between the BEMI dashb
 ## 2. What It Does NOT Do
 
 - Run any enrichment, scoring, or signal extraction logic
-- Make LLM or AI API calls
+- Make LLM or AI API calls **outside the ICP builder** (the only LLM calls are
+  the ICP builder's signal/hypothesis/crawl-compression helpers; all other routes
+  are LLM-free)
 - Scrape websites
 - Store data in a database
-- Render any UI or serve HTML pages
 - Transform, reformat, or reinterpret pipeline output
 - Duplicate any logic that exists in the pipeline repo
+
+It **does** serve the operator UI: `ui.py` renders the server-side HTML pages
+(run dashboard, review, discovery, ICP builder, etc.) behind session auth.
 
 ## 3. Setup
 
@@ -56,6 +60,9 @@ The API will be available at `http://localhost:8000`. Interactive documentation 
 
 ## 5. API Endpoints
 
+The authoritative, complete route list is in `CLAUDE.md` ("Locked API Surface").
+The table below is a small illustrative subset, not the full surface.
+
 Session-auth HTML UI (`ui.py`):
 
 | Method | Path | Description |
@@ -98,9 +105,15 @@ changes what a past run was enriched against.
 
 ## 8. Environment Variables
 
+Authentication is **session-cookie only** (`UI_USERNAME`, `UI_PASSWORD`,
+`SESSION_SECRET_KEY`). There is no Bearer-token / API-key auth. `PIPELINE_API_KEY`
+exists in config but is **not** used for authentication.
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `PIPELINE_API_KEY` | Yes | — | Bearer token for all API requests |
+| `UI_USERNAME` | Yes | — | Operator login username (session-cookie auth) |
+| `UI_PASSWORD` | Yes | — | Operator login password (constant-time compared) |
+| `SESSION_SECRET_KEY` | Yes | — | Signing key for the session cookie |
 | `PIPELINE_REPO_PATH` | Yes | — | Absolute path to the enrichment pipeline repo |
 | `OUTPUT_RUNS_PATH` | Yes | — | Absolute path where run directories are written |
 | `PROJECTS_PATH` | No | `{output}/projects` | Where project_config.json files are stored |
@@ -124,9 +137,12 @@ hoc config paths.
 
 ### 9.1 ICP profile file format
 
-ICP profiles are plain JSON files dropped into `ICP_PROFILES_PATH`, one file per
-profile, named `{icp_id}.json`. There is no visual builder yet. Each file must
-contain `icp_id`, `name`, `version`, and a non-empty `signals` array:
+ICP profiles are JSON files in `ICP_PROFILES_PATH`, one file per profile, named
+`{icp_id}.json`. They can be hand-authored or created with the AI-assisted ICP
+builder at `/icp-profiles/new`, which calls Claude to draft a signal checklist
+from a product brief (a starting point — a domain expert must review and approve
+the generated signals before saving). Each file must contain `icp_id`, `name`,
+`version`, and a non-empty `signals` array:
 
 ```json
 {
@@ -190,18 +206,18 @@ is never modified.
 ### 9.5 Export the client deliverable
 
 From a completed run, **Download Client Package** produces a ZIP built from the
-immutable enriched output plus the review overlay:
+immutable enriched output plus the review overlay. It contains exactly 5 files:
 
-- `executive_summary.md` — client, project, product, specialty, geography, ICP
-  name/version, volumes (screened / output / approved / excluded), date, method
-- `approved_targets.csv` — approved, non-hard-excluded records
+- `Bullseye_Target_Report.html` — self-contained Bullseye target report (HTML)
+- `Sales_Handoff.html` — client-facing 3-tier handoff (Bullseye, Contender, Excluded)
+- `bullseye_accounts.csv` — Bullseye-tier accounts
+- `contender_accounts.csv` — Contender-tier accounts
 - `excluded_targets.csv` — records whose effective tier is Excluded
-- `top_target_briefs.md` — the top approved targets with evidence and angles
-- `methodology.md` — the standing public-data methodology statement
 
-The package never includes `run_log.json`, `reviews.json`, or the raw
-`enriched_targets.json`. The individual **Export Approved** / **Export Excluded**
-CSV buttons remain available.
+Client-facing CSVs and reports show tier + confidence band only — numeric scores
+are stripped. The package never includes `run_log.json`, `reviews.json`, analyst
+notes, or the raw `enriched_targets.json`. The individual **Export Approved** /
+**Export Excluded** CSV buttons remain available.
 
 ### 9.6 Run a pilot
 
@@ -213,10 +229,8 @@ CSV buttons remain available.
 
 ### 9.7 Still out of scope
 
-- No visual ICP builder — profiles are hand-authored JSON files.
 - No database, task queue, or Redis — state stays on the filesystem.
 - No client portal, CRM sync, billing, or role-based permissions — internal tool.
-- No PDF deliverables yet — the client package is Markdown + CSV in a ZIP.
 - The pipeline itself is unchanged; this layer only selects and snapshots its
   inputs and packages its outputs.
 

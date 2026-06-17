@@ -101,8 +101,11 @@ rather than guessing. (There is no merge UI yet — by design.)
 > The API-side normalization + priority logic lives in one place:
 > `pipeline-api/practice_matching.py`. `registry_update.py` imports from it
 > directly and cannot drift. A separate engine-side copy in `discovery/matcher.py`
-> must be kept in sync by hand (subprocess boundary prevents sharing).
-> `tests/test_matching_parity.py` guards the identity assertion.
+> exists across the subprocess boundary (which prevents sharing).
+> `tests/test_matching_parity.py` guards both: it asserts `registry_update.py`
+> uses the `practice_matching` functions by identity, and it now also compares the
+> engine copy's `normalize_*` functions against `practice_matching.py` so the
+> engine copy is no longer unguarded.
 > See `pipeline-api/MATCHING_NOTES.md`.
 
 ## Handoff: discovery → enrichment
@@ -147,18 +150,16 @@ handoff never mutates the registry and never pre-registers rows.
   loudly** in both layers — it is not implemented, and there is no silent
   fallback.
 
-## Current limitation: `google_place_id` and the enrichment path
+## `google_place_id` on the enrichment path
 
-The enrichment pipeline does **not** preserve `google_place_id` in
-`enriched_targets.json` (it is dropped after ingestion). So a registry update run
-from an enrichment run matches/merges by domain → phone → name+address only;
-`place_id` is empty unless the matched entry already had one from a prior
-discovery insert.
-
-**Future work (not yet implemented):** for records that originated from
-discovery, join the registry update back to the run's `enrichment_handoff.csv`
-(which preserves `place_id` per row) or to `source_discovery_run_id` →
-`discovery_results.json`, to recover `google_place_id` and strengthen matching.
+`google_place_id` is preserved **end-to-end** through enrichment and is the
+priority-1 registry match key. `ingestion/outscraper_adapter.py` maps it on
+ingest, `enrichment/scorer.py` defaults it so it is always present in
+`enriched_targets.json`, and `registry_update.py` reads it
+(`rec.get("google_place_id")`) and persists it as the first-priority match key.
+A registry update run from an enrichment run therefore matches/merges by
+place_id → domain → phone → name+address, the same priority as discovery.
+`tests/test_lifecycle.py` asserts place_id survives the handoff and matches.
 See `pipeline-api/MATCHING_NOTES.md`.
 
 ## Developer guardrails

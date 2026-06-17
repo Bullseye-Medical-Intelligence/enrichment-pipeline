@@ -33,7 +33,7 @@ No new tiers. Engine produces Bullseye / Contender / Excluded / Needs Verificati
 |-----------|-------|--------|-------|
 | S-OS-001 | damon_system_listed | +40 | required_for_bullseye |
 | S-OS-002 | invisalign_listed | -10 | friction |
-| S-OS-003 | invisalign_exclusive | -20 | friction + cap_tier: Contender |
+| S-OS-003 | invisalign_exclusive | -20 | friction + cap_tier: Contender + floor_tier: Contender (pins displacement candidates exactly at Contender) |
 | S-OS-004 | spark_already_listed | 0 | routing flag only, no score/tier effect |
 | S-OS-005 | custom_bracket_competitor_listed | -5 | minor friction |
 | S-OS-006 | competitor_aligner_listed (non-Invisalign) | 0 | contextual |
@@ -111,6 +111,12 @@ max_positive = 40 (damon) + 25 (open_scanner) + 25 (cbct) = **90**
 | dso_competitor_locked=yes | — | — | capped 40 | Excluded |
 
 bullseye_min_score = 90 (chassis default, unchanged).
+
+> **Engine note (floor_tier):** the `floor_tier` guarantees on S-OS-003 / S-OS-013 /
+> S-OS-014 depend on `signal_extractor` carrying the flag onto enriched signals.
+> That carry-through was added to the engine (it previously copied only `cap_tier`),
+> so these floors now fire in live runs, matching the simulator. Verified by the 6
+> synthetic cases and `tests/test_pipeline.py::test_floor_tier_carried_on_all_signal_paths`.
 
 ---
 

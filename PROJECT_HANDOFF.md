@@ -145,7 +145,8 @@ After any logo script update: `git pull && python update_site_logos.py`
 | Scoring + signals | `enrichment/signal_extractor.py`, `enrichment/scorer.py` |
 | Scoring constants | `enrichment/constants.py` |
 | Exclusion / tier logic | `enrichment/exclusion_checker.py` |
-| Market Radar / discovery | `pipeline-api/discovery.py`, `pipeline-api/discovery_runs.py` |
+| Market Radar / discovery (engine) | repo-root `discovery/` package + `discovery_cli.py` |
+| Market Radar / discovery (API) | `pipeline-api/discovery_runs.py`, `pipeline-api/registry_update.py`, `pipeline-api/practice_matching.py` |
 | Registry update | `pipeline-api/registry_update.py` |
 | API routes | `pipeline-api/ui.py`, `pipeline-api/main.py` |
 | Brief publisher (SFTP) | `pipeline-api/brief_publisher.py` |

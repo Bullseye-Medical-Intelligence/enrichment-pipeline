@@ -242,21 +242,47 @@ class TestSignalNormalization:
         assert by_id["S-ICP-002"]["positive_weight"] == -20
 
     def test_tiering_fields_carried_from_icp(self):
-        """verification_required and cap_tier flow from the ICP onto each signal."""
+        """verification_required, cap_tier, and floor_tier flow from the ICP onto each signal."""
         icp = [{
             "signal_id": "S-V", "signal_label": "Cash pay visible",
             "prompt_instruction": "?", "positive_weight": 10,
             "verification_required": True, "cap_tier": "Contender",
+            "floor_tier": "Contender",
         }]
         result = _validate_and_clean_signals([], icp)
         assert result[0]["verification_required"] is True
         assert result[0]["cap_tier"] == "Contender"
+        assert result[0]["floor_tier"] == "Contender"
+
+    def test_floor_tier_carried_on_all_signal_paths(self):
+        """floor_tier must survive every signal-construction path, not just cap_tier.
+
+        Regression guard: a confirmed floor_tier signal lifts a thin-score record
+        past the Manual Review gate. If the extractor stops copying floor_tier (as
+        it once silently did), this guarantee dies and the simulator/pipeline diverge.
+        """
+        icp = [{
+            "signal_id": "S-F", "signal_label": "Niche qualifier",
+            "prompt_instruction": "?", "positive_weight": 0,
+            "floor_tier": "Contender",
+        }]
+        # Path A: empty-signals (thin context, no LLM call)
+        assert _build_empty_signals(icp)[0]["floor_tier"] == "Contender"
+        # Path B: validated LLM output
+        confirmed = [{"signal_id": "S-F", "signal_state": "yes", "confidence": "high",
+                      "evidence_text": "Listed", "source_url": "https://x.com/s"}]
+        validated = _validate_and_clean_signals(confirmed, icp)
+        assert validated[0]["floor_tier"] == "Contender"
+        # Path C: tier engine honors it on a sub-floor score
+        rec = {"bullseye_score": 20, "source_confidence": "complete", "signals": validated}
+        assert _assign_tier(rec, 20, 90) == "Contender"
 
     def test_tiering_fields_default_off_when_absent(self):
         """Signals without the optional fields default to off / empty."""
         result = _validate_and_clean_signals([], SAMPLE_ICP_SIGNALS)
         assert result[0]["verification_required"] is False
         assert result[0]["cap_tier"] == ""
+        assert result[0]["floor_tier"] == ""
 
 
 # ---------------------------------------------------------------------------

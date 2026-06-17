@@ -151,7 +151,8 @@ def _fields_from_record(rec: dict) -> dict:
     if zip_:
         full = f"{full} {zip_}".strip()
     return {
-        # Enriched output never carries google_place_id (the pipeline drops it).
+        # Enriched output carries google_place_id end-to-end (mapped on ingest,
+        # defaulted by the scorer). Read here as the priority-1 registry match key.
         "google_place_id": rec.get("google_place_id") or "",
         "practice_name": name,
         "name_normalized": _normalize_name(name),

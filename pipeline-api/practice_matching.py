@@ -2,9 +2,9 @@
 practice_matching.py
 Single source of truth for API-safe practice identity matching.
 
-Normalization + the match-priority decision used by both the (legacy)
-discovery.py and registry_update.py live here so the two never drift. This module
-is deliberately self-contained:
+Normalization + the match-priority decision used by registry_update.py (the only
+API-side consumer) live here so API-side matching never drifts. This module is
+deliberately self-contained:
 
   - It MUST NOT import enrichment-pipeline internals.
   - It MUST NOT import the repo-root `discovery` package (subprocess-only boundary).

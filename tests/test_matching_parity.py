@@ -134,3 +134,37 @@ def test_npi_is_not_a_match_key():
     """An NPI-only field set matches nothing — NPI is supporting only."""
     indexes = pm.build_match_indexes(_entry("E", website_domain="alpha.com"))
     assert pm.find_match(_fields(), indexes) == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# Engine-copy parity — discovery/matcher.py must match practice_matching.py
+# ---------------------------------------------------------------------------
+# discovery/matcher.py is a hand-maintained copy used by the repo-root discovery
+# package / CLI (it has no API import). The normalization functions are the
+# drift-prone surface; these tests fail loudly if the two copies diverge.
+
+import discovery.matcher as engine_matcher  # noqa: E402
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.Alpha-Clinic.com/services", "http://beta.org:8080",
+    "gamma.net", "", "HTTPS://WWW.X.COM/",
+])
+def test_engine_normalize_domain_matches_source(url):
+    assert engine_matcher.normalize_domain(url) == pm.normalize_domain(url)
+
+
+@pytest.mark.parametrize("phone", ["(404) 555-1000", "404.555.1000", "1-404-555-1000", "", "abc"])
+def test_engine_normalize_phone_matches_source(phone):
+    assert engine_matcher.normalize_phone(phone) == pm.normalize_phone(phone)
+
+
+@pytest.mark.parametrize("name", ["Alpha Clinic, LLC", "  Beta   Health  ", "Gamma, P.A.", ""])
+def test_engine_normalize_name_matches_source(name):
+    assert engine_matcher.normalize_name(name) == pm.normalize_name(name)
+
+
+def test_engine_name_address_key_matches_source():
+    n = pm.normalize_name("Alpha Clinic")
+    a = pm.normalize_address("123 Main St", "Austin", "TX", "78664")
+    assert engine_matcher.name_address_key(n, a) == pm.name_address_key(n, a)

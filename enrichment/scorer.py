@@ -87,6 +87,13 @@ def validate_and_finalize(record: dict) -> dict:
             sig["analyst_note"] = ""
         # Ensure exclude_if_yes is always present as a bool
         sig["exclude_if_yes"] = bool(sig.get("exclude_if_yes", False))
+        # Tier gates are always present as strings so _assign_tier (and any
+        # rescore pass over existing signals) sees a consistent shape. The
+        # value originates from the ICP at extraction time; "" means no gate.
+        if not isinstance(sig.get("cap_tier"), str):
+            sig["cap_tier"] = ""
+        if not isinstance(sig.get("floor_tier"), str):
+            sig["floor_tier"] = ""
 
     # --- Exclusion status ---
     exc_status = record.get("exclusion_status")

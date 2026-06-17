@@ -159,34 +159,6 @@ def _error_html(title: str, exc: Exception) -> bytes:
     ).encode("utf-8")
 
 
-def _build_executive_report(
-    run_id: str,
-    status,
-    project: dict,
-    icp: dict,
-    approved: list[dict],
-    all_reviews: dict,
-    screened: int,
-    excluded_count: int,
-) -> bytes:
-    """Render the Executive Target Report HTML; return UTF-8 bytes."""
-    try:
-        from reports import pdf_report
-        return pdf_report.build_executive_report_html(
-            run_id=run_id,
-            status=status,
-            project=project,
-            icp=icp,
-            approved_records=approved,
-            all_reviews=all_reviews,
-            screened=screened,
-            excluded_count=excluded_count,
-        )
-    except Exception as exc:
-        logger.exception("Executive report generation failed for run %s; returning error page", run_id)
-        return _error_html(f"Executive Target Report generation failed for run {run_id}", exc)
-
-
 def _build_bullseye_cards(
     run_id: str,
     status,

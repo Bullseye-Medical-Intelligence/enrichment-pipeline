@@ -47,11 +47,12 @@ Communication:
 The API spawns pipeline.py as a subprocess. It does not contain enrichment
 logic, scoring formulas, or signal definitions.
 
-**Two exceptions — both strictly scoped to the ICP builder flow:**
+**Three exceptions — all strictly scoped to the ICP builder flow:**
 1. **Signal generation** (`POST /icp-profiles/generate`, `POST /icp-profiles/regenerate-signals` in `ui.py`) calls Claude to draft signal definitions from a product brief.
 2. **Hypothesis generation** — `narrative_generator.generate_hypothesis()` is called non-fatally after each signal generate/regenerate to pre-fill the commercial fit hypothesis fields. Uses the same `ANTHROPIC_API_KEY` from `.env`.
+3. **Crawl compression** — `crawl_compressor.compress_crawl()` calls Claude during the builder's generate flow to condense sample crawl text before signal drafting (Stage 1 of generate). Builder-only.
 
-Both calls are isolated to the builder; all other routes are LLM-free. If hypothesis generation fails (network error, quota), it logs a warning and the form renders with empty hypothesis fields — no error shown to the operator.
+All three are isolated to the builder; all other routes are LLM-free. If any fails (network error, quota), it logs a warning and degrades gracefully — no error shown to the operator.
 
 Bad:
 ```python
@@ -82,8 +83,10 @@ No in-memory state. No database. No global variables that survive a restart.
 
 ### RULE 5: No unauthenticated endpoints. Ever.
 
-Every route requires a valid API key from the first commit.
-The API can trigger LLM spend. It will never be unprotected.
+Every route requires a valid session cookie (`auth.require_session`) from the
+first commit — there is exactly one auth model (see the bottom-of-file rule
+against adding Bearer tokens / API keys / OAuth). The API can trigger LLM spend.
+It will never be unprotected.
 
 ### RULE 6: One function, one responsibility.
 
@@ -105,7 +108,7 @@ to open a run directory and understand what happened.
 | Language    | Python 3.11+     | Matches pipeline                  |
 | Framework   | FastAPI          | Async, clean, built-in validation |
 | Server      | Uvicorn          | Standard FastAPI server           |
-| Auth        | API key (Bearer) | Minimal, sufficient, no overhead  |
+| Auth        | Session cookie   | Single auth model; no Bearer/API-key (see RULE 5) |
 | State store | Filesystem JSON  | Simple, debuggable, no DB needed  |
 | Process mgmt| subprocess.Popen | Isolates pipeline cleanly         |
 | Env vars    | python-dotenv    | Keys out of source code           |
@@ -129,7 +132,16 @@ to open a run directory and understand what happened.
 ```
 /BEMI-pipeline-api
   main.py            ← FastAPI app, route registration, startup
-  auth.py            ← API key validation dependency
+  auth.py            ← session-cookie validation dependency (require_session); constant-time UI password check
+  reviews.py         ← analyst review overlay (reviews.json): read/write, override/QC, bulk approve, stamp re-enriched
+  record_adapter.py  ← record field normalization, displayed/effective tier, confidence band, phone format
+  narrative_generator.py ← ICP builder only: LLM hypothesis pre-fill (generate_hypothesis)
+  signal_generator.py    ← ICP builder only: LLM signal-draft generation from a product brief
+  crawl_compressor.py    ← ICP builder only: LLM compression of sample crawl text (Stage 1 of generate)
+  discovery_runs.py  ← Market Radar discovery run management + JSON API router (/discovery-runs)
+  registry_update.py ← explicit registry upsert with change_history; /enrichment-runs/.../update-registry
+  practice_matching.py ← multi-key registry match (place_id > domain > phone > name+address)
+  reports/pdf_report.py ← Bullseye cards + executive report HTML renderers (self-contained HTML)
   runner.py          ← subprocess management, pipeline invocation
   runs.py            ← run state: create/read/update/list via status.json
   projects.py        ← project config storage: create/read/update/list/validate
@@ -296,11 +308,17 @@ POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
 POST   /icp-profiles/simulate                     Dry-run score preview (no LLM, no crawl); shells out to simulate_icp.py
 GET    /preflight                                 JSON system health check (API keys, pipeline repo, output dir, ICP profiles, projects, session key)
 
-Market Radar (Discovery) routes:
+Market Radar (Discovery) — operator HTML routes (ui.py):
 GET    /discovery                                 Discovery landing — upload form + recent runs list
 POST   /discovery/upload                          Upload Outscraper CSV → create discovery run → redirect to results
 GET    /discovery/runs/{run_id}                   Discovery results page — summary cards + classified record table + send actions
 POST   /discovery/runs/{run_id}/send              Send selected / new / changed records → create ingested enrichment run
+
+Market Radar (Discovery) — JSON API router (discovery_runs.py; session-cookie auth):
+POST   /discovery-runs                            Create a discovery run (JSON)
+GET    /discovery-runs/{run_id}                   Discovery run status/summary (JSON)
+GET    /discovery-runs/{run_id}/results           Classified records (JSON)
+POST   /discovery-runs/{run_id}/send-to-enrichment  Send selected records → create ingested enrichment run (JSON)
 
 Registry Update routes (explicit operator action only):
 GET    /dashboard/{run_id}/registry-update        Registry update form for a completed enrichment run
@@ -314,7 +332,7 @@ POST   /dashboard/{run_id}/reextract              Re-run Claude signal extractio
 POST   /dashboard/{run_id}/resuppress             Re-check all records against the project suppression list (suppress_run.py); no LLM
 POST   /dashboard/{run_id}/recrawl                Re-crawl all blocked/thin records with Playwright (recrawl_run.py)
 
-API (Bearer auth, called by dashboard or automation):
+API (session-cookie auth, same as all routes; called by dashboard or automation):
 POST   /enrichment-runs/{run_id}/update-registry  Explicit registry update; body: selection_mode, selected_record_ids, options
 ```
 
@@ -411,7 +429,7 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   `complete`. The analyst's review is preserved and stamped with a dated
   "Re-enriched" note (`reviews.stamp_reenriched`). The route blocks until merge so
   the operator returns to fresh data on the same run.
-- **Constant-time auth**: API key and UI password comparisons use `hmac.compare_digest`.
+- **Constant-time auth**: the UI password comparison uses `hmac.compare_digest` (`auth.py`). There is no API-key/Bearer comparison — session cookie is the only auth.
 - **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
   output (`output/atomic_write.py`) use temp-file + `os.replace()`.
 - **Read-modify-write safety relies on single-process uvicorn**: mutating routes are
@@ -442,12 +460,43 @@ host. Task queue / database / Redis remain out of scope until that ceiling is cr
   "bullseye_count": 12,
   "needs_verification_count": 3,
   "contender_count": 28,
+  "manual_review_count": 4,
   "excluded_count": 7,
   "error_count": 3,
   "pipeline_version": "v1.0",
-  "error_summary": ""
+  "error_summary": "",
+
+  "client_name": "Femasys",
+  "product_name": "FemaSeed",
+  "target_specialty": "OBGYN",
+  "target_geography": ["TX", "FL", "GA"],
+  "icp_profile_id": "obgyn_femasys",
+  "icp_profile_name": "OBGYN Femasys",
+  "icp_profile_version": "icp-v8",
+  "archived": false,
+
+  "llm_input_tokens": 312000,
+  "llm_output_tokens": 41000,
+  "llm_call_count": 47,
+
+  "run_type": "enrichment",
+  "source_discovery_run_id": null,
+  "source_discovery_selection_count": null,
+  "source_discovery_selection_mode": null,
+
+  "registry_updated_at": null,
+  "registry_update_count": null,
+  "registry_update_log_path": null
 }
 ```
+
+The canonical model is `schema.py::RunStatus`. All fields after `error_summary`
+are optional with defaults so status.json files written before those layers
+existed still load. `llm_*` token fields are `null` (not `0`) for runs predating
+token capture. `run_type` is `"enrichment"` for normal runs; discovery runs write
+their own status shape with `"discovery"`. The `source_discovery_*` fields trace a
+run back to the discovery selection that created it; `registry_*` fields are set
+only after an operator pushes the run into the registry.
 
 Status transitions: `pending` → `running` → `complete` or `failed`
 
