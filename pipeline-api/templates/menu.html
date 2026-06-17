@@ -38,6 +38,7 @@
     <thead>
       <tr>
         <th>Run ID</th>
+        <th>Project</th>
         <th>Status</th>
         <th>Source</th>
         <th>Records</th>
@@ -49,6 +50,12 @@
       {% for run in recent_runs %}
       <tr>
         <td><a href="/dashboard/{{ run.run_id }}" class="link-subtle">{{ run.run_id }}</a></td>
+        <td>
+          {% set proj_label = (run.client_name ~ (' — ' ~ run.product_name if run.product_name else '')) if run.client_name else run.project_id %}
+          {% if proj_label %}
+            {% if run.project_id %}<a href="/projects/{{ run.project_id }}" class="link-subtle">{{ proj_label }}</a>{% else %}{{ proj_label }}{% endif %}
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
         <td><span class="badge badge-status-{{ run.status }}">{{ run.status }}</span></td>
         <td>{{ run.source_type }}</td>
         <td>{{ run.records_input }}</td>
