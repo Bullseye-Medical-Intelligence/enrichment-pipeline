@@ -1,0 +1,140 @@
+{
+  "version": "ormco-spark-v1",
+  "contact_strategy": "Prefer the lead orthodontist or practice owner when associated with Damon system content, digital workflow pages, or CBCT technology — a named provider tied to the tech investment is the fastest path to a yes. If no such association is apparent, prefer the practice manager or treatment coordinator; they own scheduling and day-to-day workflow friction. Fall back to the first listed orthodontist. Role names in the brief should reference how Spark reduces their workflow friction, not product features.",
+  "signals": [
+    {
+      "signal_id": "S-OS-001",
+      "signal_label": "Damon System listed",
+      "prompt_instruction": "Does this practice explicitly name the Damon System (Damon Clear, Damon Q, Damon Ultima, or Damon Brackets) as a bracket system or treatment option they offer? Do NOT mark 'yes' based on the orthodontist's name alone — only mark 'yes' if the Damon brand is explicitly listed as a product or treatment.",
+      "positive_weight": 40,
+      "required_for_bullseye": true,
+      "note": "Primary competitive-fit gate. A Damon practice already works within Ormco's system; Spark adds aligner continuity without disrupting the bracket workflow. Cross-sell angle: 'You're already seeing Damon outcomes — Spark gives you bracket-to-aligner continuity without changing your workflow or stocking a second brand.' Confirmed 'no' caps at Contender; not_found caps at Needs Verification."
+    },
+    {
+      "signal_id": "S-OS-002",
+      "signal_label": "Invisalign listed",
+      "prompt_instruction": "Does this practice explicitly list Invisalign as an offered aligner treatment?",
+      "positive_weight": -10,
+      "note": "FRICTION. Invisalign presence signals an existing Align Technology relationship. The friction level here reflects Invisalign as a partial competitor; exclusivity is captured separately by S-OS-003. Rep should probe contract terms and exclusivity depth."
+    },
+    {
+      "signal_id": "S-OS-003",
+      "signal_label": "Invisalign-exclusive (no competing aligner brands)",
+      "prompt_instruction": "Does this practice list Invisalign as their aligner offering AND show no competing aligner brands (no ClearCorrect, Spark, SureSmile, or other non-Invisalign aligners listed)? Mark 'yes' only when both conditions are true: Invisalign is offered AND no other aligner brand appears.",
+      "positive_weight": -20,
+      "cap_tier": "Contender",
+      "floor_tier": "Contender",
+      "note": "FRICTION + CAP + FLOOR. Invisalign-exclusive practices are displacement candidates, not Bullseye. floor_tier: Contender ensures they reach the call queue (bypasses evidence gate on negative-scoring signals); cap_tier: Contender ensures they never exceed Contender. Together they pin the displacement path exactly at Contender. Displacement pitch: 'Your Invisalign contract doesn't own your aligner chair. Spark's per-case fee structure lets you A/B test without renegotiating.' If they also list Damon (S-OS-001=yes), the cap still applies — they become a Contender with strong cross-sell potential, not an acquisition Bullseye."
+    },
+    {
+      "signal_id": "S-OS-004",
+      "signal_label": "Spark already listed",
+      "prompt_instruction": "Does this practice explicitly identify itself as a Spark aligner provider, or list Spark by name as an offered treatment?",
+      "positive_weight": 0,
+      "note": "ROUTING FLAG ONLY — no score or tier effect. A 'yes' means this is an existing Ormco/Spark account; route to Existing Account / Retention queue, out of the acquisition call queue. Do NOT use exclude_if_yes — the score must not be capped. This flag is for operator-level routing only."
+    },
+    {
+      "signal_id": "S-OS-005",
+      "signal_label": "Competing bracket system listed (non-Damon)",
+      "prompt_instruction": "Does this practice explicitly list a competing fixed bracket system — such as 3M Clarity, Carriere, Speed, In-Ovation, or another named bracket brand that is NOT the Damon System — as a treatment they offer?",
+      "positive_weight": -5,
+      "note": "FRICTION (minor). Competing bracket presence adds friction but is not disqualifying. Rep should note the brand for displacement context."
+    },
+    {
+      "signal_id": "S-OS-006",
+      "signal_label": "Other competing aligner brands listed",
+      "prompt_instruction": "Does this practice list any clear aligner brand other than Invisalign or Spark — such as ClearCorrect, SureSmile, 3M Clarity Aligners, Reveal, or similar — as an offered treatment?",
+      "positive_weight": 0,
+      "note": "Contextual capture. Multi-brand aligner presence signals an open aligner stack — the practice is not locked to a single system. Rep briefing note only; not scored."
+    },
+    {
+      "signal_id": "S-OS-007",
+      "signal_label": "iTero scanner (Align ecosystem lock)",
+      "prompt_instruction": "Does this practice's website name the iTero intraoral scanner as equipment they use or offer?",
+      "positive_weight": -15,
+      "inhibited_by": "S-OS-008",
+      "note": "FRICTION. iTero is Align Technology's proprietary scanner — an iTero-only practice has its digital capture workflow tightly bound to Invisalign. If the practice also lists a non-iTero scanner (S-OS-008=yes), this friction is suppressed via inhibited_by: a multi-scanner practice is not locked. Friction applies only when the practice is iTero-exclusive."
+    },
+    {
+      "signal_id": "S-OS-008",
+      "signal_label": "Open intraoral scanner present (non-iTero)",
+      "prompt_instruction": "Does this practice's website explicitly name an intraoral scanner other than iTero — such as 3Shape Trios, Medit, Planmeca, Carestream, Dentsply Sirona, or any other non-iTero digital impression system — as equipment they use?",
+      "positive_weight": 25,
+      "note": "Digital sophistication signal, open-ecosystem only. A non-iTero scanner exports open STL files, meaning the practice is not locked to Align's capture workflow. Also suppresses iTero friction (S-OS-007) via inhibited_by when both are present."
+    },
+    {
+      "signal_id": "S-OS-009",
+      "signal_label": "CBCT / cone beam imaging on-site",
+      "prompt_instruction": "Does this practice's website explicitly mention CBCT, cone beam CT, or 3D dental imaging as in-office equipment or a service they provide?",
+      "positive_weight": 25,
+      "note": "Clinical sophistication signal. In-house CBCT indicates investment in complex case management and 3D digital workflow — the case types where Spark's precision series adds the most value."
+    },
+    {
+      "signal_id": "S-OS-010",
+      "signal_label": "Digital workflow explicitly described",
+      "prompt_instruction": "Does this practice's website explicitly describe a digital orthodontic workflow, digital treatment planning, or digital case setup — beyond simply offering an intraoral scanner?",
+      "positive_weight": 0,
+      "note": "Contextual capture. Explicit digital workflow language signals clinical readiness for Spark's digital integration. Weight zero — sophistication is captured through the scanner and CBCT signals. Rep briefing note."
+    },
+    {
+      "signal_id": "S-OS-011",
+      "signal_label": "Intraoral scanner present (any brand)",
+      "prompt_instruction": "Does this practice's website mention any intraoral scanner or digital impression system as equipment they use? This includes any brand: iTero, 3Shape, Medit, Planmeca, Carestream, or other.",
+      "positive_weight": 0,
+      "note": "Broad capture. Specific brand is resolved by S-OS-007 (iTero friction) and S-OS-008 (open scanner benefit). This signal confirms scanner presence when the brand is unclear or unlisted."
+    },
+    {
+      "signal_id": "S-OS-012",
+      "signal_label": "Indirect bonding offered",
+      "prompt_instruction": "Does this practice's website explicitly mention indirect bonding as a technique or service they use for bracket placement?",
+      "positive_weight": 0,
+      "note": "Contextual sophistication signal. Indirect bonding indicates case-volume efficiency investment and familiarity with precision lab workflows. Weight zero — informs rep briefing."
+    },
+    {
+      "signal_id": "S-OS-013",
+      "signal_label": "MARPE / skeletal expansion listed",
+      "prompt_instruction": "Does this practice's website explicitly mention MARPE (miniscrew-assisted rapid palatal expansion), micro-implant anchored expansion, or skeletal palatal expansion as a treatment they offer?",
+      "positive_weight": 0,
+      "floor_tier": "Contender",
+      "note": "NICHE QUALIFIER. MARPE cases require high precision and represent the complex-case load where Spark's system earns its margin. Weight zero — niche merit alone does not score, but floor_tier: Contender ensures a MARPE practice is never buried in Manual Review. Niche angle: 'MARPE cases are your hardest bracket workflow — Spark's precision series is built for that load.'"
+    },
+    {
+      "signal_id": "S-OS-014",
+      "signal_label": "Airway-focused orthodontics",
+      "prompt_instruction": "Does this practice's website explicitly describe airway orthodontics, airway-focused treatment, sleep-disordered breathing treatment, or mandibular advancement as a specialty or service area?",
+      "positive_weight": 0,
+      "floor_tier": "Contender",
+      "note": "NICHE QUALIFIER. Airway-focused orthodontics signals advanced clinical positioning and multi-disciplinary case management. floor_tier: Contender ensures these practices reach the call queue. Niche angle: 'Airway-focused ortho is exactly the case type where digital-first brackets pay off fastest.'"
+    },
+    {
+      "signal_id": "S-OS-015",
+      "signal_label": "Complex treatment types listed",
+      "prompt_instruction": "Does this practice's website explicitly list complex orthodontic case types such as surgical orthodontics, Class II or Class III correction, extraction cases, TAD (temporary anchorage device) use, or interdisciplinary cases?",
+      "positive_weight": 0,
+      "note": "Contextual capture. Complex case depth maps to Spark's premium product lines and indicates a high-value clinical relationship. Rep briefing note."
+    },
+    {
+      "signal_id": "S-OS-016",
+      "signal_label": "Provider education / CE program listed",
+      "prompt_instruction": "Does this practice's website mention a continuing education program, CE courses for referring dentists, study club hosting, or an orthodontic residency training affiliation run by this practice?",
+      "positive_weight": 0,
+      "note": "Rep-prep display signal. A CE-running practice is a clinical influencer — warm-up angle should acknowledge their teaching role. Array contract field decomposed to binary presence. Not scored."
+    },
+    {
+      "signal_id": "S-OS-017",
+      "signal_label": "DSO with competing aligner contract (locked)",
+      "prompt_instruction": "Does this practice appear to be part of a DSO (Dental Service Organization) or corporate dental group that has an exclusive aligner contract with a competitor — such as a DSO that is confirmed Invisalign-only or SureSmile-only across its network?",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "HARD EXCLUSION. DSO locked to a rival aligner system is commercially unreachable — procurement sits at corporate, volume commitments are pre-committed. Score capped at 40 by exclusion engine; route to disqualification log. Note: independent practices affiliated with DSOs but with local purchasing authority are NOT this gate — that is S-OS-018 (DSO cap at Contender) scope if needed."
+    },
+    {
+      "signal_id": "S-OS-018",
+      "signal_label": "GP or pediatric only (no orthodontic services)",
+      "prompt_instruction": "Does this practice appear to provide ONLY general dentistry or pediatric dentistry with no orthodontic specialty services — no mention of braces, clear aligners, an orthodontist on staff, or orthodontic credentials of any kind?",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "HARD EXCLUSION (orthodontist_only gate, default: true). Ormco Spark targets specialist orthodontists. A confirmed GP or pedo-only practice is out of scope for acquisition. Score capped at 40 by exclusion engine."
+    }
+  ]
+}
