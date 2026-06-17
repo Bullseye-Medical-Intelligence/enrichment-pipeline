@@ -235,6 +235,16 @@
       <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b></div>
       {% else %}
       {% if acct.cap_reason %}<div class="fld"><div class="ey" style="color:rgba(247,246,244,0.5);">Why Validate &mdash; Not Call First</div><div style="font-size:13px;color:var(--txt);line-height:1.55;">{{ acct.cap_reason }}</div></div>{% endif %}
+      {% if acct.hours_of_operation %}
+      <div class="fld">
+        <details>
+          <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
+            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Office Hours
+          </summary>
+          <div style="font-size:12.5px;color:var(--txt);margin-top:8px;padding-left:16px;line-height:1.6;">{{ acct.hours_of_operation }}</div>
+        </details>
+      </div>
+      {% endif %}
       {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}
       {% if acct.why_it_matters %}<div class="fld"><div class="ey">Why It Matters</div><ul class="whylist">{% for point in acct.why_it_matters %}<li>{{ point | bold_md }}</li>{% endfor %}</ul></div>{% endif %}
       <div class="twocol">
@@ -253,16 +263,6 @@
       </div>
       {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
       {% if acct.landmine %}<div class="fld"><div class="ey">Landmine</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
-      {% if acct.hours_of_operation %}
-      <div class="fld">
-        <details>
-          <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
-            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Office Hours
-          </summary>
-          <div style="font-size:12.5px;color:var(--txt);margin-top:8px;padding-left:16px;line-height:1.6;">{{ acct.hours_of_operation }}</div>
-        </details>
-      </div>
-      {% endif %}
       <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b> &nbsp;&middot;&nbsp; Tier <b>{{ acct.tier_info.pill }}</b> / Confidence <b>{{ acct.conf_label }}</b></div>
       {% endif %}
     </div>
