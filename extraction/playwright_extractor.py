@@ -149,15 +149,36 @@ def _wait_for_real_content(page, budget_ms: int, poll_ms: int = 2000):
 
 
 def _extract_text_from_html(html: str) -> str:
-    """Strip tags and collapse whitespace — same logic as web_extractor."""
+    """Strip tags and collapse whitespace — same logic as web_extractor.
+    Also surfaces <img> alt/title/src-basename as [image: ...] tokens."""
     from bs4 import BeautifulSoup
     from web_extractor import SKIP_TAGS
 
     soup = BeautifulSoup(html, "lxml")
+
+    # Collect image metadata before img tags are removed by SKIP_TAGS.
+    img_tokens = []
+    for img in soup.find_all("img"):
+        parts = []
+        alt      = (img.get("alt")   or "").strip()
+        title    = (img.get("title") or "").strip()
+        src      = (img.get("src")   or "").strip()
+        src_name = src.rsplit("/", 1)[-1].rsplit("?", 1)[0] if src else ""
+        if alt:
+            parts.append(alt)
+        if title and title != alt:
+            parts.append(title)
+        if src_name and src_name != alt and src_name != title:
+            parts.append(src_name)
+        if parts:
+            img_tokens.append("[image: " + " | ".join(parts) + "]")
+
     for tag in SKIP_TAGS:
         for el in soup.find_all(tag):
             el.decompose()
     text = soup.get_text(separator="\n", strip=True)
+    if img_tokens:
+        text = text + "\n\n" + "\n".join(img_tokens)
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     cleaned = "\n".join(lines)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)

@@ -217,6 +217,9 @@ def _extract_visible_text(html: str) -> str:
     """
     Parse HTML and extract visible text content.
     Strips tags, scripts, styles, and navigation noise.
+    Also surfaces <img> alt text, title attributes, and src basenames as
+    [image: ...] tokens so the LLM can read badge labels and filenames
+    without fetching image bytes.
     Returns cleaned plain text.
     """
     if not html:
@@ -224,13 +227,36 @@ def _extract_visible_text(html: str) -> str:
 
     soup = BeautifulSoup(html, "lxml")
 
-    # Remove noise elements
+    # Collect image metadata before img tags are removed by SKIP_TAGS.
+    # Reads only HTML attributes already in memory — no image bytes, no OCR.
+    img_tokens = []
+    for img in soup.find_all("img"):
+        parts = []
+        alt      = (img.get("alt")   or "").strip()
+        title    = (img.get("title") or "").strip()
+        src      = (img.get("src")   or "").strip()
+        src_name = src.rsplit("/", 1)[-1].rsplit("?", 1)[0] if src else ""
+        if alt:
+            parts.append(alt)
+        if title and title != alt:
+            parts.append(title)
+        if src_name and src_name != alt and src_name != title:
+            parts.append(src_name)
+        if parts:
+            img_tokens.append("[image: " + " | ".join(parts) + "]")
+
+    # Remove noise elements (includes img — metadata already captured above)
     for tag in SKIP_TAGS:
         for element in soup.find_all(tag):
             element.decompose()
 
     # Get text
     text = soup.get_text(separator="\n", strip=True)
+
+    # Append image metadata tokens so the LLM can read badge alt text,
+    # title attributes, and filename hints (e.g. "[image: Diamond Provider | platinum-badge.png]").
+    if img_tokens:
+        text = text + "\n\n" + "\n".join(img_tokens)
 
     # Clean up: collapse multiple blank lines, strip excess whitespace
     lines = [line.strip() for line in text.splitlines()]
