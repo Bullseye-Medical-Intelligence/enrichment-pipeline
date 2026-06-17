@@ -153,3 +153,4 @@ class ReviewEdit(BaseModel):
     override_reason: Optional[str] = None
     qc_status: str = "pending"
     reviewed_by: Optional[str] = None
+    extra_sales_angles: list[str] = []

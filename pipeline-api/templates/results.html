@@ -466,14 +466,40 @@
                 {% endif %}
                 {% endif %}
                 {% set _angles = record.sales_angle | clean_angles %}
-                {% if _angles %}
+                {% set _extra_angles = review.extra_sales_angles if review.extra_sales_angles else [] %}
+                {% if _angles or _extra_angles %}
                 <h4>Sales Angles</h4>
-                <ul class="sales-list">
+                <ul class="sales-list" id="angles-list-{{ rid }}">
                   {% for angle in _angles %}
                   <li>{{ angle }}</li>
                   {% endfor %}
+                  {% for angle in _extra_angles %}
+                  <li>{{ angle }} <span style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#b45309;margin-left:6px;">(Added by Operator)</span></li>
+                  {% endfor %}
                 </ul>
+                {% else %}
+                <h4>Sales Angles</h4>
+                <ul class="sales-list" id="angles-list-{{ rid }}"></ul>
                 {% endif %}
+                <div style="margin-top:6px;">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                    style="font-size:11px;padding:3px 10px;border-radius:100px;"
+                    onclick="toggleAngleInput('{{ rid }}')">+ Add Angle</button>
+                  <div id="angle-input-{{ rid }}" style="display:none;margin-top:8px;display:none;">
+                    <div style="display:flex;gap:6px;align-items:center;">
+                      <input type="text" id="angle-text-{{ rid }}"
+                        placeholder="Enter sales angle..."
+                        style="flex:1;padding:5px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();submitAngle('{{ rid }}','{{ run_id }}');}">
+                      <button type="button" class="btn btn-secondary btn-sm"
+                        style="font-size:11px;padding:3px 10px;border-radius:100px;"
+                        onclick="submitAngle('{{ rid }}','{{ run_id }}')">Save</button>
+                      <button type="button" class="btn btn-secondary btn-sm"
+                        style="font-size:11px;padding:3px 10px;border-radius:100px;"
+                        onclick="toggleAngleInput('{{ rid }}')">Cancel</button>
+                    </div>
+                  </div>
+                </div>
 
                 {% if record.exclusion_reason %}
                 <h4>Exclusion Rationale</h4>
@@ -1160,6 +1186,39 @@ function prepareReenrichSubmit(form) {
   return true;
 }
 {% endif %}
+
+function toggleAngleInput(rid) {
+  var el = document.getElementById('angle-input-' + rid);
+  if (!el) return;
+  var visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    var inp = document.getElementById('angle-text-' + rid);
+    if (inp) inp.focus();
+  }
+}
+
+function submitAngle(rid, runId) {
+  var inp = document.getElementById('angle-text-' + rid);
+  if (!inp) return;
+  var angle = inp.value.trim();
+  if (!angle) { inp.focus(); return; }
+  fetch('/api/ui/reviews/' + runId + '/' + rid + '/add-sales-angle', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({angle: angle})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) { alert('Error: ' + (data.detail || 'Could not save angle')); return; }
+    var list = document.getElementById('angles-list-' + rid);
+    if (list) {
+      var li = document.createElement('li');
+      li.innerHTML = angle + ' <span style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#b45309;margin-left:6px;">(Added by Operator)</span>';
+      list.appendChild(li);
+    }
+    inp.value = '';
+    toggleAngleInput(rid);
+  }).catch(function() { alert('Network error — angle not saved.'); });
+}
 </script>
 
 {% if status.status == 'complete' %}

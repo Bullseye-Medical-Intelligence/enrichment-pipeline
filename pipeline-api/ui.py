@@ -2982,6 +2982,35 @@ async def save_review(
     return JSONResponse(content={"ok": True, "review": saved})
 
 
+@router.post("/api/ui/reviews/{run_id}/{record_id}/add-sales-angle")
+async def add_sales_angle(
+    run_id: str,
+    record_id: str,
+    payload: dict,
+    username: str = Depends(auth.require_session),
+):
+    """Append one operator-authored sales angle to a record's review overlay."""
+    run_directory = runs.run_dir(run_id)
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    angle = (payload.get("angle") or "").strip()
+    if not angle:
+        return JSONResponse(status_code=400, content={"detail": "angle must not be empty"})
+
+    all_reviews = reviews.get_reviews(run_id, run_directory)
+    entry = dict(all_reviews.get(record_id) or reviews.default_review())
+    existing_angles = list(entry.get("extra_sales_angles") or [])
+    existing_angles.append(angle)
+    entry["extra_sales_angles"] = existing_angles
+
+    all_reviews[record_id] = entry
+    reviews._atomic_write(run_directory / reviews.REVIEWS_FILENAME, all_reviews)
+
+    logger.info("Operator %s added sales angle to %s/%s", username, run_id, record_id)
+    return JSONResponse(content={"ok": True, "extra_sales_angles": existing_angles})
+
+
 # ---------------------------------------------------------------------------
 # Helpers: presentation-layer context (not business logic)
 # ---------------------------------------------------------------------------

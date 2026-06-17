@@ -29,6 +29,7 @@ def default_review() -> dict:
         "qc_status": "pending",
         "reviewed_by": None,
         "reviewed_at": None,
+        "extra_sales_angles": [],
     }
 
 
@@ -115,6 +116,9 @@ def save_review(
     _validate_edit(edit)
 
     now = datetime.now(timezone.utc).isoformat()
+    # Preserve existing extra_sales_angles when a standard review edit is saved
+    # (the review form doesn't touch angles — they have their own endpoint).
+    existing = get_reviews(run_id, run_directory).get(record_id, {})
     entry = {
         "analyst_note": edit.analyst_note.strip(),
         "override_tier": edit.override_tier,
@@ -122,6 +126,7 @@ def save_review(
         "qc_status": edit.qc_status,
         "reviewed_by": username,
         "reviewed_at": now,
+        "extra_sales_angles": existing.get("extra_sales_angles", []),
     }
 
     reviews_path = run_directory / REVIEWS_FILENAME
