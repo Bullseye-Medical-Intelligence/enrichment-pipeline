@@ -410,13 +410,25 @@
                   {# A required_for_bullseye YES is always a good outcome (must-have satisfied),
                      overriding any friction flag that may also be set on the signal. #}
                   {% set is_must_have_found = sig.required_for_bullseye and sig.signal_state == "yes" %}
-                  {% set is_good = is_must_have_found or (sig.signal_state == "yes" and sig_weight > 0 and not is_friction) or (sig.signal_state == "no" and is_friction) %}
+                  {% set is_good = is_must_have_found or (sig.signal_state == "yes" and sig_weight > 0 and not is_friction) or (sig.signal_state == "no" and is_friction) or (sig.signal_state == "yes" and sig.floor_tier and not is_friction) %}
                   {% set is_bad  = (sig.signal_state == "yes" and is_friction and not is_must_have_found) or (sig.signal_state == "no" and not is_friction and (sig_weight > 0 or sig.required_for_bullseye)) %}
                   {% set display_state = "not_found" if sig.signal_state == "not_found" else ("yes" if is_good else ("no" if is_bad else sig.signal_state)) %}
                   <div class="signal-item signal-{{ display_state }}">
                     <div class="signal-header">
                       <span class="signal-label">{{ sig.signal_label }}</span>
                       {% if sig.required_for_bullseye %}<span class="signal-must-have-tag">Must Have</span>{% endif %}
+                      {# Signal polarity tag — tells the analyst whether a YES on this signal is positive, friction, or a tier modifier #}
+                      {% if sig_weight > 0 %}
+                      <span class="signal-polarity-tag spt-positive" title="Positive signal — YES adds {{ sig_weight }} points to fit score">+{{ sig_weight }} pts</span>
+                      {% elif sig_weight < 0 %}
+                      <span class="signal-polarity-tag spt-friction" title="Friction signal — YES subtracts {{ sig_weight | abs }} points from fit score">{{ sig_weight }} pts</span>
+                      {% elif sig.exclude_if_yes %}
+                      <span class="signal-polarity-tag spt-excl" title="Exclusion gate — YES excludes this record from the call queue">EXCL</span>
+                      {% elif sig.floor_tier %}
+                      <span class="signal-polarity-tag spt-floor" title="Niche qualifier — YES guarantees at least {{ sig.floor_tier }} tier regardless of score">FLOOR</span>
+                      {% elif sig.cap_tier %}
+                      <span class="signal-polarity-tag spt-cap" title="Tier cap — YES limits tier to {{ sig.cap_tier }}">CAP</span>
+                      {% endif %}
                       {% if sig.source_url %}
                       <a class="signal-state-badge state-{{ display_state }}" href="{{ sig.source_url }}" target="_blank" rel="noopener noreferrer">{{ sig.signal_state | upper | replace("_", " ") }}</a>
                       {% else %}

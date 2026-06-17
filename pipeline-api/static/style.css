@@ -512,6 +512,12 @@ a.signal-state-badge:hover { opacity: 0.8; }
 .state-not_found { background: var(--slate-bg); color: var(--slate); }
 .signal-conf     { font-size: 11px; color: var(--muted); }
 .signal-must-have-tag { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 100px; padding: 1px 6px; white-space: nowrap; }
+.signal-polarity-tag { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.spt-positive { background: var(--green-bg);  color: #166534; }
+.spt-friction { background: var(--red-bg);    color: #991b1b; }
+.spt-excl     { background: var(--red-bg);    color: #991b1b; }
+.spt-floor    { background: var(--amber-bg);  color: #92400e; }
+.spt-cap      { background: var(--amber-bg);  color: #92400e; }
 .signal-evidence { color: var(--muted); margin: 4px 0; line-height: 1.4; }
 .signal-source   { font-size: 11px; color: var(--accent); }
 
