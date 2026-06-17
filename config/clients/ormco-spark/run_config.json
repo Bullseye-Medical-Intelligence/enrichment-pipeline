@@ -27,6 +27,7 @@
     "platinum", "diamond", "provider status", "invisalign provider",
     "top 1%", "preferred provider"
   ],
+  "auto_browser_retry": true,
   "drive_sync": {
     "enabled": false
   }

@@ -186,3 +186,4 @@ Build → validate → ingest → brief. Do not run a live brief off an empty po
 ## Changelog
 
 2026-06-17: invisalign_listed presence penalty (-10) retired as non-discriminating. Replaced with S-OS-019 invisalign_platinum_or_higher friction (-15, cap Contender) + S-OS-002 repurposed to weight-0 tier capture. bullseye_min 90->85 to restore headroom. iTero unchanged. Badge confirm = text + alt + manual locator; vision OCR deferred.
+2026-06-17d: Enabled auto_browser_retry in run_config (was relying on unchecked UI default). Root cause of 100% Manual Review: requests crawler returns <150 chars on JS-rendered/Cloudflare ortho sites, LLM skipped, all signals no_context. Browser-retry forces Chromium render on thin records. Prerequisite: Chromium installed locally via playwright.
