@@ -12,10 +12,10 @@
     },
     {
       "signal_id": "S-OS-002",
-      "signal_label": "Invisalign listed",
-      "prompt_instruction": "Does this practice explicitly list Invisalign as an offered aligner treatment?",
-      "positive_weight": -10,
-      "note": "FRICTION. Invisalign presence signals an existing Align Technology relationship. The friction level here reflects Invisalign as a partial competitor; exclusivity is captured separately by S-OS-003. Rep should probe contract terms and exclusivity depth."
+      "signal_label": "Invisalign provider tier (any level)",
+      "prompt_instruction": "Determine whether this practice offers Invisalign, and if so identify the named provider tier (Bronze, Silver, Gold, Gold Plus, Platinum, Platinum Plus/Elite, Diamond, Diamond Plus). Read tier from page text AND from image alt text, title attributes, and image filenames (e.g. alt='Diamond Provider', 'platinum-badge.png'). Record the specific tier in your reasoning even when it is below Platinum. Mark 'yes' if Invisalign is offered at any tier.",
+      "positive_weight": 0,
+      "note": "CONTEXTUAL / REP-PREP. Invisalign presence is near-universal among orthodontists, so presence is not scored. Captures the specific tier for the rep brief and feeds friction signal S-OS-019."
     },
     {
       "signal_id": "S-OS-003",
@@ -135,6 +135,14 @@
       "positive_weight": 0,
       "exclude_if_yes": true,
       "note": "HARD EXCLUSION (orthodontist_only gate, default: true). Ormco Spark targets specialist orthodontists. A confirmed GP or pedo-only practice is out of scope for acquisition. Score capped at 40 by exclusion engine."
+    },
+    {
+      "signal_id": "S-OS-019",
+      "signal_label": "Invisalign Platinum-or-higher (Align lock-in)",
+      "prompt_instruction": "Mark 'yes' ONLY if the stated Invisalign tier is Platinum, Platinum Plus, Platinum Elite, Diamond, Diamond Plus, or any 'Top 1%' Invisalign designation. Detect from page text AND image alt/title attributes and image filenames. Gold, Gold Plus, Silver, Bronze are 'no'. If no tier is stated anywhere, mark 'not_found'.",
+      "positive_weight": -15,
+      "cap_tier": "Contender",
+      "note": "FRICTION + CAP. Platinum+ signals deep Align lock-in. -15 drops a max-sophistication practice (90) into the displacement lane (75). cap_tier Contender permanently bars a high-tier Invisalign practice from acquisition Bullseye. Confirm against the Invisalign provider locator at QC when the only site evidence is a badge image."
     }
   ]
 }

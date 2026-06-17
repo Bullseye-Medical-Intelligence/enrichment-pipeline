@@ -10,7 +10,7 @@
     "no_web_presence"
   ],
   "taxonomy_exclusion_rules": [],
-  "bullseye_min_score": 90,
+  "bullseye_min_score": 85,
   "verify_near_miss_band": 10,
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
@@ -23,7 +23,9 @@
     "digital workflow", "digital", "airway", "marpe", "expander",
     "indirect bonding", "orthodontist", "orthodontics",
     "technology", "equipment", "service", "treatment",
-    "about", "team", "provider", "doctor", "staff"
+    "about", "team", "provider", "doctor", "staff",
+    "platinum", "diamond", "provider status", "invisalign provider",
+    "top 1%", "preferred provider"
   ],
   "drive_sync": {
     "enabled": false

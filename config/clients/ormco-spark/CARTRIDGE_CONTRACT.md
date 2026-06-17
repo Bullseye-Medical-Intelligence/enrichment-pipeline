@@ -17,7 +17,7 @@ system or open-ecosystem digital workflows.
 | Tier | Criteria |
 |------|----------|
 | **Bullseye** | damon_system_listed=yes AND invisalign_exclusive=no AND non-DSO-locked AND ≥2 scored sophistication signals (open scanner + CBCT) |
-| **Contender** | Invisalign-led displacement candidate (invisalign_exclusive=yes caps at Contender) OR airway/MARPE niche (floor_tier=Contender when either fires) |
+| **Contender** | Invisalign-led displacement candidate (invisalign_exclusive=yes caps at Contender) OR Invisalign Platinum-or-higher (S-OS-019=yes caps at Contender) OR airway/MARPE niche (floor_tier=Contender when either fires) |
 | **Existing Account / Retention** | spark_already_listed=yes — operator routes out of acquisition queue; no score cap, no exclusion |
 | **Excluded** | Any Section 6 gate (see below) |
 
@@ -32,11 +32,12 @@ No new tiers. Engine produces Bullseye / Contender / Excluded / Needs Verificati
 | Signal ID | Field | Weight | Notes |
 |-----------|-------|--------|-------|
 | S-OS-001 | damon_system_listed | +40 | required_for_bullseye |
-| S-OS-002 | invisalign_listed | -10 | friction |
+| S-OS-002 | invisalign_provider_tier (any level) | 0 | contextual / rep-prep; captures named tier (Bronze→Diamond Plus) from text + image alt/title/filename; feeds S-OS-019 |
 | S-OS-003 | invisalign_exclusive | -20 | friction + cap_tier: Contender + floor_tier: Contender (pins displacement candidates exactly at Contender) |
 | S-OS-004 | spark_already_listed | 0 | routing flag only, no score/tier effect |
 | S-OS-005 | custom_bracket_competitor_listed | -5 | minor friction |
 | S-OS-006 | competitor_aligner_listed (non-Invisalign) | 0 | contextual |
+| S-OS-019 | invisalign_platinum_or_higher | -15 | friction + cap_tier: Contender; yes only for Platinum/Platinum Plus/Elite/Diamond/Diamond Plus/Top 1% |
 
 ### Scanner Signals (competitive context, scored)
 
@@ -106,11 +107,16 @@ max_positive = 40 (damon) + 25 (open_scanner) + 25 (cbct) = **90**
 | damon + cbct only | 65 | 72% | ~78 | Contender |
 | damon + open_scanner only | 65 | 72% | ~78 | Contender |
 | damon only | 40 | 44% | ~60 | Contender |
+| damon + open_scanner + cbct + invisalign_platinum=yes | 75 | 83% | ~86 | Contender (S-OS-019 cap) |
 | invisalign_exclusive=yes (any score) | any | any | any | Contender (cap) |
 | marpe=yes OR airway=yes | — | — | — | ≥ Contender (floor) |
 | dso_competitor_locked=yes | — | — | capped 40 | Excluded |
 
-bullseye_min_score = 90 (chassis default, unchanged).
+bullseye_min_score = 85 (lowered from 90 on 2026-06-17 to restore headroom after
+the invisalign presence penalty was retired; see changelog). max_positive is
+unchanged at 90 — S-OS-002 (now weight 0) and S-OS-019 (-15) are non-positive and
+do not enter max_positive. S-OS-019 friction lands a max-sophistication Platinum+
+practice in the displacement lane and the cap_tier holds it at Contender.
 
 > **Engine note (floor_tier):** the `floor_tier` guarantees on S-OS-003 / S-OS-013 /
 > S-OS-014 depend on `signal_extractor` carrying the flag onto enriched signals.
@@ -151,7 +157,7 @@ the engine only supports scalar yes/no/not_found signals:
 
 | Contract Field | Type | Resolution |
 |----------------|------|------------|
-| aligner_brands_listed | array | Decomposed: invisalign_listed (S-OS-002), spark_already_listed (S-OS-004), competitor_aligner_listed (S-OS-006) |
+| aligner_brands_listed | array | Decomposed: invisalign_provider_tier (S-OS-002, contextual) + invisalign_platinum_or_higher (S-OS-019, friction), spark_already_listed (S-OS-004), competitor_aligner_listed (S-OS-006) |
 | scanner_brand | enum (iTero/3Shape/Medit/other/not_found) | Decomposed: itero_scanner_listed (S-OS-007, friction), open_scanner_listed (S-OS-008, positive) |
 | treatment_types_listed | array | Single presence signal: complex_treatment_types_listed (S-OS-015) |
 | provider_education_program | array | Single presence signal: provider_education_program_listed (S-OS-016) |
@@ -176,3 +182,7 @@ python pipeline.py --input data/ormco_input.csv --source outscraper \
 This cartridge is built. It does not source Austin. The asset bank is empty for
 ortho, so a real brief requires pre-ingesting ZIP codes 78664 and 78746 first.
 Build → validate → ingest → brief. Do not run a live brief off an empty pool.
+
+## Changelog
+
+2026-06-17: invisalign_listed presence penalty (-10) retired as non-discriminating. Replaced with S-OS-019 invisalign_platinum_or_higher friction (-15, cap Contender) + S-OS-002 repurposed to weight-0 tier capture. bullseye_min 90->85 to restore headroom. iTero unchanged. Badge confirm = text + alt + manual locator; vision OCR deferred.
