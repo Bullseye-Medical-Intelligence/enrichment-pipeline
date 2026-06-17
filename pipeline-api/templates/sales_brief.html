@@ -281,7 +281,7 @@
 
       {% set _yes_signals = [] %}
       {% if bullseye.signals %}
-      {% for sig in bullseye.signals if sig.signal_state == 'yes' and sig.positive_weight | default(0) | float > 0 %}
+      {% for sig in bullseye.signals if (sig.signal_state == 'yes' or sig.state_inferred) and sig.positive_weight | default(0) | float >= 0 %}
       {% if _yes_signals.append(sig) %}{% endif %}
       {% endfor %}
       {% endif %}
@@ -337,7 +337,7 @@
       {% set _c_yes = [] %}{% set _c_no = [] %}
       {% if contender.signals %}
       {% for sig in contender.signals %}
-        {% if sig.signal_state == 'yes' and sig.positive_weight | default(0) | float > 0 %}{% if _c_yes.append(sig) %}{% endif %}
+        {% if (sig.signal_state == 'yes' or sig.state_inferred) and sig.positive_weight | default(0) | float >= 0 %}{% if _c_yes.append(sig) %}{% endif %}
         {% elif sig.signal_state == 'no' and sig.positive_weight | default(0) | float > 0 %}{% if _c_no.append(sig) %}{% endif %}
         {% endif %}
       {% endfor %}
