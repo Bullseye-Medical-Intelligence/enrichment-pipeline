@@ -62,7 +62,7 @@
   .tsection{margin-bottom:14px;}
   .tshead{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--line);margin-bottom:10px;}
   .tdot{width:9px;height:9px;border-radius:50%;}
-  .tdot.b{background:var(--acc);}.tdot.c{background:var(--warm);}.tdot.e{background:var(--lbl);}
+  .tdot.b{background:var(--acc);}.tdot.c{background:var(--warm);}.tdot.v{background:#6b7fcb;}.tdot.m{background:#7a6b4a;}.tdot.e{background:var(--lbl);}
   .tsname{font-family:'Inter','DM Sans',sans-serif;font-size:18px;font-weight:700;letter-spacing:-0.01em;}
   .tscount{font-size:12px;color:var(--mut);}
 
@@ -82,6 +82,8 @@
   .tpill{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:100px;padding:5px 11px;}
   .tpill.b{background:var(--acc);color:#fff;}
   .tpill.c{border:1px solid var(--warm);color:var(--warm);}
+  .tpill.v{border:1px solid #6b7fcb;color:#6b7fcb;}
+  .tpill.m{border:1px solid #7a6b4a;color:#9e8d68;}
   .tpill.e{border:1px solid var(--line2);color:var(--lbl);}
   .caret{color:var(--mut);font-size:11px;transition:transform .15s;}
   .acct.open .caret{transform:rotate(90deg);}
@@ -151,15 +153,19 @@
   <div class="sit"><span class="slab">Screened</span><span class="sval">{{ total }}</span></div>
   {% if counts[Tier.BULLSEYE] %}<div class="sit"><span class="slab">Call First</span><span class="sval acc">{{ counts[Tier.BULLSEYE] }}</span></div>{% endif %}
   {% if counts[Tier.CONTENDER] %}<div class="sit"><span class="slab">Validate</span><span class="sval">{{ counts[Tier.CONTENDER] }}</span></div>{% endif %}
+  {% if counts[Tier.NEEDS_VERIFICATION] %}<div class="sit"><span class="slab">Needs Verify</span><span class="sval" style="color:#6b7fcb;">{{ counts[Tier.NEEDS_VERIFICATION] }}</span></div>{% endif %}
+  {% if counts[Tier.MANUAL_REVIEW] %}<div class="sit"><span class="slab">No Data</span><span class="sval" style="color:#9e8d68;">{{ counts[Tier.MANUAL_REVIEW] }}</span></div>{% endif %}
   {% if counts[Tier.EXCLUDED] %}<div class="sit"><span class="slab">Suppress</span><span class="sval">{{ counts[Tier.EXCLUDED] }}</span></div>{% endif %}
   <div class="sit"><span class="slab">ICP</span><span class="sval" style="font-size:13px;">{{ run.icp_version }}</span></div>
 </div>
 
 <div class="howto">
-  <div class="row"><b>How to work this list.</b> Three tiers, three jobs.</div>
+  <div class="row"><b>How to work this list.</b> Five tiers, five jobs. Every practice screened is shown.</div>
   <div class="row"><b>Call First</b> &mdash; high-fit, high-evidence. Work now.</div>
   <div class="row"><b>Validate</b> &mdash; real potential. Qualify the authority or source gap before heavy effort.</div>
-  <div class="row"><b>Suppress</b> &mdash; disqualified or low-actionability. Field-time protection.</div>
+  <div class="row"><b>Needs Verification</b> &mdash; strong indicators present; one signal gap to confirm before calling.</div>
+  <div class="row"><b>Insufficient Data</b> &mdash; site could not be crawled. A cold call or re-crawl can unlock these.</div>
+  <div class="row"><b>Suppress</b> &mdash; disqualified by ICP gate. Field-time protection.</div>
 </div>
 
 {% if run.pattern_insight %}
@@ -211,6 +217,22 @@
       {% if acct.evidence %}<div class="exexcerpt">{{ acct.evidence }}</div>{% endif %}
       {% if acct.revisit_if %}<div style="margin-top:10px;"><div class="ey">Revisit if</div><div style="font-size:12px;color:var(--mut);">{{ acct.revisit_if }}</div></div>{% endif %}
       <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by {{ acct.qc_reviewer }}</b></div>
+      {% elif section.tier == Tier.MANUAL_REVIEW %}
+      {% if acct.gate_fired %}<span class="exbadge">{{ acct.gate_fired }}</span>{% endif %}
+      <div class="exexcerpt" style="color:var(--mut);">Website could not be crawled for signal analysis. A direct call or browser-assisted re-crawl can unlock this account.</div>
+      <div class="qc">ICP signals could not be extracted. Not disqualified — data gap only.</div>
+      {% elif section.tier == Tier.NEEDS_VERIFICATION %}
+      {% if acct.gate_fired %}<span class="exbadge" style="background:rgba(107,127,203,0.12);border-color:rgba(107,127,203,0.3);color:#6b7fcb;">{{ acct.gate_fired }}</span>{% endif %}
+      {% if acct.confirmed_signals %}
+      <div class="ey" style="margin-top:8px;">Confirmed Signals</div>
+      <div class="sigrow" style="margin-top:6px;">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
+      {% endif %}
+      {% if acct.verify %}
+      <div class="ey" style="margin-top:14px;">Confirm Before Calling</div>
+      <ul class="verify" style="margin-top:6px;">{% for item in acct.verify %}<li>{{ item }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if acct.cap_reason %}<div style="margin-top:12px;font-size:12.5px;color:var(--mut);border-left:2px solid rgba(107,127,203,0.4);padding-left:10px;">{{ acct.cap_reason }}</div>{% endif %}
+      <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b></div>
       {% else %}
       {% if acct.cap_reason %}<div class="fld"><div class="ey" style="color:rgba(247,246,244,0.5);">Why Validate &mdash; Not Call First</div><div style="font-size:13px;color:var(--txt);line-height:1.55;">{{ acct.cap_reason }}</div></div>{% endif %}
       {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}

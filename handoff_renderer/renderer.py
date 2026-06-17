@@ -45,6 +45,18 @@ _TIER_DISPLAY = {
         "pill": "Validate",
         "dot": "c",
     },
+    Tier.NEEDS_VERIFICATION: {
+        "section": "Needs Verification",
+        "subcount": "confirm one signal before calling",
+        "pill": "Verify",
+        "dot": "v",
+    },
+    Tier.MANUAL_REVIEW: {
+        "section": "Insufficient Data",
+        "subcount": "site could not be crawled",
+        "pill": "No Data",
+        "dot": "m",
+    },
     Tier.EXCLUDED: {
         "section": "Suppress",
         "subcount": "protect field time",
@@ -71,7 +83,7 @@ _CONFIDENCE_ORDER = {
     Confidence.LOW: 2,
 }
 
-_TIER_ORDER = [Tier.BULLSEYE, Tier.CONTENDER, Tier.EXCLUDED]
+_TIER_ORDER = [Tier.BULLSEYE, Tier.CONTENDER, Tier.NEEDS_VERIFICATION, Tier.MANUAL_REVIEW, Tier.EXCLUDED]
 
 
 def _bold_md(text: Optional[str]) -> Markup:

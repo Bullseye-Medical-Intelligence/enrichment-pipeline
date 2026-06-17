@@ -18,6 +18,8 @@ from typing import Optional
 class Tier(Enum):
     BULLSEYE = "BULLSEYE"
     CONTENDER = "CONTENDER"
+    NEEDS_VERIFICATION = "NEEDS_VERIFICATION"
+    MANUAL_REVIEW = "MANUAL_REVIEW"
     EXCLUDED = "EXCLUDED"
 
 

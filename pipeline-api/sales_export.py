@@ -136,13 +136,16 @@ if _REPO_ROOT not in sys.path:
 
 from handoff_renderer import Account, Confidence, HandoffRun, Tier, render_handoff  # noqa: E402
 
-# Tiers included in the client handoff (Needs Verification and Manual Review
-# are not shipped until an analyst confirms them with an override).
-_CLIENT_TIERS = {"Bullseye", "Contender", "Excluded"}
+# All pipeline tiers are included in the client handoff so the client can see
+# the full scope of what was screened. Bullseye and Contender require analyst
+# approval; the other tiers appear without an approval gate.
+_CLIENT_TIERS = {"Bullseye", "Contender", "Needs Verification", "Manual Review", "Excluded"}
 
 _TIER_MAP = {
     "Bullseye": Tier.BULLSEYE,
     "Contender": Tier.CONTENDER,
+    "Needs Verification": Tier.NEEDS_VERIFICATION,
+    "Manual Review": Tier.MANUAL_REVIEW,
     "Excluded": Tier.EXCLUDED,
 }
 
@@ -342,9 +345,24 @@ def _build_handoff_run(
     )
 
 
+def _manual_review_gate_label(rec: dict) -> str:
+    """Return a human-readable gate label for a Manual Review record."""
+    sc = rec.get("source_confidence") or ""
+    if sc == "failed":
+        return "Site unreachable"
+    if sc == "limited":
+        return "Insufficient web data"
+    return "Not crawled"
+
+
+def _nv_gate_label(rec: dict) -> str:
+    """Return a short badge label for a Needs Verification record."""
+    return "Verify first"
+
+
 def _record_to_account(rec: dict, tier_str: str) -> Account:
     """Map a single pipeline record dict to a handoff_renderer Account."""
-    tier = _TIER_MAP.get(tier_str, Tier.EXCLUDED)
+    tier = _TIER_MAP.get(tier_str, Tier.MANUAL_REVIEW)
     confidence = _CONFIDENCE_MAP.get(rec.get("confidence_band") or "Low", Confidence.LOW)
 
     signals = rec.get("signals") or []
@@ -410,8 +428,12 @@ def _record_to_account(rec: dict, tier_str: str) -> Account:
         landmine=_build_landmine(brief),
         cap_reason=cap_reason or None,
         hours_of_operation=(brief.get("hours_of_operation") or "").strip() or None,
-        # Excluded content — badge label and evidence from the primary gate
-        gate_fired=_badge_label_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,
+        # Badge label: exclusion gate for Excluded; crawl-failure label for MR/NV.
+        gate_fired=(
+            _badge_label_for_gate(rec.get("exclusion_primary_gate") or "", signals)
+            or (_manual_review_gate_label(rec) if tier_str == "Manual Review" else None)
+            or (_nv_gate_label(rec) if tier_str == "Needs Verification" else None)
+        ) or None,
         evidence=_evidence_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,
         suppress_reason=None,
         revisit_if=None,
