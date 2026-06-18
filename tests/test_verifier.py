@@ -339,3 +339,71 @@ def test_verification_object_is_additive(tmp_path):
     assert rec["bullseye_score"] == 72                   # score unchanged
     assert rec["signals"][0]["signal_state"] == "not_found"  # original signal unchanged
     assert "verification" in rec                         # additive object present
+
+
+# ---------------------------------------------------------------------------
+# Production-shape regression: enriched_targets.json never carries _context_text
+# (it is stripped at output). The pass must rehydrate it from the Evidence Vault.
+# ---------------------------------------------------------------------------
+
+@patch("enrichment.verifier._call_gpt")
+def test_rehydrates_context_from_evidence_vault(mock_gpt, tmp_path):
+    """With no _context_text in output, anchor-check uses vault-reconstructed text."""
+    from output.evidence_writer import write_record_evidence
+
+    icp = _make_icp_signals(required_id="S-01")
+    # Production shape: the record has NO _context_text key at all.
+    record = {
+        "id": "test-001",
+        "practice_name": "Test Clinic",
+        "target_tier": "Needs Verification",
+        "enrichment_status": "complete",
+        "signals": [
+            {"signal_id": "S-YES", "signal_state": "yes",
+             "evidence_text": "IUI services available on-site.", "state_inferred": False},
+            {"signal_id": "S-01", "signal_state": "not_found", "state_inferred": False},
+        ],
+    }
+    mock_gpt.return_value = _gpt_response_promoting("S-01")
+
+    run_dir = _make_run_dir(tmp_path, [record], icp)
+    # The crawled page text lives only in the vault, keyed by record id.
+    write_record_evidence(
+        run_dir, "test-001",
+        [{"url": "https://example.com/", "text": "Our clinic. IUI services available on-site. Call today."}],
+    )
+
+    stats = run_verification_pass(run_dir, icp)
+
+    # Anchor-check passed against rehydrated text → GPT ran → promote.
+    mock_gpt.assert_called_once()
+    assert stats["promoted"] == 1
+    updated = json.loads((run_dir / "enriched_targets.json").read_text())
+    rec = updated["records"][0]
+    assert rec["verification"]["recommended_action"] == "promote"
+    assert "compromised evidence" not in rec["verification"]["notes"]
+    # Rehydrated context must NOT leak back into the output schema.
+    assert "_context_text" not in rec
+
+
+def test_held_when_no_vault_snapshot(tmp_path):
+    """No _context_text and no vault snapshot → yes-signal anchor-fails, GPT skipped."""
+    icp = _make_icp_signals(required_id="S-01")
+    record = {
+        "id": "test-001",
+        "practice_name": "Test Clinic",
+        "target_tier": "Needs Verification",
+        "enrichment_status": "complete",
+        "signals": [
+            {"signal_id": "S-YES", "signal_state": "yes",
+             "evidence_text": "IUI services available on-site.", "state_inferred": False},
+            {"signal_id": "S-01", "signal_state": "not_found", "state_inferred": False},
+        ],
+    }
+    run_dir = _make_run_dir(tmp_path, [record], icp)
+
+    with patch("enrichment.verifier._call_gpt") as mock_gpt:
+        stats = run_verification_pass(run_dir, icp)
+        mock_gpt.assert_not_called()
+
+    assert stats["held"] == 1

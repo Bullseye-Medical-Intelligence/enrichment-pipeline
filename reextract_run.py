@@ -5,13 +5,14 @@ Usage:
     python reextract_run.py --run-dir output/runs/<id> --icp config/.../icp_checklist.json
     python reextract_run.py --run-dir output/runs/<id> --icp config/.../icp_checklist.json --preview
 
-Loads a completed run's enriched_targets.json, re-runs Claude signal extraction
-(Step 4) on the stored _context_text for each enriched record using the supplied
-ICP, then immediately re-runs Steps 6-7 (exclusion check + scoring validation).
+Loads a completed run's enriched_targets.json, rehydrates each record's page
+text from the Evidence Vault (_context_text is stripped from output at write
+time), re-runs Claude signal extraction (Step 4) on it using the supplied ICP,
+then immediately re-runs Steps 6-7 (exclusion check + scoring validation).
 
 Records are skipped when:
   - enrichment_status == "not_enriched" (ingest-only roster rows)
-  - no _context_text stored (records that were never crawled)
+  - no Evidence Vault snapshot (records that were never successfully crawled)
 
 Records with thin context (source_confidence limited/failed) are not skipped —
 extract_signals() handles the thin-context short-circuit itself and sets
@@ -54,6 +55,21 @@ def _load_run_config(run_dir: Path) -> dict:
     if snapshot_path.exists():
         return json.loads(snapshot_path.read_text(encoding="utf-8"))
     return {}
+
+
+def _rehydrate_missing_context(run_dir: Path, records: list[dict]) -> None:
+    """Refill `_context_text` from the Evidence Vault for records missing it.
+
+    _context_text is stripped from enriched_targets.json at output time, so a
+    completed run never carries it. Rehydrate from the archived page snapshots
+    so re-extraction sees the same text the original crawl scored.
+    """
+    from output.evidence_writer import read_record_context_text
+
+    for record in records:
+        if (record.get("_context_text") or "").strip():
+            continue
+        record["_context_text"] = read_record_context_text(run_dir, record.get("id", ""))
 
 
 def _is_eligible(record: dict) -> bool:
@@ -130,6 +146,7 @@ def run_reextract_pass(
         wrapper = None
         records = list(raw)
 
+    _rehydrate_missing_context(run_dir, records)
     contact_strategy = icp_data.get("contact_strategy", "")
     eligible_indices = [i for i, r in enumerate(records) if _is_eligible(r)]
 
@@ -158,6 +175,11 @@ def run_reextract_pass(
                     "old_score": old_scores[idx],
                     "new_score": new_score,
                 })
+
+    # Strip internal (_-prefixed) fields — including the rehydrated _context_text
+    # and any re-extraction bookkeeping — so the written output keeps its contract.
+    from enrichment.scorer import strip_internal_fields
+    records = [strip_internal_fields(r) for r in records]
 
     tmp_path = targets_path.with_suffix(".json.tmp")
     if wrapper is not None:
@@ -188,6 +210,8 @@ def run_reextract_preview(run_dir: Path) -> dict:
 
     raw = json.loads(targets_path.read_text(encoding="utf-8"))
     records = raw.get("records", []) if isinstance(raw, dict) else raw
+
+    _rehydrate_missing_context(run_dir, records)
 
     eligible = 0
     skipped_not_enriched = 0

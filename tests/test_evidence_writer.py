@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from output.evidence_writer import (
     EVIDENCE_DIRNAME,
     INDEX_FILENAME,
+    MAX_COMBINED_CONTEXT_CHARS,
+    read_record_context_text,
     read_record_evidence_index,
     sanitize_record_id,
     write_record_evidence,
@@ -93,3 +95,28 @@ class TestReadRecordEvidenceIndex:
 
     def test_traversal_record_id_returns_empty(self, tmp_path):
         assert read_record_evidence_index(tmp_path, "../../outside") == []
+
+
+class TestReadRecordContextText:
+    def test_reconstructs_source_prefixed_blocks(self, tmp_path):
+        write_record_evidence(tmp_path, "T-001", _pages())
+        context = read_record_context_text(tmp_path, "T-001")
+        assert "[Source: https://example.com/]" in context
+        assert "Homepage text about IUD insertion." in context
+        assert "[Source: https://example.com/services]" in context
+        assert "Services: contraception counseling." in context
+        # Blocks joined by the same separator a live crawl uses.
+        assert "\n\n---\n\n" in context
+
+    def test_missing_snapshot_returns_empty(self, tmp_path):
+        assert read_record_context_text(tmp_path, "T-404") == ""
+
+    def test_traversal_record_id_returns_empty(self, tmp_path):
+        assert read_record_context_text(tmp_path, "../../outside") == ""
+
+    def test_combined_cap_applied(self, tmp_path):
+        big = "x" * (MAX_COMBINED_CONTEXT_CHARS + 5000)
+        write_record_evidence(tmp_path, "T-001", [{"url": "https://example.com/", "text": big}])
+        context = read_record_context_text(tmp_path, "T-001")
+        assert len(context) <= MAX_COMBINED_CONTEXT_CHARS + len("\n\n[... truncated for token budget ...]")
+        assert context.endswith("[... truncated for token budget ...]")

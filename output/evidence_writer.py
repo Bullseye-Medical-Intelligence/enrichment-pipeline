@@ -31,6 +31,12 @@ PAGE_FILENAME_TEMPLATE = "page-{:02d}.txt"
 
 _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
 
+# Mirror of extraction.web_extractor.MAX_COMBINED_CHARS — kept local to avoid an
+# output -> extraction import. Caps reconstructed context so a post-run pass sees
+# the same budget a live Step 4 saw.
+MAX_COMBINED_CONTEXT_CHARS = 25000
+_CONTEXT_BLOCK_SEPARATOR = "\n\n---\n\n"
+
 
 def sanitize_record_id(record_id: str) -> str:
     """Reduce a record id to filesystem-safe characters (path-traversal guard)."""
@@ -103,3 +109,42 @@ def read_record_evidence_index(output_dir: Path, record_id: str) -> list[dict]:
         return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError):
         return []
+
+
+def read_record_context_text(output_dir: Path, record_id: str) -> str:
+    """Reconstruct a record's `_context_text` from its Evidence Vault snapshot.
+
+    Internal pipeline fields are stripped before enriched_targets.json is
+    written, so post-run passes (verification, re-extraction) cannot read
+    `_context_text` back from the output. This rebuilds it from the archived
+    page files in the same shape a live crawl produced: each page wrapped as
+    "[Source: <url>]\\n<text>" and joined with the block separator, capped at
+    the combined-context budget. Returns "" when the record has no snapshot.
+    """
+    try:
+        record_dir = evidence_dir_for_record(output_dir, record_id)
+    except ValueError:
+        return ""
+    index = read_record_evidence_index(output_dir, record_id)
+    if not index:
+        return ""
+
+    blocks = []
+    for entry in index:
+        page_path = record_dir / Path(entry.get("file", "")).name
+        if not page_path.exists():
+            continue
+        try:
+            text = page_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not text.strip():
+            continue
+        blocks.append(f"[Source: {entry.get('url', '')}]\n{text}")
+
+    if not blocks:
+        return ""
+    combined = _CONTEXT_BLOCK_SEPARATOR.join(blocks)
+    if len(combined) > MAX_COMBINED_CONTEXT_CHARS:
+        combined = combined[:MAX_COMBINED_CONTEXT_CHARS] + "\n\n[... truncated for token budget ...]"
+    return combined

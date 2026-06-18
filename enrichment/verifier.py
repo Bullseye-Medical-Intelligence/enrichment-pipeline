@@ -6,7 +6,8 @@ Operates on a completed run's enriched_targets.json. Targets only records
 in the Needs Verification tier. Two phases per record:
 
   a. Anchor-check (free): confirm each "yes" signal's evidence_text appears
-     verbatim (normalized whitespace+case) in the stored _context_text.
+     verbatim (normalized whitespace+case) in the page text. _context_text is
+     stripped from output, so it is rehydrated from the Evidence Vault first.
      Anchor-failed signals are demoted to not_found. Records with any
      anchor failure skip GPT — compromised evidence is not worth re-checking.
 
@@ -32,6 +33,8 @@ from typing import Optional
 
 import openai
 from dotenv import load_dotenv
+
+from output.evidence_writer import read_record_context_text
 
 load_dotenv()
 
@@ -351,6 +354,11 @@ def run_verification_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
 
         name = record.get("practice_name", f"record[{i}]")
         print(f"\n  [VER] {name}")
+        # _context_text is stripped from enriched_targets.json at output time;
+        # rehydrate it from the Evidence Vault so anchor-check + blind GPT have
+        # the page text the crawler actually saw.
+        if not (record.get("_context_text") or "").strip():
+            record["_context_text"] = read_record_context_text(run_dir, record.get("id", ""))
         try:
             record = _verify_record(record, icp_signals)
             action = record["verification"]["recommended_action"]
@@ -368,6 +376,9 @@ def run_verification_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
             print(f"    [ERROR] {str(e)[:150]}")
             stats["errors"] += 1
 
+        # Drop any rehydrated internal context before persisting — _context_text
+        # is never part of the output schema.
+        record.pop("_context_text", None)
         records[i] = record
 
     # Atomic write

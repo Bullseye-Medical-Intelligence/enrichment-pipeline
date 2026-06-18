@@ -387,3 +387,81 @@ class TestLoaders:
         )
         data = _load_icp_data(icp_path)
         assert len(data["signals"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Evidence Vault rehydration (production shape: no _context_text in output)
+# ---------------------------------------------------------------------------
+
+from output.evidence_writer import write_record_evidence
+
+
+def _production_record(record_id="rec-1", status="enriched"):
+    """A record as written to enriched_targets.json: no _context_text key."""
+    return {
+        "id": record_id,
+        "practice_name": "Test Clinic",
+        "enrichment_status": status,
+        "target_tier": "Contender",
+        "bullseye_score": 40,
+        "exclusion_status": "CLEAR",
+        "signals": [],
+    }
+
+
+class TestVaultRehydration:
+
+    def test_preview_counts_vault_record_as_eligible(self, tmp_path):
+        """A crawled record with a vault snapshot is eligible despite no _context_text."""
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, [_production_record()])
+        write_record_evidence(run_dir, "rec-1",
+                              [{"url": "https://example.com/", "text": "Clinic services text."}])
+
+        stats = run_reextract_preview(run_dir)
+        assert stats["eligible"] == 1
+        assert stats["skipped_no_context"] == 0
+
+    def test_preview_no_vault_counts_as_no_context(self, tmp_path):
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, [_production_record()])
+
+        stats = run_reextract_preview(run_dir)
+        assert stats["eligible"] == 0
+        assert stats["skipped_no_context"] == 1
+
+    def test_pass_rehydrates_and_strips_context(self, tmp_path, monkeypatch):
+        """The pass feeds vault text to extract_signals and never persists _context_text."""
+        import enrichment.signal_extractor as se
+        import enrichment.exclusion_checker as ec
+        import enrichment.scorer as sc
+
+        seen = {}
+
+        def _capture_extract(record, icp_signals, context_text, run_id, **kwargs):
+            seen["text"] = context_text
+            record["signals"] = []
+            record["target_tier"] = "Bullseye"
+            record["bullseye_score"] = 80
+
+        monkeypatch.setattr(se, "extract_signals", _capture_extract)
+        monkeypatch.setattr(ec, "apply_exclusions", _fake_apply_exclusions)
+        monkeypatch.setattr(sc, "validate_and_finalize", _fake_validate_and_finalize)
+
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, [_production_record()])
+        write_record_evidence(run_dir, "rec-1",
+                              [{"url": "https://example.com/", "text": "Clinic offers IUI."}])
+
+        stats = run_reextract_pass(run_dir, [], {}, {}, llm_concurrency=1)
+
+        assert stats["processed"] == 1
+        assert "Clinic offers IUI." in seen["text"]
+        assert "[Source: https://example.com/]" in seen["text"]
+
+        result = json.loads((run_dir / "enriched_targets.json").read_text())
+        assert "_context_text" not in result["records"][0]
+        assert result["records"][0]["target_tier"] == "Bullseye"
