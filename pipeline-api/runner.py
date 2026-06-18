@@ -34,6 +34,25 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# Pipeline stdout is captured and, on failure, the tail is persisted for
+# diagnostics. stderr remains the primary error_summary; stdout is supplemental.
+PIPELINE_STDOUT_FILENAME = "pipeline_stdout.log"
+_STDOUT_TAIL_BYTES = 20000
+
+
+def _persist_stdout_tail(run_id: str, stdout_bytes: bytes) -> None:
+    """Write the tail of a failed run's stdout to the run dir for diagnostics.
+
+    Best-effort: a logging-side failure must never mask the original run error.
+    """
+    if not stdout_bytes:
+        return
+    try:
+        tail = stdout_bytes[-_STDOUT_TAIL_BYTES:].decode("utf-8", errors="replace")
+        (runs.run_dir(run_id) / PIPELINE_STDOUT_FILENAME).write_text(tail, encoding="utf-8")
+    except Exception:
+        logger.exception("Could not persist stdout tail for run %s", run_id)
+
 
 @dataclass
 class InplaceUpdateResult:
@@ -114,11 +133,12 @@ async def monitor_pipeline(
     loop = asyncio.get_event_loop()
     try:
         # communicate() reads both pipes while waiting, preventing pipe-buffer deadlock.
-        _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
+        stdout_bytes, stderr_bytes = await loop.run_in_executor(None, process.communicate)
 
         if process.returncode == 0:
             failure_msg = _validate_output_files(run_id)
             if failure_msg:
+                _persist_stdout_tail(run_id, stdout_bytes)
                 runs.update_run_status(
                     run_id,
                     status="failed",
@@ -140,6 +160,7 @@ async def monitor_pipeline(
                 # (POST /enrichment-runs/{run_id}/update-registry) so a completed
                 # run never mutates platform-level memory without review.
         else:
+            _persist_stdout_tail(run_id, stdout_bytes)
             error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
             runs.update_run_status(
                 run_id,

@@ -47,12 +47,13 @@ _VALID_LOG = {
 
 
 class _FakeProcess:
-    def __init__(self, returncode: int = 0, stderr: bytes = b""):
+    def __init__(self, returncode: int = 0, stderr: bytes = b"", stdout: bytes = b""):
         self.returncode = returncode
         self._stderr = stderr
+        self._stdout = stdout
 
     def communicate(self):
-        return (b"", self._stderr)
+        return (self._stdout, self._stderr)
 
 
 @pytest.fixture
@@ -364,6 +365,35 @@ def test_monitor_marks_failed_on_nonzero_exit(run_store):
     status = runs.get_run(run_id)
     assert status.status == "failed"
     assert "SyntaxError" in status.error_summary
+
+
+def test_monitor_persists_stdout_tail_on_nonzero_exit(run_store):
+    """A failed run's stdout is written to pipeline_stdout.log for diagnostics."""
+    run_id = "RUN-20260528-100006-aaaa"
+    run_dir = _make_run(run_store, run_id)
+
+    asyncio.run(runner.monitor_pipeline(
+        run_id,
+        _FakeProcess(returncode=1, stderr=b"boom", stdout=b"STEP 4: signal extract\nprogress 5/10"),
+    ))
+
+    log = run_dir / runner.PIPELINE_STDOUT_FILENAME
+    assert log.exists()
+    assert "STEP 4: signal extract" in log.read_text(encoding="utf-8")
+
+
+def test_monitor_no_stdout_log_on_success(run_store):
+    """A clean run does not write a stdout log file."""
+    run_id = "RUN-20260528-100007-bbbb"
+    run_dir = _make_run(run_store, run_id)
+    (run_dir / "enriched_targets.json").write_text(json.dumps(_VALID_ENRICHED))
+    (run_dir / "run_log.json").write_text(json.dumps(_VALID_LOG))
+
+    asyncio.run(runner.monitor_pipeline(
+        run_id, _FakeProcess(returncode=0, stdout=b"all good")
+    ))
+
+    assert not (run_dir / runner.PIPELINE_STDOUT_FILENAME).exists()
 
 
 # ---------------------------------------------------------------------------
