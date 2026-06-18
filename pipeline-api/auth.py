@@ -10,7 +10,12 @@ from typing import Optional
 from fastapi import HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from config import SESSION_MAX_AGE_HOURS, SESSION_SECRET_KEY, get_valid_users
+from config import (
+    SESSION_COOKIE_SECURE,
+    SESSION_MAX_AGE_HOURS,
+    SESSION_SECRET_KEY,
+    get_valid_users,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +93,7 @@ def create_session_cookie(response, username: str) -> None:
         max_age=SESSION_MAX_AGE_HOURS * 3600,
         httponly=True,
         samesite="lax",
+        secure=SESSION_COOKIE_SECURE,
     )
 
 

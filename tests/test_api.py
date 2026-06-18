@@ -210,6 +210,32 @@ def test_validate_credentials_unknown_user():
     assert auth.validate_credentials("ghost", "secret-pw") is False
 
 
+class _RecordingResponse:
+    """Captures set_cookie kwargs for assertion."""
+    def __init__(self):
+        self.cookie_kwargs = None
+
+    def set_cookie(self, **kwargs):
+        self.cookie_kwargs = kwargs
+
+
+def test_session_cookie_secure_follows_config(monkeypatch):
+    """create_session_cookie sets Secure per the SESSION_COOKIE_SECURE flag."""
+    monkeypatch.setattr(auth, "SESSION_COOKIE_SECURE", True)
+    resp = _RecordingResponse()
+    auth.create_session_cookie(resp, "tester")
+    assert resp.cookie_kwargs["secure"] is True
+    assert resp.cookie_kwargs["httponly"] is True
+
+
+def test_session_cookie_not_secure_by_default(monkeypatch):
+    """With the flag off, the cookie is not marked Secure (local HTTP dev)."""
+    monkeypatch.setattr(auth, "SESSION_COOKIE_SECURE", False)
+    resp = _RecordingResponse()
+    auth.create_session_cookie(resp, "tester")
+    assert resp.cookie_kwargs["secure"] is False
+
+
 from ui import _friendly_error, _compute_readiness, _pending_review_count, _parse_signals_from_form  # noqa: E402
 
 

@@ -114,6 +114,7 @@ exists in config but is **not** used for authentication.
 | `UI_USERNAME` | Yes | — | Operator login username (session-cookie auth) |
 | `UI_PASSWORD` | Yes | — | Operator login password (constant-time compared) |
 | `SESSION_SECRET_KEY` | Yes | — | Signing key for the session cookie |
+| `SESSION_COOKIE_SECURE` | No | `0` | Mark the session cookie Secure (HTTPS-only). Set `1` on HTTPS deployments |
 | `PIPELINE_REPO_PATH` | Yes | — | Absolute path to the enrichment pipeline repo |
 | `OUTPUT_RUNS_PATH` | Yes | — | Absolute path where run directories are written |
 | `PROJECTS_PATH` | No | `{output}/projects` | Where project_config.json files are stored |

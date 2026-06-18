@@ -163,6 +163,11 @@ SESSION_SECRET_KEY: str = os.environ.get("SESSION_SECRET_KEY", "")
 # Session lifetime in hours
 SESSION_MAX_AGE_HOURS: int = int(os.environ.get("SESSION_MAX_AGE_HOURS", "8"))
 
+# Mark the session cookie Secure (HTTPS-only). Default off so local HTTP dev
+# works; set to 1/true on any HTTPS deployment so the cookie never travels over
+# plain HTTP.
+SESSION_COOKIE_SECURE: bool = os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes")
+
 
 def get_valid_users() -> dict[str, str]:
     """Return {username: password} from UI_USERS or UI_USERNAME/UI_PASSWORD."""
