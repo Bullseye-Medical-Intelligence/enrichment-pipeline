@@ -241,7 +241,7 @@ No per-record cost fields exist.
 
 **Run comparison view** (`/dashboard/compare`): side-by-side tier comparison between any two completed runs. Records are matched by `(practice_name.lower(), address_city.lower())` key — not by `record_id` (which differs across runs). Shows tier changes (with ↑/↓/→ direction), unchanged records (collapsed), and records only in one run (collapsed). No writes.
 
-**Post-run pass buttons** (complete runs, secondary header row): "Re-extract Signals" shells out to `reextract_run.py` — re-runs Claude signal extraction from stored `_context_text` without re-crawling, using the run's frozen ICP snapshot. "Re-check Suppression" shells out to `suppress_run.py` — re-applies the project suppression list with no LLM cost; button only shown when the run's project config has `suppression_list_path` set and the file exists.
+**Post-run pass buttons** (complete runs, secondary header row): "Re-extract Signals" shells out to `reextract_run.py` — re-runs Claude signal extraction without re-crawling, using the run's frozen ICP snapshot. Page text is rehydrated from the Evidence Vault (`_context_text` is stripped from output at write time), so records with a vault snapshot are re-extractable. "Re-check Suppression" shells out to `suppress_run.py` — re-applies the project suppression list with no LLM cost; button only shown when the run's project config has `suppression_list_path` set and the file exists.
 
 ---
 
@@ -328,7 +328,7 @@ Post-run pass routes (complete runs only; each shells out to a CLI at repo root)
 POST   /dashboard/{run_id}/verify                 GPT verification pass on Needs Verification records (verify_run.py)
 POST   /dashboard/{run_id}/rescore                Re-score with frozen ICP weights — Steps 6-7 only, no LLM (rescore_run.py)
 POST   /dashboard/{run_id}/rescore-preview        Preview rescore tier transitions without writing (rescore_run.py --preview)
-POST   /dashboard/{run_id}/reextract              Re-run Claude signal extraction from stored _context_text (reextract_run.py); LLM cost
+POST   /dashboard/{run_id}/reextract              Re-run Claude signal extraction; page text rehydrated from the Evidence Vault (reextract_run.py); LLM cost
 POST   /dashboard/{run_id}/resuppress             Re-check all records against the project suppression list (suppress_run.py); no LLM
 POST   /dashboard/{run_id}/recrawl                Re-crawl all blocked/thin records with Playwright (recrawl_run.py)
 

@@ -141,7 +141,11 @@ Verification"`**. For each, it runs an anchor-check plus a blind GPT
 re-extraction and writes an additive `verification` object (see the post-run pass
 section for its shape). It never overwrites Claude's signals, scores, or tier and
 never auto-promotes — an operator override is still required to ship the record.
-Records with an existing `verified_at` are skipped (idempotent).
+Records with an existing `verified_at` are skipped (idempotent). Because
+`_context_text` is stripped from `enriched_targets.json` at output time, the pass
+rehydrates each record's page text from the Evidence Vault
+(`output/evidence_writer.py::read_record_context_text`) before anchor-check / GPT;
+the same rehydration backs `reextract_run.py`.
 
 **Verification disagreement rules:**
 - Verification informs the analyst; it never auto-promotes a record and never

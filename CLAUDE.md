@@ -81,7 +81,7 @@ Every score bound, weight, threshold, and blend factor lives in
    **Auto browser-retry (Step 3b, opt-in)** — with `--auto-browser-retry` (CLI) or `auto_browser_retry: true` (run_config), records that come back blocked/thin from the standard crawler (`source_confidence` limited/failed, or under `MIN_CONTEXT_CHARS` of text) are re-crawled once with headless Chromium before Step 4. `_records_needing_browser_retry` targets only the blocked subset, so most records keep the fast HTTP path; no-op when the whole run is already `--playwright`. This recovers bot-gated sites automatically instead of waiting for an operator to click "Re-crawl with Browser". Exposed in the API as a checkbox on "Enrich All".
    **Manual content (`--manual-content-path`)** — for a single site behind a hard CAPTCHA wall the crawler cannot clear, the operator captures the page in their own browser (Save Page As .html, or copy the visible text) and supplies it. The flag bypasses Steps 2-3 entirely: `_load_manual_content` loads that file into every record's `_context_text` (HTML converted with the crawler's `_extract_text_from_html`, plain text used as-is), sets `source_confidence = "partial"`, and Step 4 runs on it unchanged. Exposed in the API as a per-record "Paste site content" form (`orchestrate_manual_content_recrawl`).
 4. **Signal extract (Claude)** — per-record LLM signal extraction + scoring (`enrichment/signal_extractor.py`), `llm_concurrency` workers, checkpointed. Records with fewer than `MIN_CONTEXT_CHARS` of website text skip the LLM call; all signals are set to `not_found` and `enrichment_status = "partial"` to prevent hallucinations from thin context.
-5. **Verification (GPT)** — Selective second pass via `enrichment/verifier.py`. `_select_verification_records(records, bullseye_min, near_miss_band)` chooses which records enter GPT: **near-miss records** (score in `[bullseye_min − near_miss_band, bullseye_min)`) are always verified — that is where GPT adds the most value. **Bullseye records** (score ≥ `bullseye_min`) are verified only when at least one confirmed-YES signal was extracted at `low` confidence; all-medium/high-confidence Bullseyes are skipped because GPT agrees and the call wastes spend. **Thin-context records** (`source_confidence` `limited`/`failed`) are always skipped — the tier will be capped in Step 6 regardless, and GPT sees the same limited text. `_record_warrants_verification(record)` encapsulates the Bullseye skip logic. Near-miss records that pass verification are not auto-promoted; an operator override is still required.
+5. **Verification (GPT)** — NOT an inline step in `pipeline.py`. Verification runs as a **separate, operator-triggered post-run pass** (`verify_run.py` → `enrichment/verifier.py::run_verification_pass`), invoked from the dashboard (`POST /dashboard/{run_id}/verify`). It operates on a completed run's `enriched_targets.json` and targets only `Needs Verification` records. Two phases per record: (a) **anchor-check** (free) — confirm each `"yes"` signal's `evidence_text` appears verbatim in the page text; any anchor failure skips GPT (compromised evidence). (b) **blind GPT re-extraction** (survivors) — GPT independently re-extracts the unconfirmed gating signals. Results are written as an additive `verification` object (`recommended_action`: promote / hold / disqualify); signals, tier, and score are never overwritten, and a promote still requires an operator override. The pass is idempotent (records with `verification.verified_at` are skipped). Because `_context_text` is stripped from output, the pass **rehydrates page text from the Evidence Vault** (`output/evidence_writer.py::read_record_context_text`) before anchor-check / GPT.
 6. **Exclusion check** — hard + configurable rules, tier assignment (`enrichment/exclusion_checker.py`).
 7. **Scoring validation** — clamp, validate, enforce invariants (`enrichment/scorer.py`).
 8. **Output** — write JSON, CSV, run_log.json (`output/`, atomic writes).
@@ -305,7 +305,7 @@ let scoring and signals decide instead. The `type` column is optional on import.
 - **`config/icp_checklist.json`** — generic placeholder template (two skeleton
   signals). Copy to `config/clients/<client_slug>/icp_checklist.json` and replace
   with the client's real ICP signals.
-- **`verify_near_miss_band`** (run_config, default `0`): near-miss GPT verification band. Set to `N` to also verify records scoring `[bullseye_min − N, bullseye_min)` — the highest-value GPT spend since those records are genuinely borderline. Recommended: `10`. Note: Bullseye records are now only verified when they contain a low-confidence signal (high-confidence Bullseyes are skipped regardless of this setting); thin-context records are always skipped.
+- **`verify_near_miss_band`** (run_config, default `0`): legacy knob retained for backward compatibility. It is **not consumed** by the current verification design — verification is a separate, operator-triggered post-run pass (see Step 5) that targets `Needs Verification` records regardless of this value. Safe to leave at `0`.
 - **`config/clients/obgyn_femasys/`** — reference implementation for the first
   engagement (Femasys / OBGYN). Pass these with `--config` and `--icp`:
   ```
@@ -360,10 +360,11 @@ python -m pytest tests/ -q
 All tests are **deterministic — no API calls, no HTTP**. Key suites in
 `tests/test_pipeline.py`: signal normalization, scoring (`TestScoring`),
 reinforcement (`TestReinforcement`), tier assignment (`TestTierAssignment`),
-specialty inference, exclusions. `TestNearMissVerificationSelection` covers the
-`_select_verification_records` helper. `tests/test_runner.py` covers in-place
-re-enrichment merge safety. Any scoring/tier/signal change must keep these green
-and add coverage for new behavior. Lint touched files with `pyflakes`.
+specialty inference, exclusions. `tests/test_verifier.py` covers the post-run GPT
+verification pass (anchor-check, blind re-extraction, Evidence Vault rehydration)
+and `tests/test_reextract.py` the re-extraction pass. `tests/test_runner.py` covers
+in-place re-enrichment merge safety. Any scoring/tier/signal change must keep these
+green and add coverage for new behavior. Lint touched files with `pyflakes`.
 
 ---
 
