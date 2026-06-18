@@ -1,12 +1,15 @@
 """
 upload_site.py — upload static site files to Hostinger via FTP.
 
-Usage:
-    python upload_site.py [file1.html file2.html ...]
+The Hostinger FTP account is chrooted to public_html, so FTP root == web root.
+Files in site/ map directly: site/index.html → FTP root index.html.
 
-If no files are given it uploads everything in the site/ directory.
-Reads credentials from pipeline-api/.env (HOSTINGER_SFTP_HOST / USER / PASSWORD).
-Uses plain FTP on port 21 (standard Hostinger shared hosting).
+Usage:
+    python upload_site.py                          # upload ALL files in site/
+    python upload_site.py site/index.html          # upload specific file(s)
+
+Reads credentials from pipeline-api/.env or environment variables:
+    HOSTINGER_SFTP_HOST, HOSTINGER_SFTP_USER, HOSTINGER_SFTP_PASSWORD
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 
-# Load .env from pipeline-api/ when running from repo root
+# ── Load .env ─────────────────────────────────────────────────
 _env_path = Path(__file__).parent / "pipeline-api" / ".env"
 if _env_path.exists():
     for line in _env_path.read_text().splitlines():
@@ -28,10 +31,17 @@ if _env_path.exists():
 HOST = os.environ.get("HOSTINGER_SFTP_HOST", "")
 USER = os.environ.get("HOSTINGER_SFTP_USER", "")
 PASSWORD = os.environ.get("HOSTINGER_SFTP_PASSWORD", "")
-REMOTE_ROOT = "public_html"  # relative to FTP home on Hostinger
+SITE_DIR = Path(__file__).parent / "site"
+
+# FTP home is already the web root (Hostinger chroots to public_html)
+_REMOTE_ROOT = ""
 
 if not all([HOST, USER, PASSWORD]):
-    sys.exit("Missing HOSTINGER_SFTP_HOST / USER / PASSWORD in pipeline-api/.env")
+    sys.exit(
+        "Missing Hostinger credentials.\n"
+        "Set HOSTINGER_SFTP_HOST, HOSTINGER_SFTP_USER, HOSTINGER_SFTP_PASSWORD\n"
+        "in pipeline-api/.env or as environment variables."
+    )
 
 
 def _connect() -> ftplib.FTP:
@@ -44,7 +54,9 @@ def _connect() -> ftplib.FTP:
 
 
 def _ensure_dir(ftp: ftplib.FTP, remote_dir: str) -> None:
-    """Create remote directory path if it doesn't already exist."""
+    """Create remote directory path if it does not already exist."""
+    if not remote_dir or remote_dir == ".":
+        return
     parts = remote_dir.strip("/").split("/")
     current = ""
     for part in parts:
@@ -55,42 +67,68 @@ def _ensure_dir(ftp: ftplib.FTP, remote_dir: str) -> None:
             pass  # already exists
 
 
-def _upload(ftp: ftplib.FTP, local_path: Path, remote_path: str) -> None:
+def _remote_path(local: Path) -> str:
+    """Derive the FTP destination path from a local site/ path."""
+    try:
+        rel = local.relative_to(SITE_DIR)
+    except ValueError:
+        rel = Path(local.name)
+    return str(rel).replace("\\", "/")
+
+
+def _upload(ftp: ftplib.FTP, local: Path) -> None:
     """Upload one file, creating remote directories as needed."""
-    remote_dir = str(Path(remote_path).parent).replace("\\", "/")
+    remote = _remote_path(local)
+    remote_dir = str(Path(remote).parent).replace("\\", "/")
     _ensure_dir(ftp, remote_dir)
-    with open(local_path, "rb") as f:
-        ftp.storbinary(f"STOR {remote_path}", f)
-    print(f"  ✓  {local_path.name}  →  {remote_path}")
+    with open(local, "rb") as f:
+        ftp.storbinary(f"STOR {remote}", f)
+    size = local.stat().st_size
+    print(f"  ✓  {remote}  ({size:,} bytes)")
+
+
+def _all_site_files() -> list[Path]:
+    """Return all files under site/ in sorted order."""
+    if not SITE_DIR.exists():
+        sys.exit(
+            f"site/ directory not found at {SITE_DIR}.\n"
+            "Run download_site.py first to pull the current site from Hostinger."
+        )
+    return sorted(p for p in SITE_DIR.rglob("*") if p.is_file())
 
 
 def main() -> None:
-    files = [Path(f) for f in sys.argv[1:]] if sys.argv[1:] else list(Path("site").glob("**/*.html"))
+    if sys.argv[1:]:
+        files = [Path(f) for f in sys.argv[1:]]
+    else:
+        files = _all_site_files()
+        print(f"Uploading all {len(files)} files from site/ …\n")
 
     if not files:
-        sys.exit("No files to upload. Pass filenames or put HTML files in a site/ directory.")
+        sys.exit("No files to upload.")
 
     print(f"Connecting to {HOST}:21 as {USER} …")
     ftp = _connect()
-    print(f"Connected. Server: {ftp.getwelcome()[:60]}")
+    print(f"Connected. ({ftp.getwelcome()[:60]})\n")
 
+    uploaded = 0
+    errors = 0
     try:
         for local in files:
             if not local.exists():
-                print(f"  ✗  {local} not found, skipping")
+                print(f"  ✗  {local}  (not found, skipping)")
+                errors += 1
                 continue
-            # Derive remote path: site/foo/bar.html → public_html/foo/bar.html
-            parts = local.parts
-            if "site" in parts:
-                rel = "/".join(parts[parts.index("site") + 1:])
-            else:
-                rel = local.name
-            remote = f"{REMOTE_ROOT}/{rel}"
-            _upload(ftp, local, remote)
+            try:
+                _upload(ftp, local)
+                uploaded += 1
+            except Exception as exc:
+                print(f"  ✗  {local}  ERROR: {exc}")
+                errors += 1
     finally:
         ftp.quit()
 
-    print("\nDone.")
+    print(f"\nDone. {uploaded} uploaded, {errors} errors.")
 
 
 if __name__ == "__main__":
