@@ -407,3 +407,53 @@ def test_no_registry_update_on_empty_mode_selection(client):
     assert r.status_code == 200
     assert r.json()["registry_update_count"] == 0
     assert not registry_update.registry_path().exists()
+
+
+# ---------------------------------------------------------------------------
+# Corrupt-registry fail-closed (must never silently empty platform memory)
+# ---------------------------------------------------------------------------
+
+def test_corrupt_existing_registry_aborts_update(client):
+    """A present-but-unreadable registry aborts the update; the file is untouched."""
+    c, runs_dir = client
+    reg_path = registry_update.registry_path()
+    reg_path.parent.mkdir(parents=True, exist_ok=True)
+    reg_path.write_text("{not valid json", encoding="utf-8")
+    before = reg_path.read_bytes()
+
+    _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa", [_record("T-1")])
+    r = _update(c, "RUN-20260615-100000-aaaa", selection_mode="bullseye_only")
+
+    assert r.status_code == 409
+    assert "aborted" in r.json()["detail"].lower()
+    # The corrupt file is left exactly as-is — not overwritten with an empty registry.
+    assert reg_path.read_bytes() == before
+
+
+def test_load_registry_raises_on_corrupt_file(tmp_path):
+    """load_registry distinguishes absent (empty) from present-but-corrupt (raise)."""
+    reg = tmp_path / "master_practice_registry.json"
+    # Absent → empty registry, no raise.
+    assert registry_update.load_registry(reg)["entries"] == {}
+    # Present but corrupt → raise, never silently empty.
+    reg.write_text("garbage", encoding="utf-8")
+    with pytest.raises(registry_update.RegistryLoadError):
+        registry_update.load_registry(reg)
+
+
+# ---------------------------------------------------------------------------
+# Place-ID-only identity (consistent with priority-1 matching)
+# ---------------------------------------------------------------------------
+
+def test_place_id_only_record_is_registrable(client):
+    """A name + google_place_id record (no domain/phone/address) inserts."""
+    c, runs_dir = client
+    rec = _record("T-1", google_place_id="ChIJplaceonly",
+                  website_url="", phone="",
+                  address_city="", address_state="", address_zip="")
+    _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa", [rec])
+    r = _update(c, "RUN-20260615-100000-aaaa", selection_mode="bullseye_only")
+    assert r.status_code == 200, r.text
+    assert r.json()["registry_update_count"] == 1
+    entry = next(iter(_load_registry(runs_dir)["entries"].values()))
+    assert entry["google_place_id"] == "ChIJplaceonly"

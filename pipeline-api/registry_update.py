@@ -55,6 +55,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+class RegistryLoadError(Exception):
+    """Raised when an existing registry file is present but cannot be read.
+
+    A missing file is a valid bootstrap state (empty registry). A present-but-
+    corrupt file is not — silently treating it as empty would wipe platform
+    memory on the next write, so callers must abort instead.
+    """
+
 REGISTRY_VERSION = "1"
 REGISTRY_FILENAME = "master_practice_registry.json"
 REGISTRY_UPDATE_LOG_FILENAME = "registry_update_log.json"
@@ -90,17 +99,30 @@ def registry_path() -> Path:
 # ---------------------------------------------------------------------------
 
 def load_registry(path: Path) -> dict:
-    """Load the registry from *path*; return an empty registry if absent/corrupt."""
+    """Load the registry from *path*.
+
+    A missing file returns an empty registry (valid bootstrap). A present-but-
+    unreadable file raises RegistryLoadError — never silently emptied, or the
+    next write would erase platform memory.
+    """
     if not path.exists():
         return _empty_registry()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data.get("entries"), dict):
-            data["entries"] = {}
-        return data
-    except Exception:
-        logger.exception("Failed to load registry %s — treating as empty", path)
-        return _empty_registry()
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error("Registry %s exists but is unreadable: %s", path, exc)
+        raise RegistryLoadError(
+            f"Registry file at {path} exists but could not be read ({exc}). "
+            "Update aborted to protect platform memory — no changes were written."
+        ) from exc
+    if not isinstance(data, dict):
+        raise RegistryLoadError(
+            f"Registry file at {path} is not a valid registry object. "
+            "Update aborted to protect platform memory — no changes were written."
+        )
+    if not isinstance(data.get("entries"), dict):
+        data["entries"] = {}
+    return data
 
 
 def _empty_registry() -> dict:
@@ -171,11 +193,17 @@ def _fields_from_record(rec: dict) -> dict:
 
 
 def _has_min_identity(fields: dict) -> bool:
-    """A record is registrable only with a name plus at least one match key."""
+    """A record is registrable only with a name plus at least one match key.
+
+    google_place_id is the priority-1 match key (practice_matching) and is
+    treated as sufficient identity by discovery, so a name + place_id record is
+    registrable on its own — consistent with how it is matched downstream.
+    """
     if not fields["practice_name"]:
         return False
     return bool(
-        fields["website_domain"]
+        fields.get("google_place_id")
+        or fields["website_domain"]
         or len(fields["phone_digits"]) >= 10
         or (fields["name_normalized"] and fields["address_normalized"])
     )
@@ -375,7 +403,8 @@ def update_registry_from_run(
     """Apply an enrichment run's selected records to the master registry.
 
     Returns an auditable result dict. Raises LookupError (run/output missing),
-    ValueError (bad selection input / run not eligible).
+    ValueError (bad selection input / run not eligible), or RegistryLoadError
+    (existing registry file present but unreadable — update aborted, nothing written).
     """
     status_raw = _load_status_raw(run_id)
     if status_raw is None:
@@ -572,6 +601,8 @@ async def update_registry_route(
         result = await _run_update(run_id, payload)
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+    except RegistryLoadError as exc:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
     return JSONResponse(status_code=200, content=result)

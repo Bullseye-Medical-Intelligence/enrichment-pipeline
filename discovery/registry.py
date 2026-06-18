@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 REGISTRY_VERSION = "1"
 
 
+class RegistryLoadError(Exception):
+    """Raised when an existing registry file is present but cannot be read.
+
+    A missing file is a valid bootstrap state. A present-but-corrupt file is not:
+    silently treating it as empty would reclassify every known practice as NEW,
+    so discovery must abort loudly instead.
+    """
+
+
 def empty_registry() -> dict:
     """Return a blank, valid registry structure."""
     return {
@@ -29,18 +38,31 @@ def empty_registry() -> dict:
 
 
 def load_registry(path: Path) -> dict:
-    """Load the registry from *path*; return an empty registry if absent or corrupt."""
+    """Load the registry from *path*.
+
+    A missing file returns an empty registry (valid bootstrap). A present-but-
+    unreadable file raises RegistryLoadError — never silently emptied, or every
+    known practice would be reclassified as NEW.
+    """
     if not path.exists():
         return empty_registry()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data.get("entries"), dict):
-            logger.warning("Registry at %s has no 'entries' dict — treating as empty", path)
-            data["entries"] = {}
-        return data
-    except Exception:
-        logger.exception("Failed to load registry from %s — returning empty", path)
-        return empty_registry()
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error("Registry at %s exists but is unreadable: %s", path, exc)
+        raise RegistryLoadError(
+            f"Registry file at {path} exists but could not be read ({exc}). "
+            "Discovery aborted — fix or restore the registry before retrying."
+        ) from exc
+    if not isinstance(data, dict):
+        raise RegistryLoadError(
+            f"Registry file at {path} is not a valid registry object. "
+            "Discovery aborted — fix or restore the registry before retrying."
+        )
+    if not isinstance(data.get("entries"), dict):
+        logger.warning("Registry at %s has no 'entries' dict — treating as empty", path)
+        data["entries"] = {}
+    return data
 
 
 def save_registry(registry: dict, path: Path) -> None:

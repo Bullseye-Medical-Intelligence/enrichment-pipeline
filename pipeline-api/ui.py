@@ -2432,7 +2432,7 @@ async def registry_update_action(
             include_needs_review=False,
             include_excluded=False,
         )
-    except (LookupError, ValueError) as exc:
+    except (LookupError, ValueError, registry_update.RegistryLoadError) as exc:
         return _render(
             "registry_update.html",
             status_code=400,

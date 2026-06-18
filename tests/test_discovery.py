@@ -564,6 +564,14 @@ class TestRegistry:
         reg = load_registry(path)
         assert reg["entries"] == {}
 
+    def test_load_raises_on_corrupt_existing_file(self, tmp_path):
+        """A present-but-corrupt registry must raise, not be silently emptied."""
+        from discovery.registry import RegistryLoadError
+        path = tmp_path / "registry.json"
+        path.write_text("{not json", encoding="utf-8")
+        with pytest.raises(RegistryLoadError):
+            load_registry(path)
+
 
 # ---------------------------------------------------------------------------
 # Writer tests
