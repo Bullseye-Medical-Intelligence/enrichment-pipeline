@@ -1,7 +1,8 @@
 {
   "icp_id": "obgyn_femasys",
-  "name": "Femasys \u2014 OBGYN Office-Based Procedures",
-  "version": "obgyn-femasys-v8",
+  "name": "Femasys — OBGYN Office-Based Fertility (FemaSeed)",
+  "version": "obgyn-femasys-v9",
+  "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE BEFORE RUNNING>>",
   "default_specialty": "OBGYN",
   "default_geography": [
     "TX",
@@ -12,96 +13,80 @@
     "rei_on_staff",
     "wrong_specialty",
     "outside_geography",
-    "no_web_presence"
+    "no_web_presence",
+    "hospital_owned",
+    "health_system_affiliated"
   ],
   "client": "Femasys",
-  "product": "Femasys",
-  "description": "Independent, office-based OBGYN / women's health practices that perform in-office gynecologic procedures (IUI (intrauterine insemination), contraception counseling, infertility workup, hormone/PCOS management) and are NOT high-acuity fertility centers. The ideal target is a physician-owned general OBGYN practice with an established office-procedure patient flow but no in-house IVF program and no reproductive endocrinologist on staff \u2014 those route patients to specialized ART pathways rather than office-based devices. Hospital or health-system affiliation is friction (procurement and budget authority sit elsewhere).",
-  "scoring_notes": "Office-based gynecologic procedure volume is the qualifier; independence is the wedge. REI on staff and in-house IVF are negative signals \u2014 they indicate a specialized fertility center rather than the general-OBGYN office-procedure profile Femasys fits. Hospital/health-system affiliation caps tier at Needs Verification for operator review. bullseye_min_score is high (90) by design: a Bullseye requires strong, broad office-procedure fit, not a single matched service line.",
+  "product": "FemaSeed",
+  "description": "Office-based OBGYN / women's health practices doing any fertility work — IUI, medicated cycles, infertility evaluation/testing, or fertility consultation — who are candidates to adopt FemaSeed (intratubal insemination) as an upgrade to in-office IUI. The v9 net is intentionally wide: any fertility activity qualifies for fit and nothing is a hard gate. Screening is carried by exclusions instead — IVF/REI fertility centers and hospital / health-system-affiliated practices are removed. FemVue practices are existing Femasys relationships and the strongest warm leads.",
+  "scoring_notes": "v9 (client-confirmed). Design: fit is soft (no required_for_bullseye gate) and widened to any fertility activity; the screening burden moves onto exclusions, which are load-bearing. FIT signals (IUI, medicated cycles, infertility eval incl. HSG, fertility consultation, cycle-monitoring ultrasound, FemVue) feed fit only and use strict phrase-binding so generic OBGYN copy does not false-positive. Core fertility signals (IUI, medicated cycles, infertility eval) carry the heaviest weight so a genuinely strong fertility practice reaches Bullseye on its own merits. FemVue is a warm-lead accelerator (boost + floor_tier Contender), deliberately NOT large enough to be required for Bullseye. READINESS (cash-pay / patient financing, reinforced by elective-aesthetic cash-pay) reflects adoption velocity. EXCLUSIONS: IVF/REI fertility center (exclude_if_yes) and hospital_owned / health_system_affiliated (structural gates) drop out-of-profile practices. bullseye_min_score is 80 (set in run_config): the score blend caps near 96 for a perfect record, so 80 leaves Bullseye reachable for strong fertility fit with or without FemVue, rather than requiring near-perfection.",
   "signals": [
     {
       "signal_id": "S-ICP-001",
-      "signal_label": "IUI listed",
-      "prompt_instruction": "Does this practice explicitly list IUI (intrauterine insemination) as a service on their website?",
-      "positive_weight": 20,
-      "note": "Core office-procedure signal and direct Femasys procedure fit \u2014 confirms in-office reproductive procedure capability."
+      "signal_label": "IUI offered",
+      "prompt_instruction": "Does this practice explicitly offer IUI as a service? Answer yes ONLY when the page contains the exact term 'IUI' or the full phrase 'intrauterine insemination'. Do NOT infer from generic words like 'fertility', 'consultation', 'treatment', or 'family planning' — the specific term must appear verbatim.",
+      "positive_weight": 25,
+      "note": "Core fit, heaviest fertility signal. Direct Femasys procedure match: an in-office IUI service line is the clearest signal a practice already does the office-based fertility work FemaSeed upgrades. Phrase-bound so it does not fire on generic fertility copy."
     },
     {
       "signal_id": "S-ICP-002",
-      "signal_label": "REI on staff",
-      "prompt_instruction": "Is there a reproductive endocrinologist (REI) listed as a provider on staff at this practice?",
-      "positive_weight": 0,
-      "exclude_if_yes": true,
-      "note": "Hard disqualifier \u2014 REI presence confirms a specialized fertility center, not the office-based OBGYN profile Femasys fits. NPI structural gate pre-filters via taxonomy_exclusion_rules; this signal catches any that reach the LLM pass."
+      "signal_label": "Medicated / stimulated cycles offered",
+      "prompt_instruction": "Does this practice offer medicated or stimulated ovulation cycles? Answer yes ONLY when one of these exact phrases appears: 'medicated cycle', 'medicated cycles', 'stimulated cycle', or 'ovulation induction'. Do NOT match bare words like 'cycle', 'medication', or 'treatment'.",
+      "positive_weight": 22,
+      "note": "Strong fit. Medicated-cycle management indicates an active fertility-treatment workflow, the same patient population FemaSeed serves. Phrase-bound to avoid false positives on routine cycle/medication language."
     },
     {
       "signal_id": "S-ICP-003",
-      "signal_label": "Infertility workup listed",
-      "prompt_instruction": "Does this practice list infertility evaluation or workup as a service they offer?",
+      "signal_label": "Infertility evaluation / testing (incl. HSG)",
+      "prompt_instruction": "Does this practice offer infertility evaluation or testing? Answer yes ONLY when one of these exact phrases appears: 'infertility evaluation', 'infertility workup', 'infertility diagnosis', 'fertility testing', 'infertility testing', 'HSG', or 'hysterosalpingogram'. Do NOT match bare standalone words such as 'evaluation', 'testing', 'diagnosis', or 'consultation' — those false-positive on nearly every OBGYN site; the full fertility-bound phrase must be present.",
       "positive_weight": 18,
-      "note": "Office-based infertility workup (not IVF) aligns with the in-office diagnostic procedures Femasys supports."
+      "note": "Moderate fit. Office-based infertility workup (HSG folds in here, not as a separate high-value flag) signals diagnostic fertility activity short of full ART. Strict phrase-binding keeps generic 'evaluation/testing' copy out."
     },
     {
       "signal_id": "S-ICP-004",
-      "signal_label": "In-house IVF program",
-      "prompt_instruction": "Does this practice operate its own in-house IVF or ART (assisted reproductive technology) program?",
-      "positive_weight": -15,
-      "cap_tier": "Contender",
-      "note": "Friction signal \u2014 hard caps at Contender. In-house IVF/ART routes patients to specialized lab and male-factor pathways; Femasys targets office-based women's health procedures."
+      "signal_label": "Infertility / fertility consultation",
+      "prompt_instruction": "Does this practice offer an infertility or fertility consultation? Answer yes ONLY when the exact phrase 'infertility consultation' or 'fertility consultation' appears. Do NOT match the bare word 'consultation' on its own.",
+      "positive_weight": 6,
+      "note": "Weak fit. A named fertility consultation line shows fertility intent but is the lowest-commitment fertility signal, so it carries the smallest fit weight. Phrase-bound to exclude generic 'consultation' offers."
     },
     {
       "signal_id": "S-ICP-005",
-      "signal_label": "Contraception counseling listed",
-      "prompt_instruction": "Does this practice list contraception counseling or family planning as a service?",
-      "positive_weight": 10,
-      "note": "Supports the office-based women's-health procedure profile."
+      "signal_label": "Cycle monitoring ultrasound",
+      "prompt_instruction": "Does this practice perform fertility cycle monitoring by ultrasound? Answer yes ONLY when one of these exact phrases appears: 'follicle monitoring', 'cycle monitoring', 'monitoring ultrasound', or 'transvaginal ultrasound'. Do NOT match the bare word 'ultrasound' or 'monitoring' alone.",
+      "positive_weight": 8,
+      "note": "A plus, not a gate. Cycle-monitoring ultrasound reinforces that fertility treatment happens in-office and adds confidence, but its absence is not disqualifying, so it carries a modest fit weight and no penalty when not found."
     },
     {
       "signal_id": "S-ICP-006",
-      "signal_label": "Hormone therapy / PCOS listed",
-      "prompt_instruction": "Does this practice list hormone therapy, PCOS management, or hormone-related services?",
-      "positive_weight": 12,
-      "note": "Broadens the office-based women's-health service line. Does not reinforce cash-pay (S-ICP-009): routine hormone/PCOS care is often insurance-covered, so it was too loose a proxy. The elective-aesthetic signal S-ICP-011 now carries the definitional cash-pay inference."
+      "signal_label": "FemVue mentioned (existing Femasys relationship)",
+      "prompt_instruction": "Does this practice mention FemVue anywhere on the site? Answer yes ONLY when the exact product name 'FemVue' appears.",
+      "positive_weight": 14,
+      "floor_tier": "Contender",
+      "note": "Warm-lead accelerator, not a gate. FemVue is Femasys's own product; a practice already using it is an existing relationship and the lowest-friction FemaSeed adoption path. It carries a meaningful fit boost plus floor_tier (a confirmed FemVue practice never falls below Contender), but it is deliberately NOT large enough to be required for Bullseye: strong fertility fit reaches Bullseye on its own merits, and FemVue accelerates rather than gatekeeps."
     },
     {
       "signal_id": "S-ICP-007",
-      "signal_label": "Independent private practice",
-      "prompt_instruction": "Does this appear to be an independent private practice (not hospital-owned, not part of a health system)?",
-      "positive_weight": 20,
-      "note": "THE WEDGE. Independence means direct budget authority and faster device adoption."
+      "signal_label": "Cash-pay / patient financing visible",
+      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these is present: 'CareCredit', 'FSA', 'HSA', 'patient financing', published self-pay or package pricing for fertility or related services, the phrase 'out-of-network', a statement that a service is not covered by insurance, or offering superbills/invoices for reimbursement. Answer yes only when such language is explicitly present on the site.",
+      "positive_weight": 16,
+      "note": "Readiness target. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. Reinforced by the elective-aesthetic signal (S-ICP-008) when explicit cash-pay language is absent but elective cash-pay services are present."
     },
     {
       "signal_id": "S-ICP-008",
-      "signal_label": "Hospital or health system affiliated",
-      "prompt_instruction": "Is this practice affiliated with, owned by, or part of a hospital or health system?",
-      "positive_weight": -30,
-      "cap_tier": "Needs Verification",
-      "note": "Friction signal \u2014 caps tier at Needs Verification for operator review. Procurement and budget authority sit with the parent system, not the practice."
+      "signal_label": "Elective / aesthetic cash-pay service line",
+      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Answer yes when one or more of these is explicitly named: a med spa / MedSpa / aesthetic center; aesthetics or esthetics; vaginal rejuvenation or energy-based intimate devices (for example Votiva, ThermiVa, MonaLisa Touch, FemiLift, diVa, Emsella); aesthetic gynecology or cosmetic genital surgery (labiaplasty, vaginoplasty, labial reduction); injectable aesthetics (Botox, Dysport, dermal fillers); body contouring (CoolSculpting, Emsculpt, truSculpt); energy-based skin devices or laser hair removal; IV therapy or IV drip; or weight-loss injectables (GLP-1, semaglutide, tirzepatide). Answer yes only when one or more such services are explicitly named on the site.",
+      "positive_weight": 0,
+      "reinforces": "S-ICP-007",
+      "note": "Readiness reinforcer. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-ICP-007), never independently inflating fit."
     },
     {
       "signal_id": "S-ICP-009",
-      "signal_label": "Cash-pay / self-pay fertility service line visible",
-      "prompt_instruction": "Does the website show explicit evidence of a cash-pay, self-pay, or out-of-network capability for fertility or related services? Examples: published self-pay or package pricing for IUI, insemination, or fertility treatment; the phrase 'out-of-network'; statements that a service is not covered by insurance; offering superbills or invoices for reimbursement; or visible third-party patient financing such as CareCredit. Answer yes only when such language is explicitly present on the site.",
-      "positive_weight": 20,
-      "no_weight": -15,
-      "required_for_bullseye": false,
-      "note": "Cash-pay readiness \u2014 commercial-fit signal for adoption velocity; tunable, not yet a gate."
-    },
-    {
-      "signal_id": "S-ICP-010",
-      "signal_label": "In-house ultrasound",
-      "prompt_instruction": "Does this practice have in-house ultrasound capability? Look for mentions of office-based ultrasound, sonography, pelvic ultrasound, or ultrasound-guided procedures performed at the practice.",
-      "positive_weight": 22,
-      "not_found_weight": -8,
-      "note": "Strong fit signal \u2014 Femasys devices require ultrasound guidance. In-house capability means the practice can use the product without patient referral for imaging."
-    },
-    {
-      "signal_id": "S-ICP-011",
-      "signal_label": "Elective / aesthetic cash-pay service line",
-      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Look for: vaginal rejuvenation or energy-based intimate devices (for example Votiva, ThermiVa, MonaLisa Touch, FemiLift, diVa, Emsella); aesthetic gynecology or cosmetic genital surgery (labiaplasty, vaginoplasty, labial reduction); a co-located med spa or aesthetic center; injectable aesthetics (Botox, Dysport, dermal fillers); body contouring (CoolSculpting, Emsculpt, truSculpt); energy-based skin devices or laser hair removal; or keepsake or elective 3D/4D ultrasound packages. Answer yes only when one or more such services are explicitly named on the site.",
+      "signal_label": "IVF / REI fertility center",
+      "prompt_instruction": "Does this practice operate as, or hold itself out as, an IVF or reproductive-endocrinology fertility center? Answer yes when any of these appears: 'IVF', 'in vitro fertilization', 'egg retrieval', 'embryo transfer', 'reproductive endocrinology', 'reproductive endocrinologist', 'REI', or the practice naming itself a 'fertility center'.",
       "positive_weight": 0,
-      "reinforces": "S-ICP-009",
-      "note": "Strong definitional cash-pay proxy. Elective aesthetic services are patient-pay in routine commercial practice, so their presence confirms direct-billing infrastructure even when no explicit cash-pay language appears on the site. Weight 0: it works purely by inferring S-ICP-009 (cash-pay readiness) when that signal is not directly stated, mirroring the open-aligner reinforcement pattern, so it does not independently inflate fit."
+      "exclude_if_yes": true,
+      "note": "Exclusion. A confirmed yes means a specialized fertility center that routes patients to in-house ART and male-factor pathways, not the office-based OBGYN profile FemaSeed upgrades. The NPI taxonomy structural gate (rei_on_staff) pre-filters most of these before crawl; this signal catches any that reach the LLM pass."
     }
   ]
 }
