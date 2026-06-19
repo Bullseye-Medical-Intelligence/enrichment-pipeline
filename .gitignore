@@ -9,6 +9,10 @@
 /output/runs/
 /output/projects/
 
+# Published client sales-handoff briefs mirrored from Hostinger (RULE 2):
+# generated client deliverables, not hand-edited marketing pages.
+/site/briefs/
+
 # Runtime directories that appear when server CWD is repo root
 /icp_profiles/
 /runs/
