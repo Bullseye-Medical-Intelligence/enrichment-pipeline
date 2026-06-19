@@ -1,0 +1,112 @@
+# Pull the live bullseyemedical.ai site from Hostinger into site/.
+#
+# Why this exists: the Claude Code cloud environment can only make outbound
+# HTTPS connections, so it cannot reach Hostinger over FTP/SFTP (ports 21/22
+# time out). GitHub-hosted runners have open egress, so the deploy/pull round
+# trip runs here instead.
+#
+# This job is READ-ONLY on the server: it lists the remote tree (so the log
+# shows exactly which directory the SFTP account lands in) and mirrors the web
+# root down into site/, then commits the result to the branch it ran on. Run
+# this FIRST to bootstrap site/ with the real files (true filenames, correct
+# layout) before any deploy. It also doubles as a credential/connection check.
+#
+# Requires repo secrets: HOSTINGER_SFTP_HOST, HOSTINGER_SFTP_USER,
+# HOSTINGER_SFTP_PASSWORD (Settings -> Secrets and variables -> Actions).
+name: Hostinger Pull (bootstrap site/)
+
+on:
+  workflow_dispatch:
+    inputs:
+      protocol:
+        description: "Transfer protocol"
+        type: choice
+        options: [sftp, ftp]
+        default: sftp
+      port:
+        description: "Port (sftp=22, ftp=21)"
+        type: string
+        default: "22"
+      server_dir:
+        description: "Remote directory to mirror (web root). Must end with /"
+        type: string
+        default: "./"
+      commit:
+        description: "Commit the pulled files back to this branch"
+        type: boolean
+        default: true
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify secrets present
+        run: |
+          if [ -z "${{ secrets.HOSTINGER_SFTP_HOST }}" ]; then
+            echo "::error::Hostinger secrets missing. Add HOSTINGER_SFTP_HOST/USER/PASSWORD in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: List remote tree (read-only)
+        # Read-only reconnaissance: prove the credentials work and show exactly
+        # what the account can see and where it lands, before mirroring.
+        env:
+          H: ${{ secrets.HOSTINGER_SFTP_HOST }}
+          U: ${{ secrets.HOSTINGER_SFTP_USER }}
+          P: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
+          PROTO: ${{ inputs.protocol }}
+          PORT: ${{ inputs.port }}
+          DIR: ${{ inputs.server_dir }}
+        run: |
+          lftp -u "$U","$P" "$PROTO://$H:$PORT" -e "
+            set sftp:auto-confirm yes;
+            set ssl:verify-certificate no;
+            set net:timeout 20;
+            echo '--- pwd ---'; pwd;
+            echo '--- top-level listing ---'; cls -l;
+            echo '--- recursive listing of $DIR ---'; find $DIR;
+            bye
+          "
+
+      - name: Mirror site down into site/
+        env:
+          H: ${{ secrets.HOSTINGER_SFTP_HOST }}
+          U: ${{ secrets.HOSTINGER_SFTP_USER }}
+          P: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
+          PROTO: ${{ inputs.protocol }}
+          PORT: ${{ inputs.port }}
+          DIR: ${{ inputs.server_dir }}
+        run: |
+          mkdir -p site
+          lftp -u "$U","$P" "$PROTO://$H:$PORT" -e "
+            set sftp:auto-confirm yes;
+            set ssl:verify-certificate no;
+            set net:timeout 20;
+            set mirror:set-permissions no;
+            mirror --verbose --no-perms $DIR ./site/;
+            bye
+          "
+          echo '--- pulled into site/ ---'
+          find site -type f | sort
+
+      - name: Commit pulled files
+        if: ${{ inputs.commit }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add site/
+          if git diff --cached --quiet; then
+            echo "No changes — site/ already matches the live server."
+          else
+            git commit -m "chore(site): bootstrap site/ from live Hostinger mirror"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
