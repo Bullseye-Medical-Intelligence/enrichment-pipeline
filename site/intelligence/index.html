@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intelligence | Bullseye Medical Intelligence</title>
+<meta name="description" content="Field notes on physician targeting, account prioritization, and how specialty medtech commercial teams decide which practices are worth the call.">
+<link rel="canonical" href="https://www.bullseyemedical.ai/intelligence/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Intelligence | Bullseye Medical Intelligence">
+<meta property="og:description" content="Field notes on physician targeting and account prioritization for specialty medtech sales teams.">
+<meta property="og:url" content="https://www.bullseyemedical.ai/intelligence/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Blog",
+  "name": "Bullseye Intelligence",
+  "url": "https://www.bullseyemedical.ai/intelligence/",
+  "description": "Field notes on physician targeting and account prioritization for specialty medtech commercial teams.",
+  "publisher": { "@type": "Organization", "name": "Bullseye Medical Intelligence", "url": "https://www.bullseyemedical.ai" }
+}
+</script>
+
+<style>
+  :root{
+    --ink:#0a0a0a;--terra:#c84b2f;--paper:#f7f6f4;
+    --serif:'Instrument Serif', Georgia, serif;--sans:'DM Sans', system-ui, sans-serif;
+    --hairline:rgba(10,10,10,0.12);--hairline-dark:rgba(247,246,244,0.16);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{font-family:var(--sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 32px;}
+  section{padding:90px 0;}
+
+  .nav{position:sticky;top:0;z-index:50;background:rgba(247,246,244,0.86);backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid var(--hairline);}
+  .nav-inner{max-width:1080px;margin:0 auto;padding:16px 32px;display:flex;justify-content:space-between;align-items:center;gap:18px;}
+  .brandmark{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);}
+  .brandmark .bn{font-family:var(--serif);font-size:19px;}
+  .nav-cta{font-family:var(--sans);font-size:13px;font-weight:500;text-decoration:none;color:var(--paper);background:var(--ink);padding:10px 20px;border-radius:100px;transition:transform .3s;white-space:nowrap;}
+  .nav-cta:hover{transform:translateY(-2px);}
+
+  .eyebrow{font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--terra);font-weight:600;margin-bottom:22px;}
+  h1{font-family:var(--serif);font-weight:400;line-height:1.04;letter-spacing:-0.01em;font-size:clamp(44px,7vw,80px);margin-bottom:26px;}
+  em{font-style:italic;color:var(--terra);}
+  .lede{font-size:19px;line-height:1.6;max-width:600px;font-weight:300;color:rgba(10,10,10,0.74);}
+
+  .list{margin-top:18px;border-top:1px solid var(--hairline);}
+  .entry{display:grid;grid-template-columns:1fr auto;gap:30px;align-items:baseline;padding:34px 0;border-bottom:1px solid var(--hairline);text-decoration:none;color:var(--ink);transition:padding-left .35s cubic-bezier(.2,.7,.2,1);}
+  .entry:hover{padding-left:14px;}
+  .entry .etitle{font-family:var(--serif);font-size:clamp(26px,3.2vw,34px);line-height:1.1;margin-bottom:10px;}
+  .entry .etitle em{color:var(--terra);}
+  .entry .edesc{font-size:15px;line-height:1.55;font-weight:300;color:rgba(10,10,10,0.62);max-width:620px;}
+  .entry .ekicker{font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--terra);font-weight:600;margin-bottom:14px;}
+  .entry .arrow{font-family:var(--serif);font-size:30px;color:var(--ink);opacity:0.25;transition:opacity .35s;}
+  .entry:hover .arrow{opacity:1;color:var(--terra);}
+
+  .soon{padding:34px 0;border-bottom:1px solid var(--hairline);opacity:0.5;}
+  .soon .stitle{font-family:var(--serif);font-size:clamp(22px,2.8vw,28px);line-height:1.1;color:rgba(10,10,10,0.55);}
+  .soon .stag{font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(10,10,10,0.4);font-weight:600;margin-bottom:12px;}
+
+  footer{padding:48px 0;border-top:1px solid var(--hairline);}
+  .foot-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;}
+  .foot-meta{font-size:12.5px;color:rgba(10,10,10,0.45);}
+  .bn-s{font-family:var(--serif);font-size:21px;}
+
+  @media(max-width:740px){
+    section{padding:60px 0;}.wrap{padding:0 22px;}.nav-inner{padding:14px 22px;}
+    .entry{grid-template-columns:1fr;gap:10px;}.entry .arrow{display:none;}
+  }
+</style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brandmark" href="https://www.bullseyemedical.ai">
+      <img src="/assets/bullseye-mark-ink.svg" width="28" height="28" alt="" style="display:block;flex:none" />
+      <span class="bn">Bullseye Medical Intelligence</span>
+    </a>
+    <a class="nav-cta" href="https://calendly.com/leads-bullseyemedical/30min">Book My Bullseye Brief</a>
+  </div>
+</nav>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Intelligence</div>
+    <h1>Field notes on who's<br>actually worth the <em>call</em>.</h1>
+    <p class="lede">How specialty medtech commercial teams decide which practices to target, what separates a fit from a close, and the public signals most targeting tools never score.</p>
+
+    <div class="list">
+
+      <a class="entry" href="/intelligence/readiness-vs-fit.html">
+        <div>
+          <div class="ekicker">Targeting Strategy</div>
+          <div class="etitle">Fit gets you a meeting. <em>Readiness</em> gets you a close.</div>
+          <div class="edesc">Every targeting tool scores clinical fit. Fit is table stakes. The signal that predicts whether an account actually buys, and why almost nobody scores it.</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+      </a>
+
+      <div class="soon">
+        <div class="stag">In the works</div>
+        <div class="stitle">The deliberately excluded target: why throwing one out builds trust.</div>
+      </div>
+
+      <div class="soon">
+        <div class="stag">In the works</div>
+        <div class="stitle">Your reps are part-time data analysts. Here's the math on what that costs.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <a class="brandmark" href="https://www.bullseyemedical.ai">
+      <img src="/assets/bullseye-mark-ink.svg" width="30" height="30" alt="" style="display:block;flex:none" />
+      <span class="bn-s">Bullseye Medical Intelligence</span>
+    </a>
+    <div class="foot-meta">A physician targeting research service &nbsp;·&nbsp; bullseyemedical.ai</div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" width="30" height="30" fill="none" role="img" aria-label="Bullseye Medical Intelligence">
+  <style>
+    line { stroke: #0a0a0a; }
+    @media (prefers-color-scheme: dark) { line { stroke: #f7f6f4; } }
+  </style>
+  <line x1="10" y1="3" x2="15" y2="15" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="3" y1="24" x2="15" y2="15" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="28" y1="18" x2="15" y2="15" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="15" cy="15" r="3.4" fill="#c84b2f"/>
+</svg>

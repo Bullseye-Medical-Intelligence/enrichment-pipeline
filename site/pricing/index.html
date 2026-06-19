@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bullseye Medical Intelligence — Pricing & Packages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0a0a;
+    --terra:#c84b2f;
+    --paper:#f7f6f4;
+    --serif:'Instrument Serif', Georgia, serif;
+    --sans:'DM Sans', system-ui, sans-serif;
+    --hairline:rgba(10,10,10,0.12);
+    --hairline-dark:rgba(247,246,244,0.16);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 32px;}
+  section{padding:110px 0;}
+  .light{background:var(--paper);color:var(--ink);}
+  .dark{background:var(--ink);color:var(--paper);}
+
+  /* shared type */
+  .eyebrow{
+    font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--terra);font-weight:600;margin-bottom:22px;
+  }
+  h1,h2,h3{font-family:var(--serif);font-weight:400;line-height:1.04;letter-spacing:-0.01em;}
+  h1{font-size:clamp(44px,7vw,82px);}
+  h2{font-size:clamp(34px,5vw,58px);}
+  h3{font-size:clamp(24px,3vw,30px);}
+  em{font-style:italic;color:var(--terra);}
+  .dark em{color:var(--terra);}
+  .lede{font-size:19px;line-height:1.6;max-width:620px;font-weight:300;}
+  .dark .lede{color:rgba(247,246,244,0.82);}
+  .light .lede{color:rgba(10,10,10,0.74);}
+
+  /* hero */
+  .hero h1{margin-bottom:30px;}
+  .hero .lede{margin-top:8px;}
+
+  /* stat blocks */
+  .stats{display:flex;gap:64px;flex-wrap:wrap;margin-top:64px;}
+  .stat .num{font-family:var(--serif);font-size:56px;line-height:1;}
+  .stat .lbl{font-size:13px;opacity:0.4;margin-top:10px;max-width:160px;letter-spacing:0.01em;}
+
+  .axis-statement{
+    font-family:var(--serif);font-size:clamp(26px,3.4vw,38px);
+    line-height:1.28;max-width:860px;margin-top:8px;letter-spacing:-0.01em;
+  }
+  .axis-statement span{color:rgba(247,246,244,0.45);}
+
+  /* package ladder */
+  .ladder-head{margin-bottom:56px;}
+  .ladder-head h2{margin-bottom:20px;}
+  .cards{display:flex;flex-direction:column;gap:18px;}
+  .card{
+    background:var(--ink);color:var(--paper);
+    border-radius:16px;padding:34px 36px;
+    display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center;
+    border:1px solid transparent;
+    transition:transform .35s cubic-bezier(.2,.7,.2,1), border-color .35s;
+  }
+  .card:hover{transform:translateY(-3px);}
+  .card.featured{border-color:rgba(200,75,47,0.55);}
+  .card .ctitle{font-family:var(--serif);font-size:30px;line-height:1;margin-bottom:6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .card .cdesc{font-size:15px;color:rgba(247,246,244,0.66);font-weight:300;max-width:560px;line-height:1.55;}
+  .card .price{font-family:var(--serif);font-size:34px;white-space:nowrap;text-align:right;line-height:1.05;}
+  .card .price small{display:block;font-family:var(--sans);font-size:11px;letter-spacing:0.04em;opacity:0.42;margin-top:8px;text-transform:uppercase;}
+  .pill{
+    display:inline-block;border-radius:100px;font-size:10px;font-weight:600;
+    letter-spacing:0.08em;text-transform:uppercase;padding:5px 12px;
+    border:1px solid var(--hairline-dark);color:rgba(247,246,244,0.7);
+  }
+  .pill.featured{background:var(--terra);color:#fff;border-color:var(--terra);}
+  .pill.proof{border-color:rgba(247,246,244,0.4);color:rgba(247,246,244,0.9);}
+  .delivery-note{
+    margin-top:34px;font-size:14px;line-height:1.6;color:rgba(10,10,10,0.6);
+    max-width:680px;padding-left:18px;border-left:2px solid var(--terra);font-weight:300;
+  }
+
+  /* calculator */
+  .calc-head{margin-bottom:14px;}
+  .calc-head h2{margin-bottom:20px;}
+  .calc-grid{display:grid;grid-template-columns:340px 1fr;gap:56px;margin-top:54px;align-items:start;}
+  .inputs{display:flex;flex-direction:column;gap:26px;}
+  .field label{display:block;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:rgba(247,246,244,0.5);margin-bottom:10px;}
+  .field .inputrow{display:flex;align-items:baseline;gap:6px;border-bottom:1px solid var(--hairline-dark);padding-bottom:10px;}
+  .field .pre{font-family:var(--serif);font-size:30px;color:rgba(247,246,244,0.4);}
+  .field input{
+    background:transparent;border:none;outline:none;color:var(--paper);
+    font-family:var(--serif);font-size:34px;width:100%;
+  }
+  .field input:focus{color:#fff;}
+  .field .hint{font-size:12px;color:rgba(247,246,244,0.35);margin-top:8px;font-weight:300;}
+  .assumptions{margin-top:8px;font-size:12.5px;color:rgba(247,246,244,0.42);line-height:1.65;font-weight:300;border-top:1px solid var(--hairline-dark);padding-top:18px;}
+  .assumptions b{color:rgba(247,246,244,0.7);font-weight:500;}
+
+  .results{display:flex;flex-direction:column;gap:0;}
+  .resrow{display:flex;justify-content:space-between;align-items:baseline;padding:20px 0;border-bottom:1px solid var(--hairline-dark);}
+  .resrow .rl{font-size:14px;color:rgba(247,246,244,0.6);max-width:340px;font-weight:300;}
+  .resrow .rv{font-family:var(--serif);font-size:40px;white-space:nowrap;}
+  .resrow.net{border-bottom:none;padding-top:26px;}
+  .resrow.net .rl{color:rgba(247,246,244,0.85);}
+  .resrow.net .rv{color:var(--terra);}
+  .calc-foot{margin-top:30px;font-family:var(--serif);font-size:clamp(20px,2.4vw,26px);line-height:1.4;max-width:760px;}
+  .calc-foot span{color:rgba(247,246,244,0.45);}
+
+  /* upside box */
+  .highlight{
+    background:var(--ink);color:var(--paper);border-radius:14px;
+    padding:40px 44px;border-left:3px solid var(--terra);max-width:760px;
+  }
+  .highlight p{font-family:var(--serif);font-style:italic;font-size:25px;line-height:1.42;}
+  .highlight p b{font-style:normal;color:var(--terra);font-weight:400;}
+
+  /* cta */
+  .cta h2{margin-bottom:24px;}
+  .cta .lede{margin-bottom:38px;}
+  .btn{
+    display:inline-block;background:var(--ink);color:var(--paper);
+    font-family:var(--sans);font-size:15px;font-weight:500;letter-spacing:0.01em;
+    padding:17px 34px;border-radius:100px;text-decoration:none;
+    transition:transform .3s, background .3s;
+  }
+  .btn:hover{transform:translateY(-2px);}
+  .cta-micro{margin-top:18px;font-size:13px;color:rgba(10,10,10,0.5);}
+
+  /* footer / logo */
+  footer{padding:48px 0;border-top:1px solid var(--hairline);}
+  .foot-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;}
+  .brandmark{display:flex;align-items:center;gap:13px;}
+  .brandmark .bn{font-family:var(--serif);font-size:21px;letter-spacing:0.01em;}
+  .foot-meta{font-size:12.5px;color:rgba(10,10,10,0.45);letter-spacing:0.02em;}
+
+  /* load animation */
+  .reveal{opacity:0;transform:translateY(18px);animation:rise .9s cubic-bezier(.2,.7,.2,1) forwards;}
+  @keyframes rise{to{opacity:1;transform:none;}}
+  .d1{animation-delay:.05s;} .d2{animation-delay:.16s;} .d3{animation-delay:.28s;} .d4{animation-delay:.4s;}
+
+  @media(max-width:740px){
+    section{padding:78px 0;}
+    .wrap{padding:0 22px;}
+    .card{grid-template-columns:1fr;gap:18px;}
+    .card .price{text-align:left;}
+    .calc-grid{grid-template-columns:1fr;gap:38px;}
+    .stats{gap:40px;}
+    .resrow{flex-direction:column;gap:6px;align-items:flex-start;}
+    .resrow .rv{font-size:34px;}
+  }
+</style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- HERO -->
+<section class="light hero">
+  <div class="wrap">
+    <div class="eyebrow reveal d1">Pricing &amp; Packages</div>
+    <h1 class="reveal d2">Your reps cost a fortune.<br>Most of it isn't <em>selling</em>.</h1>
+    <p class="lede reveal d3">Bullseye pricing ladders off one number you already control: how much rep time disappears into pre-call research. You run the math with your own salary figures. The price justifies itself before we ever say it out loud.</p>
+  </div>
+</section>
+
+<!-- THE ANCHOR -->
+<section class="dark">
+  <div class="wrap">
+    <div class="eyebrow">The Anchor</div>
+    <div class="axis-statement">
+      We don't price per seat. <span>That's software.</span> We don't price per record. <span>That's a database.</span> We price by coverage. Territory and specialty. The way your team is already built.
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="num">~10 hrs</div><div class="lbl">typical weekly rep research before first contact</div></div>
+      <div class="stat"><div class="num">~22%</div><div class="lbl">of a 45-hour selling week, gone</div></div>
+      <div class="stat"><div class="num">$0</div><div class="lbl">cost for you to compute the ROI below</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- THE LADDER -->
+<section class="light">
+  <div class="wrap">
+    <div class="ladder-head">
+      <div class="eyebrow">The Ladder</div>
+      <h2>Five rungs. Risk <em>drops</em> as you climb.</h2>
+      <p class="lede">Risk to you sits highest at the free brief and lowest at the top. That's the correct shape for a service that earns trust before it asks for a retainer.</p>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div>
+          <div class="ctitle">The Brief <span class="pill proof">Proof</span></div>
+          <div class="cdesc">Your market, three scored targets, one deliberately excluded. The method, demonstrated live on a 30-minute call. This is how you see the work before you pay for it.</div>
+        </div>
+        <div class="price">Free<small>Stays free</small></div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="ctitle">Pipeline Audit <span class="pill proof">Best Entry</span></div>
+          <div class="cdesc">Bring the list you already have. We score it, rank it, and flag the dead accounts. Value proven on accounts you already own and trust. The lowest-faith way to start.</div>
+        </div>
+        <div class="price">Project<small>One-time, by list size</small></div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="ctitle">Single Market</div>
+          <div class="cdesc">One metro, one specialty. Scored shortlists with monthly refresh. Live today in Dallas OBGYN.</div>
+        </div>
+        <div class="price">from $5k<small>per month</small></div>
+      </div>
+
+      <div class="card featured">
+        <div>
+          <div class="ctitle">Regional <span class="pill featured">Most Chosen</span></div>
+          <div class="cdesc">Three to five territories. Faster refresh cadence. Pipeline Audit bundled in at onboarding. This is the tier the math below is built to justify.</div>
+        </div>
+        <div class="price">$12&ndash;15k<small>per month</small></div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="ctitle">National / Category</div>
+          <div class="cdesc">Full active footprint for your specialty. Priority refresh. Both engines running, with continuous account prioritization as it comes online.</div>
+        </div>
+        <div class="price">from $25k<small>per month, custom</small></div>
+      </div>
+    </div>
+
+    <p class="delivery-note">We commit delivery only on built territories. Dallas OBGYN is live now. Other Tier 1 markets stand up on a stated timeline we give you before you sign. We'd rather scope coverage honestly than sell you a map we can't deliver yet.</p>
+  </div>
+</section>
+
+<!-- THE MATH -->
+<section class="dark">
+  <div class="wrap">
+    <div class="calc-head">
+      <div class="eyebrow">The Math</div>
+      <h2>Run it with <em>your</em> numbers.</h2>
+      <p class="lede">A planning tool, not a guarantee. The fixed assumptions are deliberately conservative. Change the two inputs to your reality and watch the spend defend itself.</p>
+    </div>
+
+    <div class="calc-grid">
+      <div class="inputs">
+        <div class="field">
+          <label>Fully-loaded cost per rep</label>
+          <div class="inputrow"><span class="pre">$</span><input id="repCost" type="text" inputmode="numeric" value="200,000"></div>
+          <div class="hint">Salary, benefits, tooling, overhead. Edit this.</div>
+        </div>
+        <div class="field">
+          <label>Number of reps</label>
+          <div class="inputrow"><input id="repCount" type="text" inputmode="numeric" value="8"></div>
+          <div class="hint">The team this engagement would cover. Edit this.</div>
+        </div>
+        <div class="assumptions">
+          <b>Fixed assumptions.</b> Research consumes ~10 hours of a ~45-hour week (~22% of selling time). We redirect <b>60%</b> of it off the rep, not all of it. Regional priced at <b>$14k/mo</b> for this comparison.
+        </div>
+      </div>
+
+      <div class="results">
+        <div class="resrow"><div class="rl">Research cost tied up per rep, per year</div><div class="rv" id="rResearch">$44,400</div></div>
+        <div class="resrow"><div class="rl">Selling capacity reclaimed per rep, per year</div><div class="rv" id="rPerRep">$26,640</div></div>
+        <div class="resrow"><div class="rl">Reclaimed across the team, per year</div><div class="rv" id="rTeam">$213,120</div></div>
+        <div class="resrow"><div class="rl">Regional retainer, per year</div><div class="rv" id="rCost">$168,000</div></div>
+        <div class="resrow net"><div class="rl">Net capacity reclaimed, on time alone</div><div class="rv" id="rNet">$45,120</div></div>
+      </div>
+    </div>
+
+    <div class="calc-foot">
+      Reclaimed capacity clears the retainer on the time math alone. <span>Before a single word about conversion.</span> You don't have to believe a conversion claim to justify the spend. That's what defensible means.
+    </div>
+  </div>
+</section>
+
+<!-- THE UPSIDE -->
+<section class="light">
+  <div class="wrap">
+    <div class="eyebrow">The Upside</div>
+    <div class="highlight">
+      <p>The practices we surface aren't just a fit. They're structured to make a fast buying decision. That's <b>why</b> they should convert better. Should. Not will. The time math already paid for itself. This part is upside, not the promise.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="light cta">
+  <div class="wrap">
+    <div class="eyebrow">Next</div>
+    <h2>See it before you buy it.</h2>
+    <p class="lede">Book the brief. We'll put three practices from your market on the table, including the one we threw out and exactly why your rep shouldn't waste a call on it.</p>
+    <a href="https://calendly.com/leads-bullseyemedical/30min" class="btn">Book My Bullseye Brief</a>
+    <div class="cta-micro">No contract. No commitment. One 30-minute ICP call.</div>
+  </div>
+</section>
+
+<footer class="light">
+  <div class="wrap foot-inner">
+    <div class="brandmark">
+      <img src="/assets/bullseye-mark-ink.svg" width="30" height="30" alt="" style="display:block;flex:none" />
+      <span class="bn">Bullseye Medical Intelligence</span>
+    </div>
+    <div class="foot-meta">A physician targeting research service &nbsp;·&nbsp; bullseyemedical.ai</div>
+  </div>
+</footer>
+
+<script>
+  const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+  const parseNum = s => parseFloat(String(s).replace(/[^0-9.]/g,'')) || 0;
+
+  const RESEARCH_SHARE = 10/45;   // ~22% of selling week
+  const REDIRECT = 0.60;          // we move 60% off the rep
+  const REGIONAL_MONTHLY = 14000;
+
+  const repCostEl = document.getElementById('repCost');
+  const repCountEl = document.getElementById('repCount');
+
+  function recompute(){
+    const repCost = parseNum(repCostEl.value);
+    const reps = parseNum(repCountEl.value);
+    const research = repCost * RESEARCH_SHARE;
+    const perRep = research * REDIRECT;
+    const team = perRep * reps;
+    const annualCost = REGIONAL_MONTHLY * 12;
+    const net = team - annualCost;
+
+    document.getElementById('rResearch').textContent = fmt(research);
+    document.getElementById('rPerRep').textContent = fmt(perRep);
+    document.getElementById('rTeam').textContent = fmt(team);
+    document.getElementById('rCost').textContent = fmt(annualCost);
+    const netEl = document.getElementById('rNet');
+    netEl.textContent = (net >= 0 ? '' : '\u2212') + fmt(Math.abs(net));
+  }
+
+  function tidy(el){
+    const n = parseNum(el.value);
+    el.value = n ? n.toLocaleString('en-US') : '';
+    recompute();
+  }
+
+  [repCostEl, repCountEl].forEach(el=>{
+    el.addEventListener('input', recompute);
+    el.addEventListener('blur', ()=>tidy(el));
+  });
+  recompute();
+</script>
+</body>
+</html>

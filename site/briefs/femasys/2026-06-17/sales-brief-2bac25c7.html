@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEMI Intelligence Brief — OBGYN</title>
+  <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMCAzMCIgd2lkdGg9IjMwIiBoZWlnaHQ9IjMwIiBmaWxsPSJub25lIiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IkJ1bGxzZXllIE1lZGljYWwgSW50ZWxsaWdlbmNlIj4NCiAgPGxpbmUgeDE9IjEwIiB5MT0iMyIgeDI9IjE1IiB5Mj0iMTUiIHN0cm9rZT0iI2M4NGIyZiIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPg0KICA8bGluZSB4MT0iMyIgeTE9IjI0IiB4Mj0iMTUiIHkyPSIxNSIgc3Ryb2tlPSIjYzg0YjJmIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+DQogIDxsaW5lIHgxPSIyOCIgeTE9IjE4IiB4Mj0iMTUiIHkyPSIxNSIgc3Ryb2tlPSIjYzg0YjJmIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+DQogIDxjaXJjbGUgY3g9IjE1IiBjeT0iMTUiIHI9IjMiIGZpbGw9IiNjODRiMmYiLz4NCjwvc3ZnPg0K" type="image/svg+xml">
+  <style>
+    :root {
+      --ink: #0a0a0a;
+      --surface: #f7f6f4;
+      --accent: #c84b2f;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #fff;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .page { max-width: 860px; margin: 0 auto; padding: 3em 2em; }
+
+    /* Header */
+    .brief-header {
+      border-bottom: 3px solid var(--ink);
+      padding-bottom: 1.5em;
+      margin-bottom: 2.5em;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1em;
+      flex-wrap: wrap;
+    }
+    .brief-wordmark {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 2.2em;
+      font-weight: 400;
+      letter-spacing: 0.05em;
+    }
+    .brief-tagline {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      font-weight: 600;
+      margin-top: 0.2em;
+    }
+    .brief-meta {
+      text-align: left;
+      font-size: 0.82em;
+      color: #666;
+      line-height: 1.7;
+    }
+
+    /* Methodology block */
+    .methodology {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 1.75em;
+      margin-bottom: 2.5em;
+    }
+    .eyebrow {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.6em;
+    }
+    .methodology h2 {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.2em;
+      font-weight: 400;
+      margin-bottom: 0.6em;
+    }
+    .methodology p { font-size: 0.88em; color: #444; margin-bottom: 1.2em; }
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1em;
+      margin-top: 0.5em;
+    }
+    .tier-cell { font-size: 0.84em; }
+    .tier-pill {
+      display: inline-block;
+      padding: 0.22em 0.9em;
+      border-radius: 100px;
+      font-size: 0.72em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.5em;
+    }
+    .pill-bullseye  { background: #0a0a0a; color: #f7f6f4; }
+    .pill-contender { background: #3b4a9e; color: #fff; }
+    .pill-excluded  { background: #c84b2f; color: #fff; }
+    .tier-cell p { color: #555; line-height: 1.5; }
+
+    /* Account card */
+    .account-section { margin-bottom: 2.5em; }
+    .account-section .eyebrow { margin-bottom: 0.5em; }
+    .account-card {
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 1.5em;
+      page-break-inside: avoid;
+    }
+    .account-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1em;
+      margin-bottom: 1.2em;
+      flex-wrap: wrap;
+    }
+    .account-name {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.2em;
+      font-weight: 400;
+    }
+    .account-detail {
+      font-size: 0.84em;
+      color: #666;
+      margin-top: 0.25em;
+      line-height: 1.5;
+    }
+    .account-detail a { color: #2563eb; text-decoration: none; }
+    .account-badges { display: flex; gap: 0.5em; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+    .conf-badge {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.22em 0.7em;
+      border-radius: 100px;
+      border: 1.5px solid;
+    }
+    .conf-high     { border-color: #2d6a4f; color: #2d6a4f; }
+    .conf-moderate { border-color: #d97706; color: #d97706; }
+    .conf-low      { border-color: #999; color: #999; }
+
+    /* Section divider within card */
+    .card-section { margin-top: 1em; }
+    .card-section-label {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      color: #888;
+      margin-bottom: 0.4em;
+    }
+
+    /* Signals */
+    .signal-list { display: flex; flex-direction: column; gap: 0.2em; }
+    .signal-item {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5em;
+      font-size: 0.87em;
+      color: #333;
+    }
+    .signal-icon-yes    { color: #2d6a4f; font-weight: 700; flex-shrink: 0; }
+    .signal-icon-no     { color: #c84b2f; flex-shrink: 0; }
+    .signal-icon-nf     { color: #999; flex-shrink: 0; }
+
+    /* Sales angle */
+    .angle-list { padding-left: 1.2em; display: flex; flex-direction: column; gap: 0.4em; }
+    .angle-list li { font-size: 0.87em; color: #333; }
+
+    /* Verify items */
+    .verify-list { display: flex; flex-direction: column; gap: 0.2em; }
+    .verify-item { font-size: 0.87em; color: #555; padding: 0.2em 0.6em; background: #fffbeb; border-left: 2px solid #d97706; border-radius: 0 4px 4px 0; }
+
+    /* Exclusion */
+    .exclusion-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.25em 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4em;
+    }
+    .exclusion-list li {
+      background: #fef2ef;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      padding: 0.55em 0.9em;
+      font-size: 0.87em;
+      color: #7a2318;
+      line-height: 1.45;
+    }
+
+    /* Footer */
+    .brief-footer {
+      margin-top: 3em;
+      padding-top: 1.5em;
+      border-top: 1px solid #e0e0e0;
+      font-size: 0.78em;
+      color: #aaa;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      .tier-grid { grid-template-columns: 1fr; }
+      .brief-header { flex-direction: column; align-items: flex-start; }
+    }
+    @media print {
+      .page { padding: 1em; }
+      .account-card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  
+  <div class="brief-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMCAzMCIgd2lkdGg9IjMwIiBoZWlnaHQ9IjMwIiBmaWxsPSJub25lIiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IkJ1bGxzZXllIE1lZGljYWwgSW50ZWxsaWdlbmNlIj4NCiAgPGxpbmUgeDE9IjEwIiB5MT0iMyIgeDI9IjE1IiB5Mj0iMTUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+DQogIDxsaW5lIHgxPSIzIiB5MT0iMjQiIHgyPSIxNSIgeTI9IjE1IiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPg0KICA8bGluZSB4MT0iMjgiIHkxPSIxOCIgeDI9IjE1IiB5Mj0iMTUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+DQogIDxjaXJjbGUgY3g9IjE1IiBjeT0iMTUiIHI9IjMiIGZpbGw9IiNjODRiMmYiLz4NCjwvc3ZnPg0K" width="32" height="32" alt="Bullseye Medical Intelligence" style="display:block;filter:brightness(0);">
+      <div>
+        <div class="brief-wordmark">Bullseye Medical Intelligence</div>
+        <div class="brief-tagline">Intelligence Brief</div>
+      </div>
+    </div>
+    <div class="brief-meta">
+      Specialty: <strong>OBGYN</strong><br>
+      Territory: TX, FL, GA<br>
+      2026-06-16<br>
+      Run: RUN-20260616-194814-892d
+    </div>
+  </div>
+
+  
+  <div class="methodology">
+    <div class="eyebrow">How We Rank Targets</div>
+    <h2>Scoring Methodology</h2>
+    <p>
+      Every account is evaluated against a structured ICP signal checklist drawn entirely from publicly
+      available web data. Each signal requires a direct textual anchor — no assumptions, no inferred
+      data. The result is a two-axis verdict: <strong>tier</strong> (the call priority) and
+      <strong>confidence band</strong> (the evidence depth). Internal numeric scores stay in the
+      data layer and are never included in client-facing output.
+    </p>
+    <div class="tier-grid">
+      <div class="tier-cell">
+        <div class="tier-pill pill-bullseye">Bullseye</div>
+        <p>All must-have signals confirmed. Highest-priority accounts with strong clinical and commercial fit. Ready for outreach.</p>
+      </div>
+      <div class="tier-cell">
+        <div class="tier-pill pill-contender">Contender</div>
+        <p>Solid fit with one or more unverified items. Worth calling, but a discovery question may shift the priority. Good for pipeline building.</p>
+      </div>
+      <div class="tier-cell">
+        <div class="tier-pill pill-excluded">Excluded</div>
+        <p>Disqualified by a structural rule before any enrichment spend. Excluded accounts are shown here so the decision logic is transparent.</p>
+      </div>
+    </div>
+  </div>
+
+  
+  
+  <div class="account-section">
+    <div class="eyebrow">Bullseye Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">Innovative Women&#39;s HealthCare Solutions</div>
+          <div class="account-detail">
+            Smyrna, GA 30082
+            <br><a href="https://www.iwhcs.com/">https://www.iwhcs.com/</a>
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-bullseye">Bullseye</span>
+          
+          <span class="conf-badge conf-high">High</span>
+          
+        </div>
+      </div>
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      <div class="card-section">
+        <div class="card-section-label">Confirmed Signals</div>
+        <div class="signal-list">
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Infertility workup listed</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Contraception counseling listed</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Hormone therapy / PCOS listed</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Independent private practice</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Cash-pay / self-pay fertility service line visible</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>In-house ultrasound</span>
+          </div>
+          
+        </div>
+      </div>
+      
+
+      
+      <div class="card-section">
+        <div class="card-section-label">Why This Account</div>
+        <ul class="angle-list">
+          
+          <li>The practice operates a dedicated Fibroid &amp; Reproductive Care Center alongside an active infertility consultation service, indicating an established reproductive care workflow that aligns with in-office Femasys procedure adoption.</li>
+          
+          <li>In-house pelvic ultrasound — explicitly listed as performed on-site — removes the imaging infrastructure barrier, meaning Femasys ultrasound-guided procedures could be integrated without patient referral for imaging.</li>
+          
+          <li>The co-located Med Spa (Innovative Surgical Arts) and published cash-pay pricing for cosmetic procedures confirm direct patient billing infrastructure, suggesting the practice is comfortable with non-insurance-covered procedure revenue streams.</li>
+          
+          <li>Aesthetic gynecology services including Vaginoplasty and Labiaplasty are listed on the services page, indicating a patient base and provider mindset oriented toward elective, procedure-forward women&#39;s health — a strong behavioral fit for Femasys adoption.</li>
+          
+          <li>No REI on staff and no IVF program detected, confirming the office-based OBGYN profile Femasys targets; the infertility service line appears to operate at the consultation and in-office workup level rather than an ART lab model.</li>
+          
+        </ul>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  
+  <div class="account-section">
+    <div class="eyebrow">Contender Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">Mimi Vanoyan, M.D., FACOG</div>
+          <div class="account-detail">
+            Atlanta, GA 30309
+            <br><a href="https://www.atlobgyn.com/">https://www.atlobgyn.com/</a>
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-contender">Contender</span>
+          
+          <span class="conf-badge conf-high">High</span>
+          
+        </div>
+      </div>
+
+      
+      
+      
+        
+      
+        
+      
+        
+        
+      
+        
+      
+        
+        
+      
+        
+        
+      
+        
+        
+      
+        
+      
+        
+      
+        
+        
+      
+        
+      
+      
+      
+      <div class="card-section">
+        <div class="card-section-label">Signals</div>
+        <div class="signal-list">
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Infertility workup listed</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Contraception counseling listed</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Hormone therapy / PCOS listed</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Independent private practice</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>In-house ultrasound</span></div>
+          
+          
+        </div>
+      </div>
+      
+
+      
+
+      
+      <div class="card-section">
+        <div class="card-section-label">Why This Account</div>
+        <ul class="angle-list">
+          
+          <li>The practice explicitly lists infertility as a service on its services page alongside in-house ultrasound capability, confirming the procedural infrastructure relevant to Femasys device adoption without evidence of a competing IVF/ART program.</li>
+          
+          <li>In-house ultrasound is confirmed across both existing locations and the forthcoming Cumberland site, meaning the practice already has the imaging infrastructure required to support ultrasound-guided in-office procedures.</li>
+          
+          <li>The practice appears to operate as an independent private group with three locations (two active, one opening August 2026), suggesting direct budget authority and a scaling footprint that could support multi-site device adoption.</li>
+          
+          <li>No REI provider or in-house IVF/ART program is present in the website text, positioning this as an office-based OBGYN practice managing infertility at the diagnostic and conservative treatment level — the core Femasys target profile.</li>
+          
+          <li>The service line spans infertility, PCOS, hysteroscopy, minimally invasive surgery, and birth control counseling, indicating a procedurally mature office-based women&#39;s health practice with established workflow infrastructure for in-office procedures.</li>
+          
+        </ul>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  
+  <div class="account-section">
+    <div class="eyebrow">Excluded Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">Obstetrics and Gynecology (Ob/Gyn) of Atlanta</div>
+          <div class="account-detail">
+            Suwanee, GA 30024
+            <br><a href="https://www.obgynofatlanta.com/">https://www.obgynofatlanta.com/</a>
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-excluded">Excluded</span>
+        </div>
+      </div>
+
+      
+      <div class="card-section">
+        <div class="card-section-label">Why Excluded</div>
+        <ul class="exclusion-list">
+          
+          <li>The practice is branded under and operates within the &#39;Atlanta Women&#39;s Health Group Partner Practice Network&#39; (confirmed by universal header and @awhg.org staff email domains), indicating a parent network affiliation. Procurement and budget authority may sit above the individual practice level. Flag for operator review before advancing.</li>
+          
+        </ul>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  <div class="brief-footer">
+    Generated by BEMI (Bullseye Medical Intelligence) &nbsp;&middot;&nbsp; Run: RUN-20260616-194814-892d &nbsp;&middot;&nbsp; 2026-06-16<br>
+    Internal ranking data, numeric scores, and analyst notes are not included in this brief.
+    Tier verdicts and confidence bands are derived from publicly available web data only.
+  </div>
+
+</div>
+</body>
+</html>

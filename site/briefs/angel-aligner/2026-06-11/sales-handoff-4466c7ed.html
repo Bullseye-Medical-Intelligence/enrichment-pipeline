@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Sales Handoff &mdash; Angel Aligner &middot; Angel Aligner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0a0a0a;--acc:#c84b2f;--warm:#f7f6f4;--card:#141312;
+    --line:rgba(247,246,244,0.12);--line2:rgba(247,246,244,0.22);
+    --txt:#d9d6d2;--mut:rgba(247,246,244,0.5);--lbl:rgba(247,246,244,0.4);--ok:#5fa978;}
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--ink);color:var(--warm);font-family:'Inter','DM Sans',sans-serif;
+    font-size:14px;line-height:1.5;padding:40px 28px 92px;max-width:1080px;margin:0 auto;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;}
+
+  .rhead{display:flex;justify-content:space-between;align-items:flex-start;
+    padding-bottom:26px;border-bottom:1px solid var(--line);margin-bottom:22px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logomark{flex:0 0 auto;display:block;}
+  .lockup{display:flex;flex-direction:column;line-height:1.1;}
+  .bname{font-family:'Inter','DM Sans',sans-serif;font-size:16px;font-weight:600;
+    letter-spacing:-0.005em;color:#f7f6f4;}
+  .bdesc{font-family:'Inter','DM Sans',sans-serif;font-size:9px;font-weight:600;
+    letter-spacing:0.18em;text-transform:uppercase;color:rgba(247,246,244,0.4);margin-top:4px;}
+  .rmeta{text-align:right;}
+  .rtitle{font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--acc);}
+  .rsub{font-size:12px;color:var(--mut);margin-top:3px;}
+  .ibadge{display:inline-block;margin-top:7px;padding:3px 9px;background:rgba(200,75,47,0.14);
+    border:1px solid rgba(200,75,47,0.32);border-radius:100px;font-size:9px;font-weight:600;
+    letter-spacing:0.1em;text-transform:uppercase;color:var(--acc);}
+  .confstamp{margin-top:10px;font-size:10.5px;line-height:1.55;color:rgba(247,246,244,0.4);}
+  .confstamp b{color:rgba(247,246,244,0.62);font-weight:600;}
+
+  .summary{display:flex;flex-wrap:wrap;gap:30px;margin-bottom:16px;padding:17px 22px;
+    background:rgba(247,246,244,0.04);border:1px solid var(--line);border-radius:8px;}
+  .sit{display:flex;flex-direction:column;gap:2px;}
+  .slab{font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--lbl);}
+  .sval{font-size:15px;font-weight:500;}.sval.acc{color:var(--acc);}
+
+  .howto{border:1px solid var(--line);border-left:2px solid var(--acc);border-radius:0 8px 8px 0;
+    padding:15px 20px;margin-bottom:14px;font-size:12.5px;line-height:1.65;color:#c2bfbb;}
+  .howto b{color:#f2efeb;font-weight:600;}
+  .howto .row{margin-bottom:4px;}
+  .pattern{background:rgba(247,246,244,0.04);border:1px solid var(--line);border-radius:8px;
+    padding:15px 20px;margin-bottom:22px;}
+  .pattern .pat-body{font-family:'Inter','DM Sans',sans-serif;font-style:normal;font-size:14px;
+    line-height:1.55;color:#e8e5e1;}
+  .pattern .pat-body b{font-weight:700;color:#fff;}
+
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
+  .chip{font-size:11px;font-weight:600;border:1px solid var(--line2);background:transparent;
+    color:var(--mut);border-radius:100px;padding:7px 13px;cursor:pointer;
+    touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.15);}
+  .chip.on{background:var(--warm);color:var(--ink);border-color:var(--warm);}
+  .expandall{margin-left:auto;font-size:11px;color:var(--mut);background:none;border:none;cursor:pointer;text-decoration:underline;touch-action:manipulation;}
+
+  .tsection{margin-bottom:14px;}
+  .tshead{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--line);margin-bottom:10px;}
+  .tdot{width:9px;height:9px;border-radius:50%;}
+  .tdot.b{background:var(--acc);}.tdot.c{background:var(--warm);}.tdot.e{background:var(--lbl);}
+  .tsname{font-family:'Inter','DM Sans',sans-serif;font-size:18px;font-weight:700;letter-spacing:-0.01em;}
+  .tscount{font-size:12px;color:var(--mut);}
+
+  .acct{border:1px solid var(--line);border-radius:10px;margin-bottom:9px;overflow:hidden;background:var(--card);}
+  .acct.flagged{border-color:rgba(200,75,47,0.4);}
+  .ahead{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:center;padding:16px 20px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.08);}
+  .ahead *{touch-action:manipulation;}
+  .acct.open{border-color:rgba(200,75,47,0.3);}
+  .aname{font-weight:700;font-size:16.5px;letter-spacing:-0.01em;}
+  .ameta{font-size:11.5px;color:var(--mut);margin-top:3px;}
+  .flag{display:inline-block;margin-top:6px;font-size:10px;font-weight:600;color:var(--acc);
+    border:1px solid rgba(200,75,47,0.4);border-radius:100px;padding:2px 8px;}
+  .conf{display:flex;align-items:center;gap:8px;}
+  .seg{display:flex;gap:3px;}.seg span{width:14px;height:5px;border-radius:3px;background:var(--line2);}
+  .seg span.on{background:var(--warm);}
+  .conf-lbl{font-size:11px;font-weight:600;}
+  .tpill{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:100px;padding:5px 11px;}
+  .tpill.b{background:var(--acc);color:#fff;}
+  .tpill.c{border:1px solid var(--warm);color:var(--warm);}
+  .tpill.e{border:1px solid var(--line2);color:var(--lbl);}
+  .caret{color:var(--mut);font-size:11px;transition:transform .15s;}
+  .acct.open .caret{transform:rotate(90deg);}
+
+  .body{display:none;padding:4px 26px 24px;}
+  .acct.open .body{display:block;}
+
+  .fld{margin-top:22px;}
+  .ey{font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(247,246,244,0.34);font-weight:600;margin-bottom:7px;}
+  .why{font-size:14px;line-height:1.5;color:#f2efeb;}
+  .whylist{list-style:none;padding:0;margin:0;}
+  .whylist li{font-size:14px;line-height:1.55;color:#f2efeb;padding:5px 0 5px 20px;position:relative;}
+  .whylist li::before{content:"→";position:absolute;left:0;color:var(--acc);font-size:11px;top:7px;}
+  .wedge{font-family:'Inter','DM Sans',sans-serif;font-style:normal;font-weight:600;font-size:15px;line-height:1.4;color:#f4f1ed;}
+  .landmine{font-size:13px;line-height:1.55;color:var(--txt);border-left:2px solid var(--acc);padding-left:12px;}
+  .landmine b{color:#f2efeb;}
+  .sigrow{display:flex;flex-wrap:wrap;gap:7px;}
+  .sigpill{font-size:11.5px;color:rgba(95,169,120,0.9);background:rgba(95,169,120,0.08);border:1px solid rgba(95,169,120,0.2);border-radius:6px;padding:5px 11px;}
+  .verify{list-style:none;columns:2;column-gap:24px;}
+  .verify li{font-size:12px;color:var(--mut);padding:3px 0;break-inside:avoid;padding-left:14px;position:relative;}
+  .verify li::before{content:"·";position:absolute;left:0;color:rgba(247,246,244,0.28);font-size:14px;line-height:1.2;}
+
+  /* Excluded section — faded so reps don't accidentally engage */
+  .tsection[data-tier="e"] .acct{opacity:0.35;transition:opacity .2s;}
+  .tsection[data-tier="e"] .acct:hover,.tsection[data-tier="e"] .acct.open{opacity:0.72;}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .qc{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--mut);}
+  .qc b{color:#cfccc8;}
+
+  /* excluded compact */
+  .exgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:6px;}
+  .exgrid .c{font-size:12px;}
+  .exgrid .l{font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--lbl);font-weight:600;margin-bottom:4px;}
+  .exgrid .v{color:var(--txt);line-height:1.45;overflow-wrap:break-word;word-break:break-word;}
+
+  .foot{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,0.96);backdrop-filter:blur(8px);
+    border-top:1px solid var(--line);padding:11px 28px;font-size:11px;color:var(--mut);text-align:center;line-height:1.5;}
+  .foot b{color:var(--acc);}
+  @media(max-width:820px){.twocol{grid-template-columns:1fr;}.verify{columns:1;}.exgrid{grid-template-columns:1fr 1fr;}.ahead{grid-template-columns:1fr auto;}.conf{display:none;}.rhead{flex-direction:column;gap:14px;}.rmeta{text-align:left;}body{padding:20px 16px 80px;}}
+  @media(max-width:480px){.exgrid{grid-template-columns:1fr;}.body{padding:4px 14px 20px;}.aname{font-size:14.5px;}}
+</style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<div class="rhead">
+  <div class="brand">
+    <svg class="logomark" width="30" height="30" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="18" cy="18" r="15.5" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="8.5" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="3" fill="currentColor"/><line x1="18" y1="1.5" x2="18" y2="8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="18" y1="27.5" x2="18" y2="34.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1.5" y1="18" x2="8.5" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="27.5" y1="18" x2="34.5" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <div class="lockup">
+      <div class="bname">Bullseye Medical Intelligence</div>
+      <div class="bdesc">Sales Handoff</div>
+    </div>
+  </div>
+  <div class="rmeta">
+    <div class="rtitle">Angel Aligner &middot; Angel Aligner</div>
+    <div class="rsub">June 10, 2026 &nbsp;&middot;&nbsp; Orthodontics &middot; TX, FL, GA, AZ, NC</div>
+    <div class="ibadge">Internal &mdash; Sales Team Use Only</div>
+    <div class="confstamp">
+      Confidential &mdash; prepared for <b>Angel Aligner</b> &middot; do not forward<br>
+      Intelligence current as of <b>June 10, 2026</b> &middot; refresh on request &middot; expires <b>July 10, 2026</b>
+    </div>
+  </div>
+</div>
+
+<div class="summary">
+  <div class="sit"><span class="slab">Screened</span><span class="sval">7</span></div>
+  <div class="sit"><span class="slab">Call First</span><span class="sval acc">1</span></div>
+  <div class="sit"><span class="slab">Validate</span><span class="sval">5</span></div>
+  <div class="sit"><span class="slab">Suppress</span><span class="sval">1</span></div>
+  <div class="sit"><span class="slab">ICP</span><span class="sval" style="font-size:13px;">ortho_angel_v1</span></div>
+</div>
+
+<div class="howto">
+  <div class="row"><b>How to work this list.</b> Three tiers, three jobs.</div>
+  <div class="row"><b>Call First</b> &mdash; high-fit, high-evidence. Work now.</div>
+  <div class="row"><b>Validate</b> &mdash; real potential. Qualify the authority or source gap before heavy effort.</div>
+  <div class="row"><b>Suppress</b> &mdash; disqualified or low-actionability. Field-time protection.</div>
+</div>
+
+
+
+<div class="controls">
+  <span class="chip on" data-f="all">All 7</span>
+  <span class="chip" data-f="b">Call First 1</span><span class="chip" data-f="c">Validate 5</span><span class="chip" data-f="e">Suppress 1</span>
+  <button class="expandall" onclick="toggleAll()">Expand all</button>
+</div>
+
+
+<div class="tsection" data-tier="b">
+  <div class="tshead">
+    <span class="tdot b"></span>
+    <span class="tsname">Call First</span>
+    <span class="tscount">1 account &middot; work these now</span>
+  </div>
+
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Gupta Smile Studio - Orthodontics</div>
+        <div class="ameta">Dallas (75208), TX &middot; +1 (214) 254-3772 &middot; guptasmilestudio.com</div>
+        
+      </div>
+      <span class="tpill b">Bullseye</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span class="on"></span>
+          <span class="on"></span>
+        </div>
+        <span class="conf-lbl">High</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">Ask for Niti Dattani Gupta — Manages scheduling and patient workflow as practice gatekeeper</div></div>
+      <div class="fld"><div class="ey">Why It Matters</div><ul class="whylist"><li>I saw Gupta Smile Studio already offers clear aligners and positions them as a simple, discreet option, so it may be worth comparing how Angel Aligner could expand your aligner offering while keeping that boutique patient experience consistent.</li><li>You also promote flexible 0% financing, which tells me affordability is part of how you win cases; Angel Aligner may give you another way to present aligner treatment in a budget-conscious conversation.</li><li>Because you treat both teens and adults, it seems important to have options for different lifestyle and case preferences; Angel Aligner could help you broaden those aligner discussions without changing your practice style.</li><li>As a family-owned, independent orthodontic practice, you have the freedom to choose solutions that match your brand and patient experience, and that makes a conversation about Angel Aligner especially relevant.</li></ul></div>
+      <div class="twocol">
+        <div class="fld">
+          <div class="ey">Confirmed Signals</div>
+          <div class="sigrow">
+            <span class="sigpill">Clear aligners offered</span><span class="sigpill">Open intraoral scanner present</span><span class="sigpill">Patient financing visible</span><span class="sigpill">Treats adults</span><span class="sigpill">Independent practice</span><span class="sigpill">Invisalign offered</span><span class="sigpill">Treats teens and adolescents</span><span class="sigpill">Markets aligners actively</span><span class="sigpill">Aligner brand mentioned in reviews</span>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="ey">Verify</div>
+          <ul class="verify">
+            <li style="list-style:none;color:var(--mut);">&mdash;</li>
+          </ul>
+        </div>
+      </div>
+      <div class="fld"><div class="ey">Example Opener</div><div class="wedge">Open by referencing the practice&#x27;s active Invisalign offering and affordable-care positioning, and frame how peers in boutique independent practices are using a lower-cost aligner option to expand their case volume without changing their digital workflow.</div></div>
+      <div class="fld"><div class="ey">Landmine</div><div class="landmine">Likely objection: They may feel their current Invisalign relationship and digital workflow are working well enough and see no compelling reason to introduce another aligner brand.</div></div>
+      <div class="qc">QC: <b>Reviewed by rajiv</b> &nbsp;&middot;&nbsp; Evidence: <b>guptasmilestudio.com</b> &nbsp;&middot;&nbsp; Tier <b>Bullseye</b> / Confidence <b>High</b></div>
+      
+    </div>
+  </div>
+  
+</div>
+
+<div class="tsection" data-tier="c">
+  <div class="tshead">
+    <span class="tdot c"></span>
+    <span class="tsname">Validate</span>
+    <span class="tscount">5 accounts &middot; qualify the buyer first</span>
+  </div>
+
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Walnut Central Orthodontics</div>
+        <div class="ameta">Dallas (75231), TX &middot; +1 (214) 692-5688 &middot; orthodontistdallastx.com</div>
+        
+      </div>
+      <span class="tpill c">Validate</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span class="on"></span>
+          <span class="on"></span>
+        </div>
+        <span class="conf-lbl">High</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">Ask for Dr. Judy Choi — Founding orthodontist and primary Invisalign volume driver</div></div>
+      <div class="fld"><div class="ey">Why It Matters</div><ul class="whylist"><li>You highlight zero-percent payment plans and CareCredit right on the website, which tells me affordability is part of how you win cases. Angel Aligner may be worth a look as a way to support more price-sensitive aligner starts without changing the patient-friendly financing experience you already market.</li><li>Your practice treats kids, teens, and adults, and you position yourselves as a destination for second opinions and conservative treatment planning. Angel Aligner could be a useful additional option for a broad age mix, giving Dr. Choi more flexibility in how aligner cases are presented across different patient types.</li><li>As an independent Dallas orthodontic practice, you have the freedom to evaluate solutions that fit your workflow and brand rather than following a corporate standard. That makes a quick conversation about Angel Aligner especially relevant if you&#x27;re open to adding a complementary aligner offering alongside what you already do well.</li></ul></div>
+      <div class="twocol">
+        <div class="fld">
+          <div class="ey">Confirmed Signals</div>
+          <div class="sigrow">
+            <span class="sigpill">Clear aligners offered</span><span class="sigpill">Patient financing visible</span><span class="sigpill">Treats adults</span><span class="sigpill">Independent practice</span><span class="sigpill">Invisalign high-tier lock</span><span class="sigpill">Invisalign offered</span><span class="sigpill">Complex case capability</span><span class="sigpill">Treats teens and adolescents</span><span class="sigpill">Treats children (interceptive)</span><span class="sigpill">Markets aligners actively</span>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="ey">Verify</div>
+          <ul class="verify">
+            <li>Open intraoral scanner present</li>
+          </ul>
+        </div>
+      </div>
+      <div class="fld"><div class="ey">Example Opener</div><div class="wedge">Open by referencing their Top 1% Invisalign status and active aligner marketing across all age groups, then introduce the dual-brand angle — how peers at similarly high-volume aligner practices are adding a lower-cost option specifically to capture cost-sensitive consults who might otherwise leave without converting.</div></div>
+      <div class="fld"><div class="ey">Landmine</div><div class="landmine">Invisalign high-tier lock (caps tier at Contender)  ·  Likely objection: They will likely cite their deep Invisalign investment and Top 1% status as a reason to stay all-in on Align, viewing any alternative aligner as brand dilution.</div></div>
+      <div class="qc">QC: <b>Reviewed by rajiv</b> &nbsp;&middot;&nbsp; Evidence: <b>orthodontistdallastx.com</b> &nbsp;&middot;&nbsp; Tier <b>Validate</b> / Confidence <b>High</b></div>
+      
+    </div>
+  </div>
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Highland Park Orthodontics</div>
+        <div class="ameta">Dallas (75225), TX &middot; +1 (214) 361-6644 &middot; hporthodallasbraces.com</div>
+        
+      </div>
+      <span class="tpill c">Validate</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span class="on"></span>
+          <span class="on"></span>
+        </div>
+        <span class="conf-lbl">High</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">Ask for Dr. Nadia Lyotard — sole named provider and direct budget authority</div></div>
+      <div class="fld"><div class="ey">Why It Matters</div><ul class="whylist"><li>I saw Highland Park Orthodontics is independently owned by Dr. Nadia Lyotard, so I thought it might be worth a quick conversation about an aligner partner that can give your practice more control over treatment planning and business decisions.</li><li>Your site highlights treatment for adults, teens, and children, including teen-focused aligner options, and that breadth could make it useful to look at a platform designed to support a wide mix of orthodontic cases under one roof.</li><li>You already promote reasonable payment options and a premium patient experience, so it may be helpful to explore an aligner offering that can support flexible case presentation and value conversations with families.</li><li>Because your website actively markets clear aligners with assessments, kids options, and a strong digital Invisalign presence, I thought there may be an opportunity to discuss how adding another aligner option could broaden choice without changing your orthodontic focus.</li></ul></div>
+      <div class="twocol">
+        <div class="fld">
+          <div class="ey">Confirmed Signals</div>
+          <div class="sigrow">
+            <span class="sigpill">Clear aligners offered</span><span class="sigpill">Patient financing visible</span><span class="sigpill">Treats adults</span><span class="sigpill">Independent practice</span><span class="sigpill">Invisalign high-tier lock</span><span class="sigpill">Invisalign offered</span><span class="sigpill">Complex case capability</span><span class="sigpill">Treats teens and adolescents</span><span class="sigpill">Treats children (interceptive)</span><span class="sigpill">Markets aligners actively</span>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="ey">Verify</div>
+          <ul class="verify">
+            <li>Open intraoral scanner present</li>
+          </ul>
+        </div>
+      </div>
+      <div class="fld"><div class="ey">Example Opener</div><div class="wedge">Open by referencing her Elite Platinum Invisalign status and framing Angel as a complementary, lower-cost-per-case option for the price-sensitive adult consults she is already capturing — not a replacement for her existing Invisalign volume.</div></div>
+      <div class="fld"><div class="ey">Landmine</div><div class="landmine">Invisalign high-tier lock (caps tier at Contender)  ·  Likely objection: She will likely say her entire digital workflow is built around Invisalign and she sees no reason to introduce a second aligner system.</div></div>
+      <div class="qc">QC: <b>Reviewed by rajiv</b> &nbsp;&middot;&nbsp; Evidence: <b>hporthodallasbraces.com</b> &nbsp;&middot;&nbsp; Tier <b>Validate</b> / Confidence <b>High</b></div>
+      
+    </div>
+  </div>
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Top Smile Orthodontics - LAKEWOOD</div>
+        <div class="ameta">Dallas (75214), TX &middot; +1 (469) 314-2888 &middot; topsmileortho.com</div>
+        
+      </div>
+      <span class="tpill c">Validate</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span class="on"></span>
+          <span class="on"></span>
+        </div>
+        <span class="conf-lbl">High</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">Ask for Fallon Garcia — Treatment coordinator sees case intake and patient cost objections daily</div></div>
+      <div class="fld"><div class="ey">Why It Matters</div><ul class="whylist"><li>I saw Dr. Nima positions Top Smile as a locally owned, sole-owner practice, so I thought it made sense to reach out about an aligner option that can give you more direct control over treatment mix and business decisions.</li><li>Your site clearly highlights adult orthodontic demand and cosmetic treatment options, and Angel Aligner could be worth a look as another clear aligner choice for adults seeking an esthetic solution.</li><li>You already make treatment accessible with no-interest financing, monthly payment plans, and third-party financing, so adding another aligner offering may help you create more flexible case presentation conversations for cost-conscious patients.</li><li>Since Top Smile actively promotes clear aligners and free orthodontic consultations, this could be a timely opportunity to discuss how an additional aligner option might support those consult conversations for teens and adults.</li></ul></div>
+      <div class="twocol">
+        <div class="fld">
+          <div class="ey">Confirmed Signals</div>
+          <div class="sigrow">
+            <span class="sigpill">Clear aligners offered</span><span class="sigpill">iTero scanner (Align ecosystem)</span><span class="sigpill">Patient financing visible</span><span class="sigpill">Treats adults</span><span class="sigpill">Independent practice</span><span class="sigpill">Invisalign offered</span><span class="sigpill">Treats teens and adolescents</span><span class="sigpill">Treats children (interceptive)</span><span class="sigpill">Markets aligners actively</span>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="ey">Verify</div>
+          <ul class="verify">
+            <li style="list-style:none;color:var(--mut);">&mdash;</li>
+          </ul>
+        </div>
+      </div>
+      <div class="fld"><div class="ey">Example Opener</div><div class="wedge">Open by referencing their active Invisalign marketing and the lab-fee savings peers are capturing by adding a second aligner option for cost-sensitive consultations — framing Angel as a complementary rather than replacement brand.</div></div>
+      <div class="fld"><div class="ey">Landmine</div><div class="landmine">iTero scanner (Align ecosystem) (friction signal present)  ·  Likely objection: They may resist adding a second aligner brand because the iTero scanner and existing workflow are built around the Invisalign/Align ecosystem, making any open-STL workflow feel like added complexity.</div></div>
+      <div class="qc">QC: <b>Reviewed by rajiv</b> &nbsp;&middot;&nbsp; Evidence: <b>topsmileortho.com</b> &nbsp;&middot;&nbsp; Tier <b>Validate</b> / Confidence <b>High</b></div>
+      
+    </div>
+  </div>
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Scott Evans, DDS: Orthodontic, Family &amp; Cosmetic Dentistry</div>
+        <div class="ameta">Dallas (75225), TX &middot; +1 (214) 337-5202 &middot; straightortho.com</div>
+        
+      </div>
+      <span class="tpill c">Validate</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span class="on"></span>
+          <span class="on"></span>
+        </div>
+        <span class="conf-lbl">High</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">Ask for Dr. Scott Evans — Practice owner with direct budget authority and aligner case decisions</div></div>
+      <div class="fld"><div class="ey">Why It Matters</div><ul class="whylist"><li>I saw your site highlights clear aligners as a dedicated service with its own call-to-action, so I thought it made sense to connect about adding another aligner option that could broaden what you offer without changing your patient-facing focus on discreet treatment.</li><li>Your patient testimonial about adult aligner treatment suggests you’re already attracting adults who want a more aesthetic orthodontic experience, and Angel Aligner may give you another way to present aligner choices in those consultations.</li><li>Because Dr. Scott Evans is presented as an independent practice, you likely have flexibility in how you evaluate new solutions, and Angel Aligner could be worth a look as an additional aligner partner tailored to your own workflow and business goals.</li><li>Your website blends orthodontic and cosmetic messaging around confidence and smile enhancement, so this seemed relevant since Angel Aligner can support conversations with image-conscious patients already coming to you for appearance-driven treatment.</li></ul></div>
+      <div class="twocol">
+        <div class="fld">
+          <div class="ey">Confirmed Signals</div>
+          <div class="sigrow">
+            <span class="sigpill">Clear aligners offered</span><span class="sigpill">Treats adults</span><span class="sigpill">Independent practice</span><span class="sigpill">Invisalign offered</span><span class="sigpill">Markets aligners actively</span><span class="sigpill">Aligner brand mentioned in reviews</span>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="ey">Verify</div>
+          <ul class="verify">
+            <li>Open intraoral scanner present</li><li>Patient financing visible</li>
+          </ul>
+        </div>
+      </div>
+      <div class="fld"><div class="ey">Example Opener</div><div class="wedge">Open by referencing the practice&#x27;s active Invisalign Specialist positioning and how peers offering a second aligner option at lower lab cost are expanding their adult cash-pay volume without cannibalizing existing Invisalign cases.</div></div>
+      <div class="fld"><div class="ey">Landmine</div><div class="landmine">Likely objection: They may feel their Invisalign Specialist designation and established workflow make switching or adding a second aligner brand unnecessary.</div></div>
+      <div class="qc">QC: <b>Reviewed by rajiv</b> &nbsp;&middot;&nbsp; Evidence: <b>straightortho.com</b> &nbsp;&middot;&nbsp; Tier <b>Validate</b> / Confidence <b>High</b></div>
+      
+    </div>
+  </div>
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Park Cities Orthodontics</div>
+        <div class="ameta">Dallas (75225), TX &middot; +1 (214) 484-8488 &middot; pc-ortho.com</div>
+        
+      </div>
+      <span class="tpill c">Validate</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span class="on"></span>
+          <span class="on"></span>
+        </div>
+        <span class="conf-lbl">High</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">Ask for Dr. Yasir Kachroo — sole named orthodontist and likely practice owner</div></div>
+      <div class="fld"><div class="ey">Why It Matters</div><ul class="whylist"><li>I saw Park Cities Orthodontics already offers clear aligners alongside braces, so I thought it made sense to connect about adding another aligner option that could give Dr. Kachroo more flexibility in how he presents treatment choices.</li><li>You’re clearly speaking to image-conscious teens and adults on the website, and Angel Aligner could help you expand those esthetic conversations with patients who are looking for alternatives to traditional appliances.</li></ul></div>
+      <div class="twocol">
+        <div class="fld">
+          <div class="ey">Confirmed Signals</div>
+          <div class="sigrow">
+            <span class="sigpill">Clear aligners offered</span><span class="sigpill">Treats adults</span><span class="sigpill">Independent practice</span><span class="sigpill">Invisalign offered</span><span class="sigpill">Treats teens and adolescents</span><span class="sigpill">Treats children (interceptive)</span><span class="sigpill">Markets aligners actively</span>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="ey">Verify</div>
+          <ul class="verify">
+            <li>Open intraoral scanner present</li><li>Patient financing visible</li>
+          </ul>
+        </div>
+      </div>
+      <div class="fld"><div class="ey">Example Opener</div><div class="wedge">Open by referencing their active Invisalign offering and how independent practices with similar profiles are expanding their aligner menu to capture cost-sensitive adult consults at a meaningfully lower lab cost.</div></div>
+      <div class="fld"><div class="ey">Landmine</div><div class="landmine">Likely objection: They may feel satisfied with their current Invisalign workflow and see no compelling reason to introduce a second aligner brand.</div></div>
+      <div class="qc">QC: <b>Reviewed by rajiv</b> &nbsp;&middot;&nbsp; Evidence: <b>pc-ortho.com</b> &nbsp;&middot;&nbsp; Tier <b>Validate</b> / Confidence <b>High</b></div>
+      
+    </div>
+  </div>
+  
+</div>
+
+<div class="tsection" data-tier="e">
+  <div class="tshead">
+    <span class="tdot e"></span>
+    <span class="tsname">Suppress</span>
+    <span class="tscount">1 account &middot; protect field time</span>
+  </div>
+
+  
+  <div class="acct">
+    <div class="ahead">
+      <div>
+        <div class="aname">Nassau Street Dental</div>
+        <div class="ameta">New York (10038), NY &middot; +1 (212) 406-3421 &middot; nassaustreetdental.com</div>
+        
+      </div>
+      <span class="tpill e">Suppress</span>
+      <div class="conf">
+        <div class="seg">
+          <span class="on"></span>
+          <span></span>
+          <span></span>
+        </div>
+        <span class="conf-lbl">Low</span>
+        <span class="caret">&#9654;</span>
+      </div>
+    </div>
+    <div class="body">
+      
+      <div class="exgrid">
+        <div class="c"><div class="l">Gate fired</div><div class="v">Practice specialty &#39;Dentist&#39; does not match target specialty &#39;Orthodontics&#39;. | Practice is in NY, outside target geography (TX, FL, GA, AZ, NC).</div></div>
+        <div class="c"><div class="l">Evidence</div><div class="v">nassaustreetdental.com</div></div>
+        <div class="c"><div class="l">Reason to suppress</div><div class="v">Practice specialty &#39;Dentist&#39; does not match target specialty &#39;Orthodontics&#39;. | Practice is in NY, outside target geography (TX, FL, GA, AZ, NC).</div></div>
+        <div class="c"><div class="l">Revisit if</div><div class="v">—</div></div>
+      </div>
+      <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by rajiv</b></div>
+      
+    </div>
+  </div>
+  
+</div>
+
+
+
+<div class="foot">
+  Snapshot June 10, 2026 &middot; not live. &nbsp; Internal numeric scores <b>suppressed</b> in this build. &nbsp; <b>Built for field prioritization, not sales scripting.</b><br>
+  Confidential to Angel Aligner &middot; do not forward &middot; expires July 10, 2026 &middot; &copy; Bullseye Medical Intelligence
+</div>
+
+<script>
+  function toggleAll(){
+    var accts=document.querySelectorAll('.acct');
+    var allOpen=[].every.call(accts,function(a){return a.classList.contains('open');});
+    accts.forEach(function(a){a.classList.toggle('open',!allOpen);});
+  }
+  document.querySelectorAll('.ahead').forEach(function(h){
+    function expand(e){if(e.type==='touchend')e.preventDefault();h.parentElement.classList.toggle('open');}
+    h.addEventListener('click',expand);
+    h.addEventListener('touchend',expand);
+  });
+  document.querySelectorAll('.chip').forEach(function(c){
+    function activate(e){
+      if(e.type==='touchend')e.preventDefault();
+      document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+      c.classList.add('on');
+      var f=c.dataset.f;
+      document.querySelectorAll('.tsection').forEach(function(s){s.style.display=(f==='all'||s.dataset.tier===f)?'block':'none';});
+    }
+    c.addEventListener('click',activate);
+    c.addEventListener('touchend',activate);
+  });
+</script>
+</body>
+</html>

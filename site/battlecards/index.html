@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bullseye Medical Intelligence — Sales Battlecards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #0a0a0a; --ink-2: #3a3a3a; --ink-3: #6b6b6b; --ink-4: #9a9a9a;
+    --surface: #ffffff; --surface-2: #f7f6f4; --surface-3: #f0ede8;
+    --border: rgba(10,10,10,0.10); --border-strong: rgba(10,10,10,0.18);
+    --accent: #c84b2f; --accent-dark: #a33a22;
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--font-body); color: var(--ink); background: var(--surface-2); -webkit-font-smoothing: antialiased; }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    background: var(--ink); padding: 0 48px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .topbar-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .topbar-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); }
+  .topbar-label { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.25); }
+  .topbar-right { display: flex; align-items: center; gap: 20px; }
+  .topbar-link { font-size: 12px; color: rgba(255,255,255,0.35); text-decoration: none; transition: color 0.2s; }
+  .topbar-link:hover { color: rgba(255,255,255,0.7); }
+  .topbar-badge { font-size: 10px; font-weight: 500; padding: 4px 10px; border-radius: 100px; background: rgba(200,75,47,0.2); border: 1px solid rgba(200,75,47,0.3); color: var(--accent); letter-spacing: 0.06em; }
+
+  /* ── PAGE HEADER ── */
+  .page-header {
+    background: var(--ink); padding: 64px 48px 56px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    position: relative; overflow: hidden;
+  }
+  .page-header::before {
+    content: '';
+    position: absolute; bottom: -80px; right: -80px;
+    width: 400px; height: 400px;
+    background: radial-gradient(ellipse, rgba(200,75,47,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .page-header-inner { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+  .page-header-eyebrow { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .page-header-eyebrow::before { content: ''; width: 24px; height: 1px; background: var(--accent); }
+  .page-header-title { font-family: var(--font-display); font-size: clamp(36px, 4vw, 56px); font-weight: 400; color: #fff; line-height: 1.08; letter-spacing: -0.02em; margin-bottom: 16px; }
+  .page-header-sub { font-size: 15px; font-weight: 300; color: rgba(255,255,255,0.4); max-width: 520px; line-height: 1.65; }
+
+  /* ── NAV TABS ── */
+  .nav-tabs { background: var(--ink); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 0 48px; display: flex; gap: 0; overflow-x: auto; }
+  .nav-tab { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.35); padding: 14px 20px; text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s; cursor: pointer; }
+  .nav-tab:hover { color: rgba(255,255,255,0.7); }
+  .nav-tab.active { color: #fff; border-bottom-color: var(--accent); }
+
+  /* ── MAIN LAYOUT ── */
+  .main { max-width: 1200px; margin: 0 auto; padding: 48px; }
+
+  /* ── CARD BASE ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+    margin-bottom: 24px;
+    transition: box-shadow 0.2s;
+  }
+  .card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.06); }
+  .card-header {
+    padding: 28px 32px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  }
+  .card-header-left {}
+  .card-eyebrow { font-size: 9px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; display: block; }
+  .card-title { font-family: var(--font-display); font-size: clamp(22px, 2.5vw, 30px); font-weight: 400; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; }
+  .card-badge { font-size: 10px; font-weight: 500; padding: 5px 12px; border-radius: 100px; white-space: nowrap; flex-shrink: 0; margin-top: 4px; }
+  .badge-core { background: rgba(10,10,10,0.06); color: var(--ink-3); border: 1px solid var(--border-strong); }
+  .badge-tax { background: rgba(200,75,47,0.08); color: var(--accent); border: 1px solid rgba(200,75,47,0.2); }
+  .badge-objection { background: rgba(10,10,10,0.06); color: var(--ink-3); border: 1px solid var(--border-strong); }
+  .badge-discovery { background: #f0f7ee; color: #3a7d2c; border: 1px solid #c5e0bf; }
+  .badge-compliance { background: #eef3fa; color: #2a5ba8; border: 1px solid #b8ceea; }
+  .badge-diagnostic { background: rgba(200,75,47,0.08); color: var(--accent); border: 1px solid rgba(200,75,47,0.2); }
+  .badge-vertical { background: #f5f0fa; color: #6b3fa0; border: 1px solid #d4bff0; }
+  .badge-competitor { background: rgba(10,10,10,0.06); color: var(--ink-3); border: 1px solid var(--border-strong); }
+  .card-body { padding: 28px 32px; }
+
+  /* ── SECTION LABEL ── */
+  .section-label { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .section-label::before { content: ''; display: inline-block; width: 3px; height: 12px; background: var(--accent); border-radius: 2px; }
+
+  /* ── TWO COL GRID ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .four-col { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── PITCH BLOCKS ── */
+  .pitch-block {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 12px;
+  }
+  .pitch-block:last-child { margin-bottom: 0; }
+  .pitch-block-label { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 8px; }
+  .pitch-block-text { font-size: 14px; font-weight: 300; line-height: 1.7; color: var(--ink-2); }
+  .pitch-block-text strong { font-weight: 500; color: var(--ink); }
+
+  /* ── HIGHLIGHT BOX ── */
+  .highlight-box {
+    background: var(--ink); border-radius: 12px; padding: 22px 24px;
+    margin-bottom: 12px;
+  }
+  .highlight-box-label { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 8px; display: block; }
+  .highlight-box-text { font-size: 14px; font-weight: 300; line-height: 1.7; color: rgba(255,255,255,0.7); font-style: italic; }
+  .highlight-box-text strong { font-weight: 500; color: #fff; font-style: normal; }
+
+  /* ── BULLET LIST ── */
+  .bullet-list { list-style: none; }
+  .bullet-list li { font-size: 14px; font-weight: 300; line-height: 1.65; color: var(--ink-2); padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 12px; }
+  .bullet-list li:last-child { border-bottom: none; }
+  .bullet-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 7px; }
+  .bullet-list li strong { font-weight: 500; color: var(--ink); }
+
+  /* ── CHECK LIST (green) ── */
+  .check-list { list-style: none; }
+  .check-list li { font-size: 13px; font-weight: 300; line-height: 1.6; color: var(--ink-2); padding: 7px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+  .check-list li:last-child { border-bottom: none; }
+  .check-icon { font-size: 12px; flex-shrink: 0; margin-top: 2px; color: #3a7d2c; }
+
+  /* ── X LIST (red) ── */
+  .x-list { list-style: none; }
+  .x-list li { font-size: 13px; font-weight: 300; line-height: 1.6; color: var(--ink-3); padding: 7px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+  .x-list li:last-child { border-bottom: none; }
+  .x-icon { font-size: 12px; flex-shrink: 0; margin-top: 2px; color: var(--accent); }
+
+  /* ── OBJECTION ROWS ── */
+  .objection-row { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+  .objection-row:last-child { margin-bottom: 0; }
+  .objection-q { background: var(--surface-3); padding: 14px 18px; font-size: 13px; font-weight: 500; color: var(--ink); display: flex; align-items: flex-start; gap: 10px; }
+  .objection-q-icon { font-size: 11px; flex-shrink: 0; margin-top: 2px; color: var(--ink-3); }
+  .objection-a { background: var(--surface); padding: 14px 18px; font-size: 13px; font-weight: 300; line-height: 1.65; color: var(--ink-2); display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid var(--border); }
+  .objection-a-icon { font-size: 11px; flex-shrink: 0; margin-top: 2px; color: #3a7d2c; }
+
+  /* ── STAT BLOCKS ── */
+  .stat-block { background: var(--ink); border-radius: 12px; padding: 24px; text-align: center; }
+  .stat-num { font-family: var(--font-display); font-size: 44px; color: #fff; line-height: 1; margin-bottom: 6px; }
+  .stat-label { font-size: 12px; font-weight: 300; color: rgba(255,255,255,0.4); line-height: 1.5; }
+  .stat-accent { color: var(--accent); }
+
+  /* ── MINI CARD ── */
+  .mini-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 18px 18px; }
+  .mini-card-title { font-size: 13px; font-weight: 500; color: var(--ink); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .mini-card-title::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .mini-card-copy { font-size: 12px; font-weight: 300; line-height: 1.6; color: var(--ink-3); }
+
+  /* ── DISCOVERY Q BLOCK ── */
+  .discovery-q { padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
+  .discovery-q:last-child { border-bottom: none; }
+  .dq-num { font-family: var(--font-display); font-size: 18px; color: var(--surface-3); flex-shrink: 0; line-height: 1; margin-top: 2px; min-width: 24px; }
+  .dq-text { font-size: 14px; font-weight: 300; line-height: 1.65; color: var(--ink-2); }
+
+  /* ── SIGNAL BADGE ── */
+  .signal-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 4px 10px; border-radius: 100px; border: 1px solid var(--border-strong); color: var(--ink-3); background: var(--surface); margin: 3px; }
+  .signal-badge-red { border-color: rgba(200,75,47,0.25); color: var(--accent); background: rgba(200,75,47,0.05); }
+
+  /* ── VERTICAL CARD ── */
+  .vertical-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 20px; }
+  .vertical-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .vertical-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--surface-3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .vertical-name { font-size: 14px; font-weight: 500; color: var(--ink); }
+  .vertical-section-label { font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 6px; display: block; }
+  .vertical-text { font-size: 12px; font-weight: 300; line-height: 1.6; color: var(--ink-3); margin-bottom: 12px; }
+  .vertical-hook { font-size: 12px; font-weight: 400; color: var(--ink-2); font-style: italic; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; border-left: 2px solid var(--accent); }
+
+  /* ── COMPARE TABLE ── */
+  .compare-table { width: 100%; border-collapse: collapse; }
+  .compare-table th { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 16px; text-align: left; border-bottom: 2px solid var(--border); }
+  .compare-table th:first-child { color: var(--ink-4); }
+  .compare-table th:nth-child(2) { color: var(--ink-4); background: var(--surface-2); }
+  .compare-table th:nth-child(3) { color: var(--accent); background: var(--ink); border-radius: 0; }
+  .compare-table td { font-size: 13px; font-weight: 300; padding: 12px 16px; border-bottom: 1px solid var(--border); line-height: 1.5; vertical-align: top; }
+  .compare-table td:nth-child(2) { background: var(--surface-2); color: var(--ink-3); }
+  .compare-table td:nth-child(3) { background: var(--ink); color: rgba(255,255,255,0.7); }
+  .compare-table tr:last-child td { border-bottom: none; }
+
+  /* ── CTA STRIP ── */
+  .cta-strip { background: var(--ink); border-radius: 16px; padding: 32px 36px; display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 48px; }
+  .cta-strip-left {}
+  .cta-strip-title { font-family: var(--font-display); font-size: 26px; color: #fff; margin-bottom: 6px; }
+  .cta-strip-sub { font-size: 14px; color: rgba(255,255,255,0.4); font-weight: 300; }
+  .cta-strip-btn { background: var(--accent); color: #fff; font-family: var(--font-body); font-size: 14px; font-weight: 500; padding: 14px 28px; border-radius: 100px; text-decoration: none; white-space: nowrap; transition: background 0.2s, transform 0.15s; }
+  .cta-strip-btn:hover { background: var(--accent-dark); transform: translateY(-1px); }
+
+  /* ── CARD SECTION SPACER ── */
+  .card-section { margin-bottom: 20px; }
+  .card-section:last-child { margin-bottom: 0; }
+  .divider { height: 1px; background: var(--border); margin: 24px 0; }
+
+  /* ── PRINT ── */
+  @media print {
+    .topbar, .nav-tabs { display: none; }
+    .main { padding: 24px; }
+    .card { break-inside: avoid; box-shadow: none; }
+    body { background: white; }
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    .topbar { padding: 0 20px; }
+    .topbar-label { display: none; }
+    .page-header { padding: 40px 24px 36px; }
+    .nav-tabs { padding: 0 20px; }
+    .main { padding: 24px; }
+    .two-col, .three-col, .four-col { grid-template-columns: 1fr; }
+    .card-header { flex-direction: column; gap: 10px; }
+    .card-body, .card-header { padding: 20px 20px; }
+    .compare-table th:nth-child(1), .compare-table td:nth-child(1) { display: none; }
+    .cta-strip { flex-direction: column; text-align: center; }
+  }
+
+  /* REVEAL */
+  .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out); }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-1 { transition-delay: 0.05s; }
+  .reveal-2 { transition-delay: 0.1s; }
+  .reveal-3 { transition-delay: 0.15s; }
+</style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <a href="https://www.bullseyemedical.ai" class="topbar-logo">
+    <img src="/assets/bullseye-mark-ink.svg" width="22" height="22" alt="" style="display:block;filter:brightness(0) invert(1);">
+    <span class="topbar-name">Bullseye Medical Intelligence</span>
+  </a>
+  <span class="topbar-label">Sales Enablement</span>
+  <div class="topbar-right">
+    <a href="https://www.bullseyemedical.ai" class="topbar-link">Main site</a>
+    <span class="topbar-badge">Internal Use</span>
+  </div>
+</div>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="page-header-eyebrow">Sales Battlecards</div>
+    <h1 class="page-header-title">Everything your reps need.<br>In one place.</h1>
+    <p class="page-header-sub">Quick-reference cards for pitching, objection handling, discovery, compliance, verticals, and competitive positioning. Bookmark and share.</p>
+  </div>
+</div>
+
+<!-- NAV TABS -->
+<div class="nav-tabs">
+  <a class="nav-tab active" href="#core">Core Pitch</a>
+  <a class="nav-tab" href="#tax">Targeting Tax</a>
+  <a class="nav-tab" href="#objections">Objections</a>
+  <a class="nav-tab" href="#discovery">Discovery</a>
+  <a class="nav-tab" href="#compliance">Compliance</a>
+  <a class="nav-tab" href="#diagnostic">Diagnostic Offer</a>
+  <a class="nav-tab" href="#verticals">Verticals</a>
+  <a class="nav-tab" href="#competitor">Competitor</a>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- ═══════════════════════════════════
+       1. CORE PITCH
+  ════════════════════════════════════ -->
+  <div id="core" class="card reveal">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">01 · Core Pitch</span>
+        <h2 class="card-title">What Bullseye is.<br>How to say it.</h2>
+      </div>
+      <span class="card-badge badge-core">Always On</span>
+    </div>
+    <div class="card-body">
+      <div class="two-col">
+        <div>
+
+          <!-- Pitches -->
+          <div class="card-section">
+            <div class="section-label">The Pitches</div>
+            <div class="highlight-box">
+              <span class="highlight-box-label">One-liner</span>
+              <p class="highlight-box-text">"<strong>Bullseye reduces the targeting tax</strong> by researching, scoring, and prioritizing physician practices so your reps know exactly who to call and why."</p>
+            </div>
+            <div class="pitch-block">
+              <div class="pitch-block-label">30-second pitch</div>
+              <p class="pitch-block-text">Your reps are losing <strong>10+ hours per week</strong> to manual account research. Bullseye pre-scores practices using publicly observable signals, then delivers an import-ready list with rationale and sales hooks already written. Your reps open the file and start selling.</p>
+            </div>
+            <div class="pitch-block">
+              <div class="pitch-block-label">2-minute pitch structure</div>
+              <p class="pitch-block-text"><strong>1.</strong> Name the targeting tax and quantify it. <strong>2.</strong> Explain the signal capture and scoring process. <strong>3.</strong> Contrast with flat database vendors. <strong>4.</strong> Close with business outcomes: more selling, less guessing, better conversations.</p>
+            </div>
+          </div>
+
+          <!-- What Bullseye is NOT -->
+          <div class="card-section">
+            <div class="section-label">Always Clarify Upfront</div>
+            <ul class="x-list">
+              <li><span class="x-icon">✕</span>Not an AI caller or dialer</li>
+              <li><span class="x-icon">✕</span>Not an outreach or email automation tool</li>
+              <li><span class="x-icon">✕</span>Not a database or list vendor</li>
+              <li><span class="x-icon">✕</span>Not a SaaS platform. No new software for reps</li>
+            </ul>
+          </div>
+
+        </div>
+        <div>
+
+          <!-- Key Messages -->
+          <div class="card-section">
+            <div class="section-label">Key Messages</div>
+            <ul class="bullet-list">
+              <li><span class="bullet-dot"></span>Bullseye is a <strong>physician targeting research service.</strong> Not a tool, not a platform.</li>
+              <li><span class="bullet-dot"></span>Traditional databases tell you who exists. <strong>Bullseye tells you who is worth calling and why.</strong></li>
+              <li><span class="bullet-dot"></span>Delivers import-ready intelligence. <strong>No new software</strong> for reps to learn.</li>
+              <li><span class="bullet-dot"></span>Works across medtech, specialty therapeutics, diagnostics, aesthetics, healthcare SaaS, dental, and veterinary.</li>
+            </ul>
+          </div>
+
+          <!-- Differentiators -->
+          <div class="card-section">
+            <div class="section-label">Core Differentiators</div>
+            <ul class="check-list">
+              <li><span class="check-icon">✓</span><strong>Evidence-backed:</strong> Every recommendation tied to visible public signals. No black-box scoring.</li>
+              <li><span class="check-icon">✓</span><strong>Import-ready:</strong> Structured and deduplicated for clean CRM import. Final format confirmed per client.</li>
+              <li><span class="check-icon">✓</span><strong>Public data only:</strong> Physician/practice online footprint. No claims data, no private records, no EMRs.</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       2. TARGETING TAX
+  ════════════════════════════════════ -->
+  <div id="tax" class="card reveal reveal-1">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">02 · The Targeting Tax</span>
+        <h2 class="card-title">Name the hidden cost.<br>Win the conversation.</h2>
+      </div>
+      <span class="card-badge badge-tax">Opening Hook</span>
+    </div>
+    <div class="card-body">
+      <div class="two-col">
+        <div>
+          <div class="card-section">
+            <div class="section-label">Definition</div>
+            <div class="highlight-box">
+              <span class="highlight-box-label">Use this exact framing</span>
+              <p class="highlight-box-text">"The targeting tax is the <strong>hidden cost of manual research.</strong> Your reps spend verifying practice fit, cross-referencing equipment signals, and guessing at business models instead of selling."</p>
+            </div>
+          </div>
+          <div class="card-section">
+            <div class="section-label">Where the Tax Shows Up</div>
+            <ul class="bullet-list">
+              <li><span class="bullet-dot"></span><strong>Invisible on the P&L.</strong> Nobody books rep research time as a line item. It shows up as quota miss and low pipeline velocity.</li>
+              <li><span class="bullet-dot"></span><strong>More data makes it worse.</strong> Every database license adds more records to sort manually. Without prioritization, it's just more noise.</li>
+              <li><span class="bullet-dot"></span><strong>Scales with headcount.</strong> At 4 reps losing 10 hrs/week that's 40 hrs of salary. At 12 reps, it's 120 hrs.</li>
+              <li><span class="bullet-dot"></span><strong>The defensibility gap.</strong> When pipeline misses, "we targeted the wrong accounts" is an uncomfortable answer. It is also an avoidable one.</li>
+            </ul>
+          </div>
+        </div>
+        <div>
+          <div class="card-section">
+            <div class="section-label">The Numbers</div>
+            <div class="three-col" style="margin-bottom:16px;">
+              <div class="stat-block">
+                <div class="stat-num stat-accent">10+</div>
+                <div class="stat-label">hrs lost per rep per week to manual research</div>
+              </div>
+              <div class="stat-block">
+                <div class="stat-num stat-accent">40%</div>
+                <div class="stat-label">of a 25-hour selling week consumed by research</div>
+              </div>
+              <div class="stat-block">
+                <div class="stat-num stat-accent">$14k+</div>
+                <div class="stat-label">estimated monthly labor burn for a 4-rep team</div>
+              </div>
+            </div>
+            <p style="font-size:11px;color:var(--ink-4);font-style:italic;">Use conservative assumptions based on your prospect's team economics. The calculator at bullseyemedical.ai/targeting-tax can help.</p>
+          </div>
+          <div class="card-section">
+            <div class="section-label">The Fix</div>
+            <ul class="check-list">
+              <li><span class="check-icon">✓</span>Bullseye pre-scores practices before reps ever see the list</li>
+              <li><span class="check-icon">✓</span>Each target arrives with fit rationale, signal evidence, and a sales hook</li>
+              <li><span class="check-icon">✓</span>Research time drops to near zero. Selling time goes up.</li>
+              <li><span class="check-icon">✓</span>Reps inherit intelligence, not a list</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       3. OBJECTION HANDLING
+  ════════════════════════════════════ -->
+  <div id="objections" class="card reveal reveal-2">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">03 · Objection Handling</span>
+        <h2 class="card-title">The objections they'll raise.<br>The answers that land.</h2>
+      </div>
+      <span class="card-badge badge-objection">Field Ready</span>
+    </div>
+    <div class="card-body">
+      <div class="two-col">
+        <div>
+          <div class="objection-row">
+            <div class="objection-q"><span class="objection-q-icon">?</span>"We already have ZoomInfo / Definitive Healthcare."</div>
+            <div class="objection-a"><span class="objection-a-icon">→</span>Those tools give you coverage. They show who exists. Bullseye gives you prioritization. It tells you who is worth calling and gives your rep the reason why. They solve different problems. Most of our clients have both.</div>
+          </div>
+          <div class="objection-row">
+            <div class="objection-q"><span class="objection-q-icon">?</span>"Is Bullseye just another AI dialer?"</div>
+            <div class="objection-a"><span class="objection-a-icon">→</span>Not even close. Bullseye does not place calls, send emails, or touch your outreach workflow. We deliver research that is scored, sourced, and structured, so your reps know who to call before they pick up the phone.</div>
+          </div>
+          <div class="objection-row">
+            <div class="objection-q"><span class="objection-q-icon">?</span>"What data do you use?"</div>
+            <div class="objection-a"><span class="objection-a-icon">→</span>Only publicly observable signals from a physician or practice's online footprint: practice websites, directories, patient reviews, Google Business profiles. No claims data, no private records, no EMRs, no login-gated systems.</div>
+          </div>
+        </div>
+        <div>
+          <div class="objection-row">
+            <div class="objection-q"><span class="objection-q-icon">?</span>"Does this replace our reps?"</div>
+            <div class="objection-a"><span class="objection-a-icon">→</span>No. It makes them sharper. Bullseye tells reps where to focus and what to say. It eliminates the research drag so they spend more time on high-value conversations. Headcount stays the same; output goes up.</div>
+          </div>
+          <div class="objection-row">
+            <div class="objection-q"><span class="objection-q-icon">?</span>"Is this compliant?"</div>
+            <div class="objection-a"><span class="objection-a-icon">→</span>Yes. We analyze only publicly observable data: the public-facing footprint of a physician or practice. No PHI, no patient-level data, no claims files, no private databases. Every recommendation is evidence-backed and auditable.</div>
+          </div>
+          <div class="objection-row">
+            <div class="objection-q"><span class="objection-q-icon">?</span>"Our reps already know how to research."</div>
+            <div class="objection-a"><span class="objection-a-icon">→</span>They do. And that's exactly the problem. Every hour a rep spends researching is an hour not selling. We do that research before it reaches them so they can apply their judgment where it matters: on the call.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       4. DISCOVERY
+  ════════════════════════════════════ -->
+  <div id="discovery" class="card reveal">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">04 · Discovery</span>
+        <h2 class="card-title">Ask these. Listen for these.<br>Close on these.</h2>
+      </div>
+      <span class="card-badge badge-discovery">Questions</span>
+    </div>
+    <div class="card-body">
+      <div class="two-col">
+        <div>
+          <div class="card-section">
+            <div class="section-label">Questions to Ask</div>
+            <div class="discovery-q"><span class="dq-num">1</span><span class="dq-text">What problem are you trying to solve by reaching out to physicians?</span></div>
+            <div class="discovery-q"><span class="dq-num">2</span><span class="dq-text">How much time do your reps spend researching potential targets each week?</span></div>
+            <div class="discovery-q"><span class="dq-num">3</span><span class="dq-text">What tools or databases are you using for targeting today?</span></div>
+            <div class="discovery-q"><span class="dq-num">4</span><span class="dq-text">How do you measure conversion from first call to closed business?</span></div>
+            <div class="discovery-q"><span class="dq-num">5</span><span class="dq-text">When pipeline misses, what's the story you tell internally?</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="card-section">
+            <div class="section-label">What to Listen For</div>
+            <ul class="bullet-list">
+              <li><span class="bullet-dot"></span>Frustration about wasted research time or low conversion rates</li>
+              <li><span class="bullet-dot"></span>Reliance on flat data fields (NPI, names) without context</li>
+              <li><span class="bullet-dot"></span>Signs reps are verifying practice fit manually</li>
+              <li><span class="bullet-dot"></span>Mentions of "bad fit" accounts eating up rep time</li>
+            </ul>
+          </div>
+          <div class="card-section">
+            <div class="section-label">Buying Signals</div>
+            <ul class="check-list">
+              <li><span class="check-icon">✓</span>Acknowledges research time is significant or costly</li>
+              <li><span class="check-icon">✓</span>Asks questions about scoring methodology or CRM integration</li>
+              <li><span class="check-icon">✓</span>Expresses interest in a pilot or sample brief</li>
+              <li><span class="check-icon">✓</span>Mentions quota miss without a clear targeting explanation</li>
+            </ul>
+          </div>
+          <div class="card-section">
+            <div class="section-label">Red Flags</div>
+            <ul class="x-list">
+              <li><span class="x-icon">✕</span>Expecting Bullseye to be an automated dialer or outreach tool</li>
+              <li><span class="x-icon">✕</span>Believes existing research process is perfect and optimized</li>
+              <li><span class="x-icon">✕</span>Needs hospital/health system targeting (wrong complexity level)</li>
+            </ul>
+          </div>
+          <div class="pitch-block" style="background:var(--ink);">
+            <div class="pitch-block-label" style="color:rgba(255,255,255,0.3);">Next Step When Pain Is Acknowledged</div>
+            <p class="pitch-block-text" style="color:rgba(255,255,255,0.7);">Propose the <strong style="color:#fff;">free diagnostic brief</strong>: 3 practices scored and delivered. No commitment. One 30-minute ICP call to lock in their criteria.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       5. COMPLIANCE & DATA
+  ════════════════════════════════════ -->
+  <div id="compliance" class="card reveal reveal-1">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">05 · Compliance & Data</span>
+        <h2 class="card-title">What we use. What we don't.<br>How to say it.</h2>
+      </div>
+      <span class="card-badge badge-compliance">Use Precisely</span>
+    </div>
+    <div class="card-body">
+
+      <div class="highlight-box" style="margin-bottom:24px;">
+        <span class="highlight-box-label">Exact sourcing statement. Use this verbatim.</span>
+        <p class="highlight-box-text">"Bullseye analyzes publicly observable practice-level signals from a physician or practice's online footprint. <strong>We do not use patient-level data, claims files, medical records, appointment data, portals, EMRs, private databases, or login-gated systems.</strong>"</p>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="section-label">What We Use</div>
+          <ul class="check-list">
+            <li><span class="check-icon">✓</span>Practice websites and public directories</li>
+            <li><span class="check-icon">✓</span>Google Business listings and patient reviews</li>
+            <li><span class="check-icon">✓</span>Public-facing physician/practice online footprint</li>
+            <li><span class="check-icon">✓</span>CMS utilization data where publicly available (Use sparingly. Default to "online footprint" language.)</li>
+            <li><span class="check-icon">✓</span>NPI registry: public and commercially permissible</li>
+          </ul>
+        </div>
+        <div>
+          <div class="section-label">What We Do NOT Use</div>
+          <ul class="x-list">
+            <li><span class="x-icon">✕</span>Patient records or protected health information (PHI)</li>
+            <li><span class="x-icon">✕</span>Claims files or medical records</li>
+            <li><span class="x-icon">✕</span>Appointment data or scheduling systems</li>
+            <li><span class="x-icon">✕</span>EMR or EHR systems</li>
+            <li><span class="x-icon">✕</span>Login-gated or paywalled sources</li>
+            <li><span class="x-icon">✕</span>Private databases of any kind</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label">Language Rules: Say This, Not That</div>
+      <div class="three-col">
+        <div class="mini-card">
+          <div class="mini-card-title">Cash-pay signal</div>
+          <p class="mini-card-copy">✓ "Public cash-pay signal identified"<br>✕ "Cash-pay confirmed"</p>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-title">CRM delivery</div>
+          <p class="mini-card-copy">✓ "CRM-import friendly, format confirmed per client"<br>✕ "Salesforce-ready"</p>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-title">Data accuracy</div>
+          <p class="mini-card-copy">✓ "Observable signals, confidence rated"<br>✕ "Validated data" or "guaranteed accurate"</p>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-title">Cleanup promise</div>
+          <p class="mini-card-copy">✓ "Designed to minimize cleanup"<br>✕ "Zero cleanup" or "no manual mapping"</p>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-title">Conversion claim</div>
+          <p class="mini-card-copy">✓ "Stronger fit signal"<br>✕ "Guaranteed conversion"</p>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-title">Speed claim</div>
+          <p class="mini-card-copy">✓ "Delivery in days, not weeks"<br>✕ "72-hour turnaround" (MVP constraint)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       6. DIAGNOSTIC OFFER
+  ════════════════════════════════════ -->
+  <div id="diagnostic" class="card reveal reveal-2">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">06 · Diagnostic Offer</span>
+        <h2 class="card-title">How we engage.<br>What each tier includes.</h2>
+      </div>
+      <span class="card-badge badge-diagnostic">Pricing</span>
+    </div>
+    <div class="card-body">
+      <div class="three-col" style="margin-bottom:28px;">
+
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:24px 22px;">
+          <div style="font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-4);margin-bottom:12px;">Tier 1</div>
+          <div style="font-family:var(--font-display);font-size:22px;color:var(--ink);margin-bottom:6px;">Free Diagnostic</div>
+          <div style="font-size:13px;color:var(--ink-4);margin-bottom:16px;font-weight:300;">Proof of methodology</div>
+          <ul class="check-list">
+            <li><span class="check-icon">✓</span>3 scored and briefed targets</li>
+            <li><span class="check-icon">✓</span>Demonstrates scoring methodology</li>
+            <li><span class="check-icon">✓</span>No contract, no commitment</li>
+            <li><span class="check-icon">✓</span>One 30-minute ICP call</li>
+          </ul>
+        </div>
+
+        <div style="background:var(--ink);border-radius:14px;padding:24px 22px;border:1px solid rgba(255,255,255,0.08);">
+          <div style="font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:12px;">Tier 2</div>
+          <div style="font-family:var(--font-display);font-size:22px;color:#fff;margin-bottom:6px;">Pilot Sprint</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.35);margin-bottom:16px;font-weight:300;">First-client validation concession</div>
+          <ul style="list-style:none;">
+            <li style="font-size:12px;color:rgba(255,255,255,0.55);padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;"><span style="color:var(--accent);">✓</span>50–100 practices covered</li>
+            <li style="font-size:12px;color:rgba(255,255,255,0.55);padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;"><span style="color:var(--accent);">✓</span>Custom ICP weighting</li>
+            <li style="font-size:12px;color:rgba(255,255,255,0.55);padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;"><span style="color:var(--accent);">✓</span>Evidence-backed rationale per target</li>
+            <li style="font-size:12px;color:rgba(255,255,255,0.55);padding:6px 0;display:flex;gap:8px;"><span style="color:var(--accent);">✓</span>Sales hooks included</li>
+          </ul>
+          <div style="margin-top:16px;padding:10px 14px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:11px;color:rgba(255,255,255,0.3);font-style:italic;">Not a standard offer. First-client validation concession only. Do not advertise publicly.</div>
+        </div>
+
+        <div style="background:var(--surface-2);border:2px solid var(--accent);border-radius:14px;padding:24px 22px;position:relative;">
+          <div style="position:absolute;top:-11px;left:20px;background:var(--accent);color:#fff;font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:3px 12px;border-radius:100px;">Standard</div>
+          <div style="font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">Tier 3</div>
+          <div style="font-family:var(--font-display);font-size:22px;color:var(--ink);margin-bottom:4px;">Monthly Retainer</div>
+          <div style="font-size:20px;font-family:var(--font-display);color:var(--accent);margin-bottom:12px;">From $5,000/mo</div>
+          <ul class="check-list">
+            <li><span class="check-icon">✓</span>Ongoing research for a set number of records/month</li>
+            <li><span class="check-icon">✓</span>Updates, refinements, quarterly calibration</li>
+            <li><span class="check-icon">✓</span>CRM-import friendly format confirmed per client</li>
+            <li><span class="check-icon">✓</span>Sales hooks per target</li>
+            <li><span class="check-icon">✓</span>No long-term lock-in to start</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="section-label">What's Included in Every Tier</div>
+          <ul class="check-list">
+            <li><span class="check-icon">✓</span>Research and scoring per client ICP</li>
+            <li><span class="check-icon">✓</span>Evidence-backed rationale and observable signal citations</li>
+            <li><span class="check-icon">✓</span>Rep-facing sales hook per target</li>
+            <li><span class="check-icon">✓</span>CRM-import friendly structure</li>
+          </ul>
+        </div>
+        <div>
+          <div class="section-label">What's Never Included</div>
+          <ul class="x-list">
+            <li><span class="x-icon">✕</span>Dialers, outreach tools, or CRM platforms</li>
+            <li><span class="x-icon">✕</span>Private data or proprietary datasets</li>
+            <li><span class="x-icon">✕</span>Guaranteed conversion or purchase intent</li>
+          </ul>
+          <div class="section-label" style="margin-top:16px;">Escalate to Custom Pricing When</div>
+          <ul class="bullet-list">
+            <li><span class="bullet-dot"></span>Very high volumes needed (thousands of practices)</li>
+            <li><span class="bullet-dot"></span>Bespoke scoring models or unique data source requirements</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       7. VERTICAL PLAYBOOKS
+  ════════════════════════════════════ -->
+  <div id="verticals" class="card reveal">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">07 · Vertical Playbooks</span>
+        <h2 class="card-title">Signals and hooks by market.</h2>
+      </div>
+      <span class="card-badge badge-vertical">Market-Specific</span>
+    </div>
+    <div class="card-body">
+      <div class="four-col">
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">⚕️</div>
+            <div class="vertical-name">Medical Device</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">High procedural volume, complementary equipment listed, in-office capability, cash-pay or financing model.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Emphasize procedural efficiency, patient outcomes, and referral capture.</div>
+        </div>
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">💊</div>
+            <div class="vertical-name">Specialty Therapeutics</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">Prescribing autonomy, complementary service lines, patient financing, non-mandate state indicators.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Align with existing clinical workflows and surface new revenue streams.</div>
+        </div>
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">🔬</div>
+            <div class="vertical-name">Diagnostics</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">In-office diagnostic capability, self-pay services, patient convenience focus, workflow integration openness.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Highlight workflow integration and patient convenience advantages.</div>
+        </div>
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">✨</div>
+            <div class="vertical-name">Aesthetics</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">Cash-pay service mix, financing offered, before/after gallery, multi-location growth signals.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Emphasize revenue diversification and high patient satisfaction metrics.</div>
+        </div>
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">💻</div>
+            <div class="vertical-name">Healthcare SaaS</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">Online scheduling, telehealth presence, digital infrastructure investment, practice management modernization.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Drive operational efficiency and data-driven practice insights.</div>
+        </div>
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">🦷</div>
+            <div class="vertical-name">Dental / DSO</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">Practice size, specialty mix, payment models, technology adoption, DSO affiliation vs. independent.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Cross-sell implants, technology upgrades, and financing solutions.</div>
+        </div>
+
+        <div class="vertical-card">
+          <div class="vertical-card-header">
+            <div class="vertical-icon">🐾</div>
+            <div class="vertical-name">Veterinary</div>
+          </div>
+          <span class="vertical-section-label">Key Signals</span>
+          <p class="vertical-text">High procedure volume, advanced equipment (radiology, ultrasound), specialty clinic signals, multi-location presence.</p>
+          <span class="vertical-section-label">Sales Hook</span>
+          <div class="vertical-hook">Quality of care, efficiency gains, and new revenue opportunity framing.</div>
+        </div>
+
+        <div class="vertical-card" style="background:var(--surface-3);border-style:dashed;">
+          <div class="vertical-card-header">
+            <div class="vertical-icon" style="background:var(--surface-2);">⚠️</div>
+            <div class="vertical-name" style="color:var(--ink-3);">Weaker Fits</div>
+          </div>
+          <span class="vertical-section-label">Avoid Pitching</span>
+          <p class="vertical-text" style="color:var(--ink-3);">Hospital systems: too much institutional complexity. Primary care at scale: ICP signal too weak, everyone looks like a target.</p>
+          <div class="vertical-hook" style="border-left-color:var(--ink-4);background:var(--surface-2);color:var(--ink-3);">Redirect to specialty or independent practice conversations.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       8. COMPETITOR COMPARISON
+  ════════════════════════════════════ -->
+  <div id="competitor" class="card reveal reveal-1">
+    <div class="card-header">
+      <div class="card-header-left">
+        <span class="card-eyebrow">08 · Competitor Comparison</span>
+        <h2 class="card-title">Why Bullseye wins.<br>How to position it.</h2>
+      </div>
+      <span class="card-badge badge-competitor">Competitive</span>
+    </div>
+    <div class="card-body">
+
+      <div class="card-section">
+        <div class="section-label">Database / List Vendors: Definitive, IQVIA, ZoomInfo</div>
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th>Database / List Vendor</th>
+              <th>Bullseye Intelligence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>What it gives you</td><td>Coverage: shows who exists</td><td>Fit: shows who is worth calling</td></tr>
+            <tr><td>Rep workload</td><td>Leaves reps to research and verify</td><td>Delivers research done. Rep opens and sells.</td></tr>
+            <tr><td>Output format</td><td>Flat fields: name, NPI, specialty, address</td><td>Evidence-backed rationale + written sales hook</td></tr>
+            <tr><td>Prioritization</td><td>Filter by specialty and geography, then guess</td><td>Scored by fit signal, confidence, exclusion logic</td></tr>
+            <tr><td>Volume vs. quality</td><td>More records</td><td>Better conversations</td></tr>
+            <tr><td>Transparency</td><td>Black-box scoring in most platforms</td><td>Every score tied to visible public evidence</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="card-section">
+        <div class="section-label">AI Dialers & SaaS Outreach Tools</div>
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th>AI Dialer / SaaS Outreach</th>
+              <th>Bullseye Intelligence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Core function</td><td>Automates calls and emails at volume</td><td>Delivers pre-scored research before any outreach</td></tr>
+            <tr><td>Rep interaction</td><td>Requires platform training and daily use</td><td>No new software. Receives a structured list.</td></tr>
+            <tr><td>Data input</td><td>Works from whatever list you feed it</td><td>Builds the list from scratch via signal scoring</td></tr>
+            <tr><td>Output</td><td>Call volume and connection metrics</td><td>Prioritized targets with fit rationale and sales hooks</td></tr>
+            <tr><td>What it doesn't do</td><td>Doesn't tell you who deserves the call</td><td>Does not make the call. Your rep does, better informed.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="highlight-box">
+        <span class="highlight-box-label">The positioning line. Use this when asked how Bullseye fits.</span>
+        <p class="highlight-box-text">"<strong>We're not a replacement for your database or your dialer.</strong> We're the intelligence layer that sits between them, turning raw provider data into a prioritized, scored shortlist your reps can actually act on."</p>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- CTA STRIP -->
+  <div class="cta-strip reveal">
+    <div class="cta-strip-left">
+      <div class="cta-strip-title">Ready to run a free diagnostic?</div>
+      <div class="cta-strip-sub">3 scored targets. No contract. One 30-minute ICP call.</div>
+    </div>
+    <a href="https://www.bullseyemedical.ai#cta" class="cta-strip-btn">Book My Bullseye Brief →</a>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+  // Scroll reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.06, rootMargin: '0px 0px -32px 0px' });
+  reveals.forEach(el => obs.observe(el));
+
+  // Active nav tab on scroll
+  const tabs = document.querySelectorAll('.nav-tab');
+  const sections = ['core','tax','objections','discovery','compliance','diagnostic','verticals','competitor'];
+  window.addEventListener('scroll', () => {
+    let current = '';
+    sections.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.getBoundingClientRect().top <= 120) current = id;
+    });
+    tabs.forEach(tab => {
+      tab.classList.remove('active');
+      if (tab.getAttribute('href') === '#' + current) tab.classList.add('active');
+    });
+  });
+
+  // Tab click smooth scroll
+  tabs.forEach(tab => {
+    tab.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(tab.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

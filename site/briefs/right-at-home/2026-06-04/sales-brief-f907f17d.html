@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEMI Intelligence Brief — Geriatrics, Internal Medicine, Internist, Doctor, Family Practice</title>
+  <style>
+    :root {
+      --ink: #0a0a0a;
+      --surface: #f7f6f4;
+      --accent: #c84b2f;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #fff;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .page { max-width: 860px; margin: 0 auto; padding: 3em 2em; }
+
+    /* Header */
+    .brief-header {
+      border-bottom: 3px solid var(--ink);
+      padding-bottom: 1.5em;
+      margin-bottom: 2.5em;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1em;
+      flex-wrap: wrap;
+    }
+    .brief-wordmark {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 2.2em;
+      font-weight: 400;
+      letter-spacing: 0.05em;
+    }
+    .brief-tagline {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      font-weight: 600;
+      margin-top: 0.2em;
+    }
+    .brief-meta {
+      text-align: right;
+      font-size: 0.82em;
+      color: #666;
+      line-height: 1.7;
+    }
+
+    /* Methodology block */
+    .methodology {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 1.75em;
+      margin-bottom: 2.5em;
+    }
+    .eyebrow {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.6em;
+    }
+    .methodology h2 {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.2em;
+      font-weight: 400;
+      margin-bottom: 0.6em;
+    }
+    .methodology p { font-size: 0.88em; color: #444; margin-bottom: 1.2em; }
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1em;
+      margin-top: 0.5em;
+    }
+    .tier-cell { font-size: 0.84em; }
+    .tier-pill {
+      display: inline-block;
+      padding: 0.22em 0.9em;
+      border-radius: 100px;
+      font-size: 0.72em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.5em;
+    }
+    .pill-bullseye  { background: #0a0a0a; color: #f7f6f4; }
+    .pill-contender { background: #3b4a9e; color: #fff; }
+    .pill-excluded  { background: #c84b2f; color: #fff; }
+    .tier-cell p { color: #555; line-height: 1.5; }
+
+    /* Account card */
+    .account-section { margin-bottom: 2.5em; }
+    .account-section .eyebrow { margin-bottom: 0.5em; }
+    .account-card {
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 1.5em;
+      page-break-inside: avoid;
+    }
+    .account-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1em;
+      margin-bottom: 1.2em;
+      flex-wrap: wrap;
+    }
+    .account-name {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.2em;
+      font-weight: 400;
+    }
+    .account-detail {
+      font-size: 0.84em;
+      color: #666;
+      margin-top: 0.25em;
+      line-height: 1.5;
+    }
+    .account-detail a { color: #2563eb; text-decoration: none; }
+    .account-badges { display: flex; gap: 0.5em; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+    .conf-badge {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.22em 0.7em;
+      border-radius: 100px;
+      border: 1.5px solid;
+    }
+    .conf-high     { border-color: #2d6a4f; color: #2d6a4f; }
+    .conf-moderate { border-color: #d97706; color: #d97706; }
+    .conf-low      { border-color: #999; color: #999; }
+
+    /* Section divider within card */
+    .card-section { margin-top: 1em; }
+    .card-section-label {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      color: #888;
+      margin-bottom: 0.4em;
+    }
+
+    /* Signals */
+    .signal-list { display: flex; flex-direction: column; gap: 0.2em; }
+    .signal-item {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5em;
+      font-size: 0.87em;
+      color: #333;
+    }
+    .signal-icon-yes    { color: #2d6a4f; font-weight: 700; flex-shrink: 0; }
+    .signal-icon-no     { color: #c84b2f; flex-shrink: 0; }
+    .signal-icon-nf     { color: #999; flex-shrink: 0; }
+
+    /* Sales angle */
+    .angle-list { padding-left: 1.2em; display: flex; flex-direction: column; gap: 0.4em; }
+    .angle-list li { font-size: 0.87em; color: #333; }
+
+    /* Verify items */
+    .verify-list { display: flex; flex-direction: column; gap: 0.2em; }
+    .verify-item { font-size: 0.87em; color: #555; padding: 0.2em 0.6em; background: #fffbeb; border-left: 2px solid #d97706; border-radius: 0 4px 4px 0; }
+
+    /* Exclusion */
+    .exclusion-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.25em 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4em;
+    }
+    .exclusion-list li {
+      background: #fef2ef;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      padding: 0.55em 0.9em;
+      font-size: 0.87em;
+      color: #7a2318;
+      line-height: 1.45;
+    }
+
+    /* Footer */
+    .brief-footer {
+      margin-top: 3em;
+      padding-top: 1.5em;
+      border-top: 1px solid #e0e0e0;
+      font-size: 0.78em;
+      color: #aaa;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      .tier-grid { grid-template-columns: 1fr; }
+      .brief-header { flex-direction: column; align-items: flex-start; }
+      .brief-meta { text-align: left; }
+    }
+    @media print {
+      .page { padding: 1em; }
+      .account-card { break-inside: avoid; }
+    }
+  </style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="page">
+
+  
+  <div class="brief-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <svg class="logomark" width="30" height="30" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="18" cy="18" r="15.5" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="8.5" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="3" fill="currentColor"/><line x1="18" y1="1.5" x2="18" y2="8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="18" y1="27.5" x2="18" y2="34.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1.5" y1="18" x2="8.5" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="27.5" y1="18" x2="34.5" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div>
+        <div class="brief-wordmark">Bullseye Medical Intelligence</div>
+        <div class="brief-tagline">Intelligence Brief</div>
+      </div>
+    </div>
+    <div class="brief-meta">
+      Specialty: <strong>Geriatrics, Internal Medicine, Internist, Doctor, Family Practice</strong><br>
+      Territory: South Orange County, CA<br>
+      2026-06-03<br>
+      Run: RUN-20260603-224758-64df
+    </div>
+  </div>
+
+  
+  <div class="methodology">
+    <div class="eyebrow">How We Rank Targets</div>
+    <h2>Scoring Methodology</h2>
+    <p>
+      Every account is evaluated against a structured ICP signal checklist drawn entirely from publicly
+      available web data. Each signal requires a direct textual anchor — no assumptions, no inferred
+      data. The result is a two-axis verdict: <strong>tier</strong> (the call priority) and
+      <strong>confidence band</strong> (the evidence depth). Internal numeric scores stay in the
+      data layer and are never included in client-facing output.
+    </p>
+    <div class="tier-grid">
+      <div class="tier-cell">
+        <div class="tier-pill pill-bullseye">Bullseye</div>
+        <p>All must-have signals confirmed. Highest-priority accounts with strong clinical and commercial fit. Ready for outreach.</p>
+      </div>
+      <div class="tier-cell">
+        <div class="tier-pill pill-contender">Contender</div>
+        <p>Solid fit with one or more unverified items. Worth calling, but a discovery question may shift the priority. Good for pipeline building.</p>
+      </div>
+      <div class="tier-cell">
+        <div class="tier-pill pill-excluded">Excluded</div>
+        <p>Disqualified by a structural rule before any enrichment spend. Excluded accounts are shown here so the decision logic is transparent.</p>
+      </div>
+    </div>
+  </div>
+
+  
+  
+  <div class="account-section">
+    <div class="eyebrow">Bullseye Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">Dr. Sanaz Khorrami MD</div>
+          <div class="account-detail">
+            Newport beach, CA 92663
+            <br><a href="https://www.newportbeachconciergemedicine.com/">https://www.newportbeachconciergemedicine.com/</a>
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-bullseye">Bullseye</span>
+          
+          <span class="conf-badge conf-high">High</span>
+          
+        </div>
+      </div>
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      <div class="card-section">
+        <div class="card-section-label">Confirmed Signals</div>
+        <div class="signal-list">
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Independent Practice Confirmed</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Geriatric Signal Confirmed</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Zip In Territory</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Concierge Model Listed</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Care Coordination Language</span>
+          </div>
+          
+          <div class="signal-item">
+            <span class="signal-icon-yes">✓</span>
+            <span>Active Website Confirmed</span>
+          </div>
+          
+        </div>
+      </div>
+      
+
+      
+      <div class="card-section">
+        <div class="card-section-label">Why This Account</div>
+        <ul class="angle-list">
+          
+          <li>The practice is a solo independent concierge internal medicine practice with no hospital or health system affiliation, meaning Dr. Khorrami retains full authority over referral relationships and care coordination decisions — no procurement or compliance layer to navigate.</li>
+          
+          <li>Geriatric care is explicitly listed as a named area of interest on both the homepage and About page, and the services page lists geriatric as a standalone service category, confirming an active older-adult patient panel that directly overlaps with Right at Home&#39;s highest-need care population.</li>
+          
+          <li>The concierge medicine model and the physician&#39;s stated philosophy of acting as &#39;gatekeeper of all your medical needs&#39; and coordinating &#39;overall care&#39; strongly align with Right at Home&#39;s referral partner profile — this physician already positions herself as the care hub for her patients.</li>
+          
+          <li>The practice accepts Medicare and major commercial insurers, suggesting a mixed panel that likely includes senior patients who may require private-pay in-home support services as a complement to their clinical care.</li>
+          
+          <li>Dr. Khorrami is described as &#39;well known in the Hoag community and among subspecialists,&#39; indicating an established referral network presence in South OC — she is a connector within the local care community, not an isolated solo provider.</li>
+          
+        </ul>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  
+  <div class="account-section">
+    <div class="eyebrow">Contender Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">IM365 Health - Dennis Jordanides, M.D.</div>
+          <div class="account-detail">
+            Newport beach, CA 92663
+            <br><a href="https://im365health.com/">https://im365health.com/</a>
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-contender">Contender</span>
+          
+          <span class="conf-badge conf-high">High</span>
+          
+        </div>
+      </div>
+
+      
+      
+      
+        
+        
+      
+        
+      
+        
+        
+      
+        
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+      
+      
+      <div class="card-section">
+        <div class="card-section-label">Signals</div>
+        <div class="signal-list">
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Independent Practice Confirmed</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Zip In Territory</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Concierge Model Listed</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Care Coordination Language</span></div>
+          
+          <div class="signal-item"><span class="signal-icon-yes">✓</span><span>Active Website Confirmed</span></div>
+          
+          
+        </div>
+      </div>
+      
+
+      
+
+      
+      <div class="card-section">
+        <div class="card-section-label">Why This Account</div>
+        <ul class="angle-list">
+          
+          <li>IM365 Health operates as an independent, physician-owned concierge internal medicine practice with a small member panel, meaning Dr. Jordanides has direct, unilateral authority over referral relationships with no hospital or health system compliance layer involved.</li>
+          
+          <li>The practice&#39;s explicit care coordination service — described as coordinating &#39;directly with specialists, medical centers, and diagnostic teams&#39; through &#39;a single, trusted lens&#39; — signals an established hub-and-spoke care model that is structurally compatible with a home care referral partnership.</li>
+          
+          <li>The concierge membership model and affluent Newport Beach ZIP 92663 location indicate a predominantly private-pay patient population that closely matches Right at Home&#39;s private-pay service demographic, reducing friction around patient financial eligibility conversations.</li>
+          
+          <li>The practice&#39;s longevity and preventive medicine focus — including &#39;hormonal balance,&#39; &#39;cellular health,&#39; and &#39;mechanisms of aging&#39; language — suggests a patient panel that is health-engaged and proactive, a cohort that may still benefit from in-home support as their care needs evolve.</li>
+          
+          <li>No geriatric-specific signal is present anywhere on the site, which caps this practice at Contender tier per the no_geriatric_signal rule; however, the combination of concierge model, care coordination infrastructure, and in-territory address makes it a viable relationship-building target for referral volume over time.</li>
+          
+        </ul>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  
+  <div class="account-section">
+    <div class="eyebrow">Excluded Example</div>
+    <div class="account-card">
+      <div class="account-card-header">
+        <div>
+          <div class="account-name">Daniel Park, DO</div>
+          <div class="account-detail">
+            Zcta 92835, CA 92835
+            <br><a href="https://www.providence.org/doctors/geriatric-hospital-medicine/ca/fullerton/daniel-park-1609296433">https://www.providence.org/doctors/geriatric-hospital-medicine/ca/fullerton/daniel-park-1609296433</a>
+          </div>
+        </div>
+        <div class="account-badges">
+          <span class="tier-pill pill-excluded">Excluded</span>
+        </div>
+      </div>
+
+      
+      <div class="card-section">
+        <div class="card-section-label">Why Excluded</div>
+        <ul class="exclusion-list">
+          
+          <li>Three hard exclusions apply simultaneously. First, Dr. Park is explicitly identified as part of the Providence health system and St. Jude Heritage Medical Group, triggering Health System Affiliated — employed physicians cannot make independent referral agreements. Second, the practice address (92835, Fullerton) falls outside the Right at Home South OC franchise territory (92660, 92661, 92662, 92663, 92861, 92886, 92887), triggering Outside Geography. Third, the sole listed practice location is labeled &#39;St. Jude Heritage Fullerton - SNF,&#39; indicating an SNF-only institutional setting with no evidence of an outpatient or community-based panel, triggering the Snf Or Ltac Only exclusion. This account should be excluded from outreach.</li>
+          
+          <li>Hospital Employed confirmed present (immediate exclusion).</li>
+          
+          <li>Health System Affiliated confirmed present (immediate exclusion).</li>
+          
+          <li>Zip Outside Territory confirmed present (immediate exclusion).</li>
+          
+          <li>Snf Or Ltac Only confirmed present (immediate exclusion).</li>
+          
+        </ul>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  <div class="brief-footer">
+    Generated by BEMI (Bullseye Medical Intelligence) &nbsp;&middot;&nbsp; Run: RUN-20260603-224758-64df &nbsp;&middot;&nbsp; 2026-06-03<br>
+    Internal ranking data, numeric scores, and analyst notes are not included in this brief.
+    Tier verdicts and confidence bands are derived from publicly available web data only.
+  </div>
+
+</div>
+</body>
+</html>

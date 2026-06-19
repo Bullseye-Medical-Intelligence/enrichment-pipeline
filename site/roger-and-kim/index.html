@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roger & Kim — Bullseye Medical Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:     #0a0a0a;
+  --terra:   #c84b2f;
+  --warm:    #f7f6f4;
+  --mid:     #e8e6e2;
+  --muted:   rgba(10,10,10,0.40);
+  --serif:   'Instrument Serif', Georgia, serif;
+  --sans:    'DM Sans', sans-serif;
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  background: var(--warm);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 400;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── GLOBAL ANIMATION ─── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── LOGO MARK ─── */
+.logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.signal-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.signal-lines span {
+  display: block;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+}
+.signal-lines span:nth-child(1) { width: 22px; }
+.signal-lines span:nth-child(2) { width: 15px; }
+.signal-lines span:nth-child(3) { width: 8px; }
+.signal-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--terra);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.logo-text {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* ─── SITE HEADER ─── */
+.site-header {
+  background: var(--ink);
+  padding: 28px 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid rgba(247,246,244,0.06);
+}
+.site-header .logo-mark { color: var(--warm); }
+.site-header .logo-text { color: rgba(247,246,244,0.70); }
+.nav-pills {
+  display: flex;
+  gap: 6px;
+}
+.nav-pill {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.45);
+  padding: 7px 14px;
+  border: 1px solid rgba(247,246,244,0.12);
+  border-radius: 100px;
+  text-decoration: none;
+  transition: color 0.2s, border-color 0.2s;
+  cursor: pointer;
+  background: none;
+}
+.nav-pill:hover,
+.nav-pill.active {
+  color: var(--warm);
+  border-color: rgba(247,246,244,0.35);
+}
+
+/* ─── HERO ─── */
+.hero {
+  background: var(--ink);
+  padding: 80px 64px 88px;
+  position: relative;
+  overflow: hidden;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--terra) 40%, transparent);
+  opacity: 0.4;
+}
+.hero-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--terra);
+  margin-bottom: 24px;
+  animation: fadeUp 0.6s ease both;
+}
+.hero-headline {
+  font-family: var(--serif);
+  font-size: clamp(40px, 6vw, 72px);
+  font-weight: 400;
+  color: var(--warm);
+  line-height: 1.05;
+  max-width: 760px;
+  animation: fadeUp 0.6s 0.1s ease both;
+}
+.hero-headline em {
+  font-style: italic;
+  color: var(--terra);
+}
+.hero-sub {
+  margin-top: 28px;
+  font-size: 16px;
+  color: rgba(247,246,244,0.48);
+  max-width: 560px;
+  line-height: 1.65;
+  font-weight: 300;
+  animation: fadeUp 0.6s 0.2s ease both;
+}
+
+/* ─── TOGGLE ─── */
+.toggle-wrap {
+  background: var(--warm);
+  padding: 48px 64px 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.toggle-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.toggle-tabs {
+  display: flex;
+  background: var(--mid);
+  border-radius: 100px;
+  padding: 3px;
+  gap: 2px;
+}
+.toggle-tab {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 22px;
+  border-radius: 100px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.22s, color 0.22s;
+}
+.toggle-tab.active {
+  background: var(--ink);
+  color: var(--warm);
+}
+
+/* ─── SECTION SHELL ─── */
+.section-wrap {
+  padding: 64px 64px 80px;
+}
+.section-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--terra);
+  margin-bottom: 16px;
+}
+.section-headline {
+  font-family: var(--serif);
+  font-size: clamp(28px, 3.8vw, 46px);
+  font-weight: 400;
+  line-height: 1.12;
+  margin-bottom: 48px;
+  max-width: 700px;
+}
+.section-headline em { font-style: italic; }
+
+/* ─── TIMELINE ─── */
+.timeline { display: flex; flex-direction: column; }
+
+.tl-item {
+  display: grid;
+  grid-template-columns: 76px 1px 1fr;
+  column-gap: 32px;
+  padding-bottom: 52px;
+}
+.tl-item:last-child { padding-bottom: 0; }
+
+.tl-time {
+  font-family: var(--serif);
+  font-size: 20px;
+  color: var(--ink);
+  text-align: right;
+  padding-top: 2px;
+  line-height: 1;
+}
+.tl-item.kim .tl-time { color: var(--ink); }
+
+.tl-spine {
+  background: var(--mid);
+  position: relative;
+}
+.tl-item:last-child .tl-spine { background: transparent; }
+
+.tl-node {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--mid);
+  border: 2px solid var(--mid);
+}
+.tl-item.win .tl-node {
+  background: var(--terra);
+  border-color: var(--terra);
+}
+.tl-item.caution .tl-node {
+  background: var(--warm);
+  border: 2px solid var(--ink);
+}
+
+.tl-content { padding-top: 0; }
+
+.tl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 100px;
+  margin-bottom: 12px;
+}
+.tl-badge.win-badge {
+  color: var(--terra);
+  background: rgba(200,75,47,0.08);
+  border: 1px solid rgba(200,75,47,0.2);
+}
+.tl-badge.caution-badge {
+  color: var(--ink);
+  background: rgba(10,10,10,0.06);
+  border: 1px solid rgba(10,10,10,0.14);
+}
+
+.tl-title {
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.22;
+  margin-bottom: 14px;
+}
+.tl-title em { font-style: italic; }
+
+.tl-body {
+  font-size: 15px;
+  line-height: 1.8;
+  color: rgba(10,10,10,0.72);
+}
+.tl-body p + p { margin-top: 12px; }
+.tl-body strong { color: var(--ink); font-weight: 500; }
+.tl-body em {
+  font-family: var(--serif);
+  font-style: italic;
+}
+
+/* ─── INLINE CALLOUT ─── */
+.inline-callout {
+  margin-top: 16px;
+  background: var(--ink);
+  padding: 18px 22px;
+  border-left: 3px solid var(--terra);
+}
+.inline-callout p {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--warm);
+  line-height: 1.55;
+}
+
+/* ─── SCORE CARD ─── */
+.score-card {
+  background: var(--ink);
+  padding: 24px 26px;
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 24px;
+  align-items: start;
+}
+.score-num {
+  font-family: var(--serif);
+  font-size: 52px;
+  line-height: 1;
+  color: var(--warm);
+}
+.score-num em { font-style: normal; color: var(--terra); }
+.score-details { padding-top: 4px; }
+.score-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.38);
+  margin-bottom: 8px;
+}
+.score-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.score-signal {
+  font-size: 13px;
+  color: rgba(247,246,244,0.70);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.score-signal::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--terra);
+  flex-shrink: 0;
+}
+.score-signal.neg::before { background: rgba(247,246,244,0.22); }
+
+/* ─── STAT STRIP ─── */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  background: var(--mid);
+  margin: 0;
+}
+.stat-block {
+  background: var(--ink);
+  padding: 36px 32px;
+  text-align: center;
+}
+.stat-num-lg {
+  font-family: var(--serif);
+  font-size: 52px;
+  color: var(--warm);
+  line-height: 1;
+  display: block;
+}
+.stat-num-lg em { font-style: italic; color: var(--terra); }
+.stat-lbl {
+  display: block;
+  font-size: 11px;
+  color: rgba(247,246,244,0.38);
+  margin-top: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+/* ─── BEFORE/AFTER STRIP ─── */
+.compare-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  background: var(--mid);
+}
+.compare-col {
+  padding: 48px 44px;
+}
+.compare-col.before-col {
+  background: var(--warm);
+}
+.compare-col.after-col {
+  background: var(--ink);
+  color: var(--warm);
+}
+.compare-eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.before-col .compare-eyebrow { color: var(--muted); }
+.after-col .compare-eyebrow  { color: var(--terra); }
+.compare-name {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 400;
+  margin-bottom: 28px;
+  line-height: 1.15;
+}
+.after-col .compare-name { color: var(--warm); }
+.compare-name em { font-style: italic; }
+.compare-items { display: flex; flex-direction: column; gap: 14px; }
+.compare-item {
+  font-size: 14px;
+  line-height: 1.6;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.before-col .compare-item { color: rgba(10,10,10,0.65); }
+.after-col  .compare-item { color: rgba(247,246,244,0.65); }
+.compare-icon {
+  font-size: 12px;
+  margin-top: 3px;
+  flex-shrink: 0;
+  width: 16px;
+}
+.before-col .compare-icon { color: var(--muted); }
+.after-col  .compare-icon { color: var(--terra); }
+
+/* ─── PIVOT SECTION ─── */
+.pivot-section {
+  padding: 80px 64px;
+  background: var(--warm);
+}
+.pivot-intro-block {
+  max-width: 700px;
+  margin-bottom: 56px;
+}
+.pivot-intro-block p {
+  font-size: 16px;
+  line-height: 1.78;
+  color: rgba(10,10,10,0.72);
+}
+.pivot-intro-block p + p { margin-top: 14px; }
+
+.pivot-cards { display: flex; flex-direction: column; gap: 3px; }
+
+.pivot-card {
+  background: var(--ink);
+  color: var(--warm);
+  padding: 52px 56px;
+  position: relative;
+  overflow: hidden;
+}
+.pivot-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px; height: 100%;
+  background: var(--terra);
+}
+.pivot-card-eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--terra);
+  margin-bottom: 6px;
+}
+.pivot-card-audience {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--warm);
+  margin-bottom: 4px;
+  line-height: 1.18;
+}
+.pivot-card-audience em { font-style: italic; }
+.pivot-hook-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247,246,244,0.28);
+  margin-bottom: 32px;
+}
+.pivot-hook {
+  border-left: 2px solid var(--terra);
+  background: rgba(200,75,47,0.08);
+  padding: 20px 26px;
+  margin-bottom: 30px;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-style: italic;
+  color: var(--warm);
+  line-height: 1.45;
+}
+.pivot-body {
+  font-size: 15px;
+  line-height: 1.82;
+  color: rgba(247,246,244,0.68);
+}
+.pivot-body p + p { margin-top: 16px; }
+.pivot-body strong { color: var(--warm); font-weight: 500; }
+.pivot-body em {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--terra);
+}
+.pivot-math {
+  margin-top: 26px;
+  padding: 18px 22px;
+  background: rgba(247,246,244,0.04);
+  border: 1px solid rgba(247,246,244,0.07);
+  font-size: 12.5px;
+  color: rgba(247,246,244,0.35);
+  line-height: 1.7;
+  font-style: italic;
+}
+
+/* ─── FOOTER ─── */
+footer {
+  background: var(--ink);
+  padding: 44px 64px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(247,246,244,0.07);
+}
+footer .logo-mark { color: rgba(247,246,244,0.60); }
+.footer-right {
+  font-size: 12px;
+  color: rgba(247,246,244,0.30);
+  text-align: right;
+  line-height: 1.7;
+}
+.footer-right a { color: var(--terra); text-decoration: none; }
+
+/* ─── VIEW STATES ─── */
+.view { display: none; }
+.view.active { display: block; }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 800px) {
+  /* Header */
+  .site-header { padding: 16px 20px; }
+  .nav-pills { display: none; }
+  .logo-text { font-size: 10px; }
+
+  /* Hero */
+  .hero { padding: 44px 20px 52px; }
+  .hero-sub { font-size: 14px; }
+
+  /* Toggle */
+  .toggle-wrap {
+    padding: 28px 20px 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .toggle-tabs { width: 100%; justify-content: stretch; }
+  .toggle-tab { flex: 1; text-align: center; padding: 9px 8px; font-size: 11px; }
+
+  /* Section */
+  .section-wrap { padding: 40px 20px 56px; }
+  .section-headline { font-size: clamp(24px, 7vw, 34px); margin-bottom: 36px; }
+
+  /* Timeline — collapse to single column */
+  .tl-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding-bottom: 40px;
+    padding-left: 0;
+  }
+  .tl-spine { display: none; }
+  .tl-time {
+    font-size: 13px;
+    font-family: var(--sans);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--terra);
+    text-align: left;
+    padding-top: 0;
+    margin-bottom: 8px;
+  }
+  .tl-title { font-size: 18px; margin-bottom: 10px; }
+  .tl-body { font-size: 14px; }
+
+  /* Score card */
+  .score-card {
+    grid-template-columns: 1fr;
+    gap: 12px 0;
+    padding: 20px 18px;
+  }
+  .score-num { font-size: 40px; }
+
+  /* Stat strip */
+  .stat-strip { grid-template-columns: 1fr; gap: 2px; }
+  .stat-block { padding: 28px 20px; }
+  .stat-num-lg { font-size: 44px; }
+
+  /* Compare strip */
+  .compare-strip { grid-template-columns: 1fr; gap: 2px; }
+  .compare-col { padding: 32px 20px; }
+  .compare-name { font-size: 22px; margin-bottom: 20px; }
+  .compare-item { font-size: 13px; }
+
+  /* Pivot */
+  .pivot-section { padding: 44px 20px 56px; }
+  .pivot-intro-block p { font-size: 14px; }
+  .pivot-card { padding: 32px 22px; }
+  .pivot-card-audience { font-size: 24px; }
+  .pivot-hook { font-size: 16px; padding: 16px 18px; }
+  .pivot-body { font-size: 14px; }
+  .pivot-math { font-size: 12px; }
+
+  /* Inline callout */
+  .inline-callout { padding: 14px 16px; }
+  .inline-callout p { font-size: 14px; }
+
+  /* Footer */
+  footer { flex-direction: column; gap: 20px; padding: 32px 20px; }
+  .footer-right { text-align: left; }
+}
+</style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- SITE HEADER -->
+<header class="site-header">
+  <div class="logo-mark">
+    <div class="signal-lines"><span></span><span></span><span></span></div>
+    <div class="signal-dot"></div>
+    <span class="logo-text">Bullseye Medical Intelligence</span>
+  </div>
+  <nav class="nav-pills">
+    <button class="nav-pill active" onclick="showView('roger', this)">Roger</button>
+    <button class="nav-pill" onclick="showView('kim', this)">Kim</button>
+    <button class="nav-pill" onclick="showView('pivot', this)">The Pivot</button>
+  </nav>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+  <p class="hero-eyebrow">Sales Narrative — Before &amp; After</p>
+  <h1 class="hero-headline">Two reps.<br>One <em>difference.</em></h1>
+  <p class="hero-sub">Roger works a flat list. Kim works a Bullseye brief. Same job title. Same hours. Completely different days. Use the toggle to read each story, then see how to close the room.</p>
+</div>
+
+<!-- TOGGLE -->
+<div class="toggle-wrap">
+  <span class="toggle-label">View</span>
+  <div class="toggle-tabs">
+    <button class="toggle-tab active" onclick="showView('roger', this, true)">Roger</button>
+    <button class="toggle-tab" onclick="showView('kim', this, true)">Kim</button>
+    <button class="toggle-tab" onclick="showView('pivot', this, true)">The Pivot</button>
+  </div>
+</div>
+
+<!-- ════════════ ROGER ════════════ -->
+<div id="view-roger" class="view active">
+
+  <div class="section-wrap">
+    <p class="section-eyebrow">Without Bullseye</p>
+    <h2 class="section-headline">Roger's day.<br><em>A flat list and a prayer.</em></h2>
+
+    <div class="timeline">
+
+      <div class="tl-item">
+        <div class="tl-time">8 AM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge caution-badge">The Flat List Illusion</span>
+          <div class="tl-title">Every row looks <em>identical.</em></div>
+          <div class="tl-body">
+            <p>Roger sits down with his coffee and opens a spreadsheet exported from Definitive Healthcare or IQVIA. He sees "Dr. Sarah M. (OBGYN)" and an NPI number. That's it. No intent signal. No practice context. No indicator of what she's actively marketing or which procedures she performs today.</p>
+            <p>The claims data driving that list is often 12 to 24 months old. Roger isn't working with intelligence. He's working with a census. And a census treats every name the same.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-time">10 AM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge caution-badge">The Targeting Tax</span>
+          <div class="tl-title">He's not selling.<br><em>He's researching.</em></div>
+          <div class="tl-body">
+            <p>Because the list is flat, Roger can't simply pick up the phone. He's forced to play part-time data analyst. He digs through practice websites, scans service pages, reads provider bios. He's trying to guess whether a clinic is actually a fit.</p>
+            <p><strong>This manual verification consumes nearly 40% of his available selling time.</strong> Roughly 10 hours a week. Gone. Not to a competitor. To a spreadsheet he should never have been handed in the first place.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-time">2 PM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge caution-badge">The $300 Wasted Visit</span>
+          <div class="tl-title">He walks in.<br><em>And walks right back out.</em></div>
+          <div class="tl-body">
+            <p>Roger gets in his car and drives to a clinic that looked promising on paper. Time, mileage, and opportunity cost: approximately $300. He walks through the doors and finds a hard exclusion his list never flagged. An REI on staff protecting the IVF revenue stream. A telehealth-only operation with no procedure suite. A practice operating under a religious philosophy that rules out the device entirely.</p>
+            <p>And when he does find a viable prospect? He still walks in cold. No targeted clinical angle. Generic pitch language. A rep-shaped guess instead of a targeted consultation.</p>
+          </div>
+          <div class="inline-callout">
+            <p>"I drove 45 minutes, paid for parking, and found out in the first 60 seconds that they don't perform any in-office procedures. It's not even in the database."</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-time">5 PM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge caution-badge">The Inefficiency Tax</span>
+          <div class="tl-title">Exhausted.<br><em>Behind quota. Repeat.</em></div>
+          <div class="tl-body">
+            <p>Roger ends his day behind on the week. The list gave him 50 names. He burned 10 hours figuring out which ones were worth calling. He made 3 visits and got 1 real conversation. Multiply this across your entire field team, across 50 weeks. You're not looking at a performance problem. You're looking at a structural one.</p>
+            <p>Roger isn't failing because he can't sell. The targeting infrastructure is failing him. And it will keep failing him until someone changes the inputs.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="stat-strip">
+    <div class="stat-block">
+      <span class="stat-num-lg"><em>40%</em></span>
+      <span class="stat-lbl">of selling time consumed by manual targeting research</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-num-lg">$300</span>
+      <span class="stat-lbl">average cost per unqualified field visit</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-num-lg"><em>1.3%</em></span>
+      <span class="stat-lbl">industry conversion rate when reps work flat lists</span>
+    </div>
+  </div>
+
+</div><!-- /roger -->
+
+<!-- ════════════ KIM ════════════ -->
+<div id="view-kim" class="view">
+
+  <div class="section-wrap">
+    <p class="section-eyebrow">With Bullseye</p>
+    <h2 class="section-headline">Kim's day.<br><em>Intelligence before the first call.</em></h2>
+
+    <div class="timeline">
+
+      <!-- 8AM WIN -->
+      <div class="tl-item win">
+        <div class="tl-time">8 AM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge win-badge">The Prioritized Morning</span>
+          <div class="tl-title">She opens a brief,<br>not a <em>spreadsheet.</em></div>
+          <div class="tl-body">
+            <p>Kim doesn't start her day staring at a flat export where every physician looks identical. She opens her CRM and sees Bullseye Target Dossiers. Her pipeline is already ranked. Her first call is already identified.</p>
+            <p>Her top target scores a 94. Before she finishes her coffee, she knows exactly why.</p>
+          </div>
+          <div class="score-card">
+            <div class="score-num">9<em>4</em></div>
+            <div class="score-details">
+              <div class="score-label">Bullseye Score — Top Priority</div>
+              <div class="score-signals">
+                <div class="score-signal">Branded medi-spa co-location confirmed</div>
+                <div class="score-signal">In-office pelvic ultrasound documented</div>
+                <div class="score-signal">No REI on staff</div>
+                <div class="score-signal">Patient financing visible on website</div>
+                <div class="score-signal">Non-mandate state — cash-pay signal present</div>
+                <div class="score-signal neg">REI exclusion: CLEAR</div>
+              </div>
+            </div>
+          </div>
+          <div class="tl-body" style="margin-top:16px;">
+            <p>She also has the Rep Sales Hook: the specific clinical and business angle to lead with when she walks through that door. Not a generic script. A targeted opening built around what that practice is actively marketing today.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10:30AM CAUTION -->
+      <div class="tl-item caution">
+        <div class="tl-time">10:30</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge caution-badge">Human in the Loop</span>
+          <div class="tl-title">The AI didn't miss.<br><em>The ICP wasn't specific enough.</em></div>
+          <div class="tl-body">
+            <p>Kim moves to her next target: score of 85, flagged as a strong fit. This is where she acts as the crucial check on the system. Because Bullseye is not a black box, every score comes with an Evidence Trace. Exact quoted text. Source URLs. The specific signals that drove the number.</p>
+            <p>Kim clicks the link. She reads the clinic's site directly and spots it in 90 seconds: <strong>this practice focuses on a highly specific subset of pelvic therapy her device doesn't address.</strong> The AI found exactly what it was programmed to find. The gap was in the ICP definition, not the scoring engine.</p>
+          </div>
+          <div class="inline-callout">
+            <p>This is not a hallucination. This is a calibration signal. The miss tells Kim's team exactly what language to add to the ICP so the next 10,000 records are filtered correctly before they reach her desk.</p>
+          </div>
+          <div class="tl-body" style="margin-top:16px;">
+            <p>She deprioritizes the lead and flags the ICP gap. Two minutes. No $300 drive. No wasted hour in a parking lot realizing the clinic doesn't fit. The evidence trail is what makes this catch possible. Without source links, she would have taken the 85 at face value and gotten in her car.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2PM WIN -->
+      <div class="tl-item win">
+        <div class="tl-time">2 PM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge win-badge">The Targeted Execution</span>
+          <div class="tl-title">She walks in<br>with a <em>clinical angle.</em></div>
+          <div class="tl-body">
+            <p>Kim drives to her high-priority clinic. Not hoping. Knowing. The $300 Filter already ran. She isn't going to be ambushed by a hard exclusion she could have caught at her desk. No telehealth-only operation. No REI protecting IVF revenue. No practice philosophy that rules out the device before she opens her mouth.</p>
+            <p>She walks through the door and uses her Rep Sales Hook immediately. <strong>She doesn't pitch features. She speaks directly to their cash-pay infrastructure</strong> and shows exactly how her device prevents $5,000 to $12,000 in downstream revenue from walking out the door to competing specialists. That's a conversation a physician wants to have. That's not a cold call. That's a consultation.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5PM WIN -->
+      <div class="tl-item win">
+        <div class="tl-time">5 PM</div>
+        <div class="tl-spine"><div class="tl-node"></div></div>
+        <div class="tl-content">
+          <span class="tl-badge win-badge">The Reality of Precision</span>
+          <div class="tl-title">Fewer visits.<br><em>Better conversations. Her time back.</em></div>
+          <div class="tl-body">
+            <p>Kim ends her day having made fewer field stops but walked away from every one with a real conversation. She didn't spend 10 hours this week playing data analyst. She didn't drive to a dead end. She didn't walk into a room cold and pitch into the wind.</p>
+            <p>Bullseye isn't perfect. Kim knows that. If an ICP lacks nuance, she has to catch it. But because she has the evidence trail, the catch takes 90 seconds at her desk instead of $300 in the field. The system makes her better. It doesn't replace her judgment. It gives her judgment something real to work with.</p>
+            <p><strong>She's a sales rep again.</strong> Not a researcher. Not a data clerk. A rep with a targeted brief, a clinical angle, and a pipeline she can actually defend.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BEFORE / AFTER COMPARE -->
+  <div class="compare-strip">
+    <div class="compare-col before-col">
+      <div class="compare-eyebrow">Without Bullseye</div>
+      <div class="compare-name">Roger's <em>day</em></div>
+      <div class="compare-items">
+        <div class="compare-item"><span class="compare-icon">—</span><span>Opens a flat export. Every account looks identical.</span></div>
+        <div class="compare-item"><span class="compare-icon">—</span><span>Spends 10 hrs/week manually verifying practice fit.</span></div>
+        <div class="compare-item"><span class="compare-icon">—</span><span>Drives to a clinic and discovers a hard exclusion on arrival.</span></div>
+        <div class="compare-item"><span class="compare-icon">—</span><span>Pitches generic features. No targeted clinical angle.</span></div>
+        <div class="compare-item"><span class="compare-icon">—</span><span>Ends the week behind quota. Demoralized. Repeat.</span></div>
+      </div>
+    </div>
+    <div class="compare-col after-col">
+      <div class="compare-eyebrow">With Bullseye</div>
+      <div class="compare-name">Kim's <em>day</em></div>
+      <div class="compare-items">
+        <div class="compare-item"><span class="compare-icon">+</span><span>Opens a ranked dossier. Every account scored and explained.</span></div>
+        <div class="compare-item"><span class="compare-icon">+</span><span>10 hours returned. Research is done before she logs in.</span></div>
+        <div class="compare-item"><span class="compare-icon">+</span><span>Hard exclusions filtered at the desk. Not in a parking lot.</span></div>
+        <div class="compare-item"><span class="compare-icon">+</span><span>Walks in with a Rep Sales Hook tied to that practice's signals.</span></div>
+        <div class="compare-item"><span class="compare-icon">+</span><span>Ends the week with qualified conversations and a defensible pipeline.</span></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /kim -->
+
+<!-- ════════════ PIVOT ════════════ -->
+<div id="view-pivot" class="view">
+
+  <div class="pivot-section">
+    <p class="section-eyebrow">The Pivot</p>
+    <h2 class="section-headline">Same story.<br><em>Three rooms.</em></h2>
+
+    <div class="pivot-intro-block">
+      <p>You finish Roger's story. You pause. Then you say: "Here's what that same day looks like when your rep opens a Bullseye brief instead of a flat list." And you tell Kim's story.</p>
+      <p>But how you close depends entirely on who is sitting across from you. Below are three audience-specific pivots. Same evidence. Different native language.</p>
+    </div>
+
+    <div class="pivot-cards">
+
+      <!-- CFO -->
+      <div class="pivot-card">
+        <div class="pivot-card-eyebrow">Scenario A</div>
+        <div class="pivot-card-audience">The CFO <em>&</em> Investors</div>
+        <div class="pivot-hook-label">Hook: Burn-Rate &amp; Margin Protection</div>
+        <div class="pivot-hook">"Roger is a great guy. But Roger is a financial leak."</div>
+        <div class="pivot-body">
+          <p>That cycle you just heard about produces a 1.3% industry-standard conversion rate. That is the measurable output of your current targeting infrastructure. Not a morale problem. Not a hiring problem. A math problem.</p>
+          <p>Here's the assumption stack. <strong>Assume a fully-loaded rep cost of $200,000 annually.</strong> If 40% of their available selling time is consumed by manual targeting research, you are paying $80,000 per rep per year to do work that should never reach a rep's desk. Across a five-person field team, that's $400,000 in recoverable labor cost sitting inside a spreadsheet workflow.</p>
+          <p>Bullseye is not a new line item. It's <em>burn-rate insurance.</em> It eliminates the $300 travel tax on doors that will never open and returns your highest-cost resource to the one activity you hired them for. Kim's day is what that looks like operationally. Roger's day is what you're currently funding.</p>
+          <p>The question isn't whether you can afford Bullseye. It's whether you can afford to keep paying Roger to be a researcher.</p>
+        </div>
+        <div class="pivot-math">
+          Assumption stack: $200k fully-loaded rep cost. 25-hour active selling week. 40% consumed by manual targeting research = 10 hrs/week non-selling. 50 working weeks = 500 hrs/year. $80k per rep in recoverable labor. Adjust to your actuals — the directional case holds at any input.
+        </div>
+      </div>
+
+      <!-- VP Sales -->
+      <div class="pivot-card">
+        <div class="pivot-card-eyebrow">Scenario B</div>
+        <div class="pivot-card-audience">VP of Sales <em>&</em> CCO</div>
+        <div class="pivot-hook-label">Hook: Quota Attainment &amp; Rep Retention</div>
+        <div class="pivot-hook">"Roger isn't failing because he can't sell. Your data is setting him up to fail."</div>
+        <div class="pivot-body">
+          <p>You are sending him into battle blind. He's spending 10 hours a week staring at a screen instead of building pipeline. And by the time he finally gets in front of a physician, he's pitching generic features because he walked in without a clinical angle. That's not a Roger problem. That's a targeting infrastructure problem.</p>
+          <p>And it compounds. <strong>Reps who consistently walk into cold, unqualified rooms don't just miss quota.</strong> They disengage. They start questioning the product. They start questioning themselves. The best ones eventually leave — and you replace them with someone who inherits the same flat list and the same broken workflow.</p>
+          <p>Kim's story is what you're buying. Before she gets out of her car, she has the exact <em>Rep Sales Hook</em> for that account. She knows which procedures they're marketing, what hard exclusions have already been filtered, and the specific clinical angle that turns a cold call into a targeted consultation.</p>
+          <p>You don't need more reps. You need the reps you have walking into the right rooms with the right opening. That is the only quota problem Bullseye is built to solve.</p>
+        </div>
+      </div>
+
+      <!-- Sales Ops -->
+      <div class="pivot-card">
+        <div class="pivot-card-eyebrow">Scenario C</div>
+        <div class="pivot-card-audience">Sales Ops <em>&</em> Commercial Excellence</div>
+        <div class="pivot-hook-label">Hook: Defensibility &amp; Auditable Methodology</div>
+        <div class="pivot-hook">"When pipeline misses, the first question is always: who decided we should call those accounts?"</div>
+        <div class="pivot-body">
+          <p>Right now the honest answer is: Roger did. Or whoever built the export filter in your database subscription. That's not a methodology. It's a guess wearing a spreadsheet. And when your VP asks why conversion is at 1.3%, you can't defend a guess.</p>
+          <p>Notice what happened at 10:30AM in Kim's story. She caught a scoring miss in 90 seconds at her desk. Not because the AI hallucinated. Because her company's ICP wasn't specific enough to exclude a pelvic therapy sub-niche. <strong>The Evidence Trace is what made the catch possible.</strong> Source URLs. Quoted text. A clear signal trail she could verify herself.</p>
+          <p>That same trail is what makes your targeting process defensible upstairs. Every score tied to a public signal. Every exclusion documented with a reason. Every target your rep touches carries a clear rationale that you can show your VP, your CMO, or your board when they ask why this account was prioritized over that one.</p>
+          <p>The difference between a targeting process you can defend and one you can only hope works is <em>an auditable intelligence trail.</em> Bullseye builds that trail on every account, before your rep makes a single call.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /pivot -->
+
+<!-- FOOTER -->
+<footer>
+  <div class="logo-mark">
+    <div class="signal-lines"><span></span><span></span><span></span></div>
+    <div class="signal-dot"></div>
+    <span class="logo-text" style="color:rgba(247,246,244,0.45)">Bullseye Medical Intelligence</span>
+  </div>
+  <div class="footer-right">
+    <a href="mailto:leads@bullseyemedical.ai">leads@bullseyemedical.ai</a><br>
+    bullseyemedical.ai
+  </div>
+</footer>
+
+<script>
+function showView(id, btn, fromToggle) {
+  // Hide all views
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+
+  // Update nav pills
+  document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.toggle-tab').forEach(t => t.classList.remove('active'));
+
+  // Set active on both nav sets
+  document.querySelectorAll('.nav-pill').forEach(p => {
+    if (p.textContent.toLowerCase().includes(id === 'pivot' ? 'pivot' : id)) {
+      p.classList.add('active');
+    }
+  });
+  document.querySelectorAll('.toggle-tab').forEach(t => {
+    if (t.textContent.toLowerCase().includes(id === 'pivot' ? 'pivot' : id)) {
+      t.classList.add('active');
+    }
+  });
+}
+</script>
+
+</body>
+</html>

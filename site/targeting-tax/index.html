@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Targeting Tax — Bullseye Medical Intelligence</title>
+<meta name="description" content="Your reps aren't failing because they lack data. They're paying a hidden cost in selling time. Bullseye eliminates the targeting tax.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #0a0a0a; --ink-2: #3a3a3a; --ink-3: #6b6b6b; --ink-4: #9a9a9a;
+    --surface: #ffffff; --surface-2: #f7f6f4; --surface-3: #f0ede8;
+    --border: rgba(10,10,10,0.10); --border-strong: rgba(10,10,10,0.18);
+    --accent: #c84b2f;
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+    --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--font-body); color: var(--ink); background: var(--ink); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 48px; height: 60px;
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .nav-logo-text { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); letter-spacing: 0.01em; }
+  .nav-back { font-size: 12px; color: rgba(255,255,255,0.35); text-decoration: none; display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
+  .nav-back:hover { color: rgba(255,255,255,0.7); }
+  .nav-cta { background: var(--accent); color: #fff; font-size: 13px; font-weight: 500; padding: 9px 18px; border-radius: 100px; text-decoration: none; transition: background 0.2s, transform 0.15s; white-space: nowrap; }
+  .nav-cta:hover { background: #b53f25; transform: translateY(-1px); }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    background: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 120px 48px 80px;
+    position: relative; overflow: hidden;
+  }
+  /* Subtle grid texture */
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 80px 80px;
+    pointer-events: none;
+  }
+  /* Terracotta glow from bottom */
+  .hero::after {
+    content: '';
+    position: absolute; bottom: -100px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 400px;
+    background: radial-gradient(ellipse, rgba(200,75,47,0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-eyebrow {
+    position: relative; z-index: 1;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid rgba(200,75,47,0.3);
+    padding: 6px 14px; border-radius: 100px;
+    margin-bottom: 40px;
+    animation: fadeUp 0.8s var(--ease-out) both;
+  }
+  .hero-headline {
+    position: relative; z-index: 1;
+    font-family: var(--font-display);
+    font-size: clamp(56px, 8vw, 104px);
+    font-weight: 400; line-height: 1.0; letter-spacing: -0.025em;
+    color: #fff; max-width: 900px; margin-bottom: 32px;
+    animation: fadeUp 0.8s var(--ease-out) 0.1s both;
+  }
+  .hero-headline em { font-style: italic; color: var(--accent); }
+  .hero-sub {
+    position: relative; z-index: 1;
+    font-size: 19px; font-weight: 300; line-height: 1.65;
+    color: rgba(255,255,255,0.5); max-width: 560px;
+    margin-bottom: 20px;
+    animation: fadeUp 0.8s var(--ease-out) 0.2s both;
+  }
+  .hero-sub strong { color: rgba(255,255,255,0.85); font-weight: 400; }
+  .hero-attribution {
+    position: relative; z-index: 1;
+    font-size: 13px; color: rgba(255,255,255,0.25); letter-spacing: 0.04em;
+    margin-bottom: 56px;
+    animation: fadeUp 0.8s var(--ease-out) 0.25s both;
+  }
+  .hero-cta-wrap {
+    position: relative; z-index: 1;
+    animation: fadeUp 0.8s var(--ease-out) 0.3s both;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+  }
+  .btn-hero {
+    background: var(--accent); color: #fff;
+    font-family: var(--font-body); font-size: 15px; font-weight: 500;
+    padding: 18px 40px; border-radius: 100px; border: none;
+    cursor: pointer; text-decoration: none; display: inline-block;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    letter-spacing: 0.01em;
+  }
+  .btn-hero:hover { background: #b53f25; transform: translateY(-2px); box-shadow: 0 12px 32px rgba(200,75,47,0.3); }
+  .btn-ghost {
+    background: transparent; color: rgba(255,255,255,0.5);
+    font-family: var(--font-body); font-size: 14px; font-weight: 400;
+    padding: 14px 28px; border-radius: 100px;
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer; text-decoration: none; display: inline-block;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.3); color: rgba(255,255,255,0.8); }
+  .hero-microcopy { font-size: 11px; color: rgba(255,255,255,0.2); letter-spacing: 0.04em; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── STAT STRIP ── */
+  .stat-strip {
+    background: var(--surface-2);
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    padding: 40px 48px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+  }
+  .stat-item { text-align: center; padding: 0 32px; }
+  .stat-item + .stat-item { border-left: 1px solid var(--border); }
+  .stat-num { font-family: var(--font-display); font-size: 44px; line-height: 1; color: var(--ink); margin-bottom: 6px; }
+  .stat-label { font-size: 13px; font-weight: 300; color: var(--ink-3); line-height: 1.5; }
+
+  /* ── SECTION BASE ── */
+  .section { padding: 100px 48px; }
+  .section-inner { max-width: 1100px; margin: 0 auto; }
+  .eyebrow { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 20px; display: block; }
+  .display-headline { font-family: var(--font-display); font-size: clamp(36px, 4vw, 56px); font-weight: 400; line-height: 1.08; letter-spacing: -0.02em; margin-bottom: 20px; }
+  .body-copy { font-size: 16px; font-weight: 300; line-height: 1.75; color: var(--ink-2); max-width: 580px; }
+
+  /* ── THE PROBLEM ── */
+  .problem-section { background: var(--surface); }
+  .problem-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  .problem-left {}
+  .problem-right {}
+  .problem-card {
+    background: var(--ink); border-radius: 20px; padding: 40px;
+    position: relative; overflow: hidden;
+  }
+  .problem-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+  .pcard-label { font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 24px; display: block; }
+  .pcard-scenario {
+    display: flex; flex-direction: column; gap: 0;
+    margin-bottom: 28px;
+  }
+  .pcard-row {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .pcard-row:last-child { border-bottom: none; }
+  .pcard-icon { font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+  .pcard-text { font-size: 13px; font-weight: 300; line-height: 1.6; color: rgba(255,255,255,0.5); }
+  .pcard-text strong { color: rgba(255,255,255,0.85); font-weight: 500; }
+  .pcard-total {
+    background: rgba(200,75,47,0.12); border: 1px solid rgba(200,75,47,0.2);
+    border-radius: 10px; padding: 16px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .pcard-total-label { font-size: 12px; color: rgba(255,255,255,0.4); }
+  .pcard-total-val { font-family: var(--font-display); font-size: 28px; color: var(--accent); }
+
+  /* ── THREE TRUTHS ── */
+  .truths-section { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .truths-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 56px; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+  .truth-card { background: var(--surface); padding: 40px 36px; }
+  .truth-card:not(:last-child) { border-right: 1px solid var(--border); }
+  .truth-num { font-family: var(--font-display); font-size: 52px; line-height: 1; color: var(--surface-3); margin-bottom: 20px; display: block; }
+  .truth-title { font-size: 18px; font-weight: 500; color: var(--ink); margin-bottom: 12px; line-height: 1.3; }
+  .truth-copy { font-size: 14px; font-weight: 300; line-height: 1.75; color: var(--ink-3); }
+
+  /* ── WHAT THE TAX COSTS ── */
+  .cost-section { background: var(--ink); }
+  .cost-headline { color: #fff; }
+  .cost-sub { color: rgba(255,255,255,0.45); }
+  .cost-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 56px; }
+  .cost-card {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 32px 28px;
+    display: flex; gap: 20px; align-items: flex-start;
+  }
+  .cost-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 6px; }
+  .cost-card-title { font-size: 15px; font-weight: 500; color: #fff; margin-bottom: 8px; }
+  .cost-card-copy { font-size: 13px; font-weight: 300; line-height: 1.7; color: rgba(255,255,255,0.4); }
+
+  /* ── HOW BULLSEYE FIXES IT ── */
+  .fix-section { background: var(--surface); }
+  .fix-flow { margin-top: 56px; }
+  .fix-step { display: flex; gap: 32px; align-items: flex-start; padding: 32px 0; border-bottom: 1px solid var(--border); }
+  .fix-step:first-child { border-top: 1px solid var(--border); }
+  .fix-step-num { font-family: var(--font-display); font-size: 40px; color: var(--surface-3); min-width: 60px; line-height: 1; flex-shrink: 0; padding-top: 4px; }
+  .fix-step-title { font-size: 17px; font-weight: 500; color: var(--ink); margin-bottom: 8px; }
+  .fix-step-copy { font-size: 14px; font-weight: 300; line-height: 1.75; color: var(--ink-3); }
+  .fix-tag { display: inline-block; font-size: 11px; padding: 4px 12px; border-radius: 100px; background: rgba(200,75,47,0.1); border: 1px solid rgba(200,75,47,0.2); color: var(--accent); margin-top: 12px; }
+
+  /* ── QUOTE ── */
+  .quote-section { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 80px 48px; }
+  .quote-inner { max-width: 800px; margin: 0 auto; text-align: center; }
+  .quote-mark { font-family: var(--font-display); font-size: 80px; color: var(--accent); line-height: 0.5; display: block; margin-bottom: 24px; opacity: 0.4; }
+  .quote-text { font-family: var(--font-display); font-size: clamp(24px, 3vw, 36px); font-weight: 400; line-height: 1.3; color: var(--ink); margin-bottom: 24px; letter-spacing: -0.01em; font-style: italic; }
+  .quote-attr { font-size: 13px; color: var(--ink-4); letter-spacing: 0.04em; }
+
+  /* ── CTA ── */
+  .cta-section { background: var(--ink); padding: 120px 48px; text-align: center; }
+  .cta-inner { max-width: 640px; margin: 0 auto; }
+  .cta-eyebrow { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 28px; display: block; }
+  .cta-headline { font-family: var(--font-display); font-size: clamp(38px, 5vw, 64px); line-height: 1.06; color: #fff; margin-bottom: 20px; letter-spacing: -0.02em; }
+  .cta-sub { font-size: 16px; color: rgba(255,255,255,0.45); line-height: 1.65; margin-bottom: 48px; font-weight: 300; }
+  .cta-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .cta-form input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-family: var(--font-body); font-size: 14px; padding: 14px 18px; border-radius: 12px; outline: none; transition: border-color 0.2s; }
+  .cta-form input::placeholder { color: rgba(255,255,255,0.25); }
+  .cta-form input:focus { border-color: rgba(255,255,255,0.35); }
+  .cta-form-full { grid-column: span 2; }
+  .btn-submit { width: 100%; background: var(--accent); color: #fff; font-family: var(--font-body); font-size: 15px; font-weight: 500; padding: 18px 32px; border-radius: 12px; border: none; cursor: pointer; margin-bottom: 16px; transition: background 0.2s, transform 0.15s; }
+  .btn-submit:hover { background: #b53f25; transform: translateY(-1px); }
+  .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .cta-guarantee { font-size: 12px; color: rgba(255,255,255,0.2); line-height: 1.8; }
+  .cta-guarantee strong { color: rgba(255,255,255,0.45); font-weight: 500; }
+  .form-success { display: none; text-align: center; padding: 48px 32px; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; margin-bottom: 16px; }
+  .form-success.visible { display: block; }
+  .form-success h3 { font-family: var(--font-display); font-size: 28px; color: #fff; margin-bottom: 12px; font-weight: 400; }
+  .form-success p { font-size: 15px; color: rgba(255,255,255,0.5); line-height: 1.7; margin-bottom: 28px; }
+  .btn-calendly { display: inline-block; background: var(--accent); color: #fff; font-family: var(--font-body); font-size: 15px; font-weight: 500; padding: 16px 32px; border-radius: 12px; text-decoration: none; transition: background 0.2s; }
+  .btn-calendly:hover { background: #b53f25; }
+  .form-error-msg { display: none; font-size: 13px; color: #ff6b6b; margin-bottom: 12px; padding: 12px 16px; background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); border-radius: 8px; }
+  .form-error-msg.visible { display: block; }
+
+  /* ── FOOTER ── */
+  .page-footer { background: #050505; padding: 40px 48px; border-top: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .footer-left { display: flex; align-items: center; gap: 10px; }
+  .footer-logo-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.3); }
+  .footer-right { font-size: 12px; color: rgba(255,255,255,0.15); }
+  .footer-right a { color: rgba(255,255,255,0.25); text-decoration: none; }
+  .footer-right a:hover { color: rgba(255,255,255,0.5); }
+
+  /* REVEAL */
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-delay-1 { transition-delay: 0.1s; }
+  .reveal-delay-2 { transition-delay: 0.2s; }
+  .reveal-delay-3 { transition-delay: 0.3s; }
+
+  /* MOBILE */
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; }
+    .nav-back span { display: none; }
+    .hero { padding: 100px 24px 60px; }
+    .hero-headline { font-size: 52px; }
+    .stat-strip { grid-template-columns: 1fr; gap: 0; padding: 0; }
+    .stat-item { padding: 28px 24px; }
+    .stat-item + .stat-item { border-left: none; border-top: 1px solid var(--border); }
+    .section { padding: 72px 24px; }
+    .problem-layout { grid-template-columns: 1fr; gap: 40px; }
+    .truths-grid { grid-template-columns: 1fr; }
+    .truth-card:not(:last-child) { border-right: none; border-bottom: 1px solid var(--border); }
+    .cost-grid { grid-template-columns: 1fr; }
+    .quote-section { padding: 60px 24px; }
+    .cta-section { padding: 80px 24px; }
+    .cta-form { grid-template-columns: 1fr; }
+    .cta-form-full { grid-column: span 1; }
+    .page-footer { padding: 32px 24px; flex-direction: column; align-items: flex-start; gap: 16px; }
+  }
+</style>
+<link rel="icon" href="/bullseye-favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="https://www.bullseyemedical.ai" class="nav-logo">
+    <img src="/assets/bullseye-mark-ink.svg" width="24" height="24" alt="" style="display:block;flex-shrink:0;filter:brightness(0) invert(1);">
+    <span class="nav-logo-text">Bullseye Medical Intelligence</span>
+  </a>
+  <a href="https://www.bullseyemedical.ai" class="nav-back">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4 7l4.5 4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Back to main site</span>
+  </a>
+  <a href="#cta" class="nav-cta">Get 3 Free Targets</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-eyebrow">
+    <svg width="6" height="6" viewBox="0 0 6 6"><circle cx="3" cy="3" r="3" fill="#c84b2f"/></svg>
+    The Hidden Cost of Poor Targeting
+  </div>
+  <h1 class="hero-headline">Your reps are paying<br>the <em>targeting tax.</em></h1>
+  <p class="hero-sub">
+    <strong>The issue is not lack of data.</strong> The issue is that your reps are spending selling time researching, filtering, and guessing which accounts deserve attention.
+  </p>
+  <p class="hero-attribution">Bullseye Medical Intelligence · Physician Targeting Research</p>
+  <div class="hero-cta-wrap">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+      <a href="#cta" class="btn-hero">Get My 3 Free Scored Targets →</a>
+      <a href="#what-it-costs" class="btn-ghost">See What It's Costing You</a>
+    </div>
+    <p class="hero-microcopy">No contract · No commitment · One 30-minute ICP call</p>
+  </div>
+</div>
+
+<!-- STAT STRIP -->
+<div class="stat-strip">
+  <div class="stat-item reveal">
+    <div class="stat-num">10+</div>
+    <div class="stat-label">hours per rep per week<br>lost to manual account research</div>
+  </div>
+  <div class="stat-item reveal reveal-delay-1">
+    <div class="stat-num">40%</div>
+    <div class="stat-label">of available selling time<br>consumed in a 25-hour week</div>
+  </div>
+  <div class="stat-item reveal reveal-delay-2">
+    <div class="stat-num">$0</div>
+    <div class="stat-label">in pipeline value from hours<br>spent verifying wrong accounts</div>
+  </div>
+</div>
+
+<!-- THE PROBLEM -->
+<div class="section problem-section">
+  <div class="section-inner">
+    <div class="problem-layout">
+      <div class="problem-left reveal">
+        <span class="eyebrow">The Problem</span>
+        <h2 class="display-headline">You have the data.<br>Your reps are drowning in it.</h2>
+        <p class="body-copy" style="margin-bottom:24px;">Most commercial teams already have Definitive Healthcare, ZoomInfo, or a CRM full of physician records. The data isn't missing. The prioritization is.</p>
+        <p class="body-copy">So your reps do it themselves. Manually cross-referencing equipment signals, verifying business models, hunting for cash-pay indicators. That's not selling. That's research. And you're paying for it in salary.</p>
+      </div>
+      <div class="problem-right reveal reveal-delay-1">
+        <div class="problem-card">
+          <span class="pcard-label">A Typical Rep's Morning</span>
+          <div class="pcard-scenario">
+            <div class="pcard-row">
+              <span class="pcard-icon">🔍</span>
+              <span class="pcard-text">Pulls 40 OBGYN records from Definitive. <strong>No context on which ones matter.</strong></span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-icon">🌐</span>
+              <span class="pcard-text">Visits each practice website manually. <strong>Looking for cash-pay signals, equipment, financing.</strong></span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-icon">📋</span>
+              <span class="pcard-text">Cross-references Healthgrades, Google reviews, NPI registry. <strong>2–3 hours in.</strong></span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-icon">🤷</span>
+              <span class="pcard-text">Makes 8 calls on best guesses. <strong>4 aren't remotely the right fit.</strong></span>
+            </div>
+          </div>
+          <div class="pcard-total">
+            <span class="pcard-total-label">Time spent selling today</span>
+            <span class="pcard-total-val">2 hrs</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- THREE TRUTHS -->
+<div class="section truths-section">
+  <div class="section-inner">
+    <div class="reveal">
+      <span class="eyebrow">Why It Happens</span>
+      <h2 class="display-headline">Three truths about<br>the targeting tax.</h2>
+    </div>
+    <div class="truths-grid">
+      <div class="truth-card reveal">
+        <span class="truth-num">01</span>
+        <div class="truth-title">It's invisible on the P&L.</div>
+        <p class="truth-copy">Nobody books "rep research time" as a line item. It shows up as quota miss, low pipeline velocity, and reps who seem busy but aren't converting. The tax is real. The invoice just never arrives.</p>
+      </div>
+      <div class="truth-card reveal reveal-delay-1">
+        <span class="truth-num">02</span>
+        <div class="truth-title">More data makes it worse.</div>
+        <p class="truth-copy">Every database license you add gives your reps more records to sort through manually. Without a prioritization layer, more data is just more noise. More hours lost to research that should already be done.</p>
+      </div>
+      <div class="truth-card reveal reveal-delay-2">
+        <span class="truth-num">03</span>
+        <div class="truth-title">It scales with headcount.</div>
+        <p class="truth-copy">At 4 reps losing 10 hours a week, you're paying the tax on 40 hours of salary. At 12 reps, it's 120 hours. The tax grows with every hire until you fix the targeting infrastructure underneath it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WHAT IT COSTS -->
+<div class="section cost-section" id="what-it-costs">
+  <div class="section-inner">
+    <div class="reveal">
+      <span class="eyebrow" style="color:rgba(255,255,255,0.3);">What It Actually Costs</span>
+      <h2 class="display-headline cost-headline">The targeting tax shows up<br>in four places.</h2>
+      <p class="body-copy cost-sub" style="margin-bottom:0;">None of them appear on your targeting budget line. All of them affect your number.</p>
+    </div>
+    <div class="cost-grid">
+      <div class="cost-card reveal">
+        <div class="cost-dot"></div>
+        <div>
+          <div class="cost-card-title">Rep labor burn</div>
+          <p class="cost-card-copy">Every hour verifying physician fit is a fully-loaded salary hour (typically $75 to $95 for a mid-level med device rep). At 10 hours a week across 4 reps, that's $13,000 to $16,000 in monthly research overhead.</p>
+        </div>
+      </div>
+      <div class="cost-card reveal reveal-delay-1">
+        <div class="cost-dot"></div>
+        <div>
+          <div class="cost-card-title">Missed conversion windows</div>
+          <p class="cost-card-copy">While your rep is researching, a competitor who already knows which accounts are ready is making the call. First-mover advantage in physician adoption is real. Slow targeting means ceding territory.</p>
+        </div>
+      </div>
+      <div class="cost-card reveal reveal-delay-2">
+        <div class="cost-dot"></div>
+        <div>
+          <div class="cost-card-title">Wasted first conversations</div>
+          <p class="cost-card-copy">When a rep calls a bad-fit account, the cost isn't just that call. It's the follow-up, the CRM update, the manager review. A wrong account doesn't generate one wasted interaction. It generates a wasted pipeline stage.</p>
+        </div>
+      </div>
+      <div class="cost-card reveal reveal-delay-3">
+        <div class="cost-dot"></div>
+        <div>
+          <div class="cost-card-title">The defensibility gap</div>
+          <p class="cost-card-copy">When pipeline misses, "we targeted the wrong accounts" is an uncomfortable answer. The targeting tax also costs you the narrative. You need a defensible prioritization story before the quarter ends, not after.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HOW BULLSEYE FIXES IT -->
+<div class="section fix-section">
+  <div class="section-inner">
+    <div class="reveal">
+      <span class="eyebrow">How We Fix It</span>
+      <h2 class="display-headline">We do the research<br>before the rep picks up the phone.</h2>
+      <p class="body-copy">Bullseye is a physician targeting research service. We analyze the public-facing online footprint of physician practices, including their listed services, business model signals, patient mix indicators, and clinical workflow evidence, then score them against your ICP before your reps ever see the list.</p>
+    </div>
+    <div class="fix-flow">
+      <div class="fix-step reveal">
+        <div class="fix-step-num">01</div>
+        <div>
+          <div class="fix-step-title">We define your ICP together</div>
+          <p class="fix-step-copy">One 30-minute Bullseye Brief call. We map your ideal client profile: clinical requirements, business model criteria, and hard exclusions. Cash-pay model, in-office capability, no competing specialists on staff. Every non-negotiable becomes a filter before we touch a single record.</p>
+          <span class="fix-tag">30 minutes · Day 0</span>
+        </div>
+      </div>
+      <div class="fix-step reveal reveal-delay-1">
+        <div class="fix-step-num">02</div>
+        <div>
+          <div class="fix-step-title">We scan the public signal footprint</div>
+          <p class="fix-step-copy">We cross-reference publicly observable practice-level signals from a physician or practice's online footprint. We do not use patient-level data, claims files, medical records, portals, EMRs, or login-gated systems. Every score is tied to visible, publicly available evidence.</p>
+          <span class="fix-tag">Signal scan · Days 1–3</span>
+        </div>
+      </div>
+      <div class="fix-step reveal reveal-delay-2">
+        <div class="fix-step-num">03</div>
+        <div>
+          <div class="fix-step-title">We score, rank, and apply exclusion logic</div>
+          <p class="fix-step-copy">Every candidate is scored across fit dimensions: cash-pay signal, practice fit, clinical intent, and visible exclusion risk. Each is run through your exclusion criteria. What remains is a prioritized shortlist, not a filtered list.</p>
+          <span class="fix-tag">Scored and ranked · Day 3–4</span>
+        </div>
+      </div>
+      <div class="fix-step reveal reveal-delay-3">
+        <div class="fix-step-num">04</div>
+        <div>
+          <div class="fix-step-title">Your reps inherit intelligence, not a list</div>
+          <p class="fix-step-copy">Each target arrives with fit rationale, signal evidence, confidence ratings, and a written sales hook. CRM-import friendly structure, with final format confirmed per client. Your reps open the file and start selling. The targeting tax is already paid.</p>
+          <span class="fix-tag">Delivered in days, not weeks</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- QUOTE -->
+<div class="quote-section">
+  <div class="quote-inner reveal">
+    <span class="quote-mark">"</span>
+    <p class="quote-text">We want to show you a better way to prioritize physician targets before your reps waste another cycle.</p>
+    <span class="quote-attr">Bullseye Medical Intelligence · bullseyemedical.ai</span>
+  </div>
+</div>
+
+<!-- CTA -->
+<div class="cta-section" id="cta">
+  <div class="cta-inner">
+    <span class="cta-eyebrow">Stop Paying the Targeting Tax</span>
+    <h2 class="cta-headline">See 3 scored targets<br>for your market.</h2>
+    <p class="cta-sub">Tell us your ideal client profile. We run the scoring model and deliver up to 3 Bullseye targets, complete with fit rationale, observable signal evidence, and a rep-facing sales hook. No contract. No commitment.</p>
+
+    <div class="form-success" id="form-success">
+      <h3>Your Bullseye Brief request is in.</h3>
+      <p>We have your details. Next step: book your Bullseye Brief so we can lock in your ICP and start the target scan. Your scored targets will be delivered in days, not weeks.</p>
+      <a href="https://calendly.com/leads-bullseyemedical/30min" target="_blank" class="btn-calendly">Book My Bullseye Brief →</a>
+    </div>
+    <div id="form-wrap">
+      <div class="form-error-msg" id="form-error">Something went wrong. Please try again or email leads@bullseyemedical.ai directly.</div>
+      <form id="targeting-tax-form" action="https://formspree.io/f/xojrbewz" method="POST">
+        <input type="hidden" name="source" value="targeting-tax-page">
+        <div class="cta-form">
+          <input type="text" name="first_name" placeholder="First name" required>
+          <input type="text" name="last_name" placeholder="Last name" required>
+          <input type="email" name="email" placeholder="Work email" class="cta-form-full" required>
+          <input type="text" name="company" placeholder="Company name" required>
+          <input type="text" name="product" placeholder="Product or therapy area" required>
+        </div>
+        <button type="submit" class="btn-submit" id="submit-btn">Get My 3 Scored Targets →</button>
+      </form>
+    </div>
+    <p class="cta-guarantee"><strong>No contract. No commitment.</strong> One 30-minute ICP call.<br>Your reps research for hours. We deliver in days.</p>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="page-footer">
+  <div class="footer-left">
+    <img src="/assets/bullseye-mark-ink.svg" width="20" height="20" alt="" style="display:block;flex-shrink:0;opacity:0.4;filter:brightness(0) invert(1);">
+    <span class="footer-logo-name">Bullseye Medical Intelligence</span>
+  </div>
+  <div class="footer-right">
+    <a href="https://www.bullseyemedical.ai">Main site</a> &nbsp;·&nbsp;
+    <a href="https://www.bullseyemedical.ai/privacy">Privacy</a> &nbsp;·&nbsp;
+    <a href="mailto:leads@bullseyemedical.ai">leads@bullseyemedical.ai</a>
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  reveals.forEach(el => observer.observe(el));
+
+  // Formspree
+  const form = document.getElementById('targeting-tax-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const formWrap = document.getElementById('form-wrap');
+  const formSuccess = document.getElementById('form-success');
+  const formError = document.getElementById('form-error');
+  if (form) {
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending…';
+      formError.classList.remove('visible');
+      try {
+        const response = await fetch('https://formspree.io/f/xojrbewz', {
+          method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' }
+        });
+        if (response.ok) {
+          formWrap.style.display = 'none';
+          formSuccess.classList.add('visible');
+        } else {
+          const json = await response.json();
+          formError.textContent = json.errors ? json.errors.map(e => e.message).join(', ') : 'Submission failed.';
+          formError.classList.add('visible');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Get My 3 Scored Targets →';
+        }
+      } catch (err) {
+        formError.textContent = 'Network error. Please try again or email us directly.';
+        formError.classList.add('visible');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Get My 3 Scored Targets →';
+      }
+    });
+  }
+</script>
+</body>
+</html>
