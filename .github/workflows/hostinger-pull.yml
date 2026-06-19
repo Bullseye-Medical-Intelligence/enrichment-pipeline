@@ -19,14 +19,14 @@ on:
   workflow_dispatch:
     inputs:
       protocol:
-        description: "Transfer protocol"
+        description: "Transfer protocol (Hostinger FTP sub-accounts use ftp)"
         type: choice
-        options: [sftp, ftp]
-        default: sftp
+        options: [ftp, sftp]
+        default: ftp
       port:
-        description: "Port (sftp=22, ftp=21)"
+        description: "Port (ftp=21, sftp=22)"
         type: string
-        default: "22"
+        default: "21"
       server_dir:
         description: "Remote directory to mirror (web root). Must end with /"
         type: string
@@ -70,7 +70,12 @@ jobs:
           lftp -u "$U","$P" "$PROTO://$H:$PORT" -e "
             set sftp:auto-confirm yes;
             set ssl:verify-certificate no;
-            set net:timeout 20;
+            set ftp:ssl-allow no;
+            set ftp:passive-mode on;
+            set net:timeout 15;
+            set net:max-retries 2;
+            set net:reconnect-interval-base 4;
+            set cmd:fail-exit yes;
             echo '--- pwd ---'; pwd;
             echo '--- top-level listing ---'; cls -l;
             echo '--- recursive listing of $DIR ---'; find $DIR;
@@ -90,7 +95,12 @@ jobs:
           lftp -u "$U","$P" "$PROTO://$H:$PORT" -e "
             set sftp:auto-confirm yes;
             set ssl:verify-certificate no;
-            set net:timeout 20;
+            set ftp:ssl-allow no;
+            set ftp:passive-mode on;
+            set net:timeout 15;
+            set net:max-retries 2;
+            set net:reconnect-interval-base 4;
+            set cmd:fail-exit yes;
             set mirror:set-permissions no;
             mirror --verbose --no-perms $DIR ./site/;
             bye

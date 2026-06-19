@@ -34,12 +34,12 @@ on:
       protocol:
         description: "Transfer protocol"
         type: choice
-        options: [sftp, ftp]
-        default: sftp
+        options: [ftp, sftp]
+        default: ftp
       port:
-        description: "Port (sftp=22, ftp=21)"
+        description: "Port (ftp=21, sftp=22)"
         type: string
-        default: "22"
+        default: "21"
       server_dir:
         description: "Remote web root to deploy into. Must end with /"
         type: string
@@ -62,15 +62,16 @@ jobs:
 
       - name: Deploy site/ to Hostinger
         # On push events inputs.* are empty, so the `||` fallbacks pick the
-        # production defaults (sftp / 22 / ./, real deploy). Manual runs honour
-        # the chosen inputs and default to a safe dry-run.
+        # production defaults (ftp / 21 / ./, real deploy). Hostinger FTP
+        # sub-accounts speak plain FTP, not SSH/SFTP. Manual runs honour the
+        # chosen inputs and default to a safe dry-run.
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_SFTP_HOST }}
           username: ${{ secrets.HOSTINGER_SFTP_USER }}
           password: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
-          protocol: ${{ inputs.protocol || 'sftp' }}
-          port: ${{ inputs.port || '22' }}
+          protocol: ${{ inputs.protocol || 'ftp' }}
+          port: ${{ inputs.port || '21' }}
           local-dir: ./site/
           server-dir: ${{ inputs.server_dir || './' }}
           dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}
