@@ -1,0 +1,23 @@
+# Bullseye Medical Intelligence
+
+> A physician targeting research service for specialty medtech sales teams. Bullseye researches, scores, and prioritizes medical practices from public signals, then delivers a ranked shortlist — with a per-account sales angle and source evidence — so reps know who to call, and why, before the first dial.
+
+Bullseye is not a dialer, a database, or an outreach tool. It is a research service that reduces the "targeting tax": the selling time reps lose to researching, filtering, and guessing which accounts deserve a call. Every score is built from triangulated public sources (practice websites, CMS utilization data, patient directories, review platforms) and shows the evidence behind it — no black-box scoring, no private or purchased data.
+
+## Core pages
+- [Home](https://www.bullseyemedical.ai/): What Bullseye is — research, scoring, and prioritization of physician practices for specialty medtech reps.
+- [Pricing & Packages](https://www.bullseyemedical.ai/pricing/): Pricing ladders off the labor cost of pre-call research. Three free scored targets to start; monthly activation retainers begin at $5,000, no long-term lock-in.
+- [Data Sources](https://www.bullseyemedical.ai/data-sourcing/): What public signals Bullseye uses, what it deliberately does not use, and how a public footprint becomes a sales-ready brief.
+- [The Targeting Tax](https://www.bullseyemedical.ai/targeting-tax/): The hidden cost of poor targeting — where reps lose selling time and what it costs.
+
+## Intelligence (articles)
+- [Fit vs. Readiness in Physician Targeting](https://www.bullseyemedical.ai/intelligence/readiness-vs-fit.html): Fit gets you a meeting; readiness — whether a practice is structured to buy fast — predicts the close. How to read a target list differently.
+- [Intelligence index](https://www.bullseyemedical.ai/intelligence/): Field notes on physician targeting, account prioritization, and specialty medtech commercial strategy.
+
+## About the offer
+- Audience: commercial and sales teams at specialty medical device / medtech companies.
+- Method: triangulated public evidence, transparent scoring, per-account sales angle, CRM-ready records.
+- Starting point: a free Bullseye Brief of 3 scored targets (proof of methodology).
+
+## Optional
+- [Privacy Policy](https://www.bullseyemedical.ai/privacy/): What information is collected and the private data Bullseye never uses.
