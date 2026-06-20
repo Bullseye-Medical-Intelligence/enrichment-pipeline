@@ -390,10 +390,44 @@
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
         <td colspan="7">
           <div class="detail-panel">
-            {% if record.phone or record.website_url %}
+            {% if record.phone or record.website_url or status.status == "complete" %}
             <div class="detail-contact-header">
               {% if record.phone %}{% set _rbrief = record.call_brief | default({}) %}<span class="phone-cell detail-phone" data-phone="{{ record.phone | e }}" data-hours="{{ _rbrief.hours_of_operation | default('') | e }}" onclick="showPhoneModal(this, event)">📞 {{ record.phone }}</span>{% endif %}
-              {% if record.website_url %}<a class="detail-website" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">🌐 {{ record.website_url }}</a>{% endif %}
+              <div style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+                <div id="url-display-{{ rid }}" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  {% if record.website_url %}
+                  <a class="detail-website" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">🌐 {{ record.website_url }}</a>
+                  {% else %}
+                  <span class="text-muted" style="font-size:0.82em; font-style:italic;">No URL on file</span>
+                  {% endif %}
+                  {% if status.status == "complete" %}
+                  <button type="button" onclick="showUrlEdit('{{ rid }}')"
+                          style="background:none; border:1px solid transparent; cursor:pointer; font-size:0.75em; color:var(--accent); padding:1px 6px; border-radius:4px; white-space:nowrap; line-height:1.4;"
+                          onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='transparent'">✏ Edit URL</button>
+                  {% endif %}
+                </div>
+                {% if status.status == "complete" %}
+                <form id="url-edit-form-{{ rid }}" style="display:none;"
+                      method="post" action="/runs/{{ run_id }}/records/{{ rid }}/recrawl"
+                      class="recrawl-form"
+                      data-run-id="{{ run_id }}" data-record-id="{{ rid }}"
+                      onsubmit="return submitRecrawl(this, event);">
+                  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="url" name="website_url" id="url-input-{{ rid }}"
+                           value="{{ record.website_url }}"
+                           placeholder="https://practice-website.com"
+                           style="flex:1; min-width:200px; padding:4px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.82em;">
+                    <button type="submit" class="btn btn-secondary" style="padding:4px 10px; font-size:0.82em; white-space:nowrap;">
+                      Update & Re-crawl
+                    </button>
+                    <button type="button" onclick="hideUrlEdit('{{ rid }}')"
+                            style="background:none; border:1px solid #ccc; cursor:pointer; font-size:0.82em; padding:4px 10px; border-radius:6px; white-space:nowrap;">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+                {% endif %}
+              </div>
             </div>
             {% endif %}
             <div class="detail-cols">

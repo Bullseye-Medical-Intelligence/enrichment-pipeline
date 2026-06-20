@@ -69,6 +69,22 @@ function submitRecrawl(form, event) {
   return false;
 }
 
+/* ── Inline URL edit ────────────────────────────────────────── */
+function showUrlEdit(rid) {
+  var disp = document.getElementById('url-display-' + rid);
+  var form = document.getElementById('url-edit-form-' + rid);
+  if (disp) disp.style.display = 'none';
+  if (form) form.style.display = 'block';
+  var inp = document.getElementById('url-input-' + rid);
+  if (inp) { inp.focus(); inp.select(); }
+}
+function hideUrlEdit(rid) {
+  var disp = document.getElementById('url-display-' + rid);
+  var form = document.getElementById('url-edit-form-' + rid);
+  if (disp) disp.style.display = '';
+  if (form) form.style.display = 'none';
+}
+
 /* ── Row expand/collapse ────────────────────────────────────── */
 function toggleDetail(recordId) {
   var detail = document.getElementById('detail-' + recordId);
