@@ -1,0 +1,36 @@
+{
+  "project_id": "P-002",
+  "client_name": "Femasys",
+  "target_specialty": "OBGYN",
+  "target_geography": ["MI"],
+  "active_exclusion_rules": [
+    "rei_on_staff",
+    "wrong_specialty",
+    "outside_geography",
+    "no_web_presence",
+    "hospital_owned",
+    "health_system_affiliated"
+  ],
+  "taxonomy_exclusion_rules": [
+    {"taxonomy_code": "207VE0102X", "rule_name": "rei_on_staff"}
+  ],
+  "bullseye_min_score": 80,
+  "verify_near_miss_band": 10,
+  "max_pages_per_practice": 5,
+  "request_timeout_seconds": 15,
+  "request_retries": 3,
+  "io_concurrency": 10,
+  "llm_concurrency": 6,
+  "subpage_keywords": [
+    "service", "procedure", "treatment", "care",
+    "provider", "physician", "doctor", "staff", "team", "about",
+    "speciali", "gynecol", "obstet", "women", "reproduct",
+    "contraception", "iud", "infertil", "hormones", "pcos",
+    "contact"
+  ],
+  "drive_sync": {
+    "enabled": true,
+    "remote": "gdrive:BEMI-Runs",
+    "rclone_path": "rclone"
+  }
+}

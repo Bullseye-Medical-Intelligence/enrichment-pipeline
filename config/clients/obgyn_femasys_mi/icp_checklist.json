@@ -1,0 +1,58 @@
+{
+  "version": "obgyn-femasys-v9-mi",
+  "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE>>",
+  "signals": [
+    {
+      "signal_id": "S-MI-001",
+      "signal_label": "IUI offered",
+      "prompt_instruction": "Does this practice explicitly offer IUI as a service? Answer yes ONLY when the page contains the exact term 'IUI' or the full phrase 'intrauterine insemination'. Do NOT infer from generic words like 'fertility', 'consultation', 'treatment', or 'family planning' — the specific term must appear verbatim.",
+      "positive_weight": 28,
+      "note": "Core fit, heaviest signal. The client called IUI out specifically for Michigan: a listed in-office IUI service line is the clearest match for the office-based fertility work FemaSeed upgrades. Kept DISTINCT from the broad fertility-services signal, not folded in. Phrase-bound so it does not fire on generic fertility copy."
+    },
+    {
+      "signal_id": "S-MI-002",
+      "signal_label": "Fertility services (broad)",
+      "prompt_instruction": "Does this practice offer fertility or infertility services? Answer yes ONLY when one of these exact phrases appears: 'infertility evaluation', 'infertility workup', 'fertility consultation', 'fertility treatment', 'fertility testing', 'ovulation induction', or 'infertility diagnosis'. Do NOT match bare standalone words such as 'consultation', 'evaluation', 'treatment', 'testing', or 'diagnosis' — those false-positive on nearly every OBGYN site; the full fertility-bound phrase must be present.",
+      "positive_weight": 18,
+      "note": "Broad fertility-activity fit. Collapses the v9 medicated-cycle / infertility-eval / fertility-consult signals into one phrase-bound catch-all, because the Michigan list is already a confirmed-prescriber seed and the website only needs to confirm fertility activity on top of that. Strict phrase-binding keeps generic 'consultation/evaluation' copy out."
+    },
+    {
+      "signal_id": "S-MI-003",
+      "signal_label": "Cycle monitoring ultrasound",
+      "prompt_instruction": "Does this practice perform fertility cycle monitoring by ultrasound? Answer yes ONLY when one of these exact phrases appears: 'follicle monitoring', 'cycle monitoring', 'monitoring ultrasound', or 'transvaginal ultrasound'. Do NOT match the bare word 'ultrasound' or 'monitoring' alone.",
+      "positive_weight": 6,
+      "note": "A plus, not a gate. Cycle-monitoring ultrasound reinforces that fertility treatment happens in-office and adds confidence, but its absence is not disqualifying, so it carries a modest fit weight and no penalty when not found."
+    },
+    {
+      "signal_id": "S-MI-004",
+      "signal_label": "FemVue mentioned (existing Femasys relationship)",
+      "prompt_instruction": "Does this practice mention FemVue anywhere on the site? Answer yes ONLY when the exact product name 'FemVue' appears.",
+      "positive_weight": 14,
+      "floor_tier": "Contender",
+      "note": "Warm-lead accelerator, not a gate. FemVue is Femasys's own product; a practice already using it is an existing relationship and the lowest-friction FemaSeed adoption path. It carries a meaningful fit boost plus floor_tier (a confirmed FemVue practice never falls below Contender), but it is deliberately NOT large enough to be required for Bullseye: strong fertility fit reaches Bullseye on its own merits, and FemVue accelerates rather than gatekeeps."
+    },
+    {
+      "signal_id": "S-MI-005",
+      "signal_label": "Cash-pay / patient financing visible",
+      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these exact terms is present: 'CareCredit', 'FSA', 'HSA', or 'patient financing'. Answer yes only when such language is explicitly present on the site.",
+      "positive_weight": 16,
+      "note": "Readiness target. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. Reinforced by the elective-aesthetic signal (S-MI-006) when explicit cash-pay language is absent but elective cash-pay services are present. Readiness reinforces confidence only and never qualifies a practice on its own."
+    },
+    {
+      "signal_id": "S-MI-006",
+      "signal_label": "Elective / aesthetic cash-pay service line",
+      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Answer yes when one or more of these is explicitly named: 'aesthetics', a 'MedSpa' / 'med spa'; 'Botox'; 'body contouring'; 'CoolSculpting'; 'laser hair removal'; 'IV therapy'; weight-loss injectables ('GLP-1', 'semaglutide'); or 'labiaplasty'. Answer yes only when one or more such services are explicitly named on the site.",
+      "positive_weight": 0,
+      "reinforces": "S-MI-005",
+      "note": "Readiness reinforcer. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-MI-005), never independently inflating fit."
+    },
+    {
+      "signal_id": "S-MI-007",
+      "signal_label": "IVF / REI fertility center",
+      "prompt_instruction": "Does this practice operate as, or hold itself out as, an IVF or reproductive-endocrinology fertility center? Answer yes when any of these appears: 'IVF', 'in vitro fertilization', 'egg retrieval', 'embryo transfer', 'reproductive endocrinology', 'reproductive endocrinologist', 'REI', or the practice naming itself a 'fertility center'.",
+      "positive_weight": 0,
+      "exclude_if_yes": true,
+      "note": "Exclusion. A confirmed yes means a specialized fertility center that routes patients to in-house ART and male-factor pathways, not the office-based OBGYN profile FemaSeed upgrades. The NPI taxonomy structural gate (rei_on_staff) pre-filters most of these before crawl; this signal catches any that reach the LLM pass. Hospital / health-system / academic practices are removed by the structural exclusion rules in run_config, not by a textual signal."
+    }
+  ]
+}
