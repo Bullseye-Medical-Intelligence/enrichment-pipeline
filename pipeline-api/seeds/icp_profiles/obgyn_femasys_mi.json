@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys_mi",
   "name": "Femasys — OBGYN Office-Based Fertility (FemaSeed, Michigan)",
-  "version": "obgyn-femasys-v9-mi",
+  "version": "obgyn-femasys-v9-mi-r2",
   "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE>>",
   "default_specialty": "OBGYN",
   "default_geography": [
@@ -18,7 +18,7 @@
   "client": "Femasys",
   "product": "FemaSeed",
   "description": "Michigan office-based OBGYN / women's health practices, sourced from MedScout ovulation-induction prescriber data so every practice is ALREADY a confirmed prescriber. That prescriber volume is the seed (why they are on the list), NOT a website signal — this ICP never reads prescriber counts. It scores what the practice's PUBLIC WEBSITE confirms on top of that seed: fertility services, IUI specifically, and cash-pay readiness. Preserves v9 intent: the net is wide (any fertility activity qualifies for fit, nothing is a hard gate), readiness reinforces confidence only, and the screening burden moves onto exclusions. IVF/REI fertility centers and hospital / health-system-affiliated practices are removed. FemVue practices are existing Femasys relationships and the strongest warm leads.",
-  "scoring_notes": "v9-MI (client-confirmed v9 logic refined with the Michigan asks). Design: fit is soft (no required_for_bullseye gate); the screening burden sits on exclusions, which are load-bearing. IUI (S-MI-001) is a DISTINCT, heaviest signal per the client's explicit Michigan call-out — never folded into the broad fertility signal. Fertility services (S-MI-002) is a single phrase-bound catch-all that collapses the v9 medicated-cycle / infertility-eval / fertility-consult signals, since the list is already a confirmed-prescriber seed and the site only needs to confirm fertility activity. All FIT prompts use strict phrase-binding so generic OBGYN copy (bare 'consultation', 'evaluation', 'treatment', 'testing') does not false-positive. FemVue is a warm-lead accelerator (boost + floor_tier Contender), deliberately NOT large enough to be required for Bullseye. READINESS (cash-pay / patient financing, reinforced by elective-aesthetic cash-pay) reflects adoption velocity and reinforces confidence only — it can never qualify a practice alone. EXCLUSIONS: IVF/REI fertility center (exclude_if_yes) plus the rei_on_staff / hospital_owned / health_system_affiliated structural gates in run_config drop out-of-profile practices. max_positive = 82 (IUI 28 + fertility 18 + monitoring 6 + FemVue 14 + cash-pay 16). bullseye_min_score is 80 (set in run_config): the score blend caps near 96 for a perfect record, so 80 leaves Bullseye reachable for strong fertility fit with or without FemVue. INCOME OVERLAY (median household income by ZIP via ACS B19013) is a separate post-scoring enrichment, NOT an ICP signal, and is not implemented here.",
+  "scoring_notes": "v9-MI r2 (signal consolidation). Design: fit is soft (no required_for_bullseye gate); the screening burden sits on exclusions, which are load-bearing. IUI (S-MI-001) is a DISTINCT, heaviest signal per the client's explicit Michigan call-out — never folded into the broad fertility signal. Fertility services (S-MI-002) is a single phrase-bound catch-all that collapses the v9 medicated-cycle / infertility-eval / fertility-consult signals, since the list is already a confirmed-prescriber seed and the site only needs to confirm fertility activity. All FIT prompts use strict phrase-binding so generic OBGYN copy (bare 'consultation', 'evaluation', 'treatment', 'testing') does not false-positive. FemVue is a warm-lead accelerator (boost + floor_tier Contender), deliberately NOT large enough to be required for Bullseye. READINESS (S-MI-005) is a single consolidated signal covering all cash-pay proxies: explicit financing language (CareCredit, FSA/HSA, patient financing) AND elective / aesthetic service lines that imply direct-billing infrastructure. A cash-pay-only practice stays below the 50-point Manual Review floor. EXCLUSIONS: IVF/REI fertility center (exclude_if_yes) plus the rei_on_staff / hospital_owned / health_system_affiliated structural gates in run_config drop out-of-profile practices. max_positive = 82 (IUI 28 + fertility 18 + monitoring 6 + FemVue 14 + cash-pay 16). bullseye_min_score is 80 (set in run_config). INCOME OVERLAY (median household income by ZIP via ACS B19013) is a separate post-scoring enrichment, NOT an ICP signal, and is not implemented here.",
   "signals": [
     {
       "signal_id": "S-MI-001",
@@ -51,18 +51,10 @@
     },
     {
       "signal_id": "S-MI-005",
-      "signal_label": "Cash-pay / patient financing visible",
-      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these exact terms is present: 'CareCredit', 'FSA', 'HSA', or 'patient financing'. Answer yes only when such language is explicitly present on the site.",
+      "signal_label": "Cash-pay readiness",
+      "prompt_instruction": "Does the website show evidence of cash-pay / self-pay capability, third-party patient financing, or elective / aesthetic services that are typically patient-pay? Answer yes when any of these is explicitly present on the site: 'CareCredit', 'FSA', 'HSA', or 'patient financing'; OR any of these elective / aesthetic service lines that imply patient-pay infrastructure: 'aesthetics', 'MedSpa', 'med spa', 'Botox', 'body contouring', 'CoolSculpting', 'laser hair removal', 'IV therapy', 'GLP-1', 'semaglutide', or 'labiaplasty'. Answer yes only when such language is explicitly present on the site.",
       "positive_weight": 16,
-      "note": "Readiness target. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. Reinforced by the elective-aesthetic signal (S-MI-006) when explicit cash-pay language is absent but elective cash-pay services are present. Readiness reinforces confidence only and never qualifies a practice on its own."
-    },
-    {
-      "signal_id": "S-MI-006",
-      "signal_label": "Elective / aesthetic cash-pay service line",
-      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Answer yes when one or more of these is explicitly named: 'aesthetics', a 'MedSpa' / 'med spa'; 'Botox'; 'body contouring'; 'CoolSculpting'; 'laser hair removal'; 'IV therapy'; weight-loss injectables ('GLP-1', 'semaglutide'); or 'labiaplasty'. Answer yes only when one or more such services are explicitly named on the site.",
-      "positive_weight": 0,
-      "reinforces": "S-MI-005",
-      "note": "Readiness reinforcer. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-MI-005), never independently inflating fit."
+      "note": "Readiness target. Covers all cash-pay proxies in a single signal: explicit financing language (CareCredit, FSA/HSA, patient financing) and elective / aesthetic service lines that imply direct-billing infrastructure. Readiness reinforces confidence only and never qualifies a practice on its own — the fit score for a cash-pay-only practice stays below the 50-point Manual Review floor."
     },
     {
       "signal_id": "S-MI-007",

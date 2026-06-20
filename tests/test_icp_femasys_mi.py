@@ -60,17 +60,17 @@ class TestFemasysMIIntent:
     def test_version_is_v9_mi(self):
         """The shipped cartridge is the Michigan v9-MI revision."""
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
-        assert data["version"] == "obgyn-femasys-v9-mi"
+        assert data["version"].startswith("obgyn-femasys-v9-mi")
 
     def test_readiness_alone_cannot_qualify(self):
-        """Elective/MedSpa + financing with NO fertility signal stays out of the queue.
+        """Cash-pay readiness with NO fertility signal stays out of the call queue.
 
         Test #1 from the spec: readiness reinforces confidence but contributes too
         little fit to clear the Manual Review floor on its own, so it can never
-        reach a client tier.
+        reach a client tier. S-MI-005 consolidates all cash-pay proxies (explicit
+        financing AND elective service lines) into a single signal.
         """
-        # Elective ("yes") infers the cash-pay readiness target; financing also yes.
-        result = _run(["S-MI-005", "S-MI-006"])
+        result = _run(["S-MI-005"])
         assert result["tier"] not in _TOP_TIERS
         assert result["tier"] == "Manual Review"
 
@@ -164,10 +164,11 @@ class TestFemasysMIStructure:
         by_id = {s["signal_id"]: s for s in _load_signals()}
         assert by_id["S-MI-004"].get("floor_tier") == "Contender"
 
-    def test_elective_reinforces_cash_pay_target(self):
+    def test_cash_pay_is_single_consolidated_signal(self):
+        """r2: cash-pay readiness is one signal (S-MI-005) covering all proxies."""
         by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert by_id["S-MI-006"].get("reinforces") == "S-MI-005"
-        assert by_id["S-MI-006"]["positive_weight"] == 0
+        assert "S-MI-006" not in by_id, "S-MI-006 was removed — cash-pay is now S-MI-005 only"
+        assert by_id["S-MI-005"]["positive_weight"] == 16
 
     def test_cli_cartridge_matches_api_seed_signals(self):
         """The CLI cartridge and the API seed must carry identical signal logic.

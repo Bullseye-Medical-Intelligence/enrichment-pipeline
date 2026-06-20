@@ -1,5 +1,5 @@
 {
-  "version": "obgyn-femasys-v9-mi",
+  "version": "obgyn-femasys-v9-mi-r2",
   "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE>>",
   "signals": [
     {
@@ -33,18 +33,10 @@
     },
     {
       "signal_id": "S-MI-005",
-      "signal_label": "Cash-pay / patient financing visible",
-      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these exact terms is present: 'CareCredit', 'FSA', 'HSA', or 'patient financing'. Answer yes only when such language is explicitly present on the site.",
+      "signal_label": "Cash-pay readiness",
+      "prompt_instruction": "Does the website show evidence of cash-pay / self-pay capability, third-party patient financing, or elective / aesthetic services that are typically patient-pay? Answer yes when any of these is explicitly present on the site: 'CareCredit', 'FSA', 'HSA', or 'patient financing'; OR any of these elective / aesthetic service lines that imply patient-pay infrastructure: 'aesthetics', 'MedSpa', 'med spa', 'Botox', 'body contouring', 'CoolSculpting', 'laser hair removal', 'IV therapy', 'GLP-1', 'semaglutide', or 'labiaplasty'. Answer yes only when such language is explicitly present on the site.",
       "positive_weight": 16,
-      "note": "Readiness target. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. Reinforced by the elective-aesthetic signal (S-MI-006) when explicit cash-pay language is absent but elective cash-pay services are present. Readiness reinforces confidence only and never qualifies a practice on its own."
-    },
-    {
-      "signal_id": "S-MI-006",
-      "signal_label": "Elective / aesthetic cash-pay service line",
-      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Answer yes when one or more of these is explicitly named: 'aesthetics', a 'MedSpa' / 'med spa'; 'Botox'; 'body contouring'; 'CoolSculpting'; 'laser hair removal'; 'IV therapy'; weight-loss injectables ('GLP-1', 'semaglutide'); or 'labiaplasty'. Answer yes only when one or more such services are explicitly named on the site.",
-      "positive_weight": 0,
-      "reinforces": "S-MI-005",
-      "note": "Readiness reinforcer. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-MI-005), never independently inflating fit."
+      "note": "Readiness target. Covers all cash-pay proxies in a single signal: explicit financing language (CareCredit, FSA/HSA, patient financing) and elective / aesthetic service lines that imply direct-billing infrastructure. Readiness reinforces confidence only and never qualifies a practice on its own — the fit score for a cash-pay-only practice stays below the 50-point Manual Review floor."
     },
     {
       "signal_id": "S-MI-007",
