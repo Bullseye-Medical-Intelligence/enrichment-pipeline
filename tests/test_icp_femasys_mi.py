@@ -125,12 +125,15 @@ class TestFemasysMIIntent:
 
 
 class TestFemasysMIPhraseBinding:
-    """Fit-signal prompts must be phrase-bound (runtime binding is LLM-enforced).
+    """Fit-signal prompts must carry their phrase examples and a negative guard.
 
-    Test #6 from the spec lives here at config time: bare 'consultation' /
-    'treatment' / 'evaluation' / 'testing' must be explicitly forbidden in the
-    fit prompts so generic OBGYN copy does not false-positive. The LLM enforces
-    the binding at runtime; this guards the prompt text that drives it.
+    v10 binds on SERVICE CONTEXT, not strict verbatim phrases: a named service,
+    a dedicated service page, a 'we treat/offer' statement, or a provider
+    specialty all count, so a 'Fertility' service-menu item is detected (the v9-MI
+    false negative). The negative guard is now editorial — a term appearing ONLY
+    in a blog / patient-education article does not qualify. These config-time tests
+    guard the prompt text (anchors present, a 'Do NOT' guard, service-context
+    binding); the LLM enforces it at runtime.
     """
 
     REQUIRED_ANCHORS = {
@@ -138,7 +141,7 @@ class TestFemasysMIPhraseBinding:
         "S-MI-002": ["infertility evaluation", "fertility consultation",
                      "ovulation induction", "PCOS treatment"],
         "S-MI-003": ["follicle monitoring", "cycle monitoring", "sonohysterogram"],
-        "S-MI-004": ["FemVue"],
+        "S-MI-004": ["FemVue", "FemaSeed"],
         "S-MI-006": ["IUD insertion", "Nexplanon", "long-acting reversible contraception"],
     }
 
@@ -164,12 +167,13 @@ class TestFemasysMIPhraseBinding:
             for anchor in anchors:
                 assert anchor in prompt, f"{sid} prompt missing anchor {anchor!r}"
 
-    def test_phrase_signals_forbid_bare_words(self):
-        """The signals most prone to false positives must carry a negative guard."""
+    def test_fit_prompts_carry_negative_guard(self):
+        """Fit prompts must carry a negative guard (editorial / generic-word) so
+        the LLM has an explicit not-yes case."""
         by_id = {s["signal_id"]: s for s in _load_signals()}
         for sid in ("S-MI-001", "S-MI-002", "S-MI-003", "S-MI-006"):
             prompt = by_id[sid]["prompt_instruction"]
-            assert "Do NOT" in prompt, f"{sid} prompt missing a bare-word guard"
+            assert "Do NOT" in prompt, f"{sid} prompt missing a negative guard"
 
     def test_fit_prompts_bind_to_service_context(self):
         """Every fit/readiness prompt must require service context (not blog/editorial)."""
