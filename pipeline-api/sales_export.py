@@ -420,7 +420,12 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
 
     website_raw = rec.get("website_url") or rec.get("website") or ""
     # cap_reason only surfaced for Contender — for Bullseye (including overrides) omit it.
-    cap_reason = (rec.get("tier_cap_reason") or "").strip() if tier_str == "Contender" else ""
+    # Sanitized so the operator-facing tier_cap_reason never leaks a numeric score
+    # into the client handoff.
+    cap_reason = (
+        _client_safe_cap_reason((rec.get("tier_cap_reason") or "").strip())
+        if tier_str == "Contender" else ""
+    )
 
     motion = _derive_motion(signals)
     hook = _derive_hook(brief, sales_angles)
@@ -532,6 +537,35 @@ def _build_landmine(brief: dict) -> str | None:
     if objection:
         parts.append(f"Likely objection: {objection}")
     return "  ·  ".join(parts) if parts else None
+
+
+def _client_safe_cap_reason(reason: str) -> str:
+    """Strip internal numeric scores from a tier_cap_reason for client output.
+
+    tier_cap_reason is operator-facing and may embed the numeric bullseye_score
+    (e.g. "Score 35 is below the 50-point evidence floor — too thin to call
+    without review."). Client surfaces never show numeric scores, so rewrite any
+    score-bearing phrasing to a score-free equivalent while preserving the rest of
+    the explanation.
+    """
+    if not reason:
+        return ""
+    text = reason
+    # The low-evidence-floor template carries two numbers (the record's score and
+    # the threshold). Replace the whole numeric clause with a score-free version.
+    text = _re.sub(
+        r"Score\s+\d+\s+is below the\s+\d+-point evidence floor",
+        "Evidence on the site is too thin",
+        text,
+    )
+    text = text.replace(
+        "Score is below the Bullseye threshold.",
+        "Overall fit is below the Call First tier.",
+    )
+    # Defensive catch-all for any other numeric-score phrasing.
+    text = _re.sub(r"\bScore\s+\d+\b", "Evidence", text)
+    text = _re.sub(r"\b\d+-point\b", "minimum", text)
+    return text.strip()
 
 
 def _derive_hook(brief: dict, sales_angles: list[str]) -> str | None:

@@ -267,6 +267,29 @@ def test_handoff_account_mapping_for_rep_fields():
     assert acct.landmine and "We already have a device vendor" in acct.landmine
 
 
+def test_contender_cap_reason_strips_numeric_score():
+    """tier_cap_reason is operator-facing and can embed the numeric score; the
+    client handoff Account must never carry a numeric score in cap_reason."""
+    import re
+    import sales_export
+    rec = {
+        "practice_name": "Flint Ob/Gyn",
+        "website_url": "https://flintobgyn.example",
+        "confidence_band": "High", "bullseye_score": 35, "target_tier": "Contender",
+        "tier_cap_reason": (
+            "Score 35 is below the 50-point evidence floor — too thin to call "
+            "without review. Score is below the Bullseye threshold."
+        ),
+        "signals": [],
+        "call_brief": {},
+    }
+    acct = sales_export._record_to_account(rec, "Contender")
+    assert acct.cap_reason  # still explains the gap
+    assert not re.search(r"\d", acct.cap_reason), f"numeric score leaked: {acct.cap_reason!r}"
+    assert "Score 35" not in acct.cap_reason
+    assert "50-point" not in acct.cap_reason
+
+
 # ---------------------------------------------------------------------------
 # Route: requires a complete run
 # ---------------------------------------------------------------------------
