@@ -3,6 +3,34 @@
 
 {% block content %}
 {% set is_ingested = status.status == "ingested" %}
+
+{# Per-signal operator override edit UI (internal dashboard only). Toggles an
+   inline form that POSTs to the existing signal-override route; on success the
+   page reloads so the 4a render path regroups FOUND/NOT-FOUND and shows the
+   Override badge. No backend logic here — display + the existing route only. #}
+{% macro signal_override_ui(rid, run_id, sig) %}
+{% set key = rid ~ "__" ~ sig.signal_id %}
+<div class="signal-override-ui" style="margin-top:4px;">
+  <a href="#" class="signal-conf" style="color:var(--accent);text-decoration:none;cursor:pointer;" title="Manually override this signal's state" onclick="toggleSignalEdit('{{ rid }}','{{ sig.signal_id }}'); return false;">&#9998; Edit</a>
+  <div class="signal-override-form" id="sigedit-{{ key }}" style="display:none; margin-top:8px; padding:10px; border:1px solid var(--accent); border-radius:8px; background:rgba(200,75,47,0.05);">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <label style="font-size:12px; color:var(--muted);">State
+        <select id="sigedit-state-{{ key }}" style="margin-left:4px; padding:3px 6px; font-size:12px;">
+          <option value="yes"{% if sig.signal_state == "yes" %} selected{% endif %}>yes</option>
+          <option value="no"{% if sig.signal_state == "no" %} selected{% endif %}>no</option>
+          <option value="not_found"{% if sig.signal_state == "not_found" %} selected{% endif %}>not_found</option>
+        </select>
+      </label>
+      <input type="url" id="sigedit-url-{{ key }}" placeholder="Source URL (required)" value="{{ sig.source_url }}" style="flex:1; min-width:200px; padding:4px 8px; font-size:12px;">
+      <input type="text" id="sigedit-note-{{ key }}" placeholder="Note (optional)" style="flex:1; min-width:150px; padding:4px 8px; font-size:12px;">
+      <button type="button" class="btn btn-submit" style="padding:4px 12px; font-size:12px;" onclick="submitSignalOverride('{{ run_id }}','{{ rid }}','{{ sig.signal_id }}')">Save</button>
+      <button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:12px;" onclick="toggleSignalEdit('{{ rid }}','{{ sig.signal_id }}')">Cancel</button>
+    </div>
+    <div class="signal-override-error" id="sigedit-err-{{ key }}" style="display:none; color:#991b1b; font-size:12px; margin-top:6px;"></div>
+  </div>
+</div>
+{% endmacro %}
+
 <script>
 (function(){
   var runId = '{{ run_id }}';
@@ -481,6 +509,7 @@
                     {% if sig.evidence_text %}
                     <p class="signal-evidence">{{ sig.evidence_text }}</p>
                     {% endif %}
+                    {{ signal_override_ui(rid, run_id, sig) }}
                   </div>
                   {% endif %}
                   {% endfor %}
@@ -524,6 +553,7 @@
                     {% if sig.evidence_text %}
                     <p class="signal-evidence">{{ sig.evidence_text }}</p>
                     {% endif %}
+                    {{ signal_override_ui(rid, run_id, sig) }}
                   </div>
                   {% endif %}
                   {% endfor %}
@@ -1319,6 +1349,55 @@ function submitAngle(rid, runId) {
     inp.value = '';
     toggleAngleInput(rid);
   }).catch(function() { alert('Network error — angle not saved.'); });
+}
+
+function toggleSignalEdit(rid, sigId) {
+  var el = document.getElementById('sigedit-' + rid + '__' + sigId);
+  if (!el) return;
+  var visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+}
+
+function submitSignalOverride(runId, rid, sigId) {
+  var key = rid + '__' + sigId;
+  var stateEl = document.getElementById('sigedit-state-' + key);
+  var urlEl = document.getElementById('sigedit-url-' + key);
+  var noteEl = document.getElementById('sigedit-note-' + key);
+  var errEl = document.getElementById('sigedit-err-' + key);
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  var sourceUrl = (urlEl ? urlEl.value : '').trim();
+  // Client-side guard: fail fast on empty source URL, do not POST.
+  if (!sourceUrl) {
+    if (errEl) { errEl.textContent = 'Source URL is required.'; errEl.style.display = 'block'; }
+    if (urlEl) urlEl.focus();
+    return;
+  }
+  // override_by is intentionally omitted — the server sets it from the session.
+  fetch('/api/ui/reviews/' + runId + '/' + rid + '/signal-override', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      signal_id: sigId,
+      override_state: stateEl ? stateEl.value : 'not_found',
+      source_url: sourceUrl,
+      override_note: noteEl ? noteEl.value.trim() : ''
+    })
+  }).then(function(r) {
+    if (!r.ok) {
+      return r.json().catch(function() { return {}; }).then(function(d) { throw d; });
+    }
+    return r.json();
+  }).then(function() {
+    // Reload so the 4a render path regroups the signal and shows the badge.
+    window.location.reload();
+  }).catch(function(err) {
+    if (errEl) {
+      var detail = err && err.detail;
+      var msg = detail ? (typeof detail === 'string' ? detail : JSON.stringify(detail)) : 'Could not save override.';
+      errEl.textContent = 'Error: ' + msg;
+      errEl.style.display = 'block';
+    }
+  });
 }
 </script>
 
