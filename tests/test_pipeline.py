@@ -35,6 +35,7 @@ from enrichment.signal_extractor import (
     _parse_providers,
     _parse_primary_contact,
     _format_key_contact,
+    _apply_physician_prefix,
     _build_system_prompt,
     DEFAULT_CONTACT_STRATEGY,
 )
@@ -1837,6 +1838,46 @@ class TestProviderExtraction:
 
     def test_key_contact_none(self):
         assert _format_key_contact(None) == ""
+
+    def test_key_contact_md_without_dr_prefix_gets_dr(self):
+        """LLM returns name without 'Dr.' but title says MD — must prepend Dr."""
+        primary = {"name": "Theodore Fellenbaum", "title": "MD", "reason": "sole physician and practice owner"}
+        result = _format_key_contact(primary)
+        assert result == "Ask for Dr. Theodore Fellenbaum — sole physician and practice owner"
+
+    def test_key_contact_do_without_dr_prefix_gets_dr(self):
+        primary = {"name": "Maria Santos", "title": "DO", "reason": "lead physician"}
+        assert _format_key_contact(primary) == "Ask for Dr. Maria Santos — lead physician"
+
+    def test_key_contact_already_has_dr_not_doubled(self):
+        primary = {"name": "Dr. Jane Smith", "title": "MD", "reason": "lead OBGYN"}
+        assert _format_key_contact(primary) == "Ask for Dr. Jane Smith — lead OBGYN"
+
+    def test_key_contact_np_does_not_get_dr(self):
+        primary = {"name": "Sarah Lee", "title": "NP", "reason": "handles scheduling"}
+        assert _format_key_contact(primary) == "Ask for Sarah Lee — handles scheduling"
+
+    def test_key_contact_no_title_no_dr(self):
+        primary = {"name": "Alex Johnson", "title": "", "reason": "office manager"}
+        assert _format_key_contact(primary) == "Ask for Alex Johnson — office manager"
+
+    def test_apply_physician_prefix_md(self):
+        assert _apply_physician_prefix("Theodore Fellenbaum", "MD") == "Dr. Theodore Fellenbaum"
+
+    def test_apply_physician_prefix_do(self):
+        assert _apply_physician_prefix("Maria Santos", "DO") == "Dr. Maria Santos"
+
+    def test_apply_physician_prefix_mbbs(self):
+        assert _apply_physician_prefix("Priya Kapoor", "MBBS") == "Dr. Priya Kapoor"
+
+    def test_apply_physician_prefix_already_dr(self):
+        assert _apply_physician_prefix("Dr. Jane Smith", "MD") == "Dr. Jane Smith"
+
+    def test_apply_physician_prefix_non_physician_title(self):
+        assert _apply_physician_prefix("Sarah Lee", "NP") == "Sarah Lee"
+
+    def test_apply_physician_prefix_empty_name(self):
+        assert _apply_physician_prefix("", "MD") == ""
 
 
 class TestContactStrategyPrompt:

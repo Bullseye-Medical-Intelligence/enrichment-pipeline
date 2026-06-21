@@ -598,15 +598,33 @@ def _parse_primary_contact(raw: dict | None, providers: list[dict]) -> dict | No
     return {"name": first["name"], "title": first["title"], "reason": ""}
 
 
+_PHYSICIAN_TITLE_TOKENS = {"md", "do", "mbbs", "mbbch", "mbchb"}
+
+
+def _apply_physician_prefix(name: str, title: str) -> str:
+    """Prepend 'Dr.' when the contact's title indicates a physician and the name lacks a prefix."""
+    if not name:
+        return name
+    name_stripped = name.strip()
+    if name_stripped.lower().startswith("dr"):
+        return name_stripped
+    title_tokens = {t.strip(".,") for t in (title or "").lower().split()}
+    if title_tokens & _PHYSICIAN_TITLE_TOKENS:
+        return f"Dr. {name_stripped}"
+    return name_stripped
+
+
 def _format_key_contact(primary: dict | None) -> str:
     """Format a rep-friendly 'Ask for ...' string from the primary contact."""
     if not primary:
         return ""
     name = primary.get("name") or ""
+    title = primary.get("title") or ""
     reason = primary.get("reason") or ""
     if not name:
         return ""
-    return f"Ask for {name} — {reason}" if reason else f"Ask for {name}"
+    display_name = _apply_physician_prefix(name, title)
+    return f"Ask for {display_name} — {reason}" if reason else f"Ask for {display_name}"
 
 
 def _build_call_brief(signals: list[dict], scores: dict, record: dict,
