@@ -248,12 +248,29 @@ class TestSignalNormalization:
             "signal_id": "S-V", "signal_label": "Cash pay visible",
             "prompt_instruction": "?", "positive_weight": 10,
             "verification_required": True, "cap_tier": "Contender",
-            "floor_tier": "Contender",
+            "floor_tier": "Contender", "required_for_contender": True,
         }]
         result = _validate_and_clean_signals([], icp)
         assert result[0]["verification_required"] is True
         assert result[0]["cap_tier"] == "Contender"
         assert result[0]["floor_tier"] == "Contender"
+        assert result[0]["required_for_contender"] is True
+
+    def test_required_for_contender_carried_on_all_signal_paths(self):
+        """required_for_contender must survive every signal-construction path."""
+        icp = [{
+            "signal_id": "S-Q", "signal_label": "Qualifier",
+            "prompt_instruction": "?", "positive_weight": 20,
+            "required_for_contender": True,
+        }]
+        # Path A: empty-signals (thin context, no LLM call)
+        assert _build_empty_signals(icp)[0]["required_for_contender"] is True
+        # Path B: validated LLM output (confirmed signal)
+        confirmed = [{"signal_id": "S-Q", "signal_state": "yes", "confidence": "high",
+                      "evidence_text": "Listed", "source_url": "https://x.com/s"}]
+        assert _validate_and_clean_signals(confirmed, icp)[0]["required_for_contender"] is True
+        # Path C: default not_found insertion (signal omitted by the LLM)
+        assert _validate_and_clean_signals([], icp)[0]["required_for_contender"] is True
 
     def test_floor_tier_carried_on_all_signal_paths(self):
         """floor_tier must survive every signal-construction path, not just cap_tier.
@@ -284,6 +301,7 @@ class TestSignalNormalization:
         assert result[0]["verification_required"] is False
         assert result[0]["cap_tier"] == ""
         assert result[0]["floor_tier"] == ""
+        assert result[0]["required_for_contender"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +655,61 @@ class TestTierAssignment:
         result = apply_exclusions(rec, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "CLEAR"
         assert result["target_tier"] == "Needs Verification"
+
+    # --- required_for_contender (qualifier gate) ---
+    # Stricter than required_for_bullseye: when the flagged signal is not confirmed
+    # "yes" and not inferred, the record is held in Manual Review regardless of
+    # score or any other confirmed signal — removed from the call queue entirely.
+
+    def test_required_for_contender_not_found_is_manual_review(self):
+        """A not_found required_for_contender signal forces Manual Review even with
+        other 'yes' signals and a high score."""
+        signals = [{"signal_id": "S-cash", "signal_label": "Cash pay / self-pay",
+                    "signal_state": "not_found", "required_for_contender": True}]
+        rec = self._record_with_signals(signals)  # carries a confirmed S-base + high score
+        assert _assign_tier(rec, 95, 90) == "Manual Review"
+        assert "required to qualify" in rec["tier_cap_reason"]
+
+    def test_required_for_contender_confirmed_no_is_manual_review(self):
+        """A confirmed-'no' required_for_contender signal also forces Manual Review."""
+        signals = [{"signal_id": "S-cash", "signal_label": "Cash pay / self-pay",
+                    "signal_state": "no", "required_for_contender": True}]
+        assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Manual Review"
+
+    def test_required_for_contender_inferred_is_not_manual_review(self):
+        """An inferred (reinforced) required_for_contender signal suppresses the gate
+        and the record tiers normally."""
+        icp = [
+            {"signal_id": "S-cash", "signal_label": "Cash pay / self-pay",
+             "prompt_instruction": "?", "positive_weight": 20,
+             "required_for_contender": True},
+            {"signal_id": "S-elective", "signal_label": "Elective services",
+             "prompt_instruction": "?", "positive_weight": 0,
+             "reinforces": "S-cash"},
+        ]
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "not_found",
+             "required_for_contender": True, "state_inferred": False},
+            {"signal_id": "S-elective", "signal_state": "yes",
+             "state_inferred": False},
+        ]
+        _apply_reinforcement(signals, icp)  # elective 'yes' infers cash pay
+        rec = _clear_record(score=90)
+        rec["signals"] = signals
+        assert _assign_tier(rec, 90, 75) == "Bullseye"
+
+    def test_required_for_contender_confirmed_yes_tiers_normally(self):
+        """A confirmed 'yes' required_for_contender signal does not gate at all."""
+        signals = [{"signal_id": "S-cash", "signal_state": "yes",
+                    "required_for_contender": True}]
+        assert _assign_tier(self._record_with_signals(signals), 90, 75) == "Bullseye"
+
+    def test_required_for_contender_absent_flag_is_regression_safe(self):
+        """A profile that omits required_for_contender is unaffected (default off)."""
+        signals = [{"signal_id": "S-1", "signal_state": "not_found"}]
+        # No required_for_contender anywhere → the gate never fires; normal tiering.
+        rec = self._record_with_signals(signals)
+        assert _assign_tier(rec, 90, 75) == "Bullseye"
 
 
 # ---------------------------------------------------------------------------

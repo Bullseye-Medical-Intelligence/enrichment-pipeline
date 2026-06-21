@@ -355,6 +355,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
       "positive_weight": 15,
       "verification_required": false,
       "required_for_bullseye": false,
+      "required_for_contender": false,
       "cap_tier": "",
       "floor_tier": "",
       "exclude_if_yes": false,
@@ -409,7 +410,8 @@ The output schema is the contract between the pipeline and the dashboard. It mus
 **signal_state:** `"yes"`, `"no"`, or `"not_found"` only. Never null, true, false, or empty string.
 
 **Per-signal tiering flags (echoed from the ICP onto every output signal):**
-`verification_required` (bool), `required_for_bullseye` (bool), `cap_tier`
+`verification_required` (bool), `required_for_bullseye` (bool),
+`required_for_contender` (bool), `cap_tier`
 (`""` / `"Contender"` / `"Needs Verification"`), `floor_tier` (same value set,
 `""` = no floor), `exclude_if_yes` (bool), and `inhibited_by` (`signal_id` string
 or null). These are copied verbatim from the ICP signal definition by
@@ -681,6 +683,18 @@ Each signal may also carry these optional fields (all default to off):
   Verification"`. This is how "Bullseye means all must-have signals are confirmed
   present" is enforced. Supersedes `verification_required` (it also covers the
   `not_found` case), so a must-have signal needs only this flag.
+- **`required_for_contender`** (bool, default `false`): qualifier gate. When the
+  signal is **not** confirmed `"yes"` and **not** inferred (i.e. `not_found` or a
+  confirmed `"no"`, with no reinforcement), the record is routed to
+  `"Manual Review"` regardless of score or any other confirmed signal — it is held
+  out of the call queue and client exports until an operator confirms it. This is
+  **stricter** than `required_for_bullseye`: where that flag only *caps* the tier
+  (still leaving a callable Contender/Needs Verification), `required_for_contender`
+  disqualifies the record from every call tier. When the signal **is** `"yes"` or
+  is inferred from a reinforcing signal, the gate does not fire and the record
+  tiers normally. The gate runs **after** reinforcement, so a proxy signal that
+  infers the target suppresses it. Use for a primary qualifier no call should
+  proceed without (e.g. cash-pay / self-pay capability for a patient-pay device).
 - **`cap_tier`** (`"Contender"` or `"Needs Verification"`): when the signal is
   `"yes"`, the record's tier is capped at this ceiling regardless of score. Use
   for near-disqualifying signals (e.g. a confirmed hospital affiliation caps at

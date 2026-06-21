@@ -32,6 +32,7 @@ _SIGNAL_FIELDS = (
     "no_weight",
     "verification_required",
     "required_for_bullseye",
+    "required_for_contender",
     "cap_tier",
     "floor_tier",
     "exclude_if_yes",

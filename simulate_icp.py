@@ -60,6 +60,7 @@ def simulate(icp_signals: list[dict], signal_states: dict, bullseye_min: int) ->
             "confidence": confidence,
             "state_inferred": False,
             "required_for_bullseye": icp_signal.get("required_for_bullseye", False),
+            "required_for_contender": icp_signal.get("required_for_contender", False),
             "verification_required": icp_signal.get("verification_required", False),
             "cap_tier": icp_signal.get("cap_tier"),
             "floor_tier": icp_signal.get("floor_tier"),

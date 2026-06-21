@@ -135,6 +135,27 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
         )
         return "Manual Review"
 
+    # Qualifier gate (required_for_contender): a signal flagged
+    # required_for_contender must be confirmed present (or inferred) for the
+    # record to qualify for any call tier at all. When it is not_found or
+    # confirmed "no" — and not inferred from a reinforcing signal — the record
+    # is held in Manual Review regardless of score or any other confirmed
+    # signal. This is stricter than required_for_bullseye (which only caps the
+    # tier below Bullseye): an unconfirmed qualifier removes the record from the
+    # call queue entirely until an operator confirms it. Runs after
+    # reinforcement so a proxy signal that infers the qualifier suppresses the
+    # gate. Generic — the engine never names the underlying concept (e.g. cash
+    # pay); the ICP signal label supplies it.
+    for sig in signals:
+        if (sig.get("required_for_contender")
+                and sig.get("signal_state") != "yes"
+                and not sig.get("state_inferred")):
+            record["tier_cap_reason"] = (
+                f"{_signal_name(sig)} not confirmed (required to qualify) — "
+                "manual review required before calling."
+            )
+            return "Manual Review"
+
     # Must-have gate: a required_for_bullseye signal must be confirmed present
     # (or inferred) for Bullseye. Confirmed absent ("no") caps at Contender; an
     # unverified ("not_found") caps at Needs Verification. Inferred presence

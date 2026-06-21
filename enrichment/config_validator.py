@@ -63,8 +63,8 @@ def validate_icp(icp_data: dict, *, source_label: str = "ICP config") -> None:
       - source_type (if present) is not set to 'static_lookup' or any other
         unsupported value
       - cap_tier, floor_tier (if present) are 'Contender' or 'Needs Verification'
-      - verification_required, required_for_bullseye, exclude_if_yes (if present)
-        are boolean
+      - verification_required, required_for_bullseye, required_for_contender,
+        exclude_if_yes (if present) are boolean
       - reinforces, inhibited_by (if present) reference an existing signal_id
     """
     signals = icp_data.get("signals")
@@ -141,7 +141,8 @@ def validate_icp(icp_data: dict, *, source_label: str = "ICP config") -> None:
                     )
 
         # Boolean flags
-        for bool_field in ("verification_required", "required_for_bullseye", "exclude_if_yes"):
+        for bool_field in ("verification_required", "required_for_bullseye",
+                           "required_for_contender", "exclude_if_yes"):
             if bool_field in sig and not isinstance(sig[bool_field], bool):
                 raise ValueError(
                     f"{source_label}: signal '{sid}' '{bool_field}' must be true or false, "

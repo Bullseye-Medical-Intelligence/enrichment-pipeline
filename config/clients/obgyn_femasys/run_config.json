@@ -2,7 +2,7 @@
   "project_id": "P-001",
   "client_name": "Femasys",
   "target_specialty": "OBGYN",
-  "target_geography": ["TX", "FL", "GA"],
+  "target_geography": [],
   "active_exclusion_rules": [
     "rei_on_staff",
     "wrong_specialty",

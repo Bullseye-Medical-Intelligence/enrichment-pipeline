@@ -87,6 +87,10 @@ def validate_and_finalize(record: dict) -> dict:
             sig["analyst_note"] = ""
         # Ensure exclude_if_yes is always present as a bool
         sig["exclude_if_yes"] = bool(sig.get("exclude_if_yes", False))
+        # required_for_contender always present as a bool so _assign_tier (and any
+        # rescore pass over existing signals) sees a consistent shape. Value
+        # originates from the ICP at extraction time; False means no qualifier gate.
+        sig["required_for_contender"] = bool(sig.get("required_for_contender", False))
         # Tier gates are always present as strings so _assign_tier (and any
         # rescore pass over existing signals) sees a consistent shape. The
         # value originates from the ICP at extraction time; "" means no gate.

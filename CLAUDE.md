@@ -172,6 +172,7 @@ never in engine code (RULE 3).
 | `no_weight` | number | Score delta when a positive-weight signal is confirmed `"no"` (use negative to penalize a confirmed-absent must-have). Default 0. |
 | `verification_required` | bool | When `not_found` (and not inferred), caps a would-be Bullseye at `"Needs Verification"`. |
 | `required_for_bullseye` | bool | Must-have gate. When the signal is **not** confirmed `"yes"` and **not** inferred: a confirmed `"no"` caps the tier at `"Contender"`; a `not_found` caps at `"Needs Verification"`. Supersedes `verification_required` (also covers the `not_found` case), so a must-have signal needs only this flag. |
+| `required_for_contender` | bool | Qualifier gate, **stricter** than `required_for_bullseye`. When the signal is **not** confirmed `"yes"` and **not** inferred (`not_found` or confirmed `"no"`, no reinforcement), the record is routed to `"Manual Review"` regardless of score or any other confirmed signal — out of the call queue entirely. Where `required_for_bullseye` only *caps* the tier (record stays callable), this *disqualifies* it from every call tier until an operator confirms. Runs **after** reinforcement, so a proxy signal that infers the target suppresses the gate. Sets `tier_cap_reason` (e.g. "Cash pay / self-pay not confirmed (required to qualify)"). Use for a primary qualifier no call should proceed without. |
 | `cap_tier` | `"Contender"` \| `"Needs Verification"` | When the signal is `"yes"`, caps the tier at this ceiling regardless of score (e.g. confirmed hospital affiliation → `"Contender"`). |
 | `floor_tier` | `"Contender"` \| `"Needs Verification"` | When the signal is `"yes"`, guarantees the record reaches at least this tier, bypassing the low-score Manual Review gate. Use for a confirmed primary qualifier that always warrants a call even on a thin overall score (e.g. confirmed cash-pay → at least Contender). |
 | `exclude_if_yes` | bool | When the signal is confirmed `"yes"`, the record is immediately EXCLUDED via the normal exclusion path. The only signal-driven route to `Excluded` (e.g. telehealth-only practice). Default off. |
@@ -231,12 +232,17 @@ any stale `"Watchlist"` value to `"Contender"` so frozen snapshots still resolve
 3. **Source confidence gate**: `source_confidence = "limited"` or `"failed"`
    returns `Manual Review` — the site could not be reliably crawled; the operator
    should trigger a browser re-crawl or paste content before calling.
-4. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
+4. **Qualifier gate (`required_for_contender`)**: a signal flagged
+   `required_for_contender` that is **not** `"yes"` and **not** `state_inferred`
+   returns `Manual Review` outright (not merely a cap) — the record is held out of
+   every call tier until the qualifier is confirmed. Runs after reinforcement, so
+   a proxy signal that infers the target suppresses it. Stricter than step 5.
+5. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
    caps the tier: confirmed `"no"` → `Contender`, `not_found` → `Needs Verification`.
    This is how "Bullseye = all must-haves confirmed present" is enforced.
-5. A `verification_required` signal that is `not_found` **and not** `state_inferred`
+6. A `verification_required` signal that is `not_found` **and not** `state_inferred`
    caps a would-be Bullseye at `Needs Verification`.
-6. `cap_tier` constraints only ever pull down; `floor_tier` guarantees only ever
+7. `cap_tier` constraints only ever pull down; `floor_tier` guarantees only ever
    lift the low-score floor — neither can override the score-based Bullseye
    threshold in step 1.
 

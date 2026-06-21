@@ -258,27 +258,31 @@ class TestICPCapTier:
 
 class TestICPBooleanFlags:
     @pytest.mark.parametrize("field", [
-        "verification_required", "required_for_bullseye", "exclude_if_yes"
+        "verification_required", "required_for_bullseye",
+        "required_for_contender", "exclude_if_yes"
     ])
     def test_string_bool_flag_fails(self, field):
         msg = _raises(validate_icp, _minimal_icp(_minimal_signal(**{field: "true"})))
         assert field in msg
 
     @pytest.mark.parametrize("field", [
-        "verification_required", "required_for_bullseye", "exclude_if_yes"
+        "verification_required", "required_for_bullseye",
+        "required_for_contender", "exclude_if_yes"
     ])
     def test_int_bool_flag_fails(self, field):
         msg = _raises(validate_icp, _minimal_icp(_minimal_signal(**{field: 1})))
         assert field in msg
 
     @pytest.mark.parametrize("field", [
-        "verification_required", "required_for_bullseye", "exclude_if_yes"
+        "verification_required", "required_for_bullseye",
+        "required_for_contender", "exclude_if_yes"
     ])
     def test_true_bool_flag_passes(self, field):
         validate_icp(_minimal_icp(_minimal_signal(**{field: True})))
 
     @pytest.mark.parametrize("field", [
-        "verification_required", "required_for_bullseye", "exclude_if_yes"
+        "verification_required", "required_for_bullseye",
+        "required_for_contender", "exclude_if_yes"
     ])
     def test_false_bool_flag_passes(self, field):
         validate_icp(_minimal_icp(_minimal_signal(**{field: False})))

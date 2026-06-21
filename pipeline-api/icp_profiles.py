@@ -208,6 +208,12 @@ def validate_icp_profile(data: dict) -> None:
             raise ValueError(
                 f"ICP signal #{i + 1} 'required_for_bullseye' must be true or false."
             )
+        if "required_for_contender" in signal and not isinstance(
+            signal["required_for_contender"], bool
+        ):
+            raise ValueError(
+                f"ICP signal #{i + 1} 'required_for_contender' must be true or false."
+            )
         if "cap_tier" in signal:
             canonical = _normalize_tier_value(signal["cap_tier"])
             if canonical not in _VALID_CAP_FLOOR_TIERS:

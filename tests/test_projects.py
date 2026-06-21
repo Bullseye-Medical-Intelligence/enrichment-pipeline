@@ -241,7 +241,7 @@ def test_icp_path_rejects_traversal(store):
 # Seed sync — committed ICP changes reach the runtime store without a restart
 # ---------------------------------------------------------------------------
 
-_SEEDED_ID = "obgyn_femasys_mi"  # a bundled seed that always ships in the repo
+_SEEDED_ID = "obgyn_femasys"  # a bundled seed that always ships in the repo
 
 
 def test_sync_seed_profile_copies_when_missing(store):
@@ -337,7 +337,8 @@ def _icp_with_signal(**signal_extra):
 def test_icp_validation_accepts_optional_tiering_fields():
     icp_profiles.validate_icp_profile(_icp_with_signal(
         not_found_weight=-15, verification_required=True, cap_tier="Contender",
-        no_weight=-15, required_for_bullseye=True, exclude_if_yes=True,
+        no_weight=-15, required_for_bullseye=True, required_for_contender=True,
+        exclude_if_yes=True,
     ))
 
 
@@ -364,6 +365,11 @@ def test_icp_validation_rejects_non_bool_verification_required():
 def test_icp_validation_rejects_non_bool_required_for_bullseye():
     with pytest.raises(ValueError):
         icp_profiles.validate_icp_profile(_icp_with_signal(required_for_bullseye="yes"))
+
+
+def test_icp_validation_rejects_non_bool_required_for_contender():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(required_for_contender="yes"))
 
 
 def test_icp_validation_rejects_bad_cap_tier():
