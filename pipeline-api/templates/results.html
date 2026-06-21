@@ -1239,13 +1239,16 @@ function updateReenrichCount() {
   var bar = document.getElementById('reenrich-bar');
   var label = document.getElementById('reenrich-bar-label');
   var btn = document.getElementById('reenrich-submit-btn');
+  var browserBtn = document.getElementById('reenrich-browser-btn');
   if (n > 0) {
     bar.style.display = 'flex';
     label.textContent = n + ' record' + (n === 1 ? '' : 's') + ' selected';
     if (btn) { btn.textContent = '↺ Re-enrich Selected (' + n + ')'; btn.disabled = false; }
+    if (browserBtn) { browserBtn.textContent = '🌐 Re-crawl Selected with Browser (' + n + ')'; browserBtn.disabled = false; }
   } else {
     bar.style.display = 'none';
     if (btn) { btn.textContent = '↺ Re-enrich Selected (0)'; btn.disabled = true; }
+    if (browserBtn) { browserBtn.textContent = '🌐 Re-crawl Selected with Browser (0)'; browserBtn.disabled = true; }
   }
   var allCbs = document.querySelectorAll('.reenrich-cb');
   var masterCb = document.getElementById('reenrich-all-cb');
@@ -1263,7 +1266,12 @@ function prepareReenrichSubmit(form) {
   var cbs = document.querySelectorAll('.reenrich-cb:checked');
   var n = cbs.length;
   if (n === 0) return false;
-  if (!confirm('Re-enrich ' + n + ' record' + (n === 1 ? '' : 's') + '?\n\nEach site will be re-crawled and re-run through Claude signal extraction. Analyst reviews are preserved; scores and tiers will update.\n\nThis uses LLM credits and runs in the background — reload in a few minutes.')) return false;
+  var useBrowser = document.getElementById('reenrich-use-pw').value === '1';
+  var verb = useBrowser ? 'Re-crawl with browser' : 'Re-enrich';
+  var how = useBrowser
+    ? 'Each site will be re-crawled with a headless browser (slower, recovers bot-gated and thin sites), then re-run through Claude signal extraction.'
+    : 'Each site will be re-crawled and re-run through Claude signal extraction.';
+  if (!confirm(verb + ' ' + n + ' record' + (n === 1 ? '' : 's') + '?\n\n' + how + ' Analyst reviews are preserved; scores and tiers will update.\n\nThis uses LLM credits and runs in the background — reload in a few minutes.')) return false;
   var container = document.getElementById('reenrich-ids-container');
   container.innerHTML = '';
   cbs.forEach(function(cb) {
@@ -1271,8 +1279,10 @@ function prepareReenrichSubmit(form) {
     inp.type = 'hidden'; inp.name = 'record_ids'; inp.value = cb.dataset.rid;
     container.appendChild(inp);
   });
-  var btn = document.getElementById('reenrich-submit-btn');
-  if (btn) { btn.textContent = 'Starting…'; btn.disabled = true; }
+  var activeBtn = document.getElementById(useBrowser ? 'reenrich-browser-btn' : 'reenrich-submit-btn');
+  if (activeBtn) { activeBtn.textContent = 'Starting…'; }
+  document.getElementById('reenrich-submit-btn').disabled = true;
+  document.getElementById('reenrich-browser-btn').disabled = true;
   return true;
 }
 {% endif %}
@@ -1314,9 +1324,14 @@ function submitAngle(rid, runId) {
 {% if status.status == 'complete' %}
 <div id="reenrich-bar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:500; background:#1a2030; color:#fff; padding:12px 24px; align-items:center; gap:16px; box-shadow:0 -4px 20px rgba(0,0,0,0.3);">
   <span id="reenrich-bar-label" style="font-size:14px; font-weight:600; flex:1;">0 selected</span>
-  <form method="post" action="/dashboard/{{ run_id }}/rerun-selected" id="reenrich-form" style="display:inline; margin:0;" onsubmit="return prepareReenrichSubmit(this)">
+  <form method="post" action="/dashboard/{{ run_id }}/rerun-selected" id="reenrich-form" style="display:inline-flex; gap:10px; margin:0;" onsubmit="return prepareReenrichSubmit(this)">
     <div id="reenrich-ids-container"></div>
-    <button type="submit" id="reenrich-submit-btn" class="btn btn-submit" disabled style="white-space:nowrap;">↺ Re-enrich Selected (0)</button>
+    <input type="hidden" name="use_playwright" id="reenrich-use-pw" value="">
+    <button type="submit" id="reenrich-submit-btn" class="btn btn-submit" disabled style="white-space:nowrap;"
+            onclick="document.getElementById('reenrich-use-pw').value=''">↺ Re-enrich Selected (0)</button>
+    <button type="submit" id="reenrich-browser-btn" class="btn btn-secondary" disabled style="white-space:nowrap;"
+            title="Re-crawl the selected records with a headless browser (recovers bot-gated or thin sites the fast crawler could not read)."
+            onclick="document.getElementById('reenrich-use-pw').value='1'">🌐 Re-crawl Selected with Browser (0)</button>
   </form>
   <button type="button" onclick="clearReenrichSelection()" class="btn btn-secondary" style="white-space:nowrap; font-size:13px;">Clear</button>
 </div>

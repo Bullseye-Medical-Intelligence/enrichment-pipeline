@@ -914,6 +914,7 @@ async def orchestrate_batch_reenrich(
     record_ids: list[str],
     operator: str,
     background_tasks,
+    use_playwright: bool = False,
 ) -> int:
     """Queue selected records for a full re-crawl and re-enrich in the background.
 
@@ -922,6 +923,10 @@ async def orchestrate_batch_reenrich(
     merges results back into the source run when the pipeline exits. The source
     run stays 'complete' throughout; enriched_targets.json is updated atomically
     when the merge is done.
+
+    When use_playwright is True the records are re-crawled with headless Chromium
+    (the same engine as the single-record browser re-crawl), which recovers
+    bot-gated or thin sites the fast HTTP crawler could not read.
 
     Returns the number of records queued.
 
@@ -977,10 +982,11 @@ async def orchestrate_batch_reenrich(
         scratch_dir,
         config_snapshot_src,
         icp_snapshot_src,
+        extra_flags=["--playwright"] if use_playwright else None,
     )
     logger.info(
-        "Batch re-enrich of %d records in run %s started by '%s'",
-        len(selected), source_run_id, operator,
+        "Batch re-enrich of %d records in run %s started by '%s' (browser=%s)",
+        len(selected), source_run_id, operator, use_playwright,
     )
     background_tasks.add_task(
         _monitor_batch_reenrich, source_run_id, scratch_dir, list(id_set), process

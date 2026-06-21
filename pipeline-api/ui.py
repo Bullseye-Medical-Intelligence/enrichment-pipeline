@@ -2720,6 +2720,7 @@ async def rerun_selected(
 
     form = await request.form()
     record_ids = list(form.getlist("record_ids"))
+    use_playwright = form.get("use_playwright") in ("1", "true", "on")
     if not record_ids:
         notice = "No records selected for re-enrichment."
         return RedirectResponse(
@@ -2729,7 +2730,8 @@ async def rerun_selected(
 
     try:
         count = await runner.orchestrate_batch_reenrich(
-            run_id, record_ids, username, background_tasks
+            run_id, record_ids, username, background_tasks,
+            use_playwright=use_playwright,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -2737,8 +2739,9 @@ async def rerun_selected(
         raise HTTPException(status_code=400, detail=str(e))
 
     noun = "record" if count == 1 else "records"
+    method = "re-crawling with browser" if use_playwright else "Re-enriching"
     notice = (
-        f"Re-enriching {count} {noun} in the background — "
+        f"{method.capitalize()} {count} {noun} in the background — "
         "reload in a few minutes to see updated tiers and signals."
     )
     return RedirectResponse(

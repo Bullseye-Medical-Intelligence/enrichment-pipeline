@@ -79,6 +79,14 @@ MAX_CHARS_PER_PAGE = 8000
 # Max combined characters across all pages for a single record
 MAX_COMBINED_CHARS = 25000
 
+# A successful crawl yielding fewer than this many characters of usable text is a
+# "thin crawl": the page almost certainly did not render its real content (a JS or
+# bot gate left only nav + boilerplate), so a not_found result cannot be trusted.
+# These records are labelled "limited" so they surface for a browser re-crawl
+# instead of being silently scored as having no signals. Sits above the LLM floor
+# (enrichment MIN_CONTEXT_CHARS = 150) and below the "complete" bar (3000) below.
+THIN_CRAWL_CHARS = 1200
+
 # Tags whose content we always skip (not visible or not useful)
 SKIP_TAGS = {
     "script", "style", "noscript", "meta", "head", "header",
@@ -137,6 +145,10 @@ def _source_confidence_for_extraction(result: ExtractionResult) -> str:
     text_len = len(result.context_text)
     if pages_crawled >= 2 and text_len > 3000:
         return "complete"
+    # Too little text to trust a not_found — flag for a browser re-crawl. A site
+    # that returned only boilerplate-thin text usually did not render its content.
+    if text_len < THIN_CRAWL_CHARS:
+        return "limited"
     return "partial"
 
 
