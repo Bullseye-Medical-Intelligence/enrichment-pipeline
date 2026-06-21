@@ -778,7 +778,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for record in records if record.exclusion_status != 'EXCLUDED' and record.displayed_tier != 'Excluded' and record.review.qc_status != 'rejected' and record.source_confidence not in ("limited", "failed") %}
+      {% for record in records if record.displayed_tier != 'Excluded' and record.review.qc_status != 'rejected' and record.source_confidence not in ("limited", "failed") %}
       {{ record_rows(record, run_id, status) }}
       {% endfor %}
     </tbody>
@@ -821,7 +821,7 @@
 </div>
 {% endif %}
 
-{% set _pipeline_excluded = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list %}
+{% set _pipeline_excluded = records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | selectattr('displayed_tier', 'equalto', 'Excluded') | list %}
 {% set _analyst_excluded = records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | selectattr('displayed_tier', 'equalto', 'Excluded') | list %}
 {% set excluded_records = _pipeline_excluded + _analyst_excluded %}
 {% if is_ingested %}
