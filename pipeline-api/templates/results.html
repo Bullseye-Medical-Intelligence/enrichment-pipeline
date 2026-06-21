@@ -132,39 +132,48 @@
     </div>
     <div class="header-row-secondary">
       {% set limited_count = (records | selectattr("source_confidence", "equalto", "limited") | list | length) + (records | selectattr("source_confidence", "equalto", "failed") | list | length) %}
-      {% if limited_count > 0 %}
-      <form method="post" action="/runs/{{ run_id }}/retry-with-browser" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
-        <button type="submit" class="btn btn-secondary" title="Re-crawl {{ limited_count }} site{{ 's' if limited_count != 1 else '' }} that failed extraction using headless browser (Playwright)">
-          Re-crawl with Browser ({{ limited_count }})
-        </button>
-      </form>
-      {% endif %}
-      <a href="/runs/{{ run_id }}/download/csv" class="btn btn-secondary">Full CSV</a>
-      <a href="/runs/{{ run_id }}/download/manifest" class="btn btn-secondary" title="Internal run manifest — scope, ICP version, counts, methodology. Not included in the client package.">Run Manifest</a>
-      <a href="/dashboard/{{ run_id }}/cartridge" class="btn btn-secondary" title="Read-only view of the frozen config and ICP signals this run used.">Cartridge</a>
-      {% if status.status == "complete" %}
-      <a href="/dashboard/{{ run_id }}/link-check" class="btn btn-secondary" title="Verify evidence source links still resolve before shipping a deliverable.">Check Evidence Links</a>
+      <div class="dropdown">
+        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Reprocess ▾</button>
+        <div class="dropdown-menu">
+          {% if limited_count > 0 %}
+          <form style="margin:0;" method="post" action="/runs/{{ run_id }}/retry-with-browser" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+            <button type="submit" title="Re-crawl {{ limited_count }} site{{ 's' if limited_count != 1 else '' }} that failed extraction using headless browser (Playwright)">Re-crawl Blocked Sites ({{ limited_count }})</button>
+          </form>
+          {% endif %}
+          <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/rescore-preview" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Previewing…';">
+            <button type="submit" title="Show how the current ICP weights would change tiers on this run. Read-only — nothing is saved.">Preview Rescore</button>
+          </form>
+          <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/rescore" onsubmit="if(!confirm('Apply the current ICP weights to this run? This overwrites the saved scores and tiers (signals are not changed).')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Applying…';">
+            <button type="submit" title="Re-score this run with the current ICP weights and save the result. Signals are not changed.">Apply Rescore</button>
+          </form>
+          <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/reextract" onsubmit="if(!confirm('Re-run Claude signal extraction on all stored page text? This uses LLM credits and overwrites existing signals, scores, and tiers.')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Re-extracting…';">
+            <button type="submit" title="Re-run signal extraction using stored page text and the frozen ICP. Use after adding new signals to re-evaluate without re-crawling. Costs Claude API credits.">Re-extract Signals</button>
+          </form>
+          {% if has_suppression_list %}
+          <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/resuppress" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Checking…';">
+            <button type="submit" title="Re-check all records against the project suppression list. Newly matched existing customers are marked Excluded. No LLM cost.">Re-check Suppression</button>
+          </form>
+          {% endif %}
+          <form style="margin:0;" method="post" action="/runs/{{ run_id }}/rerun" onsubmit="if(!confirm('Start a NEW enrichment run from this run\'s original input and current config?')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
+            <button type="submit" title="Start a new enrichment run using this run's original input file and the current project config.">Re-run</button>
+          </form>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Export ▾</button>
+        <div class="dropdown-menu">
+          <a href="/runs/{{ run_id }}/download/csv">Full CSV</a>
+          <a href="/runs/{{ run_id }}/download/manifest" title="Internal run manifest — scope, ICP version, counts, methodology. Not included in the client package.">Run Manifest</a>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button class="btn btn-secondary" onclick="toggleDropdown(this)">Audit ▾</button>
+        <div class="dropdown-menu">
+          <a href="/dashboard/{{ run_id }}/cartridge" title="Read-only view of the frozen config and ICP signals this run used.">Cartridge</a>
+          <a href="/dashboard/{{ run_id }}/link-check" title="Verify evidence source links still resolve before shipping a deliverable.">Check Evidence Links</a>
+        </div>
+      </div>
       <a href="/dashboard/{{ run_id }}/registry-update" class="btn btn-secondary" title="Explicitly add this run's reviewable records to the Master Practice Registry. Never runs automatically.">Update Registry</a>
-      <form method="post" action="/dashboard/{{ run_id }}/rescore-preview" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Previewing…';">
-        <button type="submit" class="btn btn-secondary" title="Show how the current ICP weights would change tiers on this run. Read-only — nothing is saved.">Preview Rescore</button>
-      </form>
-      <form method="post" action="/dashboard/{{ run_id }}/rescore" style="display:inline;" onsubmit="if(!confirm('Apply the current ICP weights to this run? This overwrites the saved scores and tiers (signals are not changed).')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Applying…';">
-        <button type="submit" class="btn btn-secondary" title="Re-score this run with the current ICP weights and save the result. Signals are not changed.">Apply Rescore</button>
-      </form>
-      <form method="post" action="/dashboard/{{ run_id }}/reextract" style="display:inline;" onsubmit="if(!confirm('Re-run Claude signal extraction on all stored page text? This uses LLM credits and overwrites existing signals, scores, and tiers.')){return false;} this.querySelector('button').disabled=true; this.querySelector('button').textContent='Re-extracting…';">
-        <button type="submit" class="btn btn-secondary" title="Re-run signal extraction using stored page text and the frozen ICP. Use after adding new signals to re-evaluate without re-crawling. Costs Claude API credits.">Re-extract Signals</button>
-      </form>
-      {% if has_suppression_list %}
-      <form method="post" action="/dashboard/{{ run_id }}/resuppress" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Checking…';">
-        <button type="submit" class="btn btn-secondary" title="Re-check all records against the project suppression list. Newly matched existing customers are marked Excluded. No LLM cost.">Re-check Suppression</button>
-      </form>
-      {% endif %}
-      {% endif %}
-      {% if status.status in ("complete", "failed") %}
-      <form method="post" action="/runs/{{ run_id }}/rerun" style="display:inline;" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starting…';">
-        <button type="submit" class="btn btn-secondary" title="Start a new enrichment run using this run's original input file and the current project config.">Re-run</button>
-      </form>
-      {% endif %}
       <a href="/dashboard" class="btn btn-secondary">← All Runs</a>
     </div>
     {% else %}
@@ -1300,15 +1309,18 @@ function updateReenrichCount() {
   var label = document.getElementById('reenrich-bar-label');
   var btn = document.getElementById('reenrich-submit-btn');
   var browserBtn = document.getElementById('reenrich-browser-btn');
+  var reviewBtn = document.getElementById('bulk-review-toggle');
   if (n > 0) {
     bar.style.display = 'flex';
     label.textContent = n + ' record' + (n === 1 ? '' : 's') + ' selected';
-    if (btn) { btn.textContent = '↺ Re-enrich Selected (' + n + ')'; btn.disabled = false; }
-    if (browserBtn) { browserBtn.textContent = '🌐 Re-crawl Selected with Browser (' + n + ')'; browserBtn.disabled = false; }
+    if (btn) { btn.textContent = '↺ Re-enrich (' + n + ')'; btn.disabled = false; }
+    if (browserBtn) { browserBtn.textContent = '🌐 Re-crawl with Browser (' + n + ')'; browserBtn.disabled = false; }
+    if (reviewBtn) { reviewBtn.disabled = false; }
   } else {
     bar.style.display = 'none';
-    if (btn) { btn.textContent = '↺ Re-enrich Selected (0)'; btn.disabled = true; }
-    if (browserBtn) { browserBtn.textContent = '🌐 Re-crawl Selected with Browser (0)'; browserBtn.disabled = true; }
+    if (btn) { btn.textContent = '↺ Re-enrich (0)'; btn.disabled = true; }
+    if (browserBtn) { browserBtn.textContent = '🌐 Re-crawl with Browser (0)'; browserBtn.disabled = true; }
+    if (reviewBtn) { reviewBtn.disabled = true; closeDropdowns(); }
   }
   var allCbs = document.querySelectorAll('.reenrich-cb');
   var masterCb = document.getElementById('reenrich-all-cb');
@@ -1343,6 +1355,24 @@ function prepareReenrichSubmit(form) {
   if (activeBtn) { activeBtn.textContent = 'Starting…'; }
   document.getElementById('reenrich-submit-btn').disabled = true;
   document.getElementById('reenrich-browser-btn').disabled = true;
+  return true;
+}
+/* Bulk QC (Review All): copy the SAME checked record_ids the re-enrich form uses
+   into this form's hidden container, then post action=accept|reject|reset. */
+function prepareBulkReviewSubmit(form) {
+  var cbs = document.querySelectorAll('.reenrich-cb:checked');
+  var n = cbs.length;
+  if (n === 0) return false;
+  var action = (form.querySelector('input[name="action"]') || {}).value || 'update';
+  var verb = {accept: 'Accept', reject: 'Reject', reset: 'Reset'}[action] || 'Update';
+  if (!confirm(verb + ' ' + n + ' selected record' + (n === 1 ? '' : 's') + '? This updates QC status only — no re-crawl, no LLM cost.')) return false;
+  var container = form.querySelector('.bulk-review-ids');
+  container.innerHTML = '';
+  cbs.forEach(function(cb) {
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'record_ids'; inp.value = cb.dataset.rid;
+    container.appendChild(inp);
+  });
   return true;
 }
 {% endif %}
@@ -1484,11 +1514,33 @@ function submitSignalOverride(runId, rid, sigId) {
     <div id="reenrich-ids-container"></div>
     <input type="hidden" name="use_playwright" id="reenrich-use-pw" value="">
     <button type="submit" id="reenrich-submit-btn" class="btn btn-submit" disabled style="white-space:nowrap;"
-            onclick="document.getElementById('reenrich-use-pw').value=''">↺ Re-enrich Selected (0)</button>
+            onclick="document.getElementById('reenrich-use-pw').value=''">↺ Re-enrich (0)</button>
     <button type="submit" id="reenrich-browser-btn" class="btn btn-secondary" disabled style="white-space:nowrap;"
             title="Re-crawl the selected records with a headless browser (recovers bot-gated or thin sites the fast crawler could not read)."
-            onclick="document.getElementById('reenrich-use-pw').value='1'">🌐 Re-crawl Selected with Browser (0)</button>
+            onclick="document.getElementById('reenrich-use-pw').value='1'">🌐 Re-crawl with Browser (0)</button>
   </form>
+  <div class="dropdown">
+    <button type="button" id="bulk-review-toggle" class="btn btn-secondary" disabled style="white-space:nowrap;"
+            title="Set QC status on the selected records without re-crawling."
+            onclick="toggleDropdown(this)">Review All ▾</button>
+    <div class="dropdown-menu drop-up">
+      <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/bulk-review" onsubmit="return prepareBulkReviewSubmit(this)">
+        <input type="hidden" name="action" value="accept">
+        <div class="bulk-review-ids"></div>
+        <button type="submit">Accept</button>
+      </form>
+      <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/bulk-review" onsubmit="return prepareBulkReviewSubmit(this)">
+        <input type="hidden" name="action" value="reject">
+        <div class="bulk-review-ids"></div>
+        <button type="submit">Reject</button>
+      </form>
+      <form style="margin:0;" method="post" action="/dashboard/{{ run_id }}/bulk-review" onsubmit="return prepareBulkReviewSubmit(this)">
+        <input type="hidden" name="action" value="reset">
+        <div class="bulk-review-ids"></div>
+        <button type="submit">Reset</button>
+      </form>
+    </div>
+  </div>
   <button type="button" onclick="clearReenrichSelection()" class="btn btn-secondary" style="white-space:nowrap; font-size:13px;">Clear</button>
 </div>
 {% endif %}

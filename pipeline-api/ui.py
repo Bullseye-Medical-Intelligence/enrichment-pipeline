@@ -51,6 +51,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Bulk-QC action → qc_status. The only routes that map an operator "action" verb
+# onto a stored qc_status; keeps the bulk-review route free of magic strings.
+_BULK_REVIEW_ACTIONS: dict[str, str] = {
+    "accept": "approved",
+    "reject": "rejected",
+    "reset": "pending",
+}
+
 _jinja_env = Environment(
     loader=FileSystemLoader(str(Path(__file__).parent / "templates")),
     autoescape=select_autoescape(["html"]),
@@ -2949,6 +2957,49 @@ async def confirm_queue_bulk_approve(
     return RedirectResponse(
         url=f"/dashboard/{run_id}/confirm-queue?"
             + urllib.parse.urlencode({"notice": notice, "promoted": 0, "held": 0, "disqualified": 0}),
+        status_code=303,
+    )
+
+
+@router.post("/dashboard/{run_id}/bulk-review")
+async def bulk_review(
+    run_id: str,
+    request: Request,
+    username: str = Depends(auth.require_session),
+):
+    """Set QC status on a batch of selected records in one atomic reviews.json write.
+
+    Form fields: record_ids (repeated), action in {accept, reject, reset} mapped to
+    qc_status approved/rejected/pending. Writes only reviews.json; never touches
+    enriched_targets.json. Redirects back to the results page with a flash count.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    form = await request.form()
+    action = (form.get("action") or "").strip()
+    if action not in _BULK_REVIEW_ACTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid action '{action}'. Must be one of: {sorted(_BULK_REVIEW_ACTIONS)}",
+        )
+    qc_status = _BULK_REVIEW_ACTIONS[action]
+    record_ids = list(form.getlist("record_ids"))
+
+    if not record_ids:
+        notice = "No records selected."
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+            status_code=303,
+        )
+
+    updated = reviews.bulk_set_qc_status(run_directory, record_ids, qc_status, username)
+    label = {"approved": "approved", "rejected": "rejected", "pending": "pending"}[qc_status]
+    noun = "record" if updated == 1 else "records"
+    notice = f"{updated} {noun} marked {label}."
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
         status_code=303,
     )
 

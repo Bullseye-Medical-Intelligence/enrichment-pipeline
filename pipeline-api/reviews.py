@@ -195,6 +195,54 @@ def bulk_approve(
     return approved_count
 
 
+def bulk_set_qc_status(
+    run_directory: Path,
+    record_ids: list[str],
+    qc_status: str,
+    username: str,
+) -> int:
+    """Set qc_status on a batch of records in a single atomic reviews.json write.
+
+    For "approved"/"rejected" the review is stamped with reviewed_by=username and a
+    server-side UTC reviewed_at. For "pending" (a reset) reviewed_at and reviewed_by
+    are cleared to None. Existing signal_overrides and extra_sales_angles on each
+    entry are preserved. Records whose qc_status already equals the target are
+    skipped. Never writes enriched_targets.json. Returns the count updated.
+    """
+    if not record_ids:
+        return 0
+
+    now = datetime.now(timezone.utc).isoformat()
+    is_reset = qc_status == "pending"
+    all_reviews = get_reviews("", run_directory)
+    updated_count = 0
+
+    for record_id in record_ids:
+        existing = all_reviews.get(record_id, {})
+        if existing.get("qc_status") == qc_status:
+            continue
+        all_reviews[record_id] = {
+            "analyst_note": existing.get("analyst_note", ""),
+            "override_tier": existing.get("override_tier"),
+            "override_reason": existing.get("override_reason"),
+            "qc_status": qc_status,
+            "reviewed_by": None if is_reset else username,
+            "reviewed_at": None if is_reset else now,
+            "extra_sales_angles": existing.get("extra_sales_angles", []),
+            "signal_overrides": existing.get("signal_overrides", {}),
+        }
+        updated_count += 1
+
+    if updated_count:
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+        logger.info(
+            "Bulk set qc_status=%s on %d record(s) in run_dir=%s by %s",
+            qc_status, updated_count, run_directory.name, username,
+        )
+
+    return updated_count
+
+
 def get_signal_overrides(run_id: str, record_id: str, run_directory: Path) -> dict:
     """Return the signal_overrides map for one record, keyed by signal_id.
 

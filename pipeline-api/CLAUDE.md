@@ -187,7 +187,14 @@ Do not build React integration unless that decision is explicitly reversed.
 ### Run Dashboard Header Layout
 The results page header uses a two-tier layout:
 - **Primary row**: Download Client Package | Sales Handoff ▾ (dropdown: View ↗, Copy Link, Re-Publish) | Sales Brief ▾ (dropdown: View ↗, Copy Link, Update Brief, Re-Publish)
-- **Secondary row** (smaller, de-emphasized): Re-crawl with Browser | Full CSV | Run Manifest | ← All Runs
+- **Secondary row** (smaller, de-emphasized) — grouped into dropdowns to keep the header compact (all reuse the shared `.dropdown` / `toggleDropdown` pattern):
+  - **Reprocess ▾**: Re-crawl Blocked Sites (N) (only when `limited_count > 0`), Preview Rescore, Apply Rescore, Re-extract Signals, Re-check Suppression (only when `has_suppression_list`), Re-run. POST actions inside the menu are `<form style="margin:0;">` wrapping a `<button type="submit">` so the `.dropdown-menu button` CSS renders them as full-width items; every confirm() dialog and disable-on-submit handler is preserved.
+  - **Export ▾**: Full CSV, Run Manifest.
+  - **Audit ▾**: Cartridge, Check Evidence Links.
+  - Standalone **Update Registry** and **← All Runs** buttons.
+
+### Bulk multi-select bottom bar (`#reenrich-bar`)
+A fixed bar appears at the bottom of the viewport when records are checked on a complete run. Controls, in order: **Re-enrich (N)** (HTTP re-crawl, `use_playwright=''`), **Re-crawl with Browser (N)** (`use_playwright='1'`), **Review All ▾** (a `.dropdown` whose `.dropdown-menu` carries the `drop-up` modifier so it opens upward — the bar is pinned to the bottom — with Accept / Reject / Reset items), and **Clear**. Re-enrich and Re-crawl post the checked `record_ids` to `POST /dashboard/{run_id}/rerun-selected`. Each Review All item posts the SAME checked `record_ids` to `POST /dashboard/{run_id}/bulk-review` with `action=accept|reject|reset` (`prepareBulkReviewSubmit` copies the live selection into the form's hidden container at submit time, mirroring `prepareReenrichSubmit`). The Review All toggle is disabled with the other buttons when 0 records are selected. Bulk-review writes `reviews.json` only (QC status), never `enriched_targets.json`.
 
 **Sales Handoff staleness indicator**: `_brief_stale(run_id, run_directory, brief_type)` in `ui.py` compares the `published_at` timestamp in `published_briefs.json` against the newest `reviewed_at` timestamp across all analyst reviews for that run. When any review is newer than the last publish, `results_page` passes `handoff_stale=True` to the template, which renders an amber dot (●) on the Sales Handoff button. This signals to the operator that re-publishing will incorporate the latest overrides. The dot disappears after republish.
 
@@ -335,6 +342,7 @@ POST   /dashboard/{run_id}/rescore-preview        Preview rescore tier transitio
 POST   /dashboard/{run_id}/reextract              Re-run Claude signal extraction; page text rehydrated from the Evidence Vault (reextract_run.py); LLM cost
 POST   /dashboard/{run_id}/resuppress             Re-check all records against the project suppression list (suppress_run.py); no LLM
 POST   /dashboard/{run_id}/recrawl                Re-crawl all blocked/thin records with Playwright (recrawl_run.py)
+POST   /dashboard/{run_id}/bulk-review            Bulk-set QC status on selected records; body: record_ids[], action=accept|reject|reset. Writes reviews.json only
 
 API (session-cookie auth, same as all routes; called by dashboard or automation):
 POST   /enrichment-runs/{run_id}/update-registry  Explicit registry update; body: selection_mode, selected_record_ids, options
