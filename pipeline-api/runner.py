@@ -230,6 +230,9 @@ async def _prepare_run(
     if project_config is None:
         raise ValueError(f"Project '{project_id}' does not exist. Create it first.")
     projects.validate_project_config(project_config)
+    # Pull the latest committed seed (version-aware) into the runtime store before
+    # snapshotting, so a new run uses the current ICP without an app restart.
+    icp_profiles.sync_seed_profile(project_config["icp_profile_id"])
     icp_profile = icp_profiles.get_icp_profile(project_config["icp_profile_id"])
 
     content, row_count = await validator.validate_csv_upload(file, source_type, project_id)
@@ -351,6 +354,9 @@ async def orchestrate_rerun(
     if project_config is None:
         raise ValueError(f"Project '{project_id}' no longer exists.")
     projects.validate_project_config(project_config)
+    # Pull the latest committed seed (version-aware) into the runtime store before
+    # snapshotting, so a new run uses the current ICP without an app restart.
+    icp_profiles.sync_seed_profile(project_config["icp_profile_id"])
     icp_profile = icp_profiles.get_icp_profile(project_config["icp_profile_id"])
 
     content = source_csv.read_bytes()
@@ -548,9 +554,12 @@ def _prepare_single_record_job(source_run_id: str, record_id: str):
 
     # Prefer the current live ICP profile over the frozen run snapshot so that
     # any edits to the profile (added/removed signals) take effect on re-enrichment.
-    # Falls back to the frozen snapshot only if the live profile no longer exists.
+    # Sync the latest committed seed first so the re-crawl uses the current ICP
+    # without an app restart. Falls back to the frozen snapshot only if the live
+    # profile no longer exists.
     icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
     if icp_id:
+        icp_profiles.sync_seed_profile(icp_id)
         live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
         if live_icp.exists():
             icp_snapshot_src = live_icp
@@ -858,8 +867,11 @@ async def orchestrate_batch_reenrich(
         config_data = {}
 
     # Prefer the live ICP profile over the frozen snapshot so updated signals apply.
+    # Sync the latest committed seed first so the re-crawl uses the current ICP
+    # without an app restart.
     icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
     if icp_id:
+        icp_profiles.sync_seed_profile(icp_id)
         live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
         if live_icp.exists():
             icp_snapshot_src = live_icp

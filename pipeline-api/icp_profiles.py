@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import stat
 import time
 from pathlib import Path
@@ -19,6 +20,13 @@ from typing import Optional
 import config
 
 logger = logging.getLogger(__name__)
+
+# Bundled seed profiles ship in the repo and are version-aware upserted into the
+# runtime store (config.ICP_PROFILES_PATH). The same per-file logic runs at
+# startup (sync_all_seed_profiles) and on demand before a run / re-crawl
+# (sync_seed_profile), so a committed ICP change with a bumped version reaches the
+# running app WITHOUT requiring a restart.
+_SEEDS_DIR = Path(__file__).parent / "seeds" / "icp_profiles"
 
 # Atomic-replace retry budget. On Windows, os.replace (MoveFileEx) cannot
 # overwrite a read-only destination and raises PermissionError if the target is
@@ -76,6 +84,50 @@ def icp_profile_path(icp_profile_id: str) -> Path:
     if not is_valid_icp_id(icp_profile_id):
         raise ValueError(f"Invalid icp_id: {icp_profile_id!r}")
     return config.ICP_PROFILES_PATH / f"{icp_profile_id}.json"
+
+
+def _profile_version(path: Path) -> str:
+    """Return the 'version' string of an ICP profile JSON, or '' if unreadable."""
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("version", ""))
+    except Exception:
+        return ""
+
+
+def sync_seed_profile(icp_profile_id: str) -> bool:
+    """Upsert one bundled seed into the runtime store if it changed; return True if copied.
+
+    Version-aware and single-file: copies the seed for icp_profile_id into
+    config.ICP_PROFILES_PATH when the destination is missing or the bundled seed's
+    `version` differs from the installed copy's. This lets a committed ICP change
+    (with a bumped version) take effect on the next run / re-crawl without waiting
+    for an app restart. Operator edits that keep the same version are preserved
+    (equal versions skip the copy); a profile saved under its own icp_id with no
+    matching seed file is never touched.
+    """
+    if not is_valid_icp_id(icp_profile_id):
+        return False
+    seed = _SEEDS_DIR / f"{icp_profile_id}.json"
+    if not seed.exists():
+        return False
+    dest = config.ICP_PROFILES_PATH / f"{icp_profile_id}.json"
+    if dest.exists() and _profile_version(dest) == _profile_version(seed):
+        return False
+    config.ICP_PROFILES_PATH.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(seed, dest)
+    logger.info("Synced ICP profile from seed: %s (version %s)", seed.name, _profile_version(seed))
+    return True
+
+
+def sync_all_seed_profiles() -> int:
+    """Version-aware upsert of every bundled seed into the runtime store.
+
+    Returns the number of profiles copied. Called at startup; the same per-file
+    logic also runs on demand (sync_seed_profile) before a run or re-crawl.
+    """
+    if not _SEEDS_DIR.exists():
+        return 0
+    return sum(1 for seed in sorted(_SEEDS_DIR.glob("*.json")) if sync_seed_profile(seed.stem))
 
 
 def validate_icp_profile(data: dict) -> None:

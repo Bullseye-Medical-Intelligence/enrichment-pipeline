@@ -237,6 +237,50 @@ def test_icp_path_rejects_traversal(store):
         icp_profiles.icp_profile_path("../../secret")
 
 
+# ---------------------------------------------------------------------------
+# Seed sync — committed ICP changes reach the runtime store without a restart
+# ---------------------------------------------------------------------------
+
+_SEEDED_ID = "obgyn_femasys_mi"  # a bundled seed that always ships in the repo
+
+
+def test_sync_seed_profile_copies_when_missing(store):
+    assert not (store["icp"] / f"{_SEEDED_ID}.json").exists()
+    assert icp_profiles.sync_seed_profile(_SEEDED_ID) is True
+    prof = json.loads((store["icp"] / f"{_SEEDED_ID}.json").read_text())
+    assert prof["signals"]  # real signals materialized from the bundle
+
+
+def test_sync_seed_profile_refreshes_stale_version(store):
+    dest = store["icp"] / f"{_SEEDED_ID}.json"
+    icp_profiles.sync_seed_profile(_SEEDED_ID)
+    fresh_version = json.loads(dest.read_text())["version"]
+    # Simulate a stale runtime copy left by an earlier deploy.
+    stale = json.loads(dest.read_text())
+    stale["version"], stale["signals"] = "OLD", []
+    dest.write_text(json.dumps(stale))
+    assert icp_profiles.sync_seed_profile(_SEEDED_ID) is True
+    refreshed = json.loads(dest.read_text())
+    assert refreshed["version"] == fresh_version and refreshed["signals"]
+
+
+def test_sync_seed_profile_preserves_same_version_edits(store):
+    """An operator edit that keeps the seed's version is not clobbered (no-op)."""
+    dest = store["icp"] / f"{_SEEDED_ID}.json"
+    icp_profiles.sync_seed_profile(_SEEDED_ID)
+    edited = json.loads(dest.read_text())
+    edited["signals"][0]["positive_weight"] = 999  # operator tweak, same version
+    dest.write_text(json.dumps(edited))
+    assert icp_profiles.sync_seed_profile(_SEEDED_ID) is False  # equal versions -> skip
+    assert json.loads(dest.read_text())["signals"][0]["positive_weight"] == 999
+
+
+def test_sync_seed_profile_ignores_unmanaged_id(store):
+    """A profile with no matching seed (operator-authored) is never touched."""
+    assert icp_profiles.sync_seed_profile("some_custom_profile") is False
+    assert not (store["icp"] / "some_custom_profile.json").exists()
+
+
 def test_save_icp_profile_overwrites_readonly_destination(store):
     """Importing over a read-only seeded profile must succeed, not raise.
 

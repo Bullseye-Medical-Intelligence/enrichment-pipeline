@@ -4,7 +4,6 @@ FastAPI application: route registration, startup, and global exception handling.
 Route handlers contain only orchestration calls — no business rules.
 """
 
-import json
 import logging
 import traceback
 from contextlib import asynccontextmanager
@@ -16,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from jinja2 import select_autoescape as _jinja_autoescape
 
+import icp_profiles
 import runs
 from config import HOST, PORT
 
@@ -90,51 +90,18 @@ def _log_pipeline_python() -> None:
         logger.warning("Could not probe browser availability: %s", str(e)[:160])
 
 
-def _seed_version(path: Path) -> str:
-    """Return the 'version' string of an ICP profile JSON, or '' if unreadable."""
-    try:
-        return str(json.loads(path.read_text(encoding="utf-8")).get("version", ""))
-    except Exception:
-        return ""
-
-
-def _seed_icp_profiles() -> None:
-    """Upsert bundled seed ICP profiles into ICP_PROFILES_PATH on startup.
-
-    Per-file, version-aware: a seed is copied when its destination is missing or
-    when the bundled seed's `version` differs from the installed copy's. This lets
-    a corrected seed (e.g. one with a redundant inverse signal removed) propagate
-    to deployments by bumping its version, without the all-or-nothing "only when
-    empty" gate that left stale seeds in place.
-
-    Only filenames present in the seed bundle are ever touched. Operator-authored
-    and imported profiles use their own icp_id and are never overwritten — to
-    customize a seeded profile, save it under a new icp_id rather than editing the
-    managed seed in place.
-    """
-    import shutil
-    from config import ICP_PROFILES_PATH
-
-    seeds_dir = Path(__file__).parent / "seeds" / "icp_profiles"
-    if not seeds_dir.exists():
-        return
-    ICP_PROFILES_PATH.mkdir(parents=True, exist_ok=True)
-    for seed in seeds_dir.glob("*.json"):
-        dest = ICP_PROFILES_PATH / seed.name
-        if dest.exists() and _seed_version(dest) == _seed_version(seed):
-            continue
-        action = "Updated" if dest.exists() else "Seeded"
-        shutil.copy2(seed, dest)
-        logger.info("%s ICP profile from seed: %s", action, seed.name)
-
-
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     """On startup, fail any run orphaned by a prior server instance."""
     count = runs.reconcile_orphaned_runs()
     if count:
         logger.warning("Reconciled %d orphaned run(s) on startup", count)
-    _seed_icp_profiles()
+    # Version-aware upsert of bundled seed ICP profiles. The same per-file logic
+    # also runs on demand before a run / re-crawl (icp_profiles.sync_seed_profile)
+    # so a committed ICP change with a bumped version applies without a restart.
+    synced = icp_profiles.sync_all_seed_profiles()
+    if synced:
+        logger.info("Synced %d ICP profile(s) from seed on startup", synced)
     _log_pipeline_python()
     yield
 
