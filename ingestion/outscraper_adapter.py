@@ -83,7 +83,8 @@ OUTSCRAPER_FIELD_MAP = {
 SPECIALTY_KEYWORD_MAP = {
     "OBGYN": [
         "obgyn", "ob/gyn", "ob-gyn", "gynecolog", "obstetric",
-        "women's health", "womens health", "reproductive",
+        "women's health", "womens health", "women's care", "womens care",
+        "reproductive",
     ],
     "Urology": ["urol"],
     "Dermatology": ["dermatol"],

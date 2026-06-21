@@ -725,6 +725,11 @@ class TestSpecialtyInference:
     def test_unrecognized_type_kept_as_titlecased_label(self):
         assert infer_specialty("Wellness Center", "") == "Wellness Center"
 
+    def test_womens_care_in_name_maps_to_obgyn(self):
+        # "women's care" (not "women's health") should not slip through as Unknown.
+        assert infer_specialty("", "Beyond Women's Care") == "OBGYN"
+        assert infer_specialty("", "Valley Women's Care Center") == "OBGYN"
+
     def test_unknown_when_neither_matches(self):
         assert infer_specialty("", "Main Street Medical") == "Unknown"
 

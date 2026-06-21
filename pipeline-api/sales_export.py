@@ -108,11 +108,12 @@ def _badge_label_for_gate(gate: str, signals: list) -> str:
     return gate.replace("_", " ").title()
 
 
-def _evidence_for_gate(gate: str, signals: list) -> str:
+def _evidence_for_gate(gate: str, signals: list, exclusion_reason: str = "") -> str:
     """Build the one-line evidence excerpt for the winning exclusion gate.
 
     ICP signal gates: quote + source domain when available; source alone otherwise.
-    Structural gates: classification fallback — never fabricate a website quote.
+    Structural gates: surface the pipeline's own exclusion_reason (first pipe-delimited
+    segment) so reviewers see the specific classification rationale, not a generic label.
     """
     if not gate:
         return ""
@@ -128,6 +129,10 @@ def _evidence_for_gate(gate: str, signals: list) -> str:
                 if source:
                     return f"Identified via {_extract_domain(source)}."
                 return ""
+    # Structural gate: use the first segment of the pipeline's own exclusion_reason
+    # when available; it names the specific specialty or geography that was rejected.
+    if exclusion_reason:
+        return exclusion_reason.split(" | ")[0]
     return "Identified via practice classification data."
 
 # Add the repo root to sys.path so we can import the handoff_renderer module.
@@ -445,7 +450,11 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
             or (_manual_review_gate_label(rec) if tier_str == "Manual Review" else None)
             or (_nv_gate_label(rec) if tier_str == "Needs Verification" else None)
         ) or None,
-        evidence=_evidence_for_gate(rec.get("exclusion_primary_gate") or "", signals) or None,
+        evidence=_evidence_for_gate(
+            rec.get("exclusion_primary_gate") or "",
+            signals,
+            rec.get("exclusion_reason") or "",
+        ) or None,
         suppress_reason=None,
         revisit_if=None,
     )
