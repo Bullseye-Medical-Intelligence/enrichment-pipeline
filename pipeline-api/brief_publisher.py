@@ -105,6 +105,20 @@ def get_published_briefs(run_directory: Path) -> dict:
         return {}
 
 
+def newest_signal_override_at(all_reviews: dict) -> str | None:
+    """Return the newest override_at timestamp across all signal overrides, or None.
+
+    Used by _brief_stale to detect when a signal override post-dates the last publish.
+    """
+    newest: str | None = None
+    for entry in all_reviews.values():
+        for override in ((entry or {}).get("signal_overrides") or {}).values():
+            ts = (override or {}).get("override_at") or ""
+            if ts and (newest is None or ts > newest):
+                newest = ts
+    return newest
+
+
 def save_published_brief(run_directory: Path, brief_type: str, result: dict) -> None:
     """Atomically update published_briefs.json with a new or updated entry."""
     path = run_directory / _BRIEFS_FILENAME

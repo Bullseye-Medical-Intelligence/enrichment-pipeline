@@ -3299,6 +3299,14 @@ def _brief_stale(run_id: str, run_directory: Path, brief_type: str) -> bool:
                 return True
         except ValueError:
             continue
+    # Also fire when any signal override post-dates the last publish.
+    newest_override = brief_publisher.newest_signal_override_at(all_reviews)
+    if newest_override:
+        try:
+            if datetime.fromisoformat(newest_override) > published_at:
+                return True
+        except ValueError:
+            pass
     return False
 
 

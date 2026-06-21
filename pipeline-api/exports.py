@@ -188,8 +188,12 @@ def _build_csv(
         if not filter_fn(rec, review):
             continue
 
-        row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in rec.items()}
-        row["why_contact"] = (rec.get("call_brief") or {}).get("why_contact", "")
+        # Apply signal overlay so overridden signal states are reflected in any
+        # signal-derived scalar fields. Signals (a list) are excluded from CSV
+        # columns; is_override lives inside the list and never appears as a header.
+        merged = reviews.apply_signal_overrides(rec, review)
+        row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in merged.items()}
+        row["why_contact"] = (merged.get("call_brief") or {}).get("why_contact", "")
         row.update({
             "displayed_tier": record_adapter.displayed_tier(rec, review),
             "qc_status": review.get("qc_status", "pending"),
