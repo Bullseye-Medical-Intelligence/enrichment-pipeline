@@ -190,9 +190,41 @@
     .body{padding:4px 14px 20px;}
     .aname{font-size:14.5px;}
   }
+
+  /* day/night toggle */
+  .theme-toggle{position:fixed;top:14px;right:14px;z-index:100;
+    background:var(--card);border:1px solid var(--line2);border-radius:100px;
+    color:var(--mut);font-size:13px;padding:5px 11px;cursor:pointer;
+    transition:background .15s,color .15s;white-space:nowrap;font-family:'DM Sans',sans-serif;}
+  .theme-toggle:hover{color:var(--warm);}
+
+  /* day mode overrides */
+  body.day{--ink:#f2f0ee;--card:#ffffff;--line:rgba(10,10,10,0.1);
+    --line2:rgba(10,10,10,0.18);--txt:#2a2825;--mut:rgba(10,10,10,0.45);
+    --lbl:rgba(10,10,10,0.38);--warm:#1a1816;}
+  body.day .pattern .pat-body{color:#2a2825;}
+  body.day .pattern .pat-body b{color:#0a0a0a;}
+  body.day .whylist li{color:#1a1816;}
+  body.day .wedge{color:#1a1816;}
+  body.day .vstep{color:#1a1816;}
+  body.day .exexcerpt{color:#2a2825;}
+  body.day .confstamp{color:rgba(10,10,10,0.42);}
+  body.day .confstamp b{color:rgba(10,10,10,0.65);}
+  body.day .bname{color:#1a1816;}
+  body.day .foot{background:rgba(244,241,240,0.96);border-top-color:rgba(10,10,10,0.1);}
+  body.day .seg span{background:rgba(10,10,10,0.12);}
+  body.day .howto{color:#3a3835;}
+  body.day .howto b{color:#1a1816;}
+  body.day .acct{background:#ffffff;}
+  body.day .landmine{color:#3a3835;}
+  body.day .landmine b{color:#1a1816;}
+  body.day details summary{color:rgba(10,10,10,0.45);}
+  body.day details .body-detail{color:#2a2825;}
 </style>
 </head>
 <body>
+
+<button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle day/night mode">&#9788; Day</button>
 
 <div class="rhead">
   <div class="brand">
@@ -334,7 +366,18 @@
       {% if acct.cap_reason %}<div style="margin-top:12px;font-size:12.5px;color:var(--mut);border-left:2px solid rgba(107,127,203,0.4);padding-left:10px;">{{ acct.cap_reason }}</div>{% endif %}
 
       {% else %}
-      {# Bullseye and Contender #}
+      {# Bullseye and Contender — quick-reference fields first, then intel #}
+      {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}
+      {% if acct.hours_of_operation %}
+      <div class="fld">
+        <details>
+          <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
+            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Office Hours
+          </summary>
+          <div class="body-detail" style="font-size:12.5px;color:var(--txt);margin-top:8px;padding-left:16px;line-height:1.6;">{{ acct.hours_of_operation }}</div>
+        </details>
+      </div>
+      {% endif %}
       {% if acct.cap_reason %}
       <div class="fld"><div class="ey">Why Validate, Not Call First</div><div style="font-size:13px;color:var(--txt);line-height:1.55;">{{ acct.cap_reason }}</div></div>
       {% endif %}
@@ -356,17 +399,6 @@
       {% endif %}
       {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
       {% if acct.landmine %}<div class="fld"><div class="ey">Watch Out For</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
-      {% if acct.hours_of_operation %}
-      <div class="fld">
-        <details>
-          <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
-            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Office Hours
-          </summary>
-          <div style="font-size:12.5px;color:var(--txt);margin-top:8px;padding-left:16px;line-height:1.6;">{{ acct.hours_of_operation }}</div>
-        </details>
-      </div>
-      {% endif %}
-      {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}
       {% endif %}
 
     </div>
@@ -382,6 +414,18 @@
 </div>
 
 <script>
+  (function(){
+    var saved=localStorage.getItem('bemi-theme');
+    if(saved==='day'){document.body.classList.add('day');document.getElementById('themeToggle').textContent='☽ Night';}
+  })();
+  function toggleTheme(){
+    var btn=document.getElementById('themeToggle');
+    if(document.body.classList.toggle('day')){
+      btn.textContent='☽ Night';localStorage.setItem('bemi-theme','day');
+    } else {
+      btn.textContent='☀ Day';localStorage.setItem('bemi-theme','night');
+    }
+  }
   function toggleAll(){
     var accts=document.querySelectorAll('.acct');
     var allOpen=[].every.call(accts,function(a){return a.classList.contains('open');});
