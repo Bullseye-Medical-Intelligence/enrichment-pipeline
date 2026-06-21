@@ -135,6 +135,8 @@
   /* expanded body */
   .body{display:none;padding:4px 26px 24px;}
   .acct.open .body{display:block;}
+  /* always-visible execution preview (hook + confirmed signals) above the body */
+  .apreview{padding:0 26px 16px;}
   .fld{margin-top:22px;}
   .ey{font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;
     color:rgba(247,246,244,0.34);font-weight:600;margin-bottom:7px;}
@@ -199,6 +201,7 @@
   @media(max-width:480px){
     .exgrid{grid-template-columns:1fr;}
     .body{padding:4px 14px 20px;}
+    .apreview{padding:0 14px 14px;}
     .aname{font-size:14.5px;}
   }
 
@@ -359,6 +362,21 @@
       </div>
     </div>
 
+    {# Always-visible execution preview: the rep sees the hook + what is confirmed
+       on the collapsed card, without expanding. Secondary context (the trap, why
+       it matters, office hours) stays in the collapsible body below. #}
+    {% if section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
+    <div class="apreview">
+      {% if acct.wedge %}<div class="fld hook-box"><div class="ey">The Hook</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
+      {% if acct.confirmed_signals %}
+      <div class="sig-groups">
+        <div class="sig-grp-hdr">Confirmed On Site</div>
+        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {# expanded body #}
     <div class="body">
 
@@ -374,12 +392,6 @@
       {% elif section.tier == Tier.NEEDS_VERIFICATION %}
       {% if acct.gate_fired %}<span class="exbadge" style="background:rgba(107,127,203,0.12);border-color:rgba(107,127,203,0.3);color:#6b7fcb;">{{ acct.gate_fired }}</span>{% endif %}
       {% if acct.verification_step %}<div class="vstep">{{ acct.verification_step }}</div>{% endif %}
-      {% if acct.confirmed_signals %}
-      <div class="sig-groups">
-        <div class="sig-grp-hdr">Confirmed On Site</div>
-        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
-      </div>
-      {% endif %}
       {% if acct.verify %}
       <div class="fld"><div class="ey">Also Confirm</div>
       <ul class="verify">{% for item in acct.verify %}<li>{{ item }}</li>{% endfor %}</ul></div>
@@ -389,14 +401,7 @@
       {% else %}
       {# Bullseye and Contender — EXECUTION FIRST. Who to call + the number are in
          the card header; here the rep gets the script before the context. #}
-      {% if acct.wedge %}<div class="fld hook-box"><div class="ey">The Hook</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
       {% if acct.landmine %}<div class="fld"><div class="ey">The Trap</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
-      {% if acct.confirmed_signals %}
-      <div class="sig-groups">
-        <div class="sig-grp-hdr">Confirmed On Site</div>
-        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
-      </div>
-      {% endif %}
       {% if acct.hours_of_operation %}
       <div class="fld">
         <details>
