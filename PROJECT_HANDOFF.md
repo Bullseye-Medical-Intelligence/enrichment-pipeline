@@ -29,7 +29,7 @@ Two repos (marketing site + this one); the enrichment pipeline + API share this 
 - **(a)** Removed the deprecated/unused demo React/Vite dashboard ("bemi" repo) from the root docs. The production operator UI is the server-rendered FastAPI UI in `pipeline-api/`.
 - **(b)** Consolidated the run-results page header into dropdown menus: **Reprocess ▾** (Re-crawl Blocked Sites, Preview Rescore, Apply Rescore, Re-extract Signals, Re-check Suppression, Re-run), **Export ▾** (Full CSV, Run Manifest), **Audit ▾** (Cartridge, Check Evidence Links), plus standalone Update Registry and ← All Runs. New bulk multi-select bottom bar: **Re-enrich (N)** | **Re-crawl with Browser (N)** | **Review All ▾** (Accept / Reject / Reset, opens upward) | **Clear**. New route `POST /dashboard/{run_id}/bulk-review` sets QC status on selected records — writes `reviews.json` only.
 - **(c)** New generic ICP signal flag **`required_for_contender`** (bool, default false): when the flagged signal is not confirmed "yes" and not inferred via reinforcement, the record is routed to Manual Review regardless of score — stricter than `required_for_bullseye`, which only caps the tier.
-- **(d)** Merged the two Femasys cartridges into one national **`obgyn-femasys-v11`** (10 signals): adopts the Michigan service-context prompt fixes; S-ICP-006 now matches "FemVue or FemaSeed"; cash-pay S-ICP-007 is a weight-20 `required_for_contender` must-have with elective service line S-ICP-008 as its reinforcing proxy; `target_geography` cleared (all states).
+- **(d)** Merged the two Femasys cartridges into one national **`obgyn-femasys-v11`** (9 signals): adopts the Michigan service-context prompt fixes; S-ICP-006 now matches "FemVue or FemaSeed"; cash-pay S-ICP-007 is a weight-20 `required_for_contender` must-have with elective service line S-ICP-008 as its reinforcing proxy; `target_geography` cleared (all states). The contraception signal (S-ICP-011) was later dropped as not a fertility-intent signal.
 - **(e)** Deleted concept clients (cartridges + seeds + tests): Michigan Femasys variant (`obgyn_femasys_mi`), Angel Aligner (`ortho_angel_v1`), Neurolief (`neurolief_prolivrx`), and Right at Home (`right_at_home_south_oc`). Ormco (`ormco-spark`) was kept.
 - **(f)** Dashboard fix: the "+N pts" badge now renders only for confirmed "yes" signals, not for inferred `not_found` signals.
 - **(g)** Brief publishing: Hostinger FTP-21 fallback enabled via `.env` (`HOSTINGER_ALLOW_FTP_FALLBACK=1`) — config only.
@@ -95,7 +95,7 @@ Angel Aligner (`ortho_angel_v1`), Neurolief (`neurolief_prolivrx`), and Right at
 ### Femasys Context
 FemaSeed: ITI via balloon catheter, ~24% pregnancy rate vs ~7% IUI. Target: OB/GYN practices doing IUI. FemVue (fallopian tube assessment via ultrasound) is another Femasys product — practices that have it are warm leads.
 
-ICP v11: 10 signals (`obgyn-femasys-v11`). This is a national merge — the former
+ICP v11: 9 signals (`obgyn-femasys-v11`). This is a national merge — the former
 national cartridge and the Michigan variant were combined into one, adopting the
 Michigan service-context prompt fixes (a named service, a dedicated service/fertility
 page, a "we treat/offer" statement, or a provider specialty now count, not only

@@ -194,8 +194,6 @@ class TestFemasysV11PhraseBinding:
                       "saline sonohysterogram", "sonohysterogram", "hysterosonography"],
         # S-ICP-006 v11: FemVue OR FemaSeed.
         "S-ICP-006": ["FemVue", "FemaSeed"],
-        "S-ICP-011": ["IUD insertion", "IUD placement", "Nexplanon insertion",
-                      "long-acting reversible contraception", "LARC"],
     }
 
     def test_fit_prompts_contain_their_anchors(self):
@@ -271,26 +269,18 @@ class TestFemasysV11Structure:
         for brand in ("Botox", "semaglutide", "labiaplasty", "med spa", "Emsella"):
             assert brand in prompt, f"S-ICP-008 prompt missing brand: {brand!r}"
 
-    def test_contraceptive_procedure_signal_exists(self):
-        """S-ICP-011 contraceptive procedure signal is present and not an excluder."""
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert "S-ICP-011" in by_id, "S-ICP-011 (contraceptive_procedure) must exist"
-        sig = by_id["S-ICP-011"]
-        assert sig["positive_weight"] > 0, "S-ICP-011 must carry positive fit weight"
-        assert not sig.get("exclude_if_yes"), "S-ICP-011 must NOT be an exclusion signal"
-        assert not sig.get("required_for_bullseye"), "S-ICP-011 must NOT gate Bullseye"
-
     def test_s_icp_010_not_in_cartridge(self):
         """S-ICP-010 is reserved for in-house ultrasound (pending clinical confirmation)."""
         ids = {s["signal_id"] for s in _load_signals()}
         assert "S-ICP-010" not in ids, "S-ICP-010 must not be added until clinical confirmation"
 
-    def test_signal_id_set_is_the_national_ten(self):
-        """v11 keeps the national 10-signal structure and IDs (no Michigan S-MI-* IDs)."""
+    def test_signal_id_set_is_the_national_nine(self):
+        """v11 keeps the national signal IDs (no Michigan S-MI-* IDs); the
+        contraception signal S-ICP-011 was removed, leaving nine."""
         ids = {s["signal_id"] for s in _load_signals()}
         assert ids == {
             "S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-004", "S-ICP-005",
-            "S-ICP-006", "S-ICP-007", "S-ICP-008", "S-ICP-009", "S-ICP-011",
+            "S-ICP-006", "S-ICP-007", "S-ICP-008", "S-ICP-009",
         }
 
     def test_cash_pay_is_the_only_required_for_contender(self):

@@ -84,13 +84,6 @@
       "positive_weight": 0,
       "exclude_if_yes": true,
       "note": "Exclusion. A confirmed yes means a specialized fertility center that routes patients to in-house ART and male-factor pathways, not the office-based OBGYN profile FemaSeed upgrades. The NPI taxonomy structural gate (rei_on_staff) pre-filters most of these before crawl; this signal catches any that reach the LLM pass. v11: adopts the Michigan S-MI-007 refer-vs-offer guard (community OBGYNs who merely refer out for IVF are not excluded) and the expanded ART term list (egg/sperm/embryo freezing, cryopreservation, donor eggs, gestational carrier, surrogacy)."
-    },
-    {
-      "signal_id": "S-ICP-011",
-      "signal_label": "In-office contraceptive device procedures",
-      "prompt_instruction": "Does this practice perform in-office contraceptive DEVICE procedures (insertion/removal)? Answer yes ONLY when one of these appears verbatim as an offered procedure: 'IUD insertion', 'IUD placement', 'IUD removal', 'Mirena insertion', 'Kyleena insertion', 'Liletta insertion', 'Paragard insertion', 'Nexplanon insertion', 'Nexplanon removal', 'contraceptive implant insertion', 'birth control implant', 'long-acting reversible contraception', or 'LARC'. Do NOT match the bare words 'IUD', 'birth control', or 'contraception' on their own — the full procedure phrase must be present. GUARD: 'We prescribe birth control' is not_found (oral / no device procedure). 'IUD' in a blog explaining contraceptive options is not_found. Must appear as a listed procedure or service offering. SERVICE-CONTEXT RULE: services page, procedures list, or treatment menu only. Evidence: quote the surrounding sentence and cite the page URL.",
-      "positive_weight": 10,
-      "note": "Readiness signal. Confirms in-office device insertion/removal workflow — the same hands-on procedural capability FemaSeed requires. Do NOT treat as a standalone qualifier for Bullseye; warm fit indicator only. v11: adopts the Michigan S-MI-006 service-context rule and guards ('we prescribe birth control' / educational IUD mentions excluded). Signal ID S-ICP-010 is reserved for in-house ultrasound (pending clinical confirmation)."
     }
   ]
 }
