@@ -59,6 +59,13 @@ class Account:
     suppress_reason: Optional[str] = None
     revisit_if: Optional[str] = None
 
+    # Derived presentation fields (populated by sales_export._record_to_account)
+    hook: Optional[str] = None                         # 1-sentence collapsed-card hook
+    motion: Optional[str] = None                       # "EXPAND" or "NEW LOGO"
+    validate_sublabel: Optional[str] = None            # "Ready" or "Discovery" (Contender only)
+    verification_step: Optional[str] = None            # concrete action text (NV only)
+    not_found_signals: list[str] = field(default_factory=list)  # positive-weight not_found labels
+
 
 
 @dataclass

@@ -109,8 +109,9 @@ _jinja_env = _make_jinja_env()
 
 
 def _sorted_accounts(accounts: list[Account]) -> list[Account]:
-    """Sort by confidence HIGH > MEDIUM > LOW, then by internal_score descending."""
+    """Sort by validate_sublabel (Ready before Discovery), then confidence, then score."""
     return sorted(accounts, key=lambda a: (
+        1 if a.validate_sublabel == "Discovery" else 0,
         _CONFIDENCE_ORDER[a.confidence],
         -(a.internal_score or 0),
     ))
@@ -155,6 +156,11 @@ def _prepare_account(acct: Account, qc_reviewer: str, client_facing: bool) -> di
         "suppress_reason": acct.suppress_reason,
         "revisit_if": acct.revisit_if,
         "qc_reviewer": qc_reviewer,
+        "hook": acct.hook,
+        "motion": acct.motion,
+        "validate_sublabel": acct.validate_sublabel,
+        "verification_step": acct.verification_step,
+        "not_found_signals": acct.not_found_signals,
     }
     if not client_facing:
         result["internal_score"] = acct.internal_score

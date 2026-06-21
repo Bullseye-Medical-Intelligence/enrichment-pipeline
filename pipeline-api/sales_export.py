@@ -422,6 +422,12 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
     # cap_reason only surfaced for Contender — for Bullseye (including overrides) omit it.
     cap_reason = (rec.get("tier_cap_reason") or "").strip() if tier_str == "Contender" else ""
 
+    motion = _derive_motion(signals)
+    hook = _derive_hook(brief, sales_angles)
+    validate_sublabel = _derive_validate_sublabel(confirmed_signals) if tier_str == "Contender" else None
+    verification_step = _derive_verification_step(signals) if tier_str == "Needs Verification" else None
+    not_found_sigs = _derive_not_found_signals(signals)
+
     return Account(
         name=rec.get("practice_name") or rec.get("name") or "Unknown Practice",
         city=_format_city(rec),
@@ -457,6 +463,11 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
         ) or None,
         suppress_reason=None,
         revisit_if=None,
+        hook=hook,
+        motion=motion,
+        validate_sublabel=validate_sublabel,
+        verification_step=verification_step,
+        not_found_signals=not_found_sigs,
     )
 
 
@@ -521,6 +532,55 @@ def _build_landmine(brief: dict) -> str | None:
     if objection:
         parts.append(f"Likely objection: {objection}")
     return "  ·  ".join(parts) if parts else None
+
+
+def _derive_hook(brief: dict, sales_angles: list[str]) -> str | None:
+    """Short hook for the collapsed card: first sales angle, else opening_line."""
+    if sales_angles:
+        return sales_angles[0]
+    return (brief.get("opening_line") or "").strip() or None
+
+
+def _derive_motion(signals: list[dict]) -> str:
+    """EXPAND when any floor_tier signal is confirmed yes (warm/existing relationship)."""
+    for sig in signals:
+        if sig.get("floor_tier") and sig.get("signal_state") == "yes":
+            return "EXPAND"
+    return "NEW LOGO"
+
+
+def _derive_validate_sublabel(confirmed_signals: list[str]) -> str:
+    """Ready when at least one signal is confirmed; Discovery when none are."""
+    return "Ready" if confirmed_signals else "Discovery"
+
+
+def _derive_verification_step(signals: list[dict]) -> str | None:
+    """Concrete single-step action: name the first not_found positive-weight signal."""
+    for sig in signals:
+        if sig.get("signal_state") != "not_found":
+            continue
+        weight = sig.get("positive_weight", 0)
+        if isinstance(weight, bool):
+            weight = 0
+        label = sig.get("signal_label") or sig.get("label") or ""
+        if label and isinstance(weight, (int, float)) and weight > 0:
+            return f"Confirm: {_humanize_label(label)}"
+    return None
+
+
+def _derive_not_found_signals(signals: list[dict]) -> list[str]:
+    """Humanized labels of desirable (positive_weight > 0) signals that are not_found."""
+    result = []
+    for sig in signals:
+        if sig.get("signal_state") != "not_found":
+            continue
+        weight = sig.get("positive_weight", 0)
+        if isinstance(weight, bool):
+            weight = 0
+        label = sig.get("signal_label") or sig.get("label") or ""
+        if label and isinstance(weight, (int, float)) and weight > 0:
+            result.append(_humanize_label(label))
+    return result
 
 
 def _coerce_list(value) -> list[str]:

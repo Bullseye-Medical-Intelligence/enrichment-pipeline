@@ -5,30 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" href="{{ favicon_data_uri }}" type="image/svg+xml">
-<title>Sales Handoff &mdash; {{ run.product_name }} &middot; {{ run.client_name }}</title>
+<title>Sales Handoff: {{ run.product_name }} / {{ run.client_name }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
 <style>
   :root{--ink:#0a0a0a;--acc:#c84b2f;--warm:#f7f6f4;--card:#141312;
     --line:rgba(247,246,244,0.12);--line2:rgba(247,246,244,0.22);
     --txt:#d9d6d2;--mut:rgba(247,246,244,0.5);--lbl:rgba(247,246,244,0.4);--ok:#5fa978;}
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--ink);color:var(--warm);font-family:'Inter','DM Sans',sans-serif;
+  body{background:var(--ink);color:var(--warm);font-family:'DM Sans',sans-serif;
     font-size:14px;line-height:1.5;padding:40px 28px 92px;max-width:1080px;margin:0 auto;
     -webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
+  /* run header */
   .rhead{display:flex;justify-content:space-between;align-items:flex-start;
     padding-bottom:26px;border-bottom:1px solid var(--line);margin-bottom:22px;}
   .brand{display:flex;align-items:center;gap:12px;}
   .logomark{flex:0 0 auto;display:block;}
   .lockup{display:flex;flex-direction:column;line-height:1.1;}
-  .bname{font-family:'Inter','DM Sans',sans-serif;font-size:16px;font-weight:600;
-    letter-spacing:-0.005em;color:#f7f6f4;}
-  .bdesc{font-family:'Inter','DM Sans',sans-serif;font-size:9px;font-weight:600;
-    letter-spacing:0.18em;text-transform:uppercase;color:rgba(247,246,244,0.4);margin-top:4px;}
+  .bname{font-size:16px;font-weight:600;letter-spacing:-0.005em;color:#f7f6f4;}
+  .bdesc{font-size:9px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
+    color:rgba(247,246,244,0.4);margin-top:4px;}
   .rmeta{text-align:right;}
-  .rtitle{font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--acc);}
+  .rtitle{font-family:'Instrument Serif',serif;font-size:19px;font-weight:400;color:var(--warm);}
   .rsub{font-size:12px;color:var(--mut);margin-top:3px;}
   .ibadge{display:inline-block;margin-top:7px;padding:3px 9px;background:rgba(200,75,47,0.14);
     border:1px solid rgba(200,75,47,0.32);border-radius:100px;font-size:9px;font-weight:600;
@@ -36,96 +36,161 @@
   .confstamp{margin-top:10px;font-size:10.5px;line-height:1.55;color:rgba(247,246,244,0.4);}
   .confstamp b{color:rgba(247,246,244,0.62);font-weight:600;}
 
+  /* summary bar */
   .summary{display:flex;flex-wrap:wrap;gap:30px;margin-bottom:16px;padding:17px 22px;
     background:rgba(247,246,244,0.04);border:1px solid var(--line);border-radius:8px;}
   .sit{display:flex;flex-direction:column;gap:2px;}
   .slab{font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--lbl);}
   .sval{font-size:15px;font-weight:500;}.sval.acc{color:var(--acc);}
 
+  /* how-to */
   .howto{border:1px solid var(--line);border-left:2px solid var(--acc);border-radius:0 8px 8px 0;
     padding:15px 20px;margin-bottom:14px;font-size:12.5px;line-height:1.65;color:#c2bfbb;}
   .howto b{color:#f2efeb;font-weight:600;}
   .howto .row{margin-bottom:4px;}
+
+  /* pattern insight */
   .pattern{background:rgba(247,246,244,0.04);border:1px solid var(--line);border-radius:8px;
     padding:15px 20px;margin-bottom:22px;}
-  .pattern .pat-body{font-family:'Inter','DM Sans',sans-serif;font-style:normal;font-size:14px;
-    line-height:1.55;color:#e8e5e1;}
+  .pattern .pat-body{font-size:14px;line-height:1.55;color:#e8e5e1;}
   .pattern .pat-body b{font-weight:700;color:#fff;}
 
+  /* filter chips */
   .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
   .chip{font-size:11px;font-weight:600;border:1px solid var(--line2);background:transparent;
     color:var(--mut);border-radius:100px;padding:7px 13px;cursor:pointer;
     touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.15);}
   .chip.on{background:var(--warm);color:var(--ink);border-color:var(--warm);}
-  .expandall{margin-left:auto;font-size:11px;color:var(--mut);background:none;border:none;cursor:pointer;text-decoration:underline;touch-action:manipulation;}
+  .expandall{margin-left:auto;font-size:11px;color:var(--mut);background:none;border:none;
+    cursor:pointer;text-decoration:underline;touch-action:manipulation;}
 
+  /* tier section */
   .tsection{margin-bottom:14px;}
-  .tshead{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--line);margin-bottom:10px;}
+  .tshead{display:flex;align-items:center;gap:11px;padding:11px 4px;
+    border-bottom:1px solid var(--line);margin-bottom:10px;}
   .tdot{width:9px;height:9px;border-radius:50%;}
-  .tdot.b{background:var(--acc);}.tdot.c{background:var(--warm);}.tdot.v{background:#6b7fcb;}.tdot.m{background:#7a6b4a;}.tdot.e{background:var(--lbl);}
-  .tsname{font-family:'Inter','DM Sans',sans-serif;font-size:18px;font-weight:700;letter-spacing:-0.01em;}
+  .tdot.b{background:var(--acc);}.tdot.c{background:var(--warm);}
+  .tdot.v{background:#6b7fcb;}.tdot.m{background:#7a6b4a;}.tdot.e{background:var(--lbl);}
+  .tsname{font-family:'Instrument Serif',serif;font-size:20px;font-weight:400;letter-spacing:-0.01em;}
   .tscount{font-size:12px;color:var(--mut);}
+  .sect-note{font-size:11.5px;color:var(--mut);font-style:italic;margin-bottom:10px;padding-left:4px;}
 
-  .acct{border:1px solid var(--line);border-radius:10px;margin-bottom:9px;overflow:hidden;background:var(--card);}
+  /* account cards */
+  .acct{border:1px solid var(--line);border-radius:10px;margin-bottom:9px;
+    overflow:hidden;background:var(--card);}
   .acct.flagged{border-color:rgba(200,75,47,0.4);}
-  .ahead{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:center;padding:16px 20px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.08);}
-  .ahead *{touch-action:manipulation;}
   .acct.open{border-color:rgba(200,75,47,0.3);}
-  .aname{font-weight:700;font-size:16.5px;letter-spacing:-0.01em;}
+
+  /* collapsed card header: 2-col layout */
+  .ahead{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
+    padding:16px 20px;cursor:pointer;touch-action:manipulation;
+    -webkit-tap-highlight-color:rgba(200,75,47,0.08);}
+  .ahead *{touch-action:manipulation;}
+
+  /* name row: name + motion tag */
+  .aname-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;}
+  .aname{font-family:'Instrument Serif',serif;font-weight:400;font-size:17px;letter-spacing:-0.01em;}
+  .motion{display:inline-flex;align-items:center;padding:2px 8px;border-radius:100px;
+    font-size:8.5px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+    vertical-align:middle;white-space:nowrap;line-height:1;}
+  .motion.expand{background:rgba(200,75,47,0.14);border:1px solid rgba(200,75,47,0.32);color:var(--acc);}
+  .motion.new{background:transparent;border:1px solid var(--line);color:var(--lbl);}
+
   .ameta{font-size:11.5px;color:var(--mut);margin-top:3px;}
+  .ahook{font-size:12.5px;color:var(--txt);margin-top:6px;line-height:1.45;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .flag{display:inline-block;margin-top:6px;font-size:10px;font-weight:600;color:var(--acc);
     border:1px solid rgba(200,75,47,0.4);border-radius:100px;padding:2px 8px;}
-  .conf{display:flex;align-items:center;gap:8px;}
-  .seg{display:flex;gap:3px;}.seg span{width:14px;height:5px;border-radius:3px;background:var(--line2);}
-  .seg span.on{background:var(--warm);}
-  .conf-lbl{font-size:11px;font-weight:600;}
-  .tpill{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:100px;padding:5px 11px;}
+
+  /* right panel: pill + sublabel + conf + caret */
+  .ahead-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px;}
+  .pill-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .tpill{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    border-radius:100px;padding:5px 11px;}
   .tpill.b{background:var(--acc);color:#fff;}
   .tpill.c{border:1px solid var(--warm);color:var(--warm);}
   .tpill.v{border:1px solid #6b7fcb;color:#6b7fcb;}
   .tpill.m{border:1px solid #7a6b4a;color:#9e8d68;}
   .tpill.e{border:1px solid var(--line2);color:var(--lbl);}
+  .vsublabel{font-size:8.5px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;}
+  .vsublabel.ready{color:var(--ok);}
+  .vsublabel.discovery{color:var(--mut);}
+
+  .conf{display:flex;align-items:center;gap:8px;}
+  .seg{display:flex;gap:3px;}
+  .seg span{width:14px;height:5px;border-radius:3px;background:var(--line2);}
+  .seg span.on{background:var(--warm);}
+  .conf-lbl{font-size:11px;font-weight:600;}
   .caret{color:var(--mut);font-size:11px;transition:transform .15s;}
   .acct.open .caret{transform:rotate(90deg);}
 
+  /* expanded body */
   .body{display:none;padding:4px 26px 24px;}
   .acct.open .body{display:block;}
-
   .fld{margin-top:22px;}
-  .ey{font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(247,246,244,0.34);font-weight:600;margin-bottom:7px;}
-  .why{font-size:14px;line-height:1.5;color:#f2efeb;}
+  .ey{font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;
+    color:rgba(247,246,244,0.34);font-weight:600;margin-bottom:7px;}
   .whylist{list-style:none;padding:0;margin:0;}
   .whylist li{font-size:14px;line-height:1.55;color:#f2efeb;padding:5px 0 5px 20px;position:relative;}
   .whylist li::before{content:"→";position:absolute;left:0;color:var(--acc);font-size:11px;top:7px;}
-  .wedge{font-family:'Inter','DM Sans',sans-serif;font-style:normal;font-weight:600;font-size:15px;line-height:1.4;color:#f4f1ed;}
+
+  /* signal groups */
+  .sig-groups{margin-top:22px;}
+  .sig-grp-hdr{font-size:9px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;
+    color:rgba(247,246,244,0.25);margin-bottom:6px;}
+  .sig-grp-hdr.nf{margin-top:12px;}
+  .sigrow{display:flex;flex-wrap:wrap;gap:7px;}
+  .sigpill{font-size:11.5px;color:rgba(95,169,120,0.9);background:rgba(95,169,120,0.08);
+    border:1px solid rgba(95,169,120,0.2);border-radius:6px;padding:5px 11px;}
+  .sigpill-nf{font-size:11.5px;color:var(--mut);background:rgba(247,246,244,0.04);
+    border:1px solid var(--line);border-radius:6px;padding:5px 11px;}
+
+  /* verification step */
+  .vstep{font-size:13px;color:#f2efeb;font-weight:500;background:rgba(107,127,203,0.1);
+    border-left:2px solid #6b7fcb;padding:10px 14px;border-radius:0 6px 6px 0;margin-top:12px;}
+  .verify{list-style:none;padding:0;margin:0;}
+  .verify li{font-size:12.5px;color:var(--mut);padding:4px 0 4px 16px;position:relative;}
+  .verify li::before{content:"·";position:absolute;left:0;
+    color:rgba(247,246,244,0.28);font-size:14px;line-height:1.2;}
+
+  .wedge{font-weight:600;font-size:15px;line-height:1.4;color:#f4f1ed;}
   .landmine{font-size:13px;line-height:1.55;color:var(--txt);border-left:2px solid var(--acc);padding-left:12px;}
   .landmine b{color:#f2efeb;}
-  .sigrow{display:flex;flex-wrap:wrap;gap:7px;}
-  .sigpill{font-size:11.5px;color:rgba(95,169,120,0.9);background:rgba(95,169,120,0.08);border:1px solid rgba(95,169,120,0.2);border-radius:6px;padding:5px 11px;}
-  .verify{list-style:none;columns:2;column-gap:24px;}
-  .verify li{font-size:12px;color:var(--mut);padding:3px 0;break-inside:avoid;padding-left:14px;position:relative;}
-  .verify li::before{content:"·";position:absolute;left:0;color:rgba(247,246,244,0.28);font-size:14px;line-height:1.2;}
 
-  /* Excluded section — faded so reps don't accidentally engage */
+  /* excluded layout */
   .tsection[data-tier="e"] .acct{opacity:0.35;transition:opacity .2s;}
   .tsection[data-tier="e"] .acct:hover,.tsection[data-tier="e"] .acct.open{opacity:0.72;}
   .twocol{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
-  .qc{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--mut);}
-  .qc b{color:#cfccc8;}
-
-  /* excluded compact */
+  .exbadge{display:inline-block;margin-bottom:10px;padding:4px 12px;
+    background:rgba(247,246,244,0.08);border:1px solid rgba(247,246,244,0.22);
+    border-radius:100px;font-size:10px;font-weight:700;letter-spacing:0.1em;
+    text-transform:uppercase;color:rgba(247,246,244,0.6);}
+  .exexcerpt{font-size:12.5px;line-height:1.55;color:var(--txt);}
   .exgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:6px;}
   .exgrid .c{font-size:12px;}
-  .exgrid .l{font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--lbl);font-weight:600;margin-bottom:4px;}
+  .exgrid .l{font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;
+    color:var(--lbl);font-weight:600;margin-bottom:4px;}
   .exgrid .v{color:var(--txt);line-height:1.45;overflow-wrap:break-word;word-break:break-word;}
 
-  .foot{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,0.96);backdrop-filter:blur(8px);
-    border-top:1px solid var(--line);padding:11px 28px;font-size:11px;color:var(--mut);text-align:center;line-height:1.5;}
+  /* footer */
+  .foot{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,0.96);
+    backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:11px 28px;
+    font-size:11px;color:var(--mut);text-align:center;line-height:1.5;}
   .foot b{color:var(--acc);}
-  @media(max-width:820px){.twocol{grid-template-columns:1fr;}.verify{columns:1;}.exgrid{grid-template-columns:1fr 1fr;}.ahead{grid-template-columns:1fr auto;}.conf{display:none;}.rhead{flex-direction:column;gap:14px;}.rmeta{text-align:left;}body{padding:20px 16px 80px;}}
-  @media(max-width:480px){.exgrid{grid-template-columns:1fr;}.body{padding:4px 14px 20px;}.aname{font-size:14.5px;}}
-  .exbadge{display:inline-block;margin-bottom:10px;padding:4px 12px;background:rgba(247,246,244,0.08);border:1px solid rgba(247,246,244,0.22);border-radius:100px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(247,246,244,0.6);}
-  .exexcerpt{font-size:12.5px;line-height:1.55;color:var(--txt);}
+
+  @media(max-width:820px){
+    .twocol{grid-template-columns:1fr;}
+    .exgrid{grid-template-columns:1fr 1fr;}
+    .rhead{flex-direction:column;gap:14px;}
+    .rmeta{text-align:left;}
+    body{padding:20px 16px 80px;}
+    .conf{display:none;}
+  }
+  @media(max-width:480px){
+    .exgrid{grid-template-columns:1fr;}
+    .body{padding:4px 14px 20px;}
+    .aname{font-size:14.5px;}
+  }
 </style>
 </head>
 <body>
@@ -139,12 +204,12 @@
     </div>
   </div>
   <div class="rmeta">
-    <div class="rtitle">{{ run.product_name }} &middot; {{ run.client_name }}</div>
+    <div class="rtitle">{{ run.product_name }} / {{ run.client_name }}</div>
     <div class="rsub">{{ run_date }} &nbsp;&middot;&nbsp; {{ run.specialty_label }} &middot; {{ run.metro }}</div>
-    <div class="ibadge">Internal &mdash; Sales Team Use Only</div>
+    <div class="ibadge">Internal: Sales Team Use Only</div>
     <div class="confstamp">
-      Confidential &mdash; prepared for <b>{{ run.client_name }}</b> &middot; do not forward<br>
-      Intelligence current as of <b>{{ run_date }}</b> &middot; refresh on request &middot; expires <b>{{ expiry_date }}</b>
+      Confidential, prepared for <b>{{ run.client_name }}</b>. Do not forward.<br>
+      Intelligence current as of <b>{{ run_date }}</b> &middot; expires <b>{{ expiry_date }}</b>
     </div>
   </div>
 </div>
@@ -161,11 +226,11 @@
 
 <div class="howto">
   <div class="row"><b>How to work this list.</b> Five tiers, five jobs. Every practice screened is shown.</div>
-  <div class="row"><b>Call First</b> &mdash; high-fit, high-evidence. Work now.</div>
-  <div class="row"><b>Validate</b> &mdash; real potential. Qualify the authority or source gap before heavy effort.</div>
-  <div class="row"><b>Needs Verification</b> &mdash; strong indicators present; one signal gap to confirm before calling.</div>
-  <div class="row"><b>Insufficient Data</b> &mdash; site could not be crawled. A cold call or re-crawl can unlock these.</div>
-  <div class="row"><b>Suppress</b> &mdash; disqualified by ICP gate. Field-time protection.</div>
+  <div class="row"><b>Call First:</b> high-fit, high-evidence. Work now.</div>
+  <div class="row"><b>Validate:</b> real potential. Qualify the authority or source gap before heavy effort.</div>
+  <div class="row"><b>Needs Verification:</b> strong indicators present; one signal gap to confirm before calling.</div>
+  <div class="row"><b>Insufficient Data:</b> site could not be crawled. A cold call or re-crawl can unlock these.</div>
+  <div class="row"><b>Suppress:</b> disqualified by ICP gate. Field-time protection.</div>
 </div>
 
 {% if run.pattern_insight %}
@@ -188,53 +253,108 @@
     <span class="tsname">{{ section.tier_info.section }}</span>
     <span class="tscount">{{ section.accounts | length }} account{% if section.accounts | length != 1 %}s{% endif %} &middot; {{ section.tier_info.subcount }}</span>
   </div>
+  {% if section.tier == Tier.EXCLUDED %}
+  <p class="sect-note">Excluded accounts are not failures. They are field-time protection.</p>
+  {% endif %}
 
   {% for acct in section.accounts %}
   <div class="acct{% if acct.has_flags %} flagged{% endif %}">
+
+    {# collapsed card header #}
     <div class="ahead">
       <div>
-        <div class="aname">{{ acct.name }}</div>
+        <div class="aname-row">
+          <span class="aname">{{ acct.name }}</span>
+          {% if acct.motion and section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
+          <span class="motion {% if acct.motion == 'EXPAND' %}expand{% else %}new{% endif %}">{{ acct.motion }}</span>
+          {% endif %}
+        </div>
         <div class="ameta">{{ acct.city }} &middot;
           {% if acct.phone_digits %}<a href="tel:+1{{ acct.phone_digits }}" style="color:var(--mut);text-decoration:none;" onclick="event.stopPropagation()">{{ acct.phone }}</a>{% else %}{{ acct.phone }}{% endif %} &middot;
           {% if acct.website_url %}<a href="{{ acct.website_url }}" target="_blank" rel="noopener" style="color:var(--mut);text-decoration:none;" onclick="event.stopPropagation()">{{ acct.website }}</a>{% else %}{{ acct.website }}{% endif %}
         </div>
+        {% if acct.hook and section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
+        <div class="ahook">{{ acct.hook }}</div>
+        {% endif %}
         {% for flag in acct.flags %}<span class="flag">&#x2691; {{ flag }}</span>{% endfor %}
       </div>
-      <span class="tpill {{ acct.tier_info.dot }}">{{ acct.tier_info.pill }}</span>
-      <div class="conf">
-        <div class="seg">
-          <span{% if acct.conf_segments >= 1 %} class="on"{% endif %}></span>
-          <span{% if acct.conf_segments >= 2 %} class="on"{% endif %}></span>
-          <span{% if acct.conf_segments >= 3 %} class="on"{% endif %}></span>
+      <div class="ahead-right">
+        <div class="pill-wrap">
+          <span class="tpill {{ acct.tier_info.dot }}">{{ acct.tier_info.pill }}</span>
+          {% if acct.validate_sublabel %}
+          <span class="vsublabel {% if acct.validate_sublabel == 'Ready' %}ready{% else %}discovery{% endif %}">{{ acct.validate_sublabel }}</span>
+          {% endif %}
         </div>
-        <span class="conf-lbl">{{ acct.conf_label }}</span>
+        {% if section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
+        <div class="conf">
+          <div class="seg">
+            <span{% if acct.conf_segments >= 1 %} class="on"{% endif %}></span>
+            <span{% if acct.conf_segments >= 2 %} class="on"{% endif %}></span>
+            <span{% if acct.conf_segments >= 3 %} class="on"{% endif %}></span>
+          </div>
+          <span class="conf-lbl">{{ acct.conf_label }}</span>
+        </div>
+        {% endif %}
         <span class="caret">&#9654;</span>
       </div>
     </div>
+
+    {# expanded body #}
     <div class="body">
+
       {% if section.tier == Tier.EXCLUDED %}
       {% if acct.gate_fired %}<span class="exbadge">{{ acct.gate_fired }}</span>{% endif %}
       {% if acct.evidence %}<div class="exexcerpt">{{ acct.evidence }}</div>{% endif %}
       {% if acct.revisit_if %}<div style="margin-top:10px;"><div class="ey">Revisit if</div><div style="font-size:12px;color:var(--mut);">{{ acct.revisit_if }}</div></div>{% endif %}
-      <div class="qc">Excluded accounts are not failures. They are field-time protection. &nbsp;&middot;&nbsp; QC: <b>Reviewed by {{ acct.qc_reviewer }}</b></div>
+
       {% elif section.tier == Tier.MANUAL_REVIEW %}
       {% if acct.gate_fired %}<span class="exbadge">{{ acct.gate_fired }}</span>{% endif %}
       <div class="exexcerpt" style="color:var(--mut);">Website could not be crawled for signal analysis. A direct call or browser-assisted re-crawl can unlock this account.</div>
-      <div class="qc">ICP signals could not be extracted. Not disqualified — data gap only.</div>
+
       {% elif section.tier == Tier.NEEDS_VERIFICATION %}
       {% if acct.gate_fired %}<span class="exbadge" style="background:rgba(107,127,203,0.12);border-color:rgba(107,127,203,0.3);color:#6b7fcb;">{{ acct.gate_fired }}</span>{% endif %}
-      {% if acct.confirmed_signals %}
-      <div class="ey" style="margin-top:8px;">Confirmed Signals</div>
-      <div class="sigrow" style="margin-top:6px;">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
+      {% if acct.verification_step %}<div class="vstep">{{ acct.verification_step }}</div>{% endif %}
+      {% if acct.confirmed_signals or acct.not_found_signals %}
+      <div class="sig-groups">
+        {% if acct.confirmed_signals %}
+        <div class="sig-grp-hdr">Found</div>
+        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
+        {% endif %}
+        {% if acct.not_found_signals %}
+        <div class="sig-grp-hdr nf">Not Found</div>
+        <div class="sigrow">{% for sig in acct.not_found_signals %}<span class="sigpill-nf">{{ sig }}</span>{% endfor %}</div>
+        {% endif %}
+      </div>
       {% endif %}
       {% if acct.verify %}
-      <div class="ey" style="margin-top:14px;">Confirm Before Calling</div>
-      <ul class="verify" style="margin-top:6px;">{% for item in acct.verify %}<li>{{ item }}</li>{% endfor %}</ul>
+      <div class="fld"><div class="ey">Also Confirm</div>
+      <ul class="verify">{% for item in acct.verify %}<li>{{ item }}</li>{% endfor %}</ul></div>
       {% endif %}
       {% if acct.cap_reason %}<div style="margin-top:12px;font-size:12.5px;color:var(--mut);border-left:2px solid rgba(107,127,203,0.4);padding-left:10px;">{{ acct.cap_reason }}</div>{% endif %}
-      <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b></div>
+
       {% else %}
-      {% if acct.cap_reason %}<div class="fld"><div class="ey" style="color:rgba(247,246,244,0.5);">Why Validate &mdash; Not Call First</div><div style="font-size:13px;color:var(--txt);line-height:1.55;">{{ acct.cap_reason }}</div></div>{% endif %}
+      {# Bullseye and Contender #}
+      {% if acct.cap_reason %}
+      <div class="fld"><div class="ey">Why Validate, Not Call First</div><div style="font-size:13px;color:var(--txt);line-height:1.55;">{{ acct.cap_reason }}</div></div>
+      {% endif %}
+      {% if acct.why_it_matters %}
+      <div class="fld"><div class="ey">Why It Matters</div>
+      <ul class="whylist">{% for point in acct.why_it_matters %}<li>{{ point | bold_md }}</li>{% endfor %}</ul></div>
+      {% endif %}
+      {% if acct.confirmed_signals or acct.not_found_signals %}
+      <div class="sig-groups">
+        {% if acct.confirmed_signals %}
+        <div class="sig-grp-hdr">Found</div>
+        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
+        {% endif %}
+        {% if acct.not_found_signals %}
+        <div class="sig-grp-hdr nf">Not Found</div>
+        <div class="sigrow">{% for sig in acct.not_found_signals %}<span class="sigpill-nf">{{ sig }}</span>{% endfor %}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
+      {% if acct.landmine %}<div class="fld"><div class="ey">Watch Out For</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
       {% if acct.hours_of_operation %}
       <div class="fld">
         <details>
@@ -246,25 +366,8 @@
       </div>
       {% endif %}
       {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}
-      {% if acct.why_it_matters %}<div class="fld"><div class="ey">Why It Matters</div><ul class="whylist">{% for point in acct.why_it_matters %}<li>{{ point | bold_md }}</li>{% endfor %}</ul></div>{% endif %}
-      <div class="twocol">
-        <div class="fld">
-          <div class="ey">Confirmed Signals</div>
-          <div class="sigrow">
-            {% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% else %}<span style="color:var(--mut);font-size:12px;">None confirmed</span>{% endfor %}
-          </div>
-        </div>
-        <div class="fld">
-          <div class="ey">Verify</div>
-          <ul class="verify">
-            {% for item in acct.verify %}<li>{{ item }}</li>{% else %}<li style="list-style:none;color:var(--mut);">&mdash;</li>{% endfor %}
-          </ul>
-        </div>
-      </div>
-      {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
-      {% if acct.landmine %}<div class="fld"><div class="ey">Landmine</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
-      <div class="qc">QC: <b>Reviewed by {{ acct.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Evidence: <b>{{ acct.evidence_domain }}</b> &nbsp;&middot;&nbsp; Tier <b>{{ acct.tier_info.pill }}</b> / Confidence <b>{{ acct.conf_label }}</b></div>
       {% endif %}
+
     </div>
   </div>
   {% endfor %}
@@ -273,8 +376,8 @@
 
 
 <div class="foot">
-  Snapshot {{ run_date }} &middot; not live. &nbsp; Internal numeric scores <b>suppressed</b> in this build. &nbsp; <b>Built for field prioritization, not sales scripting.</b><br>
-  Confidential to {{ run.client_name }} &middot; do not forward &middot; expires {{ expiry_date }} &middot; &copy; Bullseye Medical Intelligence
+  Snapshot {{ run_date }} &middot; not live. &nbsp; <b>Built for field prioritization, not sales scripting.</b><br>
+  QC reviewed by <b>{{ run.qc_reviewer }}</b> &nbsp;&middot;&nbsp; Confidential to {{ run.client_name }} &middot; do not forward &middot; expires {{ expiry_date }} &middot; &copy; Bullseye Medical Intelligence
 </div>
 
 <script>
