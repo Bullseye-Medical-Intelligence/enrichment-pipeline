@@ -1,13 +1,13 @@
 {
-  "version": "obgyn-femasys-v9",
-  "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE BEFORE RUNNING>>",
+  "version": "obgyn-femasys-v10",
+  "version_note": "v10 — strengthened cash-pay and fertility phrase coverage June 2026",
   "signals": [
     {
       "signal_id": "S-ICP-001",
       "signal_label": "IUI offered",
-      "prompt_instruction": "Does this practice explicitly offer IUI as a service? Answer yes ONLY when the page contains the exact term 'IUI' or the full phrase 'intrauterine insemination'. Do NOT infer from generic words like 'fertility', 'consultation', 'treatment', or 'family planning' — the specific term must appear verbatim.",
+      "prompt_instruction": "Does this practice explicitly offer IUI as a service? Answer yes ONLY when one of these exact terms appears: 'IUI', 'intrauterine insemination', 'artificial insemination', or 'in-office insemination'. Do NOT infer from generic words like 'fertility', 'consultation', 'treatment', or 'family planning' — the specific term must appear verbatim. Do NOT answer yes when the term appears only in a blog post, health education article, or patient-education page explaining what IUI is; it must appear on a services page, procedures list, or physician bio.",
       "positive_weight": 25,
-      "note": "Core fit, heaviest fertility signal. Direct Femasys procedure match: an in-office IUI service line is the clearest signal a practice already does the office-based fertility work FemaSeed upgrades. Phrase-bound so it does not fire on generic fertility copy."
+      "note": "Core fit, heaviest fertility signal. Direct Femasys procedure match: an in-office IUI service line is the clearest signal a practice already does the office-based fertility work FemaSeed upgrades. Phrase-bound so it does not fire on generic fertility copy. v10: added 'artificial insemination' and 'in-office insemination' as accepted phrase variants; added editorial-context guard."
     },
     {
       "signal_id": "S-ICP-002",
@@ -18,17 +18,17 @@
     },
     {
       "signal_id": "S-ICP-003",
-      "signal_label": "Infertility evaluation / testing (incl. HSG)",
-      "prompt_instruction": "Does this practice offer infertility evaluation or testing? Answer yes ONLY when one of these exact phrases appears: 'infertility evaluation', 'infertility workup', 'infertility diagnosis', 'fertility testing', 'infertility testing', 'HSG', or 'hysterosalpingogram'. Do NOT match bare standalone words such as 'evaluation', 'testing', 'diagnosis', or 'consultation' — those false-positive on nearly every OBGYN site; the full fertility-bound phrase must be present.",
+      "signal_label": "Fertility services / infertility evaluation",
+      "prompt_instruction": "Does this practice offer fertility services, infertility evaluation, or manage infertility-related conditions? Answer yes ONLY when one of these exact phrases appears on a services page, procedures list, physician bio, or patient FAQ: 'infertility evaluation', 'infertility workup', 'infertility diagnosis', 'fertility testing', 'infertility testing', 'HSG', 'hysterosalpingogram', 'fertility care', 'fertility services', 'fertility management', 'infertility care', 'treats infertility', 'managing infertility', 'fertility evaluations', 'recurrent pregnancy loss', 'anovulation', 'PCOS treatment', 'polycystic ovary treatment', 'ovulation disorders', 'hormone imbalance treatment', or 'thyroid and fertility'. Do NOT answer yes when these phrases appear only in a blog post, health education article, press release, or patient review. Do NOT match bare standalone words such as 'evaluation', 'testing', 'diagnosis', 'treatment', or 'consultation' alone — the full fertility-bound phrase must be present.",
       "positive_weight": 18,
-      "note": "Moderate fit. Office-based infertility workup (HSG folds in here, not as a separate high-value flag) signals diagnostic fertility activity short of full ART. Strict phrase-binding keeps generic 'evaluation/testing' copy out."
+      "note": "Moderate fit. Covers the full range of in-office fertility service and infertility management language: from specific diagnostic tests (HSG, infertility evaluation) to broader fertility care offerings and condition management (PCOS, recurrent pregnancy loss, anovulation, ovulation disorders). v10: expanded from 7 to 21 phrases to capture plain-English fertility service terms absent from prior versions. Service-context requirement and strict phrase-binding keep generic editorial copy out."
     },
     {
       "signal_id": "S-ICP-004",
       "signal_label": "Infertility / fertility consultation",
-      "prompt_instruction": "Does this practice offer an infertility or fertility consultation? Answer yes ONLY when the exact phrase 'infertility consultation' or 'fertility consultation' appears. Do NOT match the bare word 'consultation' on its own.",
+      "prompt_instruction": "Does this practice offer an infertility or fertility consultation or counseling service? Answer yes ONLY when one of these exact phrases appears: 'infertility consultation', 'fertility consultation', 'infertility counseling', or 'fertility consultations'. Do NOT match the bare words 'consultation' or 'counseling' on their own.",
       "positive_weight": 6,
-      "note": "Weak fit. A named fertility consultation line shows fertility intent but is the lowest-commitment fertility signal, so it carries the smallest fit weight. Phrase-bound to exclude generic 'consultation' offers."
+      "note": "Weak fit. A named fertility consultation or counseling offering shows fertility intent but is the lowest-commitment fertility signal, so it carries the smallest fit weight. Phrase-bound to exclude generic consultation/counseling language. v10: added 'infertility counseling' and 'fertility consultations' as accepted phrase variants."
     },
     {
       "signal_id": "S-ICP-005",
@@ -48,17 +48,17 @@
     {
       "signal_id": "S-ICP-007",
       "signal_label": "Cash-pay / patient financing visible",
-      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these is present: 'CareCredit', 'FSA', 'HSA', 'patient financing', published self-pay or package pricing for fertility or related services, the phrase 'out-of-network', a statement that a service is not covered by insurance, or offering superbills/invoices for reimbursement. Answer yes only when such language is explicitly present on the site.",
+      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these is explicitly present on the site: 'CareCredit', 'Ally Lending', 'Alphaeon', 'Cherry financing', 'Prosper Healthcare', 'PatientFi', 'GreenSky', 'FSA', 'HSA', 'FSA accepted', 'FSA eligible', 'HSA accepted', 'HSA eligible', 'flexible spending', 'health savings account', 'patient financing', 'cash pay', 'cash-pay', 'cash accepted', 'cash patients welcome', 'cash patients', 'self-pay', 'self pay', 'self-pay patients', 'no insurance required', 'insurance not required', 'patients without insurance', 'uninsured patients', 'financing available', 'payment plans available', 'payment plan', 'interest-free financing', '0% financing', 'monthly payment', 'flexible payment', 'affordable payment', 'we offer financing', 'financing options', published self-pay or package pricing for fertility or related services, the phrase 'out-of-network', a statement that a service is not covered by insurance, or offering superbills/invoices for reimbursement. Answer not_found when: (a) the site states only 'We accept most insurance plans' with no cash-pay or financing language present; (b) the site states only 'Call for pricing' with no other financing evidence. Answer yes only when such language is explicitly present as a stated offering or policy.",
       "positive_weight": 16,
-      "note": "Readiness target. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. Reinforced by the elective-aesthetic signal (S-ICP-008) when explicit cash-pay language is absent but elective cash-pay services are present."
+      "note": "Readiness target. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. v10: expanded to include plain-English cash-pay terms (self-pay, cash patients, cash pay) and additional branded financing partners (Ally Lending, Alphaeon, Cherry financing, Prosper Healthcare, PatientFi, GreenSky); added FSA/HSA phrase variants and explicit false-positive guards for generic insurance-acceptance language. Reinforced by the elective-aesthetic signal (S-ICP-008) when explicit cash-pay language is absent but elective cash-pay services are present."
     },
     {
       "signal_id": "S-ICP-008",
       "signal_label": "Elective / aesthetic cash-pay service line",
-      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Answer yes when one or more of these is explicitly named: a med spa / MedSpa / aesthetic center; aesthetics or esthetics; vaginal rejuvenation or energy-based intimate devices (for example Votiva, ThermiVa, MonaLisa Touch, FemiLift, diVa, Emsella); aesthetic gynecology or cosmetic genital surgery (labiaplasty, vaginoplasty, labial reduction); injectable aesthetics (Botox, Dysport, dermal fillers); body contouring (CoolSculpting, Emsculpt, truSculpt); energy-based skin devices or laser hair removal; IV therapy or IV drip; or weight-loss injectables (GLP-1, semaglutide, tirzepatide). Answer yes only when one or more such services are explicitly named on the site.",
+      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically elective, non-covered, or patient-pay in routine commercial practice? Answer yes when one or more of these is explicitly named: a med spa / MedSpa / aesthetic center; aesthetics or esthetics; vaginal rejuvenation or energy-based intimate devices (for example Votiva, ThermiVa, MonaLisa Touch, FemiLift, diVa, Emsella); aesthetic gynecology or cosmetic genital surgery (labiaplasty, vaginoplasty, labial reduction); injectable aesthetics (Botox, Dysport, dermal fillers); body contouring (CoolSculpting, Emsculpt, truSculpt); energy-based skin devices or laser hair removal; IV therapy, IV drip, IV infusion, or vitamin infusion; weight-loss injectables (GLP-1, semaglutide, tirzepatide); medical weight loss, weight loss program, or weight management program; wellness program; or Cerene. Answer yes only when one or more such services are explicitly named on the site.",
       "positive_weight": 0,
       "reinforces": "S-ICP-007",
-      "note": "Readiness reinforcer. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-ICP-007), never independently inflating fit."
+      "note": "Readiness reinforcer. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-ICP-007), never independently inflating fit. v10: added IV infusion, vitamin infusion, wellness program, Cerene, and medical weight loss programs."
     },
     {
       "signal_id": "S-ICP-009",
@@ -67,6 +67,13 @@
       "positive_weight": 0,
       "exclude_if_yes": true,
       "note": "Exclusion. A confirmed yes means a specialized fertility center that routes patients to in-house ART and male-factor pathways, not the office-based OBGYN profile FemaSeed upgrades. The NPI taxonomy structural gate (rei_on_staff) pre-filters most of these before crawl; this signal catches any that reach the LLM pass."
+    },
+    {
+      "signal_id": "S-ICP-011",
+      "signal_label": "In-office contraceptive device procedures",
+      "prompt_instruction": "Does this practice offer in-office contraceptive device insertion or removal procedures? Answer yes ONLY when one of these exact phrases appears as a listed or offered service on a services page, procedures list, physician bio, or patient FAQ: 'IUD insertion', 'IUD placement', 'IUD removal', 'Mirena insertion', 'Kyleena insertion', 'Liletta insertion', 'Paragard insertion', 'Nexplanon insertion', 'Nexplanon removal', 'contraceptive implant insertion', 'birth control implant', 'long-acting reversible contraception', or 'LARC'. Do NOT answer yes when: (a) the phrase appears only in a blog post, health education article, press release, or patient review explaining contraceptive options; (b) the practice states only that it prescribes birth control pills or oral contraceptives without listing a device procedure; (c) 'IUD' appears only in educational context without being listed as a performed service. Evidence quote must include surrounding sentence confirming service context.",
+      "positive_weight": 10,
+      "note": "Readiness signal. Confirms in-office device insertion workflow — the same hands-on procedural capability FemaSeed requires. Do NOT treat as a standalone qualifier for Bullseye; warm fit indicator only. Signal ID S-ICP-010 is reserved for in-house ultrasound (pending clinical confirmation)."
     }
   ]
 }

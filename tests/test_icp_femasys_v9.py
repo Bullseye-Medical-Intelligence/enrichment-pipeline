@@ -1,19 +1,21 @@
 """
 test_icp_femasys_v9.py
 
-Regression tests that encode the client-confirmed Femasys (FemaSeed) ICP v9
-intent. They drive the SHIPPED cartridge (config/clients/obgyn_femasys/
+Regression tests that encode the client-confirmed Femasys (FemaSeed) ICP
+intent (now v10). They drive the SHIPPED cartridge (config/clients/obgyn_femasys/
 icp_checklist.json) through simulate() — the same function the API and the
 pipeline use, composing reinforcement + scoring + tiering + exclusion — so the
 tests guard the real config, not a synthetic fixture.
 
-Design intent under test (v9):
+Design intent under test (v10):
   - Fit is soft: nothing is required_for_bullseye; any fertility activity scores.
   - Readiness (cash-pay / elective) reinforces but can never qualify a record
     on its own.
   - Exclusions are load-bearing: IVF/REI fertility centers are dropped.
   - FemVue (the warm-lead signal) floors a confirmed practice at Contender.
   - Fit signals are phrase-bound so generic OBGYN copy does not false-positive.
+  - v10 additions: expanded fertility service phrases (S-ICP-003), expanded
+    cash-pay terms (S-ICP-007), new contraceptive procedure signal (S-ICP-011).
 
 These are deterministic — no API calls, no HTTP.
 """
@@ -55,12 +57,12 @@ def _run(yes_ids, confidence="high") -> dict:
 
 
 class TestFemasysV9Intent:
-    """End-to-end tier outcomes for the shipped Femasys v9 cartridge."""
+    """End-to-end tier outcomes for the shipped Femasys cartridge (v10)."""
 
-    def test_version_is_v9(self):
-        """The shipped cartridge is the client-confirmed v9 revision."""
+    def test_version_is_v10(self):
+        """The shipped cartridge is the v10 revision (cash-pay + fertility expansion)."""
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
-        assert data["version"] == "obgyn-femasys-v9"
+        assert data["version"] == "obgyn-femasys-v10"
 
     def test_readiness_alone_cannot_qualify(self):
         """Elective + financing with NO fertility signal stays out of the call queue.
@@ -115,13 +117,6 @@ class TestFemasysV9Intent:
         result = _run(list(_FIT_SIGNAL_IDS) + ["S-ICP-007"])
         assert result["tier"] == "Bullseye"
 
-    def test_nothing_is_required_for_bullseye(self):
-        """v9 dropped every hard fit gate: no signal is required_for_bullseye."""
-        assert all(
-            not s.get("required_for_bullseye", False) for s in _load_signals()
-        )
-
-
 class TestFemasysV9PhraseBinding:
     """Fit-signal prompts must be phrase-bound (runtime binding is LLM-enforced).
 
@@ -132,12 +127,22 @@ class TestFemasysV9PhraseBinding:
     """
 
     REQUIRED_ANCHORS = {
-        "S-ICP-001": ["IUI", "intrauterine insemination"],
+        # S-ICP-001 v10: added artificial insemination / in-office insemination
+        "S-ICP-001": ["IUI", "intrauterine insemination",
+                      "artificial insemination", "in-office insemination"],
         "S-ICP-002": ["medicated cycle", "ovulation induction"],
-        "S-ICP-003": ["infertility evaluation", "hysterosalpingogram", "HSG"],
-        "S-ICP-004": ["infertility consultation", "fertility consultation"],
+        # S-ICP-003 v10: expanded to full fertility service / condition language
+        "S-ICP-003": ["infertility evaluation", "hysterosalpingogram", "HSG",
+                      "fertility care", "fertility services", "PCOS treatment",
+                      "recurrent pregnancy loss", "anovulation"],
+        # S-ICP-004 v10: added infertility counseling / fertility consultations
+        "S-ICP-004": ["infertility consultation", "fertility consultation",
+                      "infertility counseling", "fertility consultations"],
         "S-ICP-005": ["follicle monitoring", "cycle monitoring"],
         "S-ICP-006": ["FemVue"],
+        # S-ICP-011 v10: new contraceptive device procedure signal
+        "S-ICP-011": ["IUD insertion", "IUD placement", "Nexplanon insertion",
+                      "long-acting reversible contraception", "LARC"],
     }
 
     def test_fit_prompts_contain_their_anchors(self):
@@ -157,7 +162,7 @@ class TestFemasysV9PhraseBinding:
 
 
 class TestFemasysV9Structure:
-    """Structural invariants of the v9 cartridge that downstream logic relies on."""
+    """Structural invariants of the cartridge that downstream logic relies on."""
 
     def test_ivf_rei_is_the_only_exclude_if_yes(self):
         """The IVF/REI signal is the sole exclude_if_yes route to Excluded."""
@@ -173,3 +178,30 @@ class TestFemasysV9Structure:
         by_id = {s["signal_id"]: s for s in _load_signals()}
         assert by_id["S-ICP-008"].get("reinforces") == "S-ICP-007"
         assert by_id["S-ICP-008"]["positive_weight"] == 0
+
+    def test_contraceptive_procedure_signal_exists(self):
+        """v10: S-ICP-011 contraceptive procedure signal is present and not an excluder."""
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert "S-ICP-011" in by_id, "S-ICP-011 (contraceptive_procedure) must exist"
+        sig = by_id["S-ICP-011"]
+        assert sig["positive_weight"] > 0, "S-ICP-011 must carry positive fit weight"
+        assert not sig.get("exclude_if_yes"), "S-ICP-011 must NOT be an exclusion signal"
+        assert not sig.get("required_for_bullseye"), "S-ICP-011 must NOT gate Bullseye"
+
+    def test_s_icp_010_not_in_cartridge(self):
+        """S-ICP-010 is reserved for in-house ultrasound (pending clinical confirmation)."""
+        ids = {s["signal_id"] for s in _load_signals()}
+        assert "S-ICP-010" not in ids, "S-ICP-010 must not be added until clinical confirmation"
+
+    def test_nothing_is_required_for_bullseye(self):
+        """v10 retains soft-gate design: no signal is required_for_bullseye."""
+        assert all(
+            not s.get("required_for_bullseye", False) for s in _load_signals()
+        )
+
+    def test_cash_pay_signal_contains_plain_english_terms(self):
+        """v10: S-ICP-007 must contain plain-English self-pay language."""
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        prompt = by_id["S-ICP-007"]["prompt_instruction"]
+        for phrase in ("self-pay", "cash pay", "financing available", "payment plan"):
+            assert phrase in prompt, f"S-ICP-007 prompt missing plain-English phrase: {phrase!r}"
