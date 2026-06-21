@@ -44,7 +44,7 @@ import validator
 from fastapi.concurrency import run_in_threadpool
 from crawl_compressor import compress_crawl
 from narrative_generator import generate_narrative, generate_hypothesis
-from schema import ReviewEdit
+from schema import ReviewEdit, SignalOverride
 from signal_generator import generate_signals
 
 logger = logging.getLogger(__name__)
@@ -3045,6 +3045,71 @@ async def add_sales_angle(
 
     logger.info("Operator %s added sales angle to %s/%s", username, run_id, record_id)
     return JSONResponse(content={"ok": True, "extra_sales_angles": existing_angles})
+
+
+def _find_record_in_run(run_directory: Path, record_id: str) -> dict | None:
+    """Return the raw enriched record with the given id, or None if absent.
+
+    Reads enriched_targets.json read-only; never mutates it.
+    """
+    results_path = run_directory / "enriched_targets.json"
+    if not results_path.exists():
+        return None
+    try:
+        with open(results_path, "r", encoding="utf-8") as f:
+            records = record_adapter.normalize_records_payload(json.load(f))
+    except (json.JSONDecodeError, OSError):
+        return None
+    for record in records:
+        if record_adapter.get_record_id(record) == record_id:
+            return record
+    return None
+
+
+@router.post("/api/ui/reviews/{run_id}/{record_id}/signal-override")
+async def save_signal_override(
+    run_id: str,
+    record_id: str,
+    override: SignalOverride,
+    username: str = Depends(auth.require_session),
+):
+    """Save an operator override of one signal's state for a single record.
+
+    The override lives only in the reviews.json overlay; enriched_targets.json is
+    never written and no score or tier is recomputed. override_by is taken from
+    the authenticated session, never from the request body.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    record = _find_record_in_run(run_directory, record_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Record '{record_id}' not found in run '{run_id}'",
+        )
+
+    signal_ids = {s.get("signal_id") for s in record.get("signals", [])}
+    if override.signal_id not in signal_ids:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Signal '{override.signal_id}' is not a signal on record "
+                f"'{record_id}'. Cannot override a signal that does not exist."
+            ),
+        )
+
+    # Identity is server-owned: never trust a client-supplied override_by.
+    override = override.model_copy(update={"override_by": username})
+    saved = reviews.save_signal_override(run_id, record_id, override, run_directory)
+    entry = saved.get("signal_overrides", {}).get(override.signal_id)
+
+    logger.info(
+        "Operator %s overrode signal %s on %s/%s -> %s",
+        username, override.signal_id, run_id, record_id, override.override_state,
+    )
+    return JSONResponse(content={"ok": True, "signal_override": entry})
 
 
 # ---------------------------------------------------------------------------
