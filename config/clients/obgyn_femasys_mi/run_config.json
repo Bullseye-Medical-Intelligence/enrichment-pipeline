@@ -16,6 +16,7 @@
   ],
   "bullseye_min_score": 80,
   "verify_near_miss_band": 10,
+  "auto_browser_retry": true,
   "max_pages_per_practice": 5,
   "request_timeout_seconds": 15,
   "request_retries": 3,
@@ -25,7 +26,10 @@
     "service", "procedure", "treatment", "care",
     "provider", "physician", "doctor", "staff", "team", "about",
     "speciali", "gynecol", "obstet", "women", "reproduct",
-    "contraception", "iud", "infertil", "hormones", "pcos",
+    "contraception", "iud", "implant", "infertil", "fertil", "iui",
+    "hormones", "pcos", "ovulation",
+    "financ", "pricing", "self-pay", "cost", "insurance",
+    "aesthetic", "spa", "cosmetic", "weight",
     "contact"
   ],
   "drive_sync": {

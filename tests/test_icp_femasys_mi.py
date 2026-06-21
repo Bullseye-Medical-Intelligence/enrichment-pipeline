@@ -1,21 +1,24 @@
 """
 test_icp_femasys_mi.py
 
-Regression tests for the Femasys (FemaSeed) Michigan ICP (v9-MI). They drive the
+Regression tests for the Femasys (FemaSeed) Michigan ICP (v10-MI). They drive the
 SHIPPED cartridge (config/clients/obgyn_femasys_mi/icp_checklist.json) through
 simulate() — the same function the API and pipeline use, composing reinforcement
 + scoring + tiering + exclusion — so the tests guard the real config, not a
 synthetic fixture.
 
-Design intent under test (v9-MI):
+Design intent under test (v10-MI):
   - Fit is soft: nothing is required_for_bullseye; any fertility activity scores.
   - IUI is a DISTINCT signal (client's explicit Michigan ask), independent of the
     broad fertility-services signal.
-  - Readiness (cash-pay / elective) reinforces confidence but can never qualify a
-    record on its own.
+  - Readiness (cash-pay financing AND elective/aesthetic) are positive_weight 0:
+    they raise confidence but contribute zero fit, so they can never qualify a
+    record on their own.
+  - Contraceptive device procedures are a light fit signal, never standalone.
   - Exclusions are load-bearing: IVF/REI fertility centers are dropped.
   - FemVue (the warm-lead signal) floors a confirmed practice at Contender.
-  - Fit signals are phrase-bound so generic OBGYN copy does not false-positive.
+  - Fit signals are phrase-bound AND service-context-bound so generic OBGYN copy
+    and editorial/blog content do not false-positive.
 
 These are deterministic — no API calls, no HTTP.
 """
@@ -57,25 +60,26 @@ def _run(yes_ids, confidence="high") -> dict:
 class TestFemasysMIIntent:
     """End-to-end tier outcomes for the shipped Femasys v9-MI cartridge."""
 
-    def test_version_is_v9_mi(self):
-        """The shipped cartridge is the Michigan v9-MI revision."""
+    def test_version_is_v10_mi(self):
+        """The shipped cartridge is the Michigan v10-MI revision."""
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
-        assert data["version"].startswith("obgyn-femasys-v9-mi")
+        assert data["version"].startswith("obgyn-femasys-v10")
 
     def test_readiness_alone_cannot_qualify(self):
         """Cash-pay readiness with NO fertility signal stays out of the call queue.
 
-        Test #1 from the spec: readiness reinforces confidence but contributes too
-        little fit to clear the Manual Review floor on its own, so it can never
-        reach a client tier. S-MI-005 consolidates all cash-pay proxies (explicit
-        financing AND elective service lines) into a single signal.
+        Readiness (S-MI-005 financing, S-MI-008 elective) is positive_weight 0, so
+        a readiness-only practice has fit 0 and lands below the Manual Review floor
+        — it can never reach a client tier.
         """
-        result = _run(["S-MI-005"])
-        assert result["tier"] not in _TOP_TIERS
-        assert result["tier"] == "Manual Review"
+        for readiness in (["S-MI-005"], ["S-MI-008"], ["S-MI-005", "S-MI-008"]):
+            result = _run(readiness)
+            assert result["tier"] not in _TOP_TIERS, readiness
+            assert result["tier"] == "Manual Review", readiness
 
     def test_fertility_services_plus_financing_reaches_top_tier(self):
-        """Test #2: 'infertility evaluation' + financing lands in a client tier."""
+        """Test #2: broad fertility activity lands in a client tier; financing
+        (weight 0) rides along on confidence without being needed for the tier."""
         result = _run(["S-MI-002", "S-MI-005"])
         assert result["tier"] in _TOP_TIERS
 
@@ -130,10 +134,18 @@ class TestFemasysMIPhraseBinding:
     """
 
     REQUIRED_ANCHORS = {
-        "S-MI-001": ["IUI", "intrauterine insemination"],
-        "S-MI-002": ["infertility evaluation", "fertility consultation", "ovulation induction"],
-        "S-MI-003": ["follicle monitoring", "cycle monitoring"],
+        "S-MI-001": ["IUI", "intrauterine insemination", "artificial insemination"],
+        "S-MI-002": ["infertility evaluation", "fertility consultation",
+                     "ovulation induction", "PCOS treatment"],
+        "S-MI-003": ["follicle monitoring", "cycle monitoring", "sonohysterogram"],
         "S-MI-004": ["FemVue"],
+        "S-MI-006": ["IUD insertion", "Nexplanon", "long-acting reversible contraception"],
+    }
+
+    # The plain-English cash-pay phrases the prior version missed must be present.
+    READINESS_ANCHORS = {
+        "S-MI-005": ["cash pay", "self-pay", "CareCredit", "financing options"],
+        "S-MI-008": ["Botox", "med spa", "labiaplasty", "semaglutide"],
     }
 
     def test_fit_prompts_contain_their_anchors(self):
@@ -143,12 +155,29 @@ class TestFemasysMIPhraseBinding:
             for anchor in anchors:
                 assert anchor in prompt, f"{sid} prompt missing anchor {anchor!r}"
 
+    def test_readiness_prompts_cover_plain_english(self):
+        """v10 fix: readiness prompts carry the plain-English cash-pay / elective
+        phrases the prior version missed entirely."""
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        for sid, anchors in self.READINESS_ANCHORS.items():
+            prompt = by_id[sid]["prompt_instruction"]
+            for anchor in anchors:
+                assert anchor in prompt, f"{sid} prompt missing anchor {anchor!r}"
+
     def test_phrase_signals_forbid_bare_words(self):
         """The signals most prone to false positives must carry a negative guard."""
         by_id = {s["signal_id"]: s for s in _load_signals()}
-        for sid in ("S-MI-001", "S-MI-002", "S-MI-003"):
+        for sid in ("S-MI-001", "S-MI-002", "S-MI-003", "S-MI-006"):
             prompt = by_id[sid]["prompt_instruction"]
             assert "Do NOT" in prompt, f"{sid} prompt missing a bare-word guard"
+
+    def test_fit_prompts_bind_to_service_context(self):
+        """Every fit/readiness prompt must require service context (not blog/editorial)."""
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        for sid in ("S-MI-001", "S-MI-002", "S-MI-003", "S-MI-006"):
+            prompt = by_id[sid]["prompt_instruction"].lower()
+            assert "not_found" in prompt and ("blog" in prompt or "service-context" in prompt), \
+                f"{sid} prompt missing service-context binding"
 
 
 class TestFemasysMIStructure:
@@ -164,11 +193,27 @@ class TestFemasysMIStructure:
         by_id = {s["signal_id"]: s for s in _load_signals()}
         assert by_id["S-MI-004"].get("floor_tier") == "Contender"
 
-    def test_cash_pay_is_single_consolidated_signal(self):
-        """r2: cash-pay readiness is one signal (S-MI-005) covering all proxies."""
+    def test_readiness_signals_are_confidence_only(self):
+        """v10: both readiness signals carry positive_weight 0 so they feed
+        confidence but never fit — the fix for the v9-MI bug where cash-pay
+        shipped weight 16 while claiming 'confidence only'."""
         by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert "S-MI-006" not in by_id, "S-MI-006 was removed — cash-pay is now S-MI-005 only"
-        assert by_id["S-MI-005"]["positive_weight"] == 16
+        assert by_id["S-MI-005"]["positive_weight"] == 0
+        assert by_id["S-MI-008"]["positive_weight"] == 0
+
+    def test_elective_is_separate_readiness_signal(self):
+        """v10 splits cash-pay into financing (S-MI-005) and elective/aesthetic
+        (S-MI-008), both readiness."""
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert "S-MI-008" in by_id
+        assert "elective" in by_id["S-MI-008"]["signal_label"].lower()
+
+    def test_contraceptive_is_light_fit_not_standalone(self):
+        """S-MI-006 contributes fit but is too light to qualify a practice alone."""
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert by_id["S-MI-006"]["positive_weight"] > 0
+        result = _run(["S-MI-006"])
+        assert result["tier"] not in _TOP_TIERS
 
     def test_cli_cartridge_matches_api_seed_signals(self):
         """The CLI cartridge and the API seed must carry identical signal logic.
