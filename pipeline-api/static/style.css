@@ -183,6 +183,18 @@ ul, ol { padding-left: 1.4em; }
   border: 1.5px solid var(--border);
 }
 .btn-secondary:hover { background: rgba(10,10,10,0.04); opacity: 1; }
+/* The bulk-select bar is dark (#1a2030); its outline buttons use the light/paper
+   variant so they read against the dark background. Scoped to the bar's own
+   controls — the Review All drop-up menu keeps the standard light-panel styling. */
+#reenrich-browser-btn.btn-secondary,
+#bulk-review-toggle.btn-secondary,
+#reenrich-bar > .btn-secondary {
+  color: var(--surface);
+  border-color: rgba(247, 246, 244, 0.45);
+}
+#reenrich-browser-btn.btn-secondary:hover,
+#bulk-review-toggle.btn-secondary:hover,
+#reenrich-bar > .btn-secondary:hover { background: rgba(247, 246, 244, 0.12); }
 .btn-full { width: 100%; }
 .btn-sm   { padding: 5px 13px; font-size: 12px; }
 
