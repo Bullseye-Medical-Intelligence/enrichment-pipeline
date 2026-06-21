@@ -39,6 +39,16 @@ logger = logging.getLogger(__name__)
 PIPELINE_STDOUT_FILENAME = "pipeline_stdout.log"
 _STDOUT_TAIL_BYTES = 20000
 
+# A re-crawl / re-enrich is a deliberate "try harder to find the signal" action,
+# so it crawls as many relevant subpages as needed rather than a first-pass run's
+# small budget. This is how service subpages edged out of the original budget
+# (e.g. a /gynecology page carrying the fertility / FemaSeed evidence) get reached.
+# Blogs/news are already excluded by the crawler's path filter, so this only ever
+# widens coverage of real service/provider pages; the combined-text cap
+# (MAX_COMBINED_CHARS) still bounds what reaches the LLM, and pages are crawled in
+# evidence-value order so the highest-value pages are always included first.
+RECRAWL_MAX_PAGES = 20
+
 
 def _persist_stdout_tail(run_id: str, stdout_bytes: bytes) -> None:
     """Write the tail of a failed run's stdout to the run dir for diagnostics.
@@ -531,24 +541,38 @@ def _prepare_single_record_job(source_run_id: str, record_id: str):
     if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
         raise ValueError("Source run is missing config snapshots.")
 
+    try:
+        config_data = json.loads(config_snapshot_src.read_text(encoding="utf-8"))
+    except Exception:
+        config_data = {}  # snapshot unreadable — fall back to frozen snapshot path
+
     # Prefer the current live ICP profile over the frozen run snapshot so that
     # any edits to the profile (added/removed signals) take effect on re-enrichment.
     # Falls back to the frozen snapshot only if the live profile no longer exists.
-    try:
-        config_data = json.loads(config_snapshot_src.read_text(encoding="utf-8"))
-        icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
-        if icp_id:
-            live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
-            if live_icp.exists():
-                icp_snapshot_src = live_icp
-    except Exception:
-        pass  # snapshot unreadable or missing icp_id — fall back to frozen snapshot
+    icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
+    if icp_id:
+        live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
+        if live_icp.exists():
+            icp_snapshot_src = live_icp
 
     # Hidden, run-scoped scratch dir. The leading dot keeps it out of
     # is_valid_run_id, and the absence of a status.json keeps it out of
     # list_runs(), so orphan recovery and the concurrent-run cap never see it.
     scratch_dir = source_dir / f".recrawl_{secrets.token_hex(4)}"
     scratch_dir.mkdir(parents=True, exist_ok=True)
+
+    # A re-crawl digs deeper than the first pass: crawl as many relevant (non-blog)
+    # subpages as needed so a service page edged out of the original page budget
+    # (e.g. /gynecology carrying the fertility / FemaSeed evidence) is reached this
+    # time. Written into the scratch dir so the source run's frozen config is never
+    # mutated; all single-record paths (re-crawl, excluded re-enrich, manual content)
+    # inherit it.
+    if config_data:
+        config_data["max_pages_per_practice"] = max(
+            int(config_data.get("max_pages_per_practice") or 5), RECRAWL_MAX_PAGES
+        )
+        config_snapshot_src = scratch_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
+        _write_json(config_snapshot_src, config_data)
 
     return source_dir, record, scratch_dir, config_snapshot_src, icp_snapshot_src
 
@@ -828,19 +852,32 @@ async def orchestrate_batch_reenrich(
     if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
         raise ValueError("Source run is missing config snapshots.")
 
-    # Prefer the live ICP profile over the frozen snapshot so updated signals apply.
     try:
         config_data = json.loads(config_snapshot_src.read_text(encoding="utf-8"))
-        icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
-        if icp_id:
-            live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
-            if live_icp.exists():
-                icp_snapshot_src = live_icp
     except Exception:
-        pass
+        config_data = {}
+
+    # Prefer the live ICP profile over the frozen snapshot so updated signals apply.
+    icp_id = config_data.get("icp_id") or config_data.get("icp_profile_id")
+    if icp_id:
+        live_icp = ICP_PROFILES_PATH / f"{icp_id}.json"
+        if live_icp.exists():
+            icp_snapshot_src = live_icp
 
     scratch_dir = source_dir / f".batch_{secrets.token_hex(4)}"
     scratch_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write a scratch run_config that digs deeper than the original page budget so
+    # service subpages edged out of the first crawl are reached on this re-crawl.
+    # Everything else (geography, exclusions, client) is preserved from the frozen
+    # snapshot so the re-crawl scores by the same rules, just with wider coverage.
+    config_for_run = config_snapshot_src
+    if config_data:
+        config_data["max_pages_per_practice"] = max(
+            int(config_data.get("max_pages_per_practice") or 5), RECRAWL_MAX_PAGES
+        )
+        config_for_run = scratch_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
+        _write_json(config_for_run, config_data)
 
     input_path = _write_multi_record_csv(scratch_dir, selected)
     process = spawn_pipeline(
@@ -848,7 +885,7 @@ async def orchestrate_batch_reenrich(
         input_path,
         "manual",
         scratch_dir,
-        config_snapshot_src,
+        config_for_run,
         icp_snapshot_src,
         extra_flags=["--playwright"] if use_playwright else None,
     )
