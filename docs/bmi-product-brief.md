@@ -63,11 +63,9 @@ This is a controlled sample-generation workflow, not a full market map. The goal
 
 ## THE PIPELINE (TECHNICAL IMPLEMENTATION)
 
-### Three-Repo Architecture
+### Architecture
 
 ```
-BEMI-dashboard (React, demo/reference only)
-        │ HTTP
 BEMI-pipeline-api (FastAPI)  ←  operator UI + run management
         │ subprocess + shared /output/runs/
 BEMI-enrichment-pipeline (Python CLI)  ←  all enrichment/scoring logic lives here
@@ -179,7 +177,7 @@ Defined per signal in the cartridge's ICP checklist. Required fields: `signal_id
 
 ## THE OPERATOR INTERFACE (PIPELINE-API)
 
-FastAPI server at `pipeline-api/`. Server-rendered HTML UI for internal operators. No React integration — the React dashboard is demo-only.
+FastAPI server at `pipeline-api/`. Server-rendered HTML UI for internal operators.
 
 **Key flows:**
 - **Project creation:** operator defines target specialty, geography, exclusion rules, score threshold. Saved as `project_config.json`.

@@ -23,12 +23,10 @@ prospect list (Outscraper or manual CSV) into scored, tiered, sales-ready
 account intelligence. It runs 8 steps, calls Claude for signal extraction and
 GPT for verification, and writes immutable JSON/CSV output plus a run log.
 
-This is one of three repos:
+The operator API and this CLI share one repo:
 
 ```
-BEMI-dashboard (React, demo only)
-        │  HTTP
-BEMI-pipeline-api (FastAPI, ./pipeline-api/)  ← spawns this CLI as a subprocess
+BEMI-pipeline-api (FastAPI, ./pipeline-api/)  ← operator UI; spawns this CLI as a subprocess
         │  subprocess + shared /output/runs/
 THIS REPO: BEMI-enrichment-pipeline (the CLI)  ← all enrichment/scoring logic lives here
 ```

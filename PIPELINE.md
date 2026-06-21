@@ -21,7 +21,7 @@ If a request conflicts with anything in this file, surface the conflict immediat
 Bullseye is two connected parts:
 
 1. **Offline Enrichment Pipeline** — this repo. Converts raw prospect lists into structured, signal-backed intelligence.
-2. **Pipeline API + operator UI** — `pipeline-api/` (same repo). The production interface: operators upload lists, trigger runs, review records, and build client deliverables through the server-rendered UI. It spawns this pipeline as a subprocess and reads its output from the shared `/output/runs/` directory — it never reimplements enrichment logic (see `pipeline-api/CLAUDE.md`). (The separate React dashboard repo is a demo reference only.)
+2. **Pipeline API + operator UI** — `pipeline-api/` (same repo). The production interface: operators upload lists, trigger runs, review records, and build client deliverables through the server-rendered UI. It spawns this pipeline as a subprocess and reads its output from the shared `/output/runs/` directory — it never reimplements enrichment logic (see `pipeline-api/CLAUDE.md`).
 
 **Operating principle:** Pipeline generates intelligence. API/UI reviews and packages intelligence. Shared output schema keeps them aligned.
 
@@ -29,8 +29,7 @@ Bullseye is two connected parts:
 
 ```
 /bullseye-platform
-  /dashboard            ← bemi repo
-  /enrichment-pipeline  ← this repo
+  /enrichment-pipeline  ← this repo (CLI + pipeline-api)
   /shared               ← shared schema definitions (future)
 ```
 

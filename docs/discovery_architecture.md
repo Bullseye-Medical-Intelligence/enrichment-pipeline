@@ -41,8 +41,6 @@ Market Radar landing page.
 ## Component boundaries
 
 ```
-BEMI dashboard (React, demo)
-        │ HTTP
 pipeline-api (FastAPI, ./pipeline-api/)
         │ subprocess + shared /output/runs/
 enrichment pipeline (this repo's CLI: pipeline.py, enrichment/, discovery/ package)

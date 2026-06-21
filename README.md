@@ -266,10 +266,9 @@ request.
 - **No PHI.** The pipeline only reads public-facing practice websites. It does not
   access patient data, EMRs, appointment records, or any login-gated system.
 - **No authenticated sources.** If a data source requires a login, it is not used.
-- **No dashboard QC.** This pipeline produces the file; the dashboard handles human
-  review, approval, and CSV export. See the
-  [bemi dashboard repo](https://github.com/Bullseye-Medical-Intelligence/bemi)
-  for the QC workflow.
+- **No dashboard QC.** This pipeline produces the file; human review, approval, and
+  CSV export are handled separately by the operator UI (`pipeline-api/`), not by this
+  CLI.
 - **No live database.** All state is in files. There is no running server, database,
   or background job queue in the MVP pipeline.
 - **Browser automation is opt-in.** The default crawler is HTTP-only (`requests`).

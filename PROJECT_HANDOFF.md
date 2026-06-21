@@ -14,16 +14,13 @@ The core insight: a sales rep with limited dials needs to know *confidence of a 
 ## System Architecture
 
 ```
-bullseyemedical.ai (Hostinger static site)
-        │  Marketing / intelligence blog
-BEMI Dashboard (React, demo only)
-        │  HTTP
+bullseyemedical.ai (Hostinger static site)  ← Marketing / intelligence blog
 BEMI Pipeline API (FastAPI, pipeline-api/)  ← operator UI, job management
         │  subprocess + shared /output/runs/
 BEMI Enrichment Pipeline (pipeline.py)      ← all scoring/signal logic lives here
 ```
 
-Three repos, but enrichment pipeline + API share one repo. API never imports pipeline internals — subprocess only.
+Two repos (marketing site + this one); the enrichment pipeline + API share this repo. API never imports pipeline internals — subprocess only.
 
 ---
 
