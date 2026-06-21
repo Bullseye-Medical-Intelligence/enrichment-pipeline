@@ -81,28 +81,37 @@
   .acct.flagged{border-color:rgba(200,75,47,0.4);}
   .acct.open{border-color:rgba(200,75,47,0.3);}
 
-  /* collapsed card header: 2-col layout */
-  .ahead{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
-    padding:16px 20px;cursor:pointer;touch-action:manipulation;
+  /* collapsed card header: name block (left) + action block (right) */
+  .ahead{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start;
+    padding:18px 20px;cursor:pointer;touch-action:manipulation;
     -webkit-tap-highlight-color:rgba(200,75,47,0.08);}
   .ahead *{touch-action:manipulation;}
 
   /* name row: name + warm-lead tag */
   .aname-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;}
-  .aname{font-family:'Instrument Serif',serif;font-weight:400;font-size:17px;letter-spacing:-0.01em;}
+  .aname{font-family:'Instrument Serif',serif;font-weight:400;font-size:22px;
+    letter-spacing:-0.01em;line-height:1.15;}
   .motion{display:inline-flex;align-items:center;padding:2px 8px;border-radius:100px;
     font-size:8.5px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
     vertical-align:middle;white-space:nowrap;line-height:1;
     background:rgba(200,75,47,0.14);border:1px solid rgba(200,75,47,0.32);color:var(--acc);}
 
-  .ameta{font-size:11.5px;color:var(--mut);margin-top:3px;}
-  .ahook{font-size:12.5px;color:var(--txt);margin-top:6px;line-height:1.45;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  /* who to ask — second-most prominent left-side element */
+  .askfor{font-size:13.5px;font-weight:600;color:var(--warm);margin-top:6px;line-height:1.35;}
+  .acity{font-size:11.5px;color:var(--mut);margin-top:5px;}
   .flag{display:inline-block;margin-top:6px;font-size:10px;font-weight:600;color:var(--acc);
     border:1px solid rgba(200,75,47,0.4);border-radius:100px;padding:2px 8px;}
 
-  /* right panel: pill + sublabel + conf + caret */
-  .ahead-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px;}
+  /* right panel: action block (phone+web, high-contrast) then pill + conf + caret */
+  .ahead-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px;}
+  .action-block{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+  .aphone{font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;color:var(--acc);
+    text-decoration:none;letter-spacing:-0.01em;white-space:nowrap;line-height:1.1;}
+  .aphone:hover{text-decoration:underline;}
+  .aphone.none{color:var(--mut);font-size:13px;font-weight:600;}
+  .aweb{font-size:11.5px;color:var(--mut);text-decoration:none;max-width:210px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .aweb:hover{color:var(--warm);}
   .pill-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
   .tpill{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
     border-radius:100px;padding:5px 11px;}
@@ -133,16 +142,18 @@
   .whylist li{font-size:14px;line-height:1.55;color:#f2efeb;padding:5px 0 5px 20px;position:relative;}
   .whylist li::before{content:"→";position:absolute;left:0;color:var(--acc);font-size:11px;top:7px;}
 
-  /* signal groups */
+  /* signal groups — confirmed evidence only (no "not found" noise) */
   .sig-groups{margin-top:22px;}
   .sig-grp-hdr{font-size:9px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;
     color:rgba(247,246,244,0.25);margin-bottom:6px;}
-  .sig-grp-hdr.nf{margin-top:12px;}
   .sigrow{display:flex;flex-wrap:wrap;gap:7px;}
   .sigpill{font-size:11.5px;color:rgba(95,169,120,0.9);background:rgba(95,169,120,0.08);
     border:1px solid rgba(95,169,120,0.2);border-radius:6px;padding:5px 11px;}
-  .sigpill-nf{font-size:11.5px;color:var(--mut);background:rgba(247,246,244,0.04);
-    border:1px solid var(--line);border-radius:6px;padding:5px 11px;}
+
+  /* The Hook — hero execution block, first thing in the expanded card */
+  .hook-box{background:rgba(200,75,47,0.07);border-left:2px solid var(--acc);
+    border-radius:0 8px 8px 0;padding:13px 16px;}
+  .hook-box .ey{margin-bottom:5px;}
 
   /* verification step */
   .vstep{font-size:13px;color:#f2efeb;font-weight:500;background:rgba(107,127,203,0.1);
@@ -291,7 +302,7 @@
   {% for acct in section.accounts %}
   <div class="acct{% if acct.has_flags %} flagged{% endif %}">
 
-    {# collapsed card header #}
+    {# collapsed card header: WHO am I calling (left) + the number to dial (right) #}
     <div class="ahead">
       <div>
         <div class="aname-row">
@@ -302,16 +313,21 @@
           <span class="motion" title="Existing Femasys relationship — FemVue or FemaSeed found on the site">WARM LEAD</span>
           {% endif %}
         </div>
-        <div class="ameta">{{ acct.city }} &middot;
-          {% if acct.phone_digits %}<a href="tel:+1{{ acct.phone_digits }}" style="color:var(--mut);text-decoration:none;" onclick="event.stopPropagation()">{{ acct.phone }}</a>{% else %}{{ acct.phone }}{% endif %} &middot;
-          {% if acct.website_url %}<a href="{{ acct.website_url }}" target="_blank" rel="noopener" style="color:var(--mut);text-decoration:none;" onclick="event.stopPropagation()">{{ acct.website }}</a>{% else %}{{ acct.website }}{% endif %}
-        </div>
-        {% if acct.hook and section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
-        <div class="ahook">{{ acct.hook }}</div>
+        {% if acct.who_to_ask and section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
+        <div class="askfor">{{ acct.who_to_ask }}</div>
         {% endif %}
+        <div class="acity">{{ acct.city }}</div>
         {% for flag in acct.flags %}<span class="flag">&#x2691; {{ flag }}</span>{% endfor %}
       </div>
       <div class="ahead-right">
+        <div class="action-block">
+          {% if acct.phone_digits %}
+          <a class="aphone" href="tel:+1{{ acct.phone_digits }}" onclick="event.stopPropagation()">{{ acct.phone }}</a>
+          {% else %}
+          <span class="aphone none">No phone listed</span>
+          {% endif %}
+          {% if acct.website_url %}<a class="aweb" href="{{ acct.website_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ acct.website }}</a>{% elif acct.website %}<span class="aweb">{{ acct.website }}</span>{% endif %}
+        </div>
         <div class="pill-wrap">
           <span class="tpill {{ acct.tier_info.dot }}">{{ acct.tier_info.pill }}</span>
           {% if acct.validate_sublabel %}
@@ -347,16 +363,10 @@
       {% elif section.tier == Tier.NEEDS_VERIFICATION %}
       {% if acct.gate_fired %}<span class="exbadge" style="background:rgba(107,127,203,0.12);border-color:rgba(107,127,203,0.3);color:#6b7fcb;">{{ acct.gate_fired }}</span>{% endif %}
       {% if acct.verification_step %}<div class="vstep">{{ acct.verification_step }}</div>{% endif %}
-      {% if acct.confirmed_signals or acct.not_found_signals %}
+      {% if acct.confirmed_signals %}
       <div class="sig-groups">
-        {% if acct.confirmed_signals %}
-        <div class="sig-grp-hdr">Found</div>
+        <div class="sig-grp-hdr">Confirmed On Site</div>
         <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
-        {% endif %}
-        {% if acct.not_found_signals %}
-        <div class="sig-grp-hdr nf">Not Found</div>
-        <div class="sigrow">{% for sig in acct.not_found_signals %}<span class="sigpill-nf">{{ sig }}</span>{% endfor %}</div>
-        {% endif %}
       </div>
       {% endif %}
       {% if acct.verify %}
@@ -366,8 +376,16 @@
       {% if acct.cap_reason %}<div style="margin-top:12px;font-size:12.5px;color:var(--mut);border-left:2px solid rgba(107,127,203,0.4);padding-left:10px;">{{ acct.cap_reason }}</div>{% endif %}
 
       {% else %}
-      {# Bullseye and Contender — quick-reference fields first, then intel #}
-      {% if acct.who_to_ask %}<div class="fld"><div class="ey">Who to Ask For</div><div class="wedge">{{ acct.who_to_ask }}</div></div>{% endif %}
+      {# Bullseye and Contender — EXECUTION FIRST. Who to call + the number are in
+         the card header; here the rep gets the script before the context. #}
+      {% if acct.wedge %}<div class="fld hook-box"><div class="ey">The Hook</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
+      {% if acct.landmine %}<div class="fld"><div class="ey">The Trap</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
+      {% if acct.confirmed_signals %}
+      <div class="sig-groups">
+        <div class="sig-grp-hdr">Confirmed On Site</div>
+        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
+      </div>
+      {% endif %}
       {% if acct.hours_of_operation %}
       <div class="fld">
         <details>
@@ -378,27 +396,20 @@
         </details>
       </div>
       {% endif %}
-      {% if acct.cap_reason %}
-      <div class="fld"><div class="ey">Why Validate, Not Call First</div><div style="font-size:13px;color:var(--txt);line-height:1.55;">{{ acct.cap_reason }}</div></div>
-      {% endif %}
-      {% if acct.why_it_matters %}
-      <div class="fld"><div class="ey">Why It Matters</div>
-      <ul class="whylist">{% for point in acct.why_it_matters %}<li>{{ point | bold_md }}</li>{% endfor %}</ul></div>
-      {% endif %}
-      {% if acct.confirmed_signals or acct.not_found_signals %}
-      <div class="sig-groups">
-        {% if acct.confirmed_signals %}
-        <div class="sig-grp-hdr">Found</div>
-        <div class="sigrow">{% for sig in acct.confirmed_signals %}<span class="sigpill">{{ sig }}</span>{% endfor %}</div>
-        {% endif %}
-        {% if acct.not_found_signals %}
-        <div class="sig-grp-hdr nf">Not Found</div>
-        <div class="sigrow">{% for sig in acct.not_found_signals %}<span class="sigpill-nf">{{ sig }}</span>{% endfor %}</div>
-        {% endif %}
+      {# Context, collapsed by default — only opened if the rep gets the prospect talking. #}
+      {% if acct.why_it_matters or acct.cap_reason %}
+      <div class="fld">
+        <details>
+          <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
+            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Why It Matters
+          </summary>
+          <div class="body-detail" style="margin-top:10px;padding-left:16px;">
+            {% if acct.cap_reason %}<div style="font-size:12.5px;color:var(--mut);margin-bottom:10px;border-left:2px solid var(--line2);padding-left:10px;">{{ acct.cap_reason }}</div>{% endif %}
+            {% if acct.why_it_matters %}<ul class="whylist">{% for point in acct.why_it_matters %}<li>{{ point | bold_md }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+        </details>
       </div>
       {% endif %}
-      {% if acct.wedge %}<div class="fld"><div class="ey">Example Opener</div><div class="wedge">{{ acct.wedge | bold_md }}</div></div>{% endif %}
-      {% if acct.landmine %}<div class="fld"><div class="ey">Watch Out For</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
       {% endif %}
 
     </div>

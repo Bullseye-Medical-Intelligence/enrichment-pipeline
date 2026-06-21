@@ -162,6 +162,11 @@ _CONFIDENCE_MAP = {
     "Low": Confidence.LOW,
 }
 
+# Hard cap on "Why It Matters" bullets in the client handoff. The sales handoff
+# is an execution tool, not an analyst report — a rep reads 3 triggers, not 5.
+# Enforced here so the cap holds even for records enriched under an older prompt.
+MAX_WHY_IT_MATTERS = 3
+
 
 def build_sales_handoff(run_id: str, run_directory: Path, status) -> bytes:
     """Build the internal Sales Handoff HTML and return UTF-8 bytes.
@@ -393,7 +398,7 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
     # The pipeline's why_contact string embeds the internal fit score, so it is
     # deliberately NOT used here — internal ranking data never reaches the client.
     sales_angles = [a for a in _coerce_list(rec.get("sales_angle")) if not _is_first_person_angle(a)]
-    why_it_matters = sales_angles or None
+    why_it_matters = sales_angles[:MAX_WHY_IT_MATTERS] or None
 
     # Example opener: the LLM opener (or discovery question) a rep can use to
     # approach the account. Kept out of Verify, which lists what to uncover.
@@ -428,10 +433,8 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
     )
 
     motion = _derive_motion(signals)
-    hook = _derive_hook(brief, sales_angles)
     validate_sublabel = _derive_validate_sublabel(confirmed_signals) if tier_str == "Contender" else None
     verification_step = _derive_verification_step(signals) if tier_str == "Needs Verification" else None
-    not_found_sigs = _derive_not_found_signals(signals)
 
     return Account(
         name=rec.get("practice_name") or rec.get("name") or "Unknown Practice",
@@ -468,11 +471,9 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
         ) or None,
         suppress_reason=None,
         revisit_if=None,
-        hook=hook,
         motion=motion,
         validate_sublabel=validate_sublabel,
         verification_step=verification_step,
-        not_found_signals=not_found_sigs,
     )
 
 
@@ -568,13 +569,6 @@ def _client_safe_cap_reason(reason: str) -> str:
     return text.strip()
 
 
-def _derive_hook(brief: dict, sales_angles: list[str]) -> str | None:
-    """Short hook for the collapsed card: first sales angle, else opening_line."""
-    if sales_angles:
-        return sales_angles[0]
-    return (brief.get("opening_line") or "").strip() or None
-
-
 def _derive_motion(signals: list[dict]) -> str:
     """EXPAND when any floor_tier signal is confirmed yes (warm/existing relationship)."""
     for sig in signals:
@@ -600,21 +594,6 @@ def _derive_verification_step(signals: list[dict]) -> str | None:
         if label and isinstance(weight, (int, float)) and weight > 0:
             return f"Confirm: {_humanize_label(label)}"
     return None
-
-
-def _derive_not_found_signals(signals: list[dict]) -> list[str]:
-    """Humanized labels of desirable (positive_weight > 0) signals that are not_found."""
-    result = []
-    for sig in signals:
-        if sig.get("signal_state") != "not_found":
-            continue
-        weight = sig.get("positive_weight", 0)
-        if isinstance(weight, bool):
-            weight = 0
-        label = sig.get("signal_label") or sig.get("label") or ""
-        if label and isinstance(weight, (int, float)) and weight > 0:
-            result.append(_humanize_label(label))
-    return result
 
 
 def _coerce_list(value) -> list[str]:

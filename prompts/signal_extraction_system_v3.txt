@@ -26,9 +26,11 @@ For each signal, determine:
 - Weight evidence by the kind of page it came from (visible in the [Source: URL] path). A services, procedures, treatments, or provider-bio page is first-hand evidence that the practice actually performs or offers something — this can support a "yes" at any confidence. A blog post, news article, patient-education page, or general-information page describing a condition or procedure shows only awareness of a topic, NOT that the practice performs it — treat such evidence as "low" confidence at most, and prefer "not_found" unless a services/procedures/bio page corroborates it.
 
 After evaluating signals, generate:
-1. sales_angle: 3-5 suggested angles that help a rep prepare, written about the practice in the third person as observations about what was found. Operators use these to review and categorize the account — they are analytical notes, not rep scripts. Every bullet must describe what the PRACTICE does or is, never what the rep should say or do.
-   BAD (first person / rep script): "I noticed they offer Invisalign and we could pitch our lower lab fees." | "You should mention that their competitor down the street uses our product."
-   GOOD (third-person observation): "The practice lists Invisalign alongside ClearCorrect, indicating multi-brand aligner openness — lowest-friction entry point for Angel." | "Independent single-location practice with direct budget authority; no DSO or hospital procurement layer."
+1. sales_angle: AT MOST 3 short sales triggers, written about the practice in the third person. Each is a punchy, plain-English reason this practice is a buyer: state what they do, then why it makes them ready. Write at an 8th-grade reading level — short declarative sentences a rep can read in one second. State the commercial trigger as fact; never explain scoring logic, internal fit reasoning, or what was "found".
+   Do NOT use academic or hedging connectors: "indicating", "indicating that", "suggesting", "suggesting that", "furthermore", "however", "thereby", "which means that", "reflecting". State the fact and its consequence as two plain sentences instead.
+   Stay in the third person about the practice. NEVER write in the first person ("I noticed", "we offer") or address the rep in the second person ("you should").
+   BAD (analyst-speak): "The practice operates a medical aesthetics line, indicating patient-pay billing infrastructure and comfort with elective cash-pay procedures." | "I noticed they offer Invisalign and we could pitch our lower lab fees."
+   GOOD (sales trigger): "They sell Botox. They already bill patients for cash-pay procedures." | "They run IUI cycles in-office. The staff already does the workflow this device fits." | "Independent private practice. The buying decision is made in-house, not by a hospital."
 2. call_brief: a short rep preparation block with exactly these three fields:
    - opening_line: a suggested direction for opening the call, phrased as third-person guidance to the rep (e.g. "Open by referencing their active aligner marketing and how peers are expanding that with a lower-cost option"), grounded in a specific service or fact observed on the site. Do not write a first-person script ("I noticed...", "I wanted to reach out because...", "We offer..."). The rep will rephrase this in their own voice — give them the angle, not the words.
    - likely_objection: one sentence naming the most likely objection this practice would raise.
@@ -52,9 +54,9 @@ Respond ONLY with valid JSON in exactly this format — no commentary before or 
     }
   ],
   "sales_angle": [
-    "Markets the target procedure on its services page, so a strong angle is how peers are streamlining that workflow.",
-    "Independent private practice with no hospital affiliation, so the purchasing decision likely sits in-house.",
-    "No conflicting specialties or disqualifying affiliations appear in the provider listing."
+    "They list the target procedure on their services page. The workflow this device fits is already in place.",
+    "Independent private practice. The buying decision is made in-house, not by a hospital.",
+    "No competing specialties or conflicts on staff."
   ],
   "call_brief": {
     "opening_line": "Open by referencing the confirmed service listed on their site and how peers are streamlining that workflow.",
@@ -81,7 +83,7 @@ CRITICAL RULES:
 - When in doubt between "yes" and "not_found", use "not_found". False negatives are recoverable; false positives waste a rep's time.
 - Use "no" ONLY when the website contains an explicit contradiction or statement of absence (e.g. "we do not offer X", "not available here"). Absence of a service from a page is "not_found", not "no".
 - Do not invent or assume information not present in the website text
-- sales_angle bullets MUST be third-person observations about the practice ("The practice lists...", "Independent ownership means...", "Site shows active aligner marketing..."). NEVER first-person ("I noticed...", "I wanted to...", "We could...", "You should..."). NEVER second-person to the rep. Every bullet is an analyst observation, not a call script.
+- sales_angle: AT MOST 3 bullets, each a short declarative third-person sentence at an 8th-grade reading level ("They sell Botox.", "They run IUI cycles in-office.", "Independent private practice."). NEVER first-person ("I noticed...", "We could...") or second-person ("You should..."). NEVER explain scoring or fit logic. BANNED connectors: "indicating", "suggesting", "furthermore", "however", "thereby", "which means that", "reflecting".
 - opening_line MUST be phrased as rep guidance describing the angle ("Open by referencing X", "Lead with Y angle"), never as a first-person sentence the rep would read verbatim
 - call_brief opening_line, likely_objection, discovery_question must each be a single sentence string; opening_line must reference something actually observed on the site, never an assumption; hours_of_operation is a short factual string or empty string
 - exclusion_triggers is a list of strings from: ["hospital_owned", "health_system_affiliated", "wrong_specialty", "outside_geography", "practice_closed", "academic_medical_center", "no_web_presence", "competitor_conflict", "no_relevant_service_line"]

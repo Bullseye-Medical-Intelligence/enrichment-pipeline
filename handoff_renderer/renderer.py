@@ -156,11 +156,9 @@ def _prepare_account(acct: Account, qc_reviewer: str, client_facing: bool) -> di
         "suppress_reason": acct.suppress_reason,
         "revisit_if": acct.revisit_if,
         "qc_reviewer": qc_reviewer,
-        "hook": acct.hook,
         "motion": acct.motion,
         "validate_sublabel": acct.validate_sublabel,
         "verification_step": acct.verification_step,
-        "not_found_signals": acct.not_found_signals,
     }
     if not client_facing:
         result["internal_score"] = acct.internal_score
