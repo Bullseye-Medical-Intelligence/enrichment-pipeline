@@ -2,8 +2,11 @@
 reviews.py
 Analyst review persistence. Reads and writes reviews.json per run.
 
-Critical rule: This module never reads or writes enriched_targets.json.
-Pipeline output is immutable. Reviews are additive metadata only.
+Critical rule: This module never WRITES enriched_targets.json. Pipeline output
+is immutable; reviews are additive metadata only. It may READ enriched_targets.json
+read-only in one place — to capture a signal's original state when an operator
+first overrides it — but it never mutates it. Scores and tiers are owned by the
+pipeline and are never recomputed here.
 """
 
 import json
@@ -13,11 +16,13 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from schema import VALID_OVERRIDE_TIERS, VALID_QC_STATUSES, ReviewEdit
+import record_adapter
+from schema import VALID_OVERRIDE_TIERS, VALID_QC_STATUSES, ReviewEdit, SignalOverride
 
 logger = logging.getLogger(__name__)
 
 REVIEWS_FILENAME = "reviews.json"
+ENRICHED_TARGETS_FILENAME = "enriched_targets.json"
 
 
 def default_review() -> dict:
@@ -30,6 +35,7 @@ def default_review() -> dict:
         "reviewed_by": None,
         "reviewed_at": None,
         "extra_sales_angles": [],
+        "signal_overrides": {},
     }
 
 
@@ -127,6 +133,9 @@ def save_review(
         "reviewed_by": username,
         "reviewed_at": now,
         "extra_sales_angles": existing.get("extra_sales_angles", []),
+        # Signal overrides have their own endpoint; preserve them across a
+        # standard tier/QC review save so a tier edit never wipes them.
+        "signal_overrides": existing.get("signal_overrides", {}),
     }
 
     reviews_path = run_directory / REVIEWS_FILENAME
@@ -171,6 +180,8 @@ def bulk_approve(
             "qc_status": "approved",
             "reviewed_by": username,
             "reviewed_at": now,
+            "extra_sales_angles": existing.get("extra_sales_angles", []),
+            "signal_overrides": existing.get("signal_overrides", {}),
         }
         approved_count += 1
 
@@ -182,6 +193,128 @@ def bulk_approve(
         )
 
     return approved_count
+
+
+def get_signal_overrides(run_id: str, record_id: str, run_directory: Path) -> dict:
+    """Return the signal_overrides map for one record, keyed by signal_id.
+
+    Empty dict when the record has no overrides yet. Each value is the stored
+    override entry (override_state, source_url, override_note, override_by,
+    override_at, original_state).
+    """
+    review = get_review(run_id, record_id, run_directory)
+    return review.get("signal_overrides") or {}
+
+
+def save_signal_override(
+    run_id: str,
+    record_id: str,
+    override: SignalOverride,
+    run_directory: Path,
+) -> dict:
+    """Persist one signal override into the reviews.json overlay atomically.
+
+    On the first override of a signal, captures that signal's original
+    signal_state from enriched_targets.json into 'original_state' (read-only
+    reference). On re-override, the original_state is preserved while state,
+    source, note, and timestamp update. Never writes enriched_targets.json and
+    never recomputes scores or tiers. Returns the updated review entry.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    all_reviews = get_reviews(run_id, run_directory)
+    entry = dict(all_reviews.get(record_id) or default_review())
+    overrides = dict(entry.get("signal_overrides") or {})
+
+    prior = overrides.get(override.signal_id)
+    if prior and "original_state" in prior:
+        original_state = prior["original_state"]
+    else:
+        original_state = _read_original_signal_state(
+            record_id, override.signal_id, run_directory
+        )
+
+    overrides[override.signal_id] = {
+        "signal_id": override.signal_id,
+        "override_state": override.override_state,
+        "source_url": override.source_url,
+        "override_note": override.override_note,
+        "override_by": override.override_by,
+        "override_at": now,  # server-stamped, always authoritative
+        "original_state": original_state,
+    }
+    entry["signal_overrides"] = overrides
+    all_reviews[record_id] = entry
+
+    _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+    logger.info(
+        "Signal override saved run=%s record=%s signal=%s state=%s by=%s",
+        run_id, record_id, override.signal_id, override.override_state,
+        override.override_by,
+    )
+    return entry
+
+
+def apply_signal_overrides(record: dict, review: dict) -> dict:
+    """Return a copy of `record` with operator signal overrides applied.
+
+    For each overridden signal_id present on the record, replaces signal_state,
+    evidence_text (the override_note, or "Operator-verified" when blank), and
+    source_url, and marks the signal with is_override=True. Signals without an
+    override pass through unchanged.
+
+    Scores and tier (bullseye_score, fit_signal_score, confidence_score,
+    target_tier) are never read or recomputed here — they flow through untouched
+    from the pipeline record. A record whose review has no signal_overrides is
+    returned unchanged (no regression to existing overlay behavior).
+    """
+    overrides = (review or {}).get("signal_overrides") or {}
+    if not overrides:
+        return record
+
+    merged_signals = []
+    for sig in record.get("signals", []):
+        ov = overrides.get(sig.get("signal_id"))
+        if not ov:
+            merged_signals.append(sig)
+            continue
+        new_sig = dict(sig)
+        new_sig["signal_state"] = ov.get("override_state", sig.get("signal_state"))
+        new_sig["evidence_text"] = ov.get("override_note") or "Operator-verified"
+        new_sig["source_url"] = ov.get("source_url", "")
+        new_sig["is_override"] = True
+        merged_signals.append(new_sig)
+
+    return {**record, "signals": merged_signals}
+
+
+def _read_original_signal_state(
+    record_id: str, signal_id: str, run_directory: Path
+) -> str:
+    """Read a signal's current signal_state from enriched_targets.json (read-only).
+
+    Used once, when a signal is first overridden, to snapshot its pipeline state.
+    Returns "" when the file, record, or signal cannot be found. Never writes.
+    """
+    results_path = run_directory / ENRICHED_TARGETS_FILENAME
+    if not results_path.exists():
+        return ""
+    try:
+        with open(results_path, "r", encoding="utf-8") as f:
+            records = record_adapter.normalize_records_payload(json.load(f))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(
+            "Failed to read %s while capturing original signal state: %s",
+            results_path, e,
+        )
+        return ""
+
+    for record in records:
+        if record_adapter.get_record_id(record) == record_id:
+            for sig in record.get("signals", []):
+                if sig.get("signal_id") == signal_id:
+                    return sig.get("signal_state", "")
+            return ""
+    return ""
 
 
 def _validate_edit(edit: ReviewEdit) -> None:

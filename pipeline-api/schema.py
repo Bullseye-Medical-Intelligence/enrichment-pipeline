@@ -6,7 +6,7 @@ Every external-facing data structure is defined here.
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class RunStatus(BaseModel):
@@ -154,3 +154,52 @@ class ReviewEdit(BaseModel):
     qc_status: str = "pending"
     reviewed_by: Optional[str] = None
     extra_sales_angles: list[str] = []
+
+
+# The three states a signal can hold, mirroring the pipeline's signal_state
+# vocabulary. An operator override must resolve to one of these.
+VALID_SIGNAL_STATES: frozenset[str] = frozenset({"yes", "no", "not_found"})
+
+
+class SignalOverride(BaseModel):
+    """Operator override of a single signal's state on one record.
+
+    Persisted in the reviews.json overlay only — never written to
+    enriched_targets.json. An override changes the displayed signal state and
+    its evidence; it never recomputes scores or tiers (those stay owned by the
+    pipeline). source_url is the operator-supplied evidence link and is required.
+    """
+
+    signal_id: str
+    override_state: str  # yes | no | not_found
+    source_url: str
+    override_note: str = ""
+    override_by: str = ""
+    override_at: str = ""  # ISO 8601 UTC; stamped server-side at save time
+
+    @field_validator("signal_id")
+    @classmethod
+    def _signal_id_non_empty(cls, v: str) -> str:
+        """signal_id must name a signal on the record."""
+        if not (v or "").strip():
+            raise ValueError("signal_id is required and cannot be empty")
+        return v.strip()
+
+    @field_validator("override_state")
+    @classmethod
+    def _state_is_valid(cls, v: str) -> str:
+        """override_state must be one of yes / no / not_found."""
+        if v not in VALID_SIGNAL_STATES:
+            raise ValueError(
+                f"Invalid override_state '{v}'. "
+                f"Must be one of: {sorted(VALID_SIGNAL_STATES)}"
+            )
+        return v
+
+    @field_validator("source_url")
+    @classmethod
+    def _source_url_non_empty(cls, v: str) -> str:
+        """An override must carry an operator-supplied evidence link."""
+        if not (v or "").strip():
+            raise ValueError("source_url is required and cannot be empty")
+        return v.strip()
