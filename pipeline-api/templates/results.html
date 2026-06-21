@@ -500,11 +500,10 @@
                     <div class="signal-header">
                       <span class="signal-label">{{ sig.signal_label }}</span>
                       {% if sig.required_for_bullseye %}<span class="signal-must-have-tag">Must Have</span>{% endif %}
-                      {% if sig_weight > 0 %}
-                      <span class="signal-polarity-tag spt-positive" title="Positive signal — +{{ sig_weight }} points if found">+{{ sig_weight }} pts</span>
-                      {% elif sig_weight < 0 %}
-                      <span class="signal-polarity-tag spt-friction" title="Friction signal — {{ sig_weight }} pts if found">{{ sig_weight }} pts</span>
-                      {% elif sig.exclude_if_yes %}
+                      {# Point scores are only shown on FOUND signals — a not_found
+                         signal earned no points, so the numeric badge is suppressed.
+                         Signal-type markers (EXCL/FLOOR/CAP) stay for analyst context. #}
+                      {% if sig.exclude_if_yes %}
                       <span class="signal-polarity-tag spt-excl" title="Exclusion gate — YES excludes this record">EXCL</span>
                       {% elif sig.floor_tier %}
                       <span class="signal-polarity-tag spt-floor" title="Niche qualifier — YES guarantees at least {{ sig.floor_tier }}">FLOOR</span>
