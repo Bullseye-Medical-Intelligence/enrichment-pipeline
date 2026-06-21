@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys_mi",
   "name": "Femasys — OBGYN Office-Based Fertility (FemaSeed, Michigan)",
-  "version": "obgyn-femasys-v10-mi",
+  "version": "obgyn-femasys-v10-mi-r2",
   "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE>>",
   "default_specialty": "OBGYN",
   "default_geography": [

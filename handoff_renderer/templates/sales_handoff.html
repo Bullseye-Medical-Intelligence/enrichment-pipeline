@@ -87,14 +87,13 @@
     -webkit-tap-highlight-color:rgba(200,75,47,0.08);}
   .ahead *{touch-action:manipulation;}
 
-  /* name row: name + motion tag */
+  /* name row: name + warm-lead tag */
   .aname-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;}
   .aname{font-family:'Instrument Serif',serif;font-weight:400;font-size:17px;letter-spacing:-0.01em;}
   .motion{display:inline-flex;align-items:center;padding:2px 8px;border-radius:100px;
     font-size:8.5px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
-    vertical-align:middle;white-space:nowrap;line-height:1;}
-  .motion.expand{background:rgba(200,75,47,0.14);border:1px solid rgba(200,75,47,0.32);color:var(--acc);}
-  .motion.new{background:transparent;border:1px solid var(--line);color:var(--lbl);}
+    vertical-align:middle;white-space:nowrap;line-height:1;
+    background:rgba(200,75,47,0.14);border:1px solid rgba(200,75,47,0.32);color:var(--acc);}
 
   .ameta{font-size:11.5px;color:var(--mut);margin-top:3px;}
   .ahook{font-size:12.5px;color:var(--txt);margin-top:6px;line-height:1.45;
@@ -265,8 +264,10 @@
       <div>
         <div class="aname-row">
           <span class="aname">{{ acct.name }}</span>
-          {% if acct.motion and section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
-          <span class="motion {% if acct.motion == 'EXPAND' %}expand{% else %}new{% endif %}">{{ acct.motion }}</span>
+          {# Only flag the noteworthy case: an existing Femasys relationship
+             (FemVue/FemaSeed). Ordinary new prospects get no chip. #}
+          {% if acct.motion == 'EXPAND' and section.tier != Tier.EXCLUDED and section.tier != Tier.MANUAL_REVIEW %}
+          <span class="motion" title="Existing Femasys relationship — FemVue or FemaSeed found on the site">WARM LEAD</span>
           {% endif %}
         </div>
         <div class="ameta">{{ acct.city }} &middot;
