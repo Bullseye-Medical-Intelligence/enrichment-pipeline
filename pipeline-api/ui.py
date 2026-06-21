@@ -1189,6 +1189,11 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
     for record in raw_records:
         record_id = record_adapter.get_record_id(record)
         review = all_reviews.get(record_id, reviews.default_review())
+        # Apply operator signal overrides (display-only). Overridden signals get
+        # their state/evidence/source replaced and is_override set, so the
+        # template's FOUND/NOT-FOUND grouping reflects the override. Scores and
+        # tier pass through untouched; records with no overrides are unchanged.
+        record = reviews.apply_signal_overrides(record, review)
         # Backfill display fields missing from runs enriched before these fields existed.
         city = record.get("address_city") or ""
         state = record.get("address_state") or ""
