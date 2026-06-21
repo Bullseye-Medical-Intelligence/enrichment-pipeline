@@ -1923,18 +1923,51 @@ async def retry_with_browser(
     request: Request,
     username: str = Depends(auth.require_session),
 ):
-    """Start a Playwright re-crawl run for records that failed web extraction."""
+    """Re-crawl this run's blocked/thin records with a headless browser, IN PLACE.
+
+    Gathers every record whose source_confidence is limited/failed and re-crawls
+    them with Playwright via the batch re-enrich mechanism, merging results back
+    into the SAME run. No new run is created — a re-crawl stays within the list.
+    """
+    if not runs.is_valid_run_id(run_id) or not runs.run_dir(run_id).exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    results_path = runs.run_dir(run_id) / "enriched_targets.json"
+    if not results_path.exists():
+        raise HTTPException(status_code=404, detail="Run has no results to re-crawl")
+
+    with open(results_path, "r", encoding="utf-8") as f:
+        records = record_adapter.normalize_records_payload(json.load(f))
+    blocked_ids = [
+        record_adapter.get_record_id(r) for r in records
+        if r.get("source_confidence") in ("limited", "failed")
+        and r.get("exclusion_status") != "EXCLUDED"
+    ]
+    if not blocked_ids:
+        notice = "No blocked or thin-crawl records to re-crawl."
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+            status_code=303,
+        )
+
     try:
-        new_run_id, row_count = await runner.orchestrate_playwright_retry(
-            source_run_id=run_id,
-            operator=username,
-            background_tasks=background_tasks,
+        count = await runner.orchestrate_batch_reenrich(
+            run_id, blocked_ids, username, background_tasks, use_playwright=True,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/dashboard/{new_run_id}", status_code=303)
+
+    noun = "record" if count == 1 else "records"
+    notice = (
+        f"Re-crawling {count} {noun} with a browser in the background — "
+        "reload in a few minutes to see updated tiers and signals."
+    )
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+        status_code=303,
+    )
 
 
 @router.post("/runs/{run_id}/rerun")
