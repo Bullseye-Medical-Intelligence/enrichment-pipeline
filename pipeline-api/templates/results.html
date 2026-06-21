@@ -357,6 +357,11 @@
 
 {% macro record_rows(record, run_id, status) %}
 {% set rid = record.record_id | default("") %}
+      {# Signal-filter tokens: the signal_ids that fired "yes" (or were inferred)
+         on this record, mirroring the FOUND grouping below. Stamped on the row so
+         the client-side signal filter can show/hide by which signals fired. #}
+      {% set _yes_sig_ns = namespace(ids=[]) %}
+      {% for sig in record.signals or [] %}{% if (sig.signal_state == "yes" or sig.state_inferred) and sig.signal_id %}{% set _yes_sig_ns.ids = _yes_sig_ns.ids + [sig.signal_id] %}{% endif %}{% endfor %}
       {% set review = record.review %}
       {% set displayed = record.displayed_tier | default("") %}
       {% set _city = record.address_city or "" %}
@@ -365,6 +370,7 @@
       {% set _blocked = record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
       <tr class="record-row"
           data-rid="{{ rid }}"
+          data-signals-yes="{{ _yes_sig_ns.ids | join(' ') }}"
           data-pipeline-excluded="{{ 'true' if record.exclusion_status == 'EXCLUDED' else 'false' }}"
           data-tier="{{ displayed | lower | replace(' ', '-') }}"
           data-qc="{{ review.qc_status }}"
@@ -835,6 +841,29 @@
         </td>
       </tr>
 {% endmacro %}
+
+{# ── Signal filter bar (internal dashboard only; client-side, no server call) ── #}
+{% if not is_ingested %}
+{% set _sig_ns = namespace(seen=[], pairs=[]) %}
+{% for record in records %}{% for sig in record.signals or [] %}{% if (sig.signal_state == "yes" or sig.state_inferred) and sig.signal_id and sig.signal_id not in _sig_ns.seen %}{% set _sig_ns.seen = _sig_ns.seen + [sig.signal_id] %}{% set _sig_ns.pairs = _sig_ns.pairs + [{"id": sig.signal_id, "label": sig.signal_label}] %}{% endif %}{% endfor %}{% endfor %}
+{% if _sig_ns.pairs %}
+<style>
+  .sig-filter-btn{display:inline-flex;align-items:center;padding:4px 12px;font-size:12px;border:1px solid #d0cdc8;border-radius:100px;background:#fff;color:#0a0a0a;cursor:pointer;line-height:1.4;}
+  .sig-filter-btn:hover{border-color:#c84b2f;}
+  .sig-filter-btn.active{background:#0a0a0a;color:#f7f6f4;border-color:#0a0a0a;}
+</style>
+<div id="signal-filter-bar" class="signal-filter-bar" style="margin:0 0 1em;padding:12px 16px;background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-right:4px;">Filter by Signal</span>
+    <button type="button" id="sig-filter-all" class="sig-filter-btn active" data-sig-id="" onclick="toggleSignalFilter(this)">All</button>
+    {% for p in _sig_ns.pairs %}
+    <button type="button" class="sig-filter-btn" data-sig-id="{{ p.id }}" onclick="toggleSignalFilter(this)">{{ p.label }}</button>
+    {% endfor %}
+    <span id="sig-filter-count" class="text-muted" style="margin-left:auto;font-size:12px;"></span>
+  </div>
+</div>
+{% endif %}
+{% endif %}
 
 {# ── Records table ────────────────────────────────────────────────── #}
 <div class="card table-card">
@@ -1399,6 +1428,53 @@ function submitSignalOverride(runId, rid, sigId) {
     }
   });
 }
+
+/* ── Signal filter (client-side only; internal dashboard) ──────────────
+   Shows only rows in the main results table whose "yes" signals include ALL
+   selected signals (AND). No server call — operates on already-rendered rows
+   and the data-signals-yes attribute stamped by the record_rows macro. */
+(function() {
+  var selected = {};   /* signal_id -> true for each selected filter */
+  function selectedCount() { return Object.keys(selected).length; }
+  function apply() {
+    var rows = document.querySelectorAll('#results-table .record-row');
+    var shown = 0;
+    rows.forEach(function(row) {
+      var tokens = (row.getAttribute('data-signals-yes') || '').split(' ').filter(Boolean);
+      var has = {};
+      tokens.forEach(function(t) { has[t] = true; });
+      var match = true;
+      for (var id in selected) { if (!has[id]) { match = false; break; } }
+      row.style.display = match ? '' : 'none';
+      if (!match) {
+        var rid = row.getAttribute('data-rid');
+        if (rid) { var d = document.getElementById('detail-' + rid); if (d) d.style.display = 'none'; }
+      }
+      if (match) shown++;
+    });
+    var c = document.getElementById('sig-filter-count');
+    if (c) c.textContent = 'Showing ' + shown + ' of ' + rows.length + ' practices';
+  }
+  window.toggleSignalFilter = function(btn) {
+    var id = btn.getAttribute('data-sig-id') || '';
+    var allBtn = document.getElementById('sig-filter-all');
+    if (!id) {  /* "All" — clear every filter */
+      selected = {};
+      document.querySelectorAll('.sig-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      apply();
+      return;
+    }
+    if (selected[id]) { delete selected[id]; btn.classList.remove('active'); }
+    else { selected[id] = true; btn.classList.add('active'); }
+    if (allBtn) { if (selectedCount() === 0) allBtn.classList.add('active'); else allBtn.classList.remove('active'); }
+    apply();
+  };
+  if (document.getElementById('signal-filter-bar')) {
+    if (document.readyState !== 'loading') { apply(); }
+    else { document.addEventListener('DOMContentLoaded', apply); }
+  }
+})();
 </script>
 
 {% if status.status == 'complete' %}
