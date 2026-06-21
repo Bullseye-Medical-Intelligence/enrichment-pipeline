@@ -14,24 +14,24 @@ visits each practice's **public-facing website footprint only**, sends the text 
 Claude (Anthropic API) for signal analysis, and produces a scored, structured output
 file. The output file is imported into the review dashboard for human QC.
 
-### GPT verification is selective, not universal
+### GPT verification is a separate, operator-triggered pass
 
-A second LLM (OpenAI GPT) acts as a **quality gate, not a guarantee**, and only runs
-on the records where it adds the most value. It does not re-score every record:
+A second LLM (OpenAI GPT) acts as a **quality gate, not a guarantee**. It does **not**
+run inline during `pipeline.py`. Verification is a separate, operator-triggered
+**post-run pass** (`verify_run.py` → `enrichment/verifier.py`) over a completed run's
+`enriched_targets.json`, invoked from the dashboard. It targets only **`Needs
+Verification`** records:
 
-- **Near-miss records** (score just below the Bullseye threshold, within
-  `verify_near_miss_band`) are verified — this is the highest-value GPT spend.
-- **Uncertain Bullseyes** — a would-be Bullseye that rests on at least one
-  low-confidence "yes" signal — are verified. High-confidence Bullseyes are skipped
-  (GPT would only agree).
-- **Thin-context records** (`source_confidence` `limited`/`failed`) **skip GPT**
-  entirely — the tier is capped at "Needs Verification" regardless, and GPT would
-  see the same too-thin text.
+- **Anchor-check (free)** — confirm each `"yes"` signal's evidence appears verbatim in
+  the page text; any anchor failure skips GPT (compromised evidence).
+- **Blind GPT re-extraction** (survivors) — GPT independently re-extracts the
+  unconfirmed gating signals.
 
-Verification informs the tier and flags disagreement for the analyst; it never
-auto-promotes a record and it does not make the output "verified-correct." Human QC
-in the dashboard remains the authority. See `CLAUDE.md` → "The 8 Steps" (Step 5) for
-the exact selection logic.
+Results are written as an additive `verification` object (`promote` / `hold` /
+`disqualify`); signals, tier, and score are never overwritten, and a promote still
+requires an operator override. The pass is idempotent. `verify_near_miss_band` is a
+retained no-op — it is **not** consumed by the current verification design. See
+`CLAUDE.md` → "The 8 Steps" (Step 5) for the exact contract.
 
 ### Market Radar (discovery) — optional operator workflow
 

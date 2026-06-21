@@ -57,6 +57,8 @@ Processes 10,000+ record legacy lists. Zero chain-of-thought, no markdown, schem
 ### Free Brief Sourcing Path
 Given only a company name and website, the pipeline crawls the client's site, generates a product hypothesis, sources practices live from public directories, and populates the 3-target dossier. **No client list required.** The first Angel Aligner run against the Dallas metro was a Free Brief sourcing run.
 
+*Note: Angel Aligner (`ortho_angel_v1`) was a concept/demo cartridge and has since been removed from the repo. The references below are retained as historical context for the Free Brief sourcing workflow.*
+
 This is a controlled sample-generation workflow, not a full market map. The goal is to produce a credible sales conversation asset, not to exhaustively source a territory.
 
 ---
@@ -107,11 +109,11 @@ Two independent dimensions — **never averaged**:
 ```
 Bullseye       score ≥ 90, all must-have signals confirmed, source confidence complete
 Needs Verification  would-be Bullseye but a required signal is not_found
-Watchlist      score < 90, or source_confidence limited/failed, or no_weight cap
+Contender      score < 90, or source_confidence limited/failed, or no_weight cap
 Excluded       any hard exclusion gate fired
 ```
 
-Caps only ever pull down. Nothing lifts a Watchlist record to Bullseye without re-running.
+Caps only ever pull down. Nothing lifts a Contender record to Bullseye without re-running.
 
 ### Hard Exclusion Gates
 
@@ -123,8 +125,8 @@ Deterministic structural exclusion gates run before LLM spend whenever they can 
 |---|---|---|
 | `complete` | 2+ pages crawled, substantial text | No cap |
 | `partial` | Homepage only or short text | No cap |
-| `limited` | URL failed, 403, no website | Hard-capped at Watchlist |
-| `failed` | Pipeline error | Hard-capped at Watchlist |
+| `limited` | URL failed, 403, no website | Hard-capped at Contender |
+| `failed` | Pipeline error | Hard-capped at Contender |
 
 Records with `source_confidence: limited` or `failed` require operator review before any export. The download button in the pipeline-api is locked until every record in the run is labeled.
 
@@ -153,9 +155,9 @@ Defined per signal in the cartridge's ICP checklist. Required fields: `signal_id
 | `positive_weight` | number | Desirability weight. Negative = friction signal. |
 | `not_found_weight` | number | Score delta when signal is `not_found` |
 | `no_weight` | number | Score delta when positive signal is confirmed `"no"` |
-| `required_for_bullseye` | bool | Must-have gate: `"no"` → caps at Watchlist; `not_found` → caps at Needs Verification |
+| `required_for_bullseye` | bool | Must-have gate: `"no"` → caps at Contender; `not_found` → caps at Needs Verification |
 | `verification_required` | bool | When `not_found`, caps a would-be Bullseye at Needs Verification |
-| `cap_tier` | string | When signal is `"yes"`, caps tier at this ceiling (e.g. hospital affiliation → Watchlist) |
+| `cap_tier` | string | When signal is `"yes"`, caps tier at this ceiling (e.g. hospital affiliation → Contender) |
 | `reinforces` | string signal_id | When this signal is "yes" and target is not_found, target is marked inferred |
 
 ---
@@ -204,6 +206,9 @@ FastAPI server at `pipeline-api/`. Server-rendered HTML UI for internal operator
 ---
 
 ### Cartridge 2: Angel Aligner (US clear-aligner challenger)
+
+*Note: this cartridge (`ortho_angel_v1`) was a concept/demo and has since been removed from the repo. The spec below is kept as historical context, not an active cartridge.*
+
 **Status:** Cartridge spec complete (V1.0, May 2026). First live sourcing run executed against Dallas metro. No pre-qualified records in Asset Bank — every Angel run is currently a live Free Brief sourcing run.
 
 **ICP in one line:** A practice positioned to adopt a challenger aligner system against an entrenched incumbent. Already running aligner volume. Not single-brand locked. Competing on aesthetics and cash-pay, not insurance throughput.
@@ -343,7 +348,7 @@ python pipeline.py \
 
 1. **Angel Aligner: no Asset Bank pool.** Every Dallas (or any metro) Angel run requires a live sourcing pass. Pre-ingesting a batch of ortho/dental records from Outscraper would enable the Engine One draw-from-pool flow.
 
-2. **Dental site 403 rate.** Dental/ortho practice websites have higher bot-blocking rates than OBGYN sites (Cloudflare WAF is more common in dental). The pipeline's `requests`-based extractor bypasses most of these; the Free Brief WebFetch path does not. The system correctly routes 403'd records to `source_confidence: limited` → Watchlist, which forces operator review — but operators currently have no in-system signal distinguishing "retry-able 403" from "genuinely no content."
+2. **Dental site 403 rate.** Dental/ortho practice websites have higher bot-blocking rates than OBGYN sites (Cloudflare WAF is more common in dental). The pipeline's `requests`-based extractor bypasses most of these; the Free Brief WebFetch path does not. The system correctly routes 403'd records to `source_confidence: limited` → Contender, which forces operator review — but operators currently have no in-system signal distinguishing "retry-able 403" from "genuinely no content."
 
 3. **`not_found_reason` field.** Three situations produce `signal_state: not_found` with different rep implications: (a) crawled successfully, service absent; (b) site couldn't be crawled; (c) LLM claimed "yes" but evidence gate downgraded it. The `not_found_reason` field (`""` / `"no_context"` / `"evidence_gate"`) is in the schema and surfaced in the UI but the distinction is not yet exposed in client exports.
 

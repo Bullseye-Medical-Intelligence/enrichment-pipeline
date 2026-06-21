@@ -7,33 +7,34 @@ If this file and the code conflict, fix the code — not this file.
 
 ## What This Repo Is
 
-A thin FastAPI service that acts as a process manager and file bridge between:
-- The BEMI dashboard (React frontend, calls this API over HTTP)
-- The BEMI enrichment pipeline (Python CLI, spawned as a subprocess)
+A thin FastAPI service that acts as the operator UI and a process manager / file
+bridge for the BEMI enrichment pipeline:
+- It serves operators through its own server-rendered HTML UI (`ui.py` + templates/) behind session auth.
+- It spawns the BEMI enrichment pipeline (Python CLI) as a subprocess and serves its output files back.
 
 This API does **not** contain enrichment logic, scoring, signal extraction,
-LLM calls, web scraping, schema transforms, or any frontend code.
+LLM calls, web scraping, schema transforms, or any client-side framework code.
 
 ---
 
-## Three-Repo Architecture
+## Architecture (API + Pipeline)
 
 ```
-┌────────────────────┐    HTTP     ┌────────────────────┐
-│   BEMI-dashboard   │ ──────────► │  BEMI-pipeline-api │
-│  (React frontend)  │ ◄────────── │   (this repo)      │
-└────────────────────┘             └────────┬───────────┘
-                                            │  subprocess.Popen
-                                            │  shared filesystem
-                                            ▼
-                                   ┌────────────────────┐
-                                   │ BEMI-enrichment-   │
-                                   │    pipeline        │
-                                   │  (Python CLI)      │
-                                   └────────────────────┘
+┌────────────────────┐
+│  BEMI-pipeline-api │  ← operator UI (server-rendered HTML) + run management
+│   (this repo)      │
+└────────┬───────────┘
+         │  subprocess.Popen
+         │  shared filesystem
+         ▼
+┌────────────────────┐
+│ BEMI-enrichment-   │
+│    pipeline        │
+│  (Python CLI)      │
+└────────────────────┘
 
 Communication:
-  dashboard  ↔  API:       HTTP (JSON)
+  operator   ↔  API:       HTTP (server-rendered HTML, session-cookie auth)
   API        ↔  pipeline:  subprocess + shared /output/runs/ directory
   Shared files:            enriched_targets.json, run_log.json, status.json
 ```
@@ -181,8 +182,8 @@ to open a run directory and understand what happened.
 ## UI Architecture Decision (Permanent)
 
 The server-rendered HTML UI (ui.py + templates/) is the production internal operator tool.
-The React/Vite BEMI Dashboard is a demo reference only and is NOT integrated with this API.
-Do not build React integration unless that decision is explicitly reversed.
+It is the only client of this API. Do not introduce a separate frontend application
+(React/Vite or otherwise) — see "UI Layer Rules" below.
 
 ### Run Dashboard Header Layout
 The results page header uses a two-tier layout:
@@ -488,7 +489,7 @@ host. Task queue / database / Redis remain out of scope until that ceiling is cr
   "target_geography": ["TX", "FL", "GA"],
   "icp_profile_id": "obgyn_femasys",
   "icp_profile_name": "OBGYN Femasys",
-  "icp_profile_version": "icp-v8",
+  "icp_profile_version": "obgyn-femasys-v11",
   "archived": false,
 
   "llm_input_tokens": 312000,
@@ -538,7 +539,7 @@ Status transitions: `pending` → `running` → `complete` or `failed`
 The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
 
 - **ui.py only**: All HTML routes live in `ui.py`. API routes in `main.py` are not touched.
-- **No React, npm, or build step**: Jinja2 + plain CSS + minimal vanilla JS only.
+- **No React, npm, or build step (permanent)**: the UI is Jinja2 + plain CSS + minimal vanilla JS only. Never add a frontend framework, a Node/npm toolchain, or a build/bundling step to this repo.
 - **Pipeline output is immutable**: `reviews.py` reads `enriched_targets.json` but never writes to it.
 - **Reviews are additive**: Analyst edits go to `reviews.json` only (atomic writes via tempfile + os.replace).
 - **No business logic in templates or app.js**: Tier display logic in Jinja2 (`override_tier or target_tier`). JS only handles UI interactions and fetch() calls.
@@ -554,7 +555,7 @@ The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
 
 ## BEMI Design System (Permanent)
 
-All UI in this repo must match the BEMI Dashboard identity. These rules are permanent.
+All UI in this repo must match the BEMI design system. These rules are permanent.
 
 ### Palette
 | Token | Value | Usage |
@@ -631,29 +632,6 @@ Exact geometry (do not reconstruct from memory — copy from the files):
 - Direct imports from the pipeline repo (subprocess only, no shared code)
 - Re-implementation of any logic that exists in the pipeline repo
 - Hardcoded client, product, specialty, or campaign names
-
----
-
-## BEMI React Dashboard — Known Issues (Demo-Only)
-
-The React/Vite dashboard (`bullseye-medical-intelligence/bemi`) is demo-only and
-not integrated with this API. If it is ever promoted to production, fix these
-first:
-
-- `src/utils/classifyTarget.js` — `isApprovedExportEligible()` only checks
-  `qc_status === 'approved' && exclusion_status === 'CLEAR'`. A record an analyst
-  overrides to Excluded (CLEAR pipeline status, override_tier = Excluded) will
-  still appear in the approved export. The effective displayed tier must drive
-  the filter, not the raw pipeline status.
-- `src/utils/qcStorage.js` — QC state is keyed by `target.id` only, not by
-  run/import session. If two imports reuse IDs, old analyst decisions bleed into
-  the new import. Storage key must include a run ID or import fingerprint, or QC
-  must be cleared on import.
-- `src/utils/parseImport.js` / `src/components/ImportModal.jsx` — duplicate IDs
-  are logged as errors but the records still load. Duplicates must be stripped or
-  the import must be rejected outright before entering React state.
-
-Do not invest in these until the React app is promoted to production.
 
 ---
 

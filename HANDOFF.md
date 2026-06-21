@@ -4,6 +4,14 @@
 (signal-override feature + signal-filtering) on the BEMI `pipeline-api`. Values
 below were pulled by running git and reading the files, not from memory.
 
+> **Note (2026-06-21):** This handoff predates later work. Since it was written,
+> the run-results header was consolidated into dropdowns (Reprocess / Export /
+> Audit) with a new bulk "Review All" QC action, the `required_for_contender`
+> signal gate was added, the two Femasys cartridges were merged into one national
+> `obgyn-femasys-v11`, the Angel Aligner / Neurolief / Right at Home concept
+> clients were removed, and the dashboard "+N pts" badge was fixed to show only on
+> confirmed signals. See `PROJECT_HANDOFF.md` → "Changes — 2026-06-21 session".
+
 ---
 
 ## 1. Repo + branch state
@@ -195,7 +203,7 @@ independently call `_applyFilter`).
 | `tests/test_signal_override_editui.py` | 9 | edit UI markup + JS (4b) |
 | `tests/test_signal_override_exports.py` | 10 | client/internal outputs (5) |
 | `tests/test_signal_filter.py` | 11 | filter bar + data attrs + JS (6) |
-| `tests/test_icp_femasys_v9.py` | 18 | ICP v10 (updated earlier in session) |
+| `tests/test_icp_femasys_v9.py` | 18 | ICP v11 (updated earlier in session) |
 
 **Load-bearing guard tests — DO NOT BREAK these (they encode the contract):**
 - **Client boundary:**

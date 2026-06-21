@@ -2,7 +2,7 @@
 
 ## 1. What This Service Does
 
-The BEMI Pipeline API is a thin process manager that sits between the BEMI dashboard and the enrichment pipeline. It receives CSV uploads from the dashboard, spawns the enrichment pipeline as a background subprocess, and serves the pipeline's output files back to the dashboard over HTTP. It does nothing else.
+The BEMI Pipeline API is the operator UI and a thin process manager for the enrichment pipeline. It serves operators through its own server-rendered HTML UI behind session auth: it receives CSV uploads, spawns the enrichment pipeline as a background subprocess, and serves the pipeline's output files back to the browser. It does nothing else.
 
 ## 2. What It Does NOT Do
 

@@ -1,5 +1,5 @@
 # Bullseye Medical Intelligence — Project Handoff
-*As of 2026-06-16*
+*As of 2026-06-21*
 
 ---
 
@@ -24,18 +24,30 @@ Two repos (marketing site + this one); the enrichment pipeline + API share this 
 
 ---
 
+## Changes — 2026-06-21 session
+
+- **(a)** Removed the deprecated/unused demo React/Vite dashboard ("bemi" repo) from the root docs. The production operator UI is the server-rendered FastAPI UI in `pipeline-api/`.
+- **(b)** Consolidated the run-results page header into dropdown menus: **Reprocess ▾** (Re-crawl Blocked Sites, Preview Rescore, Apply Rescore, Re-extract Signals, Re-check Suppression, Re-run), **Export ▾** (Full CSV, Run Manifest), **Audit ▾** (Cartridge, Check Evidence Links), plus standalone Update Registry and ← All Runs. New bulk multi-select bottom bar: **Re-enrich (N)** | **Re-crawl with Browser (N)** | **Review All ▾** (Accept / Reject / Reset, opens upward) | **Clear**. New route `POST /dashboard/{run_id}/bulk-review` sets QC status on selected records — writes `reviews.json` only.
+- **(c)** New generic ICP signal flag **`required_for_contender`** (bool, default false): when the flagged signal is not confirmed "yes" and not inferred via reinforcement, the record is routed to Manual Review regardless of score — stricter than `required_for_bullseye`, which only caps the tier.
+- **(d)** Merged the two Femasys cartridges into one national **`obgyn-femasys-v11`** (10 signals): adopts the Michigan service-context prompt fixes; S-ICP-006 now matches "FemVue or FemaSeed"; cash-pay S-ICP-007 is a weight-20 `required_for_contender` must-have with elective service line S-ICP-008 as its reinforcing proxy; `target_geography` cleared (all states).
+- **(e)** Deleted concept clients (cartridges + seeds + tests): Michigan Femasys variant (`obgyn_femasys_mi`), Angel Aligner (`ortho_angel_v1`), Neurolief (`neurolief_prolivrx`), and Right at Home (`right_at_home_south_oc`). Ormco (`ormco-spark`) was kept.
+- **(f)** Dashboard fix: the "+N pts" badge now renders only for confirmed "yes" signals, not for inferred `not_found` signals.
+- **(g)** Brief publishing: Hostinger FTP-21 fallback enabled via `.env` (`HOSTINGER_ALLOW_FTP_FALLBACK=1`) — config only.
+
+---
+
 ## The Enrichment Pipeline (8 Steps)
 
 1. **Ingest** — normalize CSV, dedup, NPI enrichment (opt-in), customer suppression (opt-in), structural pre-filter (wrong specialty / outside geography → Excluded before any spend)
 2. **URL validate** — reachability check
 3. **Web extract** — crawl homepage + ranked subpages; auto browser-retry for bot-blocked sites; manual content paste option
 4. **Signal extract (Claude)** — per-record LLM extraction against ICP signals; thin-context records skip LLM and get `not_found` on all signals
-5. **Verification (GPT)** — opt-in; near-miss records always verified; Bullseye records only if low-confidence signals present; thin-context always skipped
+5. **Verification (GPT)** — NOT inline. A separate operator-triggered post-run pass (`verify_run.py` → `enrichment/verifier.py`) over a completed run, targeting only `Needs Verification` records. Anchor-check (free) then blind GPT re-extraction; results are additive (`verification` object), never overwrite tier/score/signals. Does not run during the main `pipeline.py` flow.
 6. **Exclusion check** — hard rules + ICP `exclude_if_yes` signals → Excluded
 7. **Scoring validation** — clamp, enforce tier invariants, apply tier caps/floors
 8. **Output** — `enriched_targets.json`, CSV, `run_log.json` (atomic writes)
 
-Key config knobs: `io_concurrency` (default 10), `llm_concurrency` (default 3), `verify_near_miss_band` (default 0, recommend 10 for production), checkpoint/resume on Step 4.
+Key config knobs: `io_concurrency` (default 6; operators may raise it for throughput), `llm_concurrency` (default 3), checkpoint/resume on Step 4. (`verify_near_miss_band` is a retained no-op — not consumed by the current verification design.)
 
 ---
 
@@ -68,19 +80,33 @@ Scoring: `fit_signal_score` = share of achievable positive weight actually captu
 
 ---
 
-## Clients (2026-06-16)
+## Clients (2026-06-21)
 
 | Client | Product | Status |
 |--------|---------|--------|
-| Femasys | FemaSeed (intratubal insemination) | **On hold** — waiting for VP to return ICP v8 validation |
+| Femasys | FemaSeed (intratubal insemination) | **Active** — national ICP v11 cartridge; Atlanta brief is the next deliverable |
 | Ormco | Orthodontic (TBD) | **Pending** — sales rep expected to have direction by Tuesday |
-| Angel Aligner | Aligners | **Unknown** — Rajiv reached out, no update |
-| Neurolief | Neuromodulation | **Dormant** — focused on VA channel, out of scope |
+
+Only two client cartridges remain in the repo: `obgyn_femasys` and `ormco-spark`.
+Angel Aligner (`ortho_angel_v1`), Neurolief (`neurolief_prolivrx`), and Right at Home
+(`right_at_home_south_oc`) — along with the Michigan Femasys variant
+(`obgyn_femasys_mi`) — were removed this session as concept/demo cartridges.
 
 ### Femasys Context
 FemaSeed: ITI via balloon catheter, ~24% pregnancy rate vs ~7% IUI. Target: OB/GYN practices doing IUI. FemVue (fallopian tube assessment via ultrasound) is another Femasys product — practices that have it are warm leads.
 
-ICP v8: 11 signals, cash-pay proxy via reinforcement (elective procedures → cash pay). S-ICP-010 (in-house ultrasound) likely to become `required_for_bullseye` — awaiting clinical team confirmation.
+ICP v11: 10 signals (`obgyn-femasys-v11`). This is a national merge — the former
+national cartridge and the Michigan variant were combined into one, adopting the
+Michigan service-context prompt fixes (a named service, a dedicated service/fertility
+page, a "we treat/offer" statement, or a provider specialty now count, not only
+verbatim phrases; editorial/blog mentions still excluded). The geography limit was
+removed in run_config (`target_geography: []` = all states). Cash-pay (S-ICP-007) is
+now a **`required_for_contender`** must-have at weight 20: a practice with no confirmed
+cash-pay/self-pay capability is held in Manual Review until an operator confirms it —
+unless the elective/aesthetic service line (S-ICP-008) reinforces it as a cash-pay
+proxy. The FemVue signal (S-ICP-006) now also matches FemaSeed (the strongest warm
+lead — the practice already uses the product being sold). S-ICP-010 (in-house
+ultrasound) remains reserved, pending clinical confirmation.
 
 Atlanta brief is the immediate deliverable: 20-30 metro Atlanta OBGYNs → CEO-facing "Market Report" format (cover page, tier summary, top highlights). Not the operator QC layout.
 
@@ -113,24 +139,16 @@ After any logo script update: `git pull && python update_site_logos.py`
 - 2 enrichment runs completed on ~20 Femasys records each
 - 1 Bullseye found — practice with existing FemVue relationship (existing Femasys customer)
 - Early runs used hypothesized weights before validated client ICP
-- Bot-blocking is the primary operational friction; all configs at `io_concurrency: 10`
+- Bot-blocking is the primary operational friction; `io_concurrency` defaults to 6 (operators may raise it for throughput)
 - Browser retry (Playwright/Chromium) available for bot-gated sites
 
 ---
 
 ## Immediate Next Steps
 
-1. **Femasys** — wait for VP to return ICP v8; then pull 20-30 Atlanta OBGYNs and run
+1. **Femasys** — pull 20-30 Atlanta OBGYNs and run against the national v11 cartridge
 2. **Ormco** — sales rep direction expected Tuesday; propose hypothesis ICP once product is clearer
-3. **Atlanta brief format** — CEO-facing Market Report layout needs to be built before external delivery
-4. **FemVue placeholder signal** — add at weight 0 to Femasys ICP, ready to activate
-5. **S-ICP-010 ultrasound gate** — awaiting Femasys clinical confirmation
-
-**Pending decisions (do not act without Rajiv's input):**
-- S-ICP-010 → `required_for_bullseye`
-- FemVue signal weight
-- `verify_near_miss_band` for Atlanta run
-- CEO brief format design
+3. **Atlanta brief format** — CEO-facing Market Report layout (cover page, tier summary, top highlights) still needs to be built before external delivery. This is the one open design item.
 
 ---
 
