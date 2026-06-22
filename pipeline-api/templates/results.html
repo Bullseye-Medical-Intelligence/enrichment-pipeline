@@ -364,7 +364,7 @@
 {% endif %}
 
 
-{% macro record_rows(record, run_id, status) %}
+{% macro record_rows(record, run_id, status, signal_columns=[]) %}
 {% set rid = record.record_id | default("") %}
       {# Signal-filter tokens: the signal_ids that fired "yes" (or were inferred)
          on this record, mirroring the FOUND grouping below. Stamped on the row so
@@ -410,6 +410,16 @@
           {% endif %}
           {% if record.website_url %}<br><a class="text-muted small practice-url" href="{{ record.website_url }}" target="_blank" rel="noopener noreferrer">{{ record.website_url }}</a>{% endif %}
         </td>
+        {% for col in signal_columns %}
+        {% set _cs = signal_column_state(record, col.signal_ids) %}
+        <td class="signal-col-cell">
+          {% if _cs == "yes" %}<span class="signal-state-badge state-yes">YES</span>
+          {% elif _cs == "inferred" %}<span class="signal-state-badge state-inferred">INF</span>
+          {% elif _cs == "no" %}<span class="signal-state-badge state-no">NO</span>
+          {% elif _cs == "not_found" %}<span class="signal-state-badge state-not_found">—</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        {% endfor %}
         <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% elif record.address_zip %}<span class="text-muted">{{ record.address_zip }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
           {% if record.enrichment_status == "not_enriched" and record.exclusion_status != "EXCLUDED" %}
@@ -431,7 +441,7 @@
 
       {# ── Detail / review row (hidden by default) ─────────────────── #}
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
-        <td colspan="7">
+        <td colspan="{{ 7 + (signal_columns | length) }}">
           <div class="detail-panel">
             {% if record.phone or record.website_url or status.status == "complete" %}
             <div class="detail-contact-header">
@@ -881,7 +891,7 @@
     <thead>
       <tr>
         <th style="width:3em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-cb" onclick="toggleSelectAll(this)" title="Select all">{% elif status.status == 'complete' %}<input type="checkbox" id="reenrich-all-cb" onclick="toggleReenrichAll(this)" title="Select all for re-enrich">{% endif %}</th>
-        <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>
+        <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th class="sortable" onclick="sortRecords('location', this)">Location</th>
         <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
         <th class="sortable" onclick="sortRecords('score', this)">Score</th>
@@ -890,7 +900,7 @@
     </thead>
     <tbody>
       {% for record in records if record.displayed_tier != 'Excluded' and record.review.qc_status != 'rejected' and record.source_confidence not in ("limited", "failed") %}
-      {{ record_rows(record, run_id, status) }}
+      {{ record_rows(record, run_id, status, signal_columns) }}
       {% endfor %}
     </tbody>
   </table>
@@ -914,7 +924,7 @@
       <thead>
         <tr>
           <th style="width:2em;"></th>
-          <th>Practice</th>
+          <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
           <th>Location</th>
           <th>Tier</th>
           <th>Score</th>
@@ -923,7 +933,7 @@
       </thead>
       <tbody>
         {% for record in records if record.source_confidence in ("limited", "failed") and record.exclusion_status != "EXCLUDED" %}
-        {{ record_rows(record, run_id, status) }}
+        {{ record_rows(record, run_id, status, signal_columns) }}
         {% endfor %}
       </tbody>
     </table>
@@ -948,7 +958,7 @@
     <thead>
       <tr>
         <th style="width:2em; text-align:center;"><input type="checkbox" id="select-all-excl-cb" onclick="toggleSelectAll(this, 'excl')" title="Select all pre-excluded"></th>
-        <th>Practice</th>
+        <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th>Location</th>
         <th>Tier</th>
         <th>Score</th>
@@ -957,7 +967,7 @@
     </thead>
     <tbody>
       {% for record in excluded_records %}
-      {{ record_rows(record, run_id, status) }}
+      {{ record_rows(record, run_id, status, signal_columns) }}
       {% endfor %}
     </tbody>
   </table>
@@ -976,7 +986,7 @@
     <thead>
       <tr>
         <th style="width:2em;"></th>
-        <th>Practice</th>
+        <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th>Location</th>
         <th>Tier</th>
         <th>Score</th>
@@ -985,7 +995,7 @@
     </thead>
     <tbody>
       {% for record in excluded_records %}
-      {{ record_rows(record, run_id, status) }}
+      {{ record_rows(record, run_id, status, signal_columns) }}
       {% endfor %}
     </tbody>
   </table>
@@ -1017,7 +1027,7 @@
       <thead>
         <tr>
           <th style="width:2em;"></th>
-          <th>Practice</th>
+          <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
           <th>Location</th>
           <th>Tier</th>
           <th>Score</th>
@@ -1026,7 +1036,7 @@
       </thead>
       <tbody>
         {% for record in _ns.rejected %}
-        {{ record_rows(record, run_id, status) }}
+        {{ record_rows(record, run_id, status, signal_columns) }}
         {% endfor %}
       </tbody>
     </table>

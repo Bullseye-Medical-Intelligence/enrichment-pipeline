@@ -1,5 +1,5 @@
 {
-  "_comment": "Generic template — copy to config/clients/<client_slug>/icp_checklist.json and replace these placeholder signals with real ICP signals for the engagement. Run with: --icp config/clients/<client_slug>/icp_checklist.json",
+  "_comment": "Generic template — copy to config/clients/<client_slug>/icp_checklist.json and replace these placeholder signals with real ICP signals for the engagement. Run with: --icp config/clients/<client_slug>/icp_checklist.json. Optional per-signal column_label (24 chars or fewer) surfaces that signal as an at-a-glance column on the operator dashboard; signals sharing a label roll up into one column showing the strongest state.",
   "version": "icp-v1",
   "signals": [
     {

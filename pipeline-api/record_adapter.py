@@ -178,3 +178,39 @@ def format_phone(raw: str) -> str:
     if len(digits) == 11 and digits[0] == "1":
         return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
     return raw or "—"
+
+
+# ---------------------------------------------------------------------------
+# Dashboard signal columns (presentation only; see ICP signal `column_label`)
+# ---------------------------------------------------------------------------
+
+# Roll-up order when one column groups several signals: the strongest state wins.
+# Higher = stronger. "" means the record carries none of the column's signals.
+_COLUMN_STATE_RANK = {"yes": 3, "inferred": 2, "no": 1, "not_found": 0, "": -1}
+
+
+def signal_column_state(record: dict, signal_ids) -> str:
+    """Return the strongest column state across a record's signals in signal_ids.
+
+    Ladder (strongest first): yes > inferred > no > not_found. A signal whose
+    state_inferred is set reports "inferred". Returns "" when the record carries
+    none of the column's signals (blank cell, e.g. blocked / not-enriched rows or
+    a live ICP whose signal_ids drifted from this run).
+    """
+    wanted = set(signal_ids or [])
+    best = ""
+    for sig in record.get("signals") or []:
+        if sig.get("signal_id") not in wanted:
+            continue
+        raw = sig.get("signal_state") or "not_found"
+        if raw == "yes":
+            state = "yes"            # a confirmed "yes" outranks the inferred flag
+        elif sig.get("state_inferred"):
+            state = "inferred"
+        elif raw == "no":
+            state = "no"
+        else:
+            state = "not_found"
+        if _COLUMN_STATE_RANK.get(state, -1) > _COLUMN_STATE_RANK.get(best, -1):
+            best = state
+    return best

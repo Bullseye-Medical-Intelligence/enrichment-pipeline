@@ -342,6 +342,25 @@ def test_icp_validation_accepts_optional_tiering_fields():
     ))
 
 
+def test_icp_validation_accepts_column_label():
+    icp_profiles.validate_icp_profile(_icp_with_signal(column_label="Cash Pay"))
+
+
+def test_icp_validation_rejects_empty_column_label():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(column_label="  "))
+
+
+def test_icp_validation_rejects_non_string_column_label():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(column_label=123))
+
+
+def test_icp_validation_rejects_too_long_column_label():
+    with pytest.raises(ValueError):
+        icp_profiles.validate_icp_profile(_icp_with_signal(column_label="x" * 25))
+
+
 def test_icp_validation_rejects_non_bool_exclude_if_yes():
     with pytest.raises(ValueError):
         icp_profiles.validate_icp_profile(_icp_with_signal(exclude_if_yes="yes"))

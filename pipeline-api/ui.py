@@ -76,6 +76,9 @@ def _clean_angles(angles) -> list:
 
 
 _jinja_env.filters["clean_angles"] = _clean_angles
+# Resolve a record's state for an ICP signal column (see record_adapter and the
+# ICP signal `column_label`); used by results.html and contact_queue.html.
+_jinja_env.globals["signal_column_state"] = record_adapter.signal_column_state
 
 
 def _render(name: str, status_code: int = 200, **context) -> HTMLResponse:
@@ -1220,6 +1223,39 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
     return merged
 
 
+def _signal_columns(status) -> list[dict]:
+    """Ordered dashboard column defs from the run's LIVE ICP profile.
+
+    Groups signals that share a `column_label` into one column (first-appearance
+    order); each record's state is resolved separately in the template by
+    signal_id, so columns track the live ICP (existing runs gain them immediately)
+    while state stays frozen per record. Returns [] when there is no
+    icp_profile_id, the profile is missing/malformed, or no signal carries a
+    column_label (table unchanged).
+    """
+    icp_id = getattr(status, "icp_profile_id", None)
+    if not icp_id:
+        return []
+    try:
+        profile = icp_profiles.get_icp_profile(icp_id)
+    except (ValueError, OSError):
+        return []
+    columns: list[dict] = []
+    by_label: dict[str, dict] = {}
+    for sig in profile.get("signals") or []:
+        label = (sig.get("column_label") or "").strip()
+        sid = sig.get("signal_id")
+        if not label or not sid:
+            continue
+        col = by_label.get(label)
+        if col is None:
+            col = {"label": label, "signal_ids": []}
+            by_label[label] = col
+            columns.append(col)
+        col["signal_ids"].append(sid)
+    return columns
+
+
 @router.get("/dashboard/{run_id}", response_class=HTMLResponse)
 async def results_page(
     request: Request,
@@ -1268,6 +1304,7 @@ async def results_page(
         run_id=run_id,
         status=status,
         records=merged_records,
+        signal_columns=_signal_columns(status),
         stats=stats,
         project_context=project_context,
         progress=progress,
@@ -1672,6 +1709,7 @@ async def contact_queue_page(
         run_id=run_id,
         status=status,
         records=merged_records,
+        signal_columns=_signal_columns(status),
         project_context=project_context,
         show_all=show_all,
     )

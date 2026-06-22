@@ -44,6 +44,9 @@ _REQUIRED_SIGNAL_FIELDS = ("signal_id", "signal_label", "prompt_instruction", "p
 # Normalised before validation so existing ICP files with old names keep working.
 _TIER_ALIASES: dict[str, str] = {"Watchlist": "Contender"}
 _VALID_CAP_FLOOR_TIERS = ("Contender", "Needs Verification")
+# Max length of an optional per-signal `column_label` (surfaces the signal as an
+# at-a-glance dashboard column). Kept short so table headers stay compact.
+_MAX_COLUMN_LABEL_LEN = 24
 
 
 def _normalize_tier_value(value: str) -> str:
@@ -249,6 +252,17 @@ def validate_icp_profile(data: dict) -> None:
                 raise ValueError(
                     f"ICP signal #{i + 1} 'inhibited_by' references unknown signal_id "
                     f"'{signal['inhibited_by']}'."
+                )
+        if "column_label" in signal:
+            label = signal["column_label"]
+            if not isinstance(label, str) or not label.strip():
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'column_label' must be a non-empty string."
+                )
+            if len(label) > _MAX_COLUMN_LABEL_LEN:
+                raise ValueError(
+                    f"ICP signal #{i + 1} 'column_label' must be "
+                    f"{_MAX_COLUMN_LABEL_LEN} characters or fewer."
                 )
     # Profile-level optional fields.
     if "contact_strategy" in data and not isinstance(data.get("contact_strategy"), str):

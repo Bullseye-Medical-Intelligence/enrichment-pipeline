@@ -718,6 +718,11 @@ Each signal may also carry these optional fields (all default to off):
   partial fit credit and its `verification_required` gate does not fire. Use to
   let an observable signal stand in for one that is rarely printed verbatim
   (e.g. listed elective/cosmetic procedures imply cash pay).
+- **`column_label`** (string, ≤24 chars): *API presentation only; ignored by the
+  pipeline engine.* Surfaces the signal as an at-a-glance column on the operator
+  dashboard (`pipeline-api` results table + Contact Queue). Documented here so the
+  optional field is discoverable in one place; it is not part of the enrichment
+  output contract. See `pipeline-api/CLAUDE.md`.
 
 #### How fit is scored
 

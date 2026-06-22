@@ -178,6 +178,7 @@ never in engine code (RULE 3).
 | `exclude_if_yes` | bool | When the signal is confirmed `"yes"`, the record is immediately EXCLUDED via the normal exclusion path. The only signal-driven route to `Excluded` (e.g. telehealth-only practice). Default off. |
 | `inhibited_by` | string `signal_id` | Used alongside `exclude_if_yes`. When the named signal is also `"yes"`, this exclusion is suppressed — for mutually-exclusive pairs where the companion signal logically invalidates the exclusion. |
 | `reinforces` | string `signal_id` | When this signal is `"yes"` and the named target is `not_found`, the target is marked `state_inferred`. Must reference a signal_id in the same profile. |
+| `column_label` | string (≤24 chars) | **API presentation only** — surfaces this signal as an at-a-glance column on the operator dashboard (results table + Contact Queue). Signals sharing a label roll up into one column showing the strongest state (yes > inferred > no > not_found). Read from the LIVE ICP so existing runs gain columns immediately; the pipeline engine ignores it (no effect on scoring or output). |
 
 **Reinforcement** lets an observable signal stand in for one rarely printed
 verbatim. Example: listed elective/cosmetic procedures (`reinforces` cash pay)

@@ -221,6 +221,16 @@ tier caps, `competitive_brands` ("Not configured for this ICP" when absent — a
 valid state), and geography ("No geography restriction" when empty — also
 valid). STRICTLY read-only: no edit controls, no file writes.
 
+**ICP signal columns**: any ICP signal carrying an optional `column_label` is
+surfaced as an at-a-glance column on the results table and the Contact Queue.
+Column *definitions* come from the run's **live** ICP
+(`icp_profiles.get_icp_profile(status.icp_profile_id)` via `_signal_columns`), so
+existing runs gain columns immediately; each cell's *state* comes from that
+record's frozen signals matched by `signal_id` (`record_adapter.signal_column_state`,
+a Jinja global). Signals sharing a label roll up to the strongest state
+(yes > inferred > no > not_found). Generic and RULE-3-compliant — no client/signal
+names in code; other clients opt in by adding `column_label` to their seed profile.
+
 **Evidence Link Checker**: manual, pre-delivery audit that evidence source URLs
 in Bullseye/Contender (client-shipped tier) records still resolve. The API
 collects signal `source_url`s and shells out to the pipeline's `check_links.py`

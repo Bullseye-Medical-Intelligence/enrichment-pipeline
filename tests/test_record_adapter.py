@@ -68,3 +68,45 @@ def test_unknown_tier_label_is_verbatim_rank_falls_back():
     assert record_adapter.contact_priority(rec, {}) == "SomethingNew"
     # Unknown tiers sort at the Contender rank, never above a known tier.
     assert record_adapter.contact_priority_rank(rec, {}) == 1
+
+
+# ---------------------------------------------------------------------------
+# signal_column_state — dashboard at-a-glance ICP-signal columns
+# ---------------------------------------------------------------------------
+
+def test_signal_column_state_strongest_wins():
+    rec = {"signals": [
+        {"signal_id": "a", "signal_state": "no"},
+        {"signal_id": "b", "signal_state": "yes"},
+    ]}
+    assert record_adapter.signal_column_state(rec, ["a", "b"]) == "yes"
+
+
+def test_signal_column_state_inferred_beats_no():
+    rec = {"signals": [
+        {"signal_id": "a", "signal_state": "no"},
+        {"signal_id": "b", "signal_state": "not_found", "state_inferred": True},
+    ]}
+    assert record_adapter.signal_column_state(rec, ["a", "b"]) == "inferred"
+
+
+def test_signal_column_state_no_beats_not_found():
+    rec = {"signals": [
+        {"signal_id": "a", "signal_state": "not_found"},
+        {"signal_id": "b", "signal_state": "no"},
+    ]}
+    assert record_adapter.signal_column_state(rec, ["a", "b"]) == "no"
+
+
+def test_signal_column_state_blank_when_absent():
+    rec = {"signals": [{"signal_id": "x", "signal_state": "yes"}]}
+    assert record_adapter.signal_column_state(rec, ["a", "b"]) == ""
+
+
+def test_signal_column_state_confirmed_yes_beats_inferred_flag():
+    rec = {"signals": [{"signal_id": "a", "signal_state": "yes", "state_inferred": True}]}
+    assert record_adapter.signal_column_state(rec, ["a"]) == "yes"
+
+
+def test_signal_column_state_handles_missing_signals_key():
+    assert record_adapter.signal_column_state({}, ["a"]) == ""

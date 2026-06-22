@@ -58,6 +58,7 @@
         <th></th>
         <th>Contact Priority</th>
         <th>Practice</th>
+        {% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th>Evidence</th>
         <th>Confidence</th>
         <th>Risk</th>
@@ -80,6 +81,16 @@
           <br><span class="text-muted small">⚠ Limited data</span>
           {% endif %}
         </td>
+        {% for col in signal_columns %}
+        {% set _cs = signal_column_state(record, col.signal_ids) %}
+        <td class="signal-col-cell">
+          {% if _cs == "yes" %}<span class="signal-state-badge state-yes">YES</span>
+          {% elif _cs == "inferred" %}<span class="signal-state-badge state-inferred">INF</span>
+          {% elif _cs == "no" %}<span class="signal-state-badge state-no">NO</span>
+          {% elif _cs == "not_found" %}<span class="signal-state-badge state-not_found">—</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        {% endfor %}
         <td>{% if brief.top_evidence %}{{ brief.top_evidence[0].point }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>{% if record.confidence_band %}<span class="badge badge-confidence-{{ record.confidence_band | lower }}">{{ record.confidence_band }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
@@ -93,7 +104,7 @@
 
       {# ── Rep prep detail (hidden by default) ─────────────────────── #}
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
-        <td colspan="8">
+        <td colspan="{{ 8 + (signal_columns | length) }}">
           <div class="detail-panel">
             {% if record.phone or record.website_url %}
             <div class="detail-contact-header">
