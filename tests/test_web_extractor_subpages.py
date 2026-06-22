@@ -1,9 +1,10 @@
 """
 Tests for subpage discovery and value-ranked selection in the web extractor.
 
-The crawler has a limited per-practice page budget, so it must spend it on the
-strongest-evidence pages (services, procedures, provider bios) before weaker
-ones (about, contact) and must never spend it on blog/news content.
+Every non-noise internal page is eligible to be crawled; keyword matches set the
+ORDER so the strongest-evidence pages (services, procedures, provider bios,
+billing) come first, within a text budget and a high safety ceiling. The crawler
+must never spend a slot on blog/news/legal/auth/commerce noise.
 """
 
 import os
@@ -82,3 +83,68 @@ def test_offsite_anchor_and_mailto_links_ignored():
     )
     result = _find_relevant_subpages(html, BASE, max_pages=5)
     assert result == [f"{BASE}/services"]
+
+
+def test_billing_insurance_page_selected_over_admin_by_default():
+    """A billing/insurance page is crawled by default and outranks about/contact.
+
+    Cash-pay and self-pay evidence lives on the Billing & Insurance page, not the
+    homepage. Regression guard for the missed cash-pay gate on those pages.
+    """
+    html = _html(
+        '<a href="/about">About Us</a>',
+        '<a href="/billing-and-insurance">Billing and Insurance</a>',
+    )
+    # One subpage slot: the financial page (tier 2) must beat the about page (tier 1).
+    result = _find_relevant_subpages(html, BASE, max_pages=2)
+    assert result == [f"{BASE}/billing-and-insurance"]
+
+
+def test_clinical_page_outranks_billing_page():
+    """Clinical evidence still wins the first slot: a services page (tier 3)
+    outranks a billing page (tier 2) when only one subpage fits."""
+    html = _html(
+        '<a href="/billing-and-insurance">Billing and Insurance</a>',
+        '<a href="/services">Our Services</a>',
+    )
+    result = _find_relevant_subpages(html, BASE, max_pages=2)
+    assert result == [f"{BASE}/services"]
+
+
+def test_unkeyworded_page_is_crawled_but_ranked_last():
+    """Every non-noise page is eligible: a page matching no keyword is still
+    crawled, just ranked after keyword-matched evidence pages."""
+    html = _html(
+        '<a href="/patient-forms">Patient Forms</a>',   # matches no keyword
+        '<a href="/services">Services</a>',              # tier 3
+    )
+    result = _find_relevant_subpages(html, BASE, max_pages=5)
+    assert f"{BASE}/patient-forms" in result            # crawled (new behavior)
+    assert result.index(f"{BASE}/services") < result.index(f"{BASE}/patient-forms")
+
+
+def test_noise_pages_are_skipped():
+    """Blog/news plus legal/auth/commerce noise pages are never crawled, even
+    though every other page is now eligible."""
+    html = _html(
+        '<a href="/privacy-policy">Privacy Policy</a>',
+        '<a href="/login">Patient Login</a>',
+        '<a href="/cart">Cart</a>',
+        '<a href="/sitemap">Sitemap</a>',
+        '<a href="/blog/iui">Blog Post</a>',
+        '<a href="/services">Services</a>',
+    )
+    result = _find_relevant_subpages(html, BASE, max_pages=10)
+    assert result == [f"{BASE}/services"]
+
+
+def test_operator_keywords_augment_defaults():
+    """A specialty-only keyword list does not drop the generic page-type defaults:
+    a billing page still outranks a plain about page even when the operator passes
+    only specialty terms (regression guard for the cash-pay miss on client ICPs)."""
+    html = _html(
+        '<a href="/about">About</a>',
+        '<a href="/billing-and-insurance">Billing and Insurance</a>',
+    )
+    result = _find_relevant_subpages(html, BASE, max_pages=2, keywords=["iui", "infertil"])
+    assert result == [f"{BASE}/billing-and-insurance"]

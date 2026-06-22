@@ -253,8 +253,8 @@ Step 3: WEB EXTRACTION
   For records with a valid website_url:
     - GET request to homepage
     - Parse HTML with BeautifulSoup, extract visible text
-    - Identify relevant subpages (services, providers/team, about, contact)
-    - GET and extract text from each relevant subpage (max 5 pages per practice)
+    - Every internal page is a crawl candidate except blog/news/legal/auth/commerce noise (`web_extractor.SKIP_PATH_SEGMENTS`)
+    - GET and extract each, evidence-first (keyword-ranked), until the combined text budget (`MAX_COMBINED_CHARS`) is full or the `MAX_CRAWL_PAGES` safety ceiling (75) is reached
     - Concatenate extracted text into a single context block
     - Trim to token budget (stay under LLM context window limit — see prompt templates)
   For records where URL failed or returned no usable text:
@@ -618,7 +618,7 @@ CLAUDE_MODEL=claude-sonnet-4-6
     "outside_geography"
   ],
   "bullseye_min_score": 75,
-  "max_pages_per_practice": 5,
+  "max_pages_per_practice": 75,
   "request_timeout_seconds": 15,
   "request_retries": 3,
   "io_concurrency": 6,
@@ -629,14 +629,20 @@ CLAUDE_MODEL=claude-sonnet-4-6
 Optional keys:
 - `io_concurrency` (default 6): worker count for the I/O-bound steps (URL
   validation, web extraction). Set to 1 for fully sequential behavior.
-- `subpage_keywords`: relevance keywords for subpage crawl scoring. Keep
-  specialty-specific terms here, never hardcoded in source. Omit to use the
-  generic default set in `extraction/web_extractor.py:DEFAULT_SUBPAGE_KEYWORDS`.
-  Within the per-practice page budget, candidate pages are ranked by page-type
-  value (services/procedures/treatments highest, then provider bios, then
-  about/contact); operator-supplied specialty terms default to the high tier.
-  Blog/news/taxonomy/careers paths are skipped even when their slug matches a
-  keyword.
+- `max_pages_per_practice` (default 75): a safety ceiling, not a target. The
+  crawl visits every internal page except blog/news/legal/auth/commerce noise
+  (`web_extractor.SKIP_PATH_SEGMENTS`), evidence-first, and stops once the
+  combined text budget (`MAX_COMBINED_CHARS`) is full, so this ceiling only
+  bounds pathological sites / crawler traps.
+- `subpage_keywords`: crawl-ORDER keywords (no longer an eligibility gate, since
+  every non-noise page is crawled). Keep specialty-specific terms here, never
+  hardcoded in source. They AUGMENT the generic page-type defaults
+  (`extraction/web_extractor.py:DEFAULT_SUBPAGE_KEYWORDS`: services, providers,
+  billing/insurance/financial, about, contact), never replace them, so standard
+  evidence pages stay ranked even under a specialty-only profile. Pages are ranked
+  by page-type value (services/procedures highest, then provider bios and
+  billing/financial, then about/contact, then unkeyworded pages); omit to use the
+  defaults alone.
 
 Env: `LLM_REQUEST_TIMEOUT_SECONDS` (default 60) caps every Claude/GPT call so a
 stalled socket can never hang a run.

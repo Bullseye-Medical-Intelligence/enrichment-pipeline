@@ -44,11 +44,17 @@ DEFAULT_SUBPAGE_KEYWORDS = [
     "provider", "providers", "physician", "physicians", "doctor", "staff",
     "team", "our-team", "about", "our-practice",
     "speciali", "contact",
+    # Financial / billing pages carry first-hand payment-model evidence (cash-pay,
+    # self-pay, financing, FSA/HSA, out-of-network) that several ICPs score or gate
+    # on, and it rarely appears on the homepage. Generic page types, like the
+    # about / contact entries above - not specialty terms.
+    "billing", "insurance", "financial", "payment", "pricing",
 ]
 
 # Subpage-relevance weights by page-type value (higher = crawl first). A page
 # naming a service, procedure, or treatment is first-hand evidence of clinical
-# capability; provider/people pages (bios) come next; administrative pages
+# capability; provider/people pages (bios) and billing/insurance/financial pages
+# (first-hand payment-model evidence) come next; administrative pages
 # (about, contact) are weakest. This mirrors the evidence hierarchy the
 # signal-extraction prompt applies, so the limited per-practice page budget is
 # spent on the pages that carry the most scoring weight. Any keyword not listed
@@ -58,19 +64,31 @@ SUBPAGE_KEYWORD_WEIGHTS = {
     "about": 1, "our-practice": 1, "contact": 1, "care": 1,
     "team": 2, "our-team": 2, "staff": 2,
     "provider": 2, "providers": 2, "physician": 2, "physicians": 2, "doctor": 2,
+    "billing": 2, "insurance": 2, "financial": 2, "payment": 2, "pricing": 2,
     "service": 3, "services": 3, "procedure": 3, "procedures": 3,
     "treatment": 3, "treatments": 3, "speciali": 3,
 }
 DEFAULT_SUBPAGE_KEYWORD_WEIGHT = 3
 
-# URL path segments that mark non-evidence pages (blog posts, news, taxonomy,
-# careers). These can still match a specialty subpage keyword in their slug
-# (e.g. /blog/iui-explained matches "iui"), so without this filter a blog post
-# could consume a crawl slot meant for a services or provider page. Matched as
-# whole path segments, so a real "/services" page is never caught.
+# URL path segments that mark non-evidence "noise" pages. Every other internal
+# page is eligible to be crawled (there is no keyword gate any more), so this
+# skip set is the one thing standing between the crawler and a site's blog
+# archive, login wall, or legal boilerplate. Matched as whole path segments, so a
+# real "/services" page is never caught. Three groups: editorial/taxonomy,
+# account/commerce, and legal/utility.
 SKIP_PATH_SEGMENTS = frozenset({
+    # editorial / taxonomy / careers - not first-hand evidence of capability
     "blog", "news", "events", "press", "careers", "jobs",
     "category", "categories", "tag", "tags", "author", "authors",
+    "feed", "rss", "archive", "archives",
+    # account / auth / commerce
+    "login", "log-in", "signin", "sign-in", "register", "account",
+    "my-account", "cart", "checkout", "basket", "wp-login", "wp-admin",
+    # legal / utility boilerplate
+    "privacy", "privacy-policy", "privacy-practices", "terms",
+    "terms-of-use", "terms-of-service", "terms-and-conditions", "disclaimer",
+    "accessibility", "accessibility-statement", "cookie", "cookies",
+    "cookie-policy", "hipaa", "nondiscrimination", "sitemap", "search",
 })
 
 # Max characters of text to extract per page (before combining)
@@ -78,6 +96,12 @@ MAX_CHARS_PER_PAGE = 8000
 
 # Max combined characters across all pages for a single record
 MAX_COMBINED_CHARS = 25000
+
+# Hard safety ceiling on pages crawled per practice. There is no low per-site
+# page cap any more: every non-noise subpage is eligible, ranked evidence-first,
+# and crawled until the MAX_COMBINED_CHARS text budget above is full. This ceiling
+# only stops pathological cases (crawler traps, accidentally enormous sites).
+MAX_CRAWL_PAGES = 75
 
 # A successful crawl yielding fewer than this many characters of usable text is a
 # "thin crawl": the page almost certainly did not render its real content (a JS or
@@ -287,20 +311,31 @@ def _subpage_keyword_weight(keyword: str) -> int:
 
 
 def _find_relevant_subpages(html: str, base_url: str,
-                              max_pages: int = 5,
+                              max_pages: int = MAX_CRAWL_PAGES,
                               keywords: list[str] = None) -> list[str]:
     """
-    Parse the homepage HTML and find internal links to relevant subpages.
-    Returns a list of absolute URLs to crawl (excluding base_url itself),
-    ranked by page-type value so the strongest-evidence pages (services,
-    procedures, provider bios) are crawled before weaker ones (about, contact)
-    within the page budget.
+    Parse the homepage HTML and find internal links to subpages to crawl.
+
+    Every internal, non-noise page is eligible (see SKIP_PATH_SEGMENTS); keyword
+    matches set crawl ORDER, not eligibility, so an evidence page with an
+    unconventional slug (e.g. /patient-resources) is still crawled. Returns
+    absolute URLs (excluding base_url), ranked by page-type value so the
+    strongest-evidence pages (services, procedures, provider bios, billing) come
+    before weaker ones (about, contact) and unkeyworded pages last, capped at
+    max_pages - 1 (the homepage takes the remaining slot).
     """
     if not html:
         return []
 
+    # Operator-supplied keywords AUGMENT the generic page-type defaults (services,
+    # providers, billing, about...), never replace them - so standard evidence
+    # pages stay ranked even under a specialty-only profile. Keywords now affect
+    # crawl ORDER only (every non-noise page is eligible), so a wider set is safe.
     if keywords is None:
         keywords = DEFAULT_SUBPAGE_KEYWORDS
+    else:
+        keywords = DEFAULT_SUBPAGE_KEYWORDS + [k for k in keywords
+                                               if k not in DEFAULT_SUBPAGE_KEYWORDS]
 
     soup = BeautifulSoup(html, "lxml")
     parsed_base = urlparse(base_url)
@@ -340,8 +375,11 @@ def _find_relevant_subpages(html: str, base_url: str,
         combined = f"{parsed.path.lower()} {link_text}"
         matched = [_subpage_keyword_weight(kw) for kw in keywords if kw in combined]
 
-        if matched and abs_url not in candidates:
-            candidates[abs_url] = (max(matched), sum(matched))
+        # Every non-noise page is a candidate: keyword matches only rank it.
+        # Unkeyworded pages score (0, 0) and fill the tail of the crawl order, so
+        # an evidence page with an unconventional slug is still reached.
+        if abs_url not in candidates:
+            candidates[abs_url] = (max(matched), sum(matched)) if matched else (0, 0)
 
     # Rank by (top page-type value, total value), descending; reserve 1 slot for homepage.
     sorted_urls = sorted(candidates.keys(), key=lambda u: candidates[u], reverse=True)
@@ -349,7 +387,7 @@ def _find_relevant_subpages(html: str, base_url: str,
 
 
 def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
-                            max_pages: int = 5,
+                            max_pages: int = MAX_CRAWL_PAGES,
                             keywords: list[str] = None) -> ExtractionResult:
     """
     Extract visible text from a practice website.
@@ -403,12 +441,16 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         pages_crawled.append(final_url)
         evidence_pages.append({"url": final_url, "text": homepage_text})
 
-    # Step 2: Find and crawl relevant subpages
+    # Step 2: Find and crawl subpages (evidence-first; every non-noise page is
+    # eligible). Stop once the MAX_COMBINED_CHARS text budget is full - extra
+    # pages would only be truncated away below, so fetching them wastes time - or
+    # once the MAX_CRAWL_PAGES safety ceiling is hit.
     subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
-    print(f"    Found {len(subpages)} relevant subpages to crawl")
+    print(f"    Found {len(subpages)} candidate subpages to crawl")
 
+    crawled_chars = sum(len(block) for block in all_text_blocks)
     for subpage_url in subpages:
-        if len(all_text_blocks) >= max_pages:
+        if len(all_text_blocks) >= max_pages or crawled_chars >= MAX_COMBINED_CHARS:
             break
 
         print(f"    Fetching subpage: {subpage_url}")
@@ -418,7 +460,9 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         if sub_html:
             sub_text = _extract_visible_text(sub_html)
             if sub_text:
-                all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
+                block = f"[Source: {sub_final}]\n{sub_text}"
+                all_text_blocks.append(block)
+                crawled_chars += len(block)
                 pages_crawled.append(sub_final)
                 evidence_pages.append({"url": sub_final, "text": sub_text})
 
@@ -436,7 +480,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
 
 
 def batch_extract(records: list[dict], timeout: int = 15,
-                   retries: int = 3, max_pages: int = 5,
+                   retries: int = 3, max_pages: int = MAX_CRAWL_PAGES,
                    keywords: list[str] = None, max_workers: int = 1,
                    use_playwright: bool = False) -> list[dict]:
     """

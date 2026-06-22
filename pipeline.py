@@ -44,7 +44,7 @@ from ingestion.manual_adapter import load_manual_csv
 from ingestion import npi_lookup
 from ingestion.customer_suppression import load_suppression_list, check_suppression
 from extraction.url_validator import batch_validate_urls
-from extraction.web_extractor import batch_extract
+from extraction.web_extractor import MAX_CRAWL_PAGES, batch_extract
 from enrichment.constants import (
     DEFAULT_BULLSEYE_MIN_SCORE,
     DEFAULT_NEAR_MISS_BAND,
@@ -453,7 +453,7 @@ def run_pipeline(input_file: str, source_type: str,
 
     timeout = run_config.get("request_timeout_seconds", 15)
     retries = run_config.get("request_retries", 3)
-    max_pages = run_config.get("max_pages_per_practice", 5)
+    max_pages = run_config.get("max_pages_per_practice", MAX_CRAWL_PAGES)
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
     subpage_keywords = run_config.get("subpage_keywords") or None
     io_concurrency = int(run_config.get("io_concurrency", 6))
