@@ -72,7 +72,7 @@ class TestFemasysV11Intent:
     def test_version_is_v11(self):
         """The shipped cartridge is the v11 national merge."""
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
-        assert data["version"] == "obgyn-femasys-v11"
+        assert data["version"] == "obgyn-femasys-v11.1"
 
     def test_readiness_alone_cannot_qualify(self):
         """Elective (which infers cash-pay) with NO fertility signal stays out of the

@@ -1,7 +1,7 @@
 {
   "icp_id": "obgyn_femasys",
   "name": "Femasys — OBGYN Office-Based Fertility (FemaSeed)",
-  "version": "obgyn-femasys-v11",
+  "version": "obgyn-femasys-v11.1",
   "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE BEFORE RUNNING>>",
   "default_specialty": "OBGYN",
   "default_geography": [],
