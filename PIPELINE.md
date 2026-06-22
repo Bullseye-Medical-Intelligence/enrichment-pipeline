@@ -254,7 +254,7 @@ Step 3: WEB EXTRACTION
     - GET request to homepage
     - Parse HTML with BeautifulSoup, extract visible text
     - Every internal page is a crawl candidate except blog/news/legal/auth/commerce noise (`web_extractor.SKIP_PATH_SEGMENTS`)
-    - GET and extract each, evidence-first (keyword-ranked), until the combined text budget (`MAX_COMBINED_CHARS`) is full or the `MAX_CRAWL_PAGES` (20) / `MAX_CRAWL_SECONDS` (45s) bounds are reached
+    - GET and extract each, evidence-first (keyword-ranked), until the combined text budget (`MAX_COMBINED_CHARS`) is full or the `MAX_CRAWL_PAGES` (20) / `MAX_CRAWL_SECONDS` (30s) bounds are reached
     - Concatenate extracted text into a single context block
     - Trim to token budget (stay under LLM context window limit — see prompt templates)
   For records where URL failed or returned no usable text:
@@ -633,7 +633,7 @@ Optional keys:
   crawl visits every internal page except blog/news/legal/auth/commerce noise
   (`web_extractor.SKIP_PATH_SEGMENTS`), evidence-first, and stops once the
   combined text budget (`MAX_COMBINED_CHARS`) is full or the per-record
-  `MAX_CRAWL_SECONDS` (45s) deadline passes. Crawling is sequential within a
+  `MAX_CRAWL_SECONDS` (30s) deadline passes. Crawling is sequential within a
   record, so these bounds protect run throughput on deep or slow sites.
 - `subpage_keywords`: crawl-ORDER keywords (no longer an eligibility gate, since
   every non-noise page is crawled). Keep specialty-specific terms here, never

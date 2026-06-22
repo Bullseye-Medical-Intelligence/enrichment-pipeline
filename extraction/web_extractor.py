@@ -105,7 +105,7 @@ MAX_COMBINED_CHARS = 25000
 # budget hard-bounds a record that hits several slow/timeout pages. Crawling is
 # sequential within a record, so an unbounded ceiling tanks run throughput.
 MAX_CRAWL_PAGES = 20
-MAX_CRAWL_SECONDS = 45
+MAX_CRAWL_SECONDS = 30
 
 # A successful crawl yielding fewer than this many characters of usable text is a
 # "thin crawl": the page almost certainly did not render its real content (a JS or
