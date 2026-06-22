@@ -16,7 +16,7 @@
   "verify_near_miss_band": 0,
   "_comment_evidence_capture_enabled": "Evidence Vault: archive per-page crawled text (timestamp + sha256) under <run>/evidence/ so signal claims stay verifiable after the live site changes. Adds a few MB per run. Set false to disable.",
   "evidence_capture_enabled": true,
-  "max_pages_per_practice": 75,
+  "max_pages_per_practice": 20,
   "request_timeout_seconds": 15,
   "request_retries": 3,
   "io_concurrency": 10,

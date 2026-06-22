@@ -17,7 +17,7 @@
   "bullseye_min_score": 80,
   "verify_near_miss_band": 10,
   "auto_browser_retry": true,
-  "max_pages_per_practice": 75,
+  "max_pages_per_practice": 20,
   "request_timeout_seconds": 15,
   "request_retries": 3,
   "io_concurrency": 10,

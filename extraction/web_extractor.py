@@ -97,11 +97,15 @@ MAX_CHARS_PER_PAGE = 8000
 # Max combined characters across all pages for a single record
 MAX_COMBINED_CHARS = 25000
 
-# Hard safety ceiling on pages crawled per practice. There is no low per-site
-# page cap any more: every non-noise subpage is eligible, ranked evidence-first,
-# and crawled until the MAX_COMBINED_CHARS text budget above is full. This ceiling
-# only stops pathological cases (crawler traps, accidentally enormous sites).
-MAX_CRAWL_PAGES = 75
+# Per-practice crawl bounds. Every non-noise subpage is eligible, ranked
+# evidence-first, and crawled until the MAX_COMBINED_CHARS text budget above is
+# full - these then cap the work so a deep or slow site cannot stall a run. The
+# page ceiling sits well above a typical practice site (so all evidence pages are
+# still reached - the billing/services pages rank near the top) while the time
+# budget hard-bounds a record that hits several slow/timeout pages. Crawling is
+# sequential within a record, so an unbounded ceiling tanks run throughput.
+MAX_CRAWL_PAGES = 20
+MAX_CRAWL_SECONDS = 45
 
 # A successful crawl yielding fewer than this many characters of usable text is a
 # "thin crawl": the page almost certainly did not render its real content (a JS or
@@ -442,15 +446,18 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         evidence_pages.append({"url": final_url, "text": homepage_text})
 
     # Step 2: Find and crawl subpages (evidence-first; every non-noise page is
-    # eligible). Stop once the MAX_COMBINED_CHARS text budget is full - extra
-    # pages would only be truncated away below, so fetching them wastes time - or
-    # once the MAX_CRAWL_PAGES safety ceiling is hit.
+    # eligible). Stop once the MAX_COMBINED_CHARS text budget is full (extra pages
+    # would only be truncated away below), or once the MAX_CRAWL_PAGES /
+    # MAX_CRAWL_SECONDS bounds are hit - so a deep or slow site cannot stall the run.
     subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
     print(f"    Found {len(subpages)} candidate subpages to crawl")
 
     crawled_chars = sum(len(block) for block in all_text_blocks)
+    crawl_deadline = time.monotonic() + MAX_CRAWL_SECONDS
     for subpage_url in subpages:
-        if len(all_text_blocks) >= max_pages or crawled_chars >= MAX_COMBINED_CHARS:
+        if (len(all_text_blocks) >= max_pages
+                or crawled_chars >= MAX_COMBINED_CHARS
+                or time.monotonic() >= crawl_deadline):
             break
 
         print(f"    Fetching subpage: {subpage_url}")

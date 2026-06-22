@@ -254,7 +254,7 @@ Step 3: WEB EXTRACTION
     - GET request to homepage
     - Parse HTML with BeautifulSoup, extract visible text
     - Every internal page is a crawl candidate except blog/news/legal/auth/commerce noise (`web_extractor.SKIP_PATH_SEGMENTS`)
-    - GET and extract each, evidence-first (keyword-ranked), until the combined text budget (`MAX_COMBINED_CHARS`) is full or the `MAX_CRAWL_PAGES` safety ceiling (75) is reached
+    - GET and extract each, evidence-first (keyword-ranked), until the combined text budget (`MAX_COMBINED_CHARS`) is full or the `MAX_CRAWL_PAGES` (20) / `MAX_CRAWL_SECONDS` (45s) bounds are reached
     - Concatenate extracted text into a single context block
     - Trim to token budget (stay under LLM context window limit — see prompt templates)
   For records where URL failed or returned no usable text:
@@ -618,7 +618,7 @@ CLAUDE_MODEL=claude-sonnet-4-6
     "outside_geography"
   ],
   "bullseye_min_score": 75,
-  "max_pages_per_practice": 75,
+  "max_pages_per_practice": 20,
   "request_timeout_seconds": 15,
   "request_retries": 3,
   "io_concurrency": 6,
@@ -629,11 +629,12 @@ CLAUDE_MODEL=claude-sonnet-4-6
 Optional keys:
 - `io_concurrency` (default 6): worker count for the I/O-bound steps (URL
   validation, web extraction). Set to 1 for fully sequential behavior.
-- `max_pages_per_practice` (default 75): a safety ceiling, not a target. The
+- `max_pages_per_practice` (default 20): a safety ceiling, not a target. The
   crawl visits every internal page except blog/news/legal/auth/commerce noise
   (`web_extractor.SKIP_PATH_SEGMENTS`), evidence-first, and stops once the
-  combined text budget (`MAX_COMBINED_CHARS`) is full, so this ceiling only
-  bounds pathological sites / crawler traps.
+  combined text budget (`MAX_COMBINED_CHARS`) is full or the per-record
+  `MAX_CRAWL_SECONDS` (45s) deadline passes. Crawling is sequential within a
+  record, so these bounds protect run throughput on deep or slow sites.
 - `subpage_keywords`: crawl-ORDER keywords (no longer an eligibility gate, since
   every non-noise page is crawled). Keep specialty-specific terms here, never
   hardcoded in source. They AUGMENT the generic page-type defaults
