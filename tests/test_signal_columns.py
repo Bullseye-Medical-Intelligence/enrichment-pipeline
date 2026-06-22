@@ -158,3 +158,21 @@ def test_shared_label_rolls_up_to_strongest(env):
     html = _get(f"/dashboard/{_RUN_ID}")
     assert ">Fertility</th>" not in html   # only one labeled column now
     assert 'state-yes">YES' in html        # strongest of {yes, no} = yes
+
+
+def test_columns_resolve_from_snapshot_when_no_icp_profile_id(env):
+    # Old run with no icp_profile_id in status.json: the icp_id is recovered from
+    # the frozen icp_snapshot.json, so columns still resolve via the live ICP.
+    env.mkdir(parents=True, exist_ok=True)
+    (env / "status.json").write_text(json.dumps({
+        "run_id": _RUN_ID, "project_id": "P-1", "source_type": "outscraper",
+        "input_filename": "x.csv", "status": "complete",
+        "created_at": "2026-06-22T09:00:00+00:00",
+        "completed_at": "2026-06-22T09:30:00+00:00", "operator": "tester",
+    }))  # note: no icp_profile_id
+    (env / "icp_snapshot.json").write_text(json.dumps({"icp_id": "obgyn_femasys"}))
+    (env / "enriched_targets.json").write_text(json.dumps(
+        {"run_id": _RUN_ID, "records": [_record("T-1", [_sig("S-ICP-007", "yes")])]}))
+    html = _get(f"/dashboard/{_RUN_ID}")
+    assert ">Cash Pay</th>" in html
+    assert 'state-yes">YES' in html

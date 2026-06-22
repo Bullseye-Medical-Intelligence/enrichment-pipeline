@@ -1224,22 +1224,30 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
 
 
 def _signal_columns(status) -> list[dict]:
-    """Ordered dashboard column defs from the run's LIVE ICP profile.
+    """Ordered dashboard column defs from the run's ICP profile.
 
     Groups signals that share a `column_label` into one column (first-appearance
     order); each record's state is resolved separately in the template by
-    signal_id, so columns track the live ICP (existing runs gain them immediately)
-    while state stays frozen per record. Returns [] when there is no
-    icp_profile_id, the profile is missing/malformed, or no signal carries a
-    column_label (table unchanged).
+    signal_id, so columns track the ICP while state stays frozen per record.
+
+    Resolves robustly so columns survive a stale deploy: the icp_id comes from
+    status, else the run's frozen snapshot; the seed is synced on view (version-
+    gated no-op) so a committed column_label change shows without a separate
+    restart; the live profile is preferred, falling back to the frozen snapshot.
+    Returns [] only when no source yields a signal with a column_label.
     """
-    icp_id = getattr(status, "icp_profile_id", None)
+    snapshot = icp_profiles.read_snapshot(runs.run_dir(status.run_id)) or {}
+    icp_id = getattr(status, "icp_profile_id", None) or snapshot.get("icp_id")
     if not icp_id:
         return []
     try:
+        icp_profiles.sync_seed_profile(icp_id)  # version-gated; best-effort
+    except Exception:
+        pass
+    try:
         profile = icp_profiles.get_icp_profile(icp_id)
     except (ValueError, OSError):
-        return []
+        profile = snapshot  # fall back to the frozen snapshot
     columns: list[dict] = []
     by_label: dict[str, dict] = {}
     for sig in profile.get("signals") or []:
