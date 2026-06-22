@@ -489,7 +489,8 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
 def batch_extract(records: list[dict], timeout: int = 15,
                    retries: int = 3, max_pages: int = MAX_CRAWL_PAGES,
                    keywords: list[str] = None, max_workers: int = 1,
-                   use_playwright: bool = False) -> list[dict]:
+                   use_playwright: bool = False,
+                   progress_callback=None) -> list[dict]:
     """
     Run web extraction across all records with a valid URL.
     Updates each record in-place with extracted text and metadata.
@@ -505,6 +506,8 @@ def batch_extract(records: list[dict], timeout: int = 15,
         keywords: Subpage-relevance keywords (defaults to generic set).
         max_workers: Concurrent extraction workers (1 = sequential).
         use_playwright: If True, use headless Chromium instead of requests.
+        progress_callback: Optional fn(completed, total) called as each record
+            finishes crawling, for live run-progress reporting.
 
     Returns:
         The same records list with extraction fields added.
@@ -575,9 +578,17 @@ def batch_extract(records: list[dict], timeout: int = 15,
         except Exception as e:  # isolate per-record failure
             return record, None, str(e)
 
+    crawl_total = len(to_crawl)
+    completed = 0
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
         futures = [executor.submit(_extract, r) for r in to_crawl]
         for future in as_completed(futures):
+            completed += 1
+            if progress_callback is not None:
+                try:
+                    progress_callback(completed, crawl_total)
+                except Exception:
+                    pass  # progress reporting is best-effort, never break a crawl
             record, result, error = future.result()
             if error is not None or result is None:
                 record["_context_text"] = ""

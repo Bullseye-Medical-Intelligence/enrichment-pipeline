@@ -165,6 +165,11 @@ def _write_progress(output_dir: str, step_num: int, step_name: str,
         pass  # Non-fatal: progress display is best-effort
 
 
+def _step_progress(output_dir: str, step_num: int, step_name: str):
+    """Build a per-record progress callback that updates progress.json for a step."""
+    return lambda done, total: _write_progress(output_dir, step_num, step_name, done, total)
+
+
 def _finalize_ingest_only(records: list[dict]) -> list[dict]:
     """Shape ingested records for output without crawling or calling any LLM.
 
@@ -661,7 +666,8 @@ def run_pipeline(input_file: str, source_type: str,
         print(f"{'-'*40}")
 
         records = batch_validate_urls(records, timeout=timeout, retries=retries,
-                                       max_workers=io_concurrency)
+                                       max_workers=io_concurrency,
+                                       progress_callback=_step_progress(output_dir, 2, "URL validation"))
 
         url_valid_count = sum(1 for r in records if r.get("_url_valid", False))
         print(f"\n  {url_valid_count}/{len(records)} URLs valid")
@@ -677,7 +683,8 @@ def run_pipeline(input_file: str, source_type: str,
         records = batch_extract(records, timeout=timeout, retries=retries,
                                  max_pages=max_pages, keywords=subpage_keywords,
                                  max_workers=io_concurrency,
-                                 use_playwright=use_playwright)
+                                 use_playwright=use_playwright,
+                                 progress_callback=_step_progress(output_dir, 3, "Web extraction"))
 
         extracted_count = sum(1 for r in records if r.get("_context_text", ""))
         print(f"\n  {extracted_count}/{len(records)} records with extracted text")
@@ -700,7 +707,8 @@ def run_pipeline(input_file: str, source_type: str,
             before = sum(1 for r in blocked if r.get("_context_text", ""))
             batch_extract(blocked, timeout=timeout, retries=retries,
                           max_pages=max_pages, keywords=subpage_keywords,
-                          max_workers=io_concurrency, use_playwright=True)
+                          max_workers=io_concurrency, use_playwright=True,
+                          progress_callback=_step_progress(output_dir, 3, "Browser retry (blocked sites)"))
             after = sum(1 for r in blocked if r.get("_context_text", ""))
             print(f"\n  Browser retry recovered {after - before} of {len(blocked)} blocked records")
         else:

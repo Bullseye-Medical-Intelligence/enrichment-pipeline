@@ -149,7 +149,8 @@ def _attempt_validation(url: str, timeout: int, retries: int) -> UrlValidationRe
 
 
 def batch_validate_urls(records: list[dict], timeout: int = 15,
-                         retries: int = 3, max_workers: int = 1) -> list[dict]:
+                         retries: int = 3, max_workers: int = 1,
+                         progress_callback=None) -> list[dict]:
     """
     Run URL validation across all records with website_url set.
     Updates each record in-place with validation results.
@@ -162,6 +163,8 @@ def batch_validate_urls(records: list[dict], timeout: int = 15,
         timeout: Per-request timeout in seconds.
         retries: Retry attempts per URL.
         max_workers: Concurrent validation workers (1 = sequential).
+        progress_callback: Optional fn(completed, total) called as each record
+            finishes validation, for live run-progress reporting.
 
     Returns:
         The same records list with url_validation_* fields added.
@@ -189,9 +192,17 @@ def batch_validate_urls(records: list[dict], timeout: int = 15,
         except Exception as e:  # isolate per-record failure
             return record, None, str(e)
 
+    check_total = len(to_check)
+    completed = 0
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
         futures = [executor.submit(_validate, r) for r in to_check]
         for future in as_completed(futures):
+            completed += 1
+            if progress_callback is not None:
+                try:
+                    progress_callback(completed, check_total)
+                except Exception:
+                    pass  # progress reporting is best-effort, never break validation
             record, result, error = future.result()
             if error is not None or result is None:
                 record["_url_valid"] = False
