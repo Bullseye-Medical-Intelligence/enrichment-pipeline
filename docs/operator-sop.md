@@ -1,318 +1,270 @@
-# BEMI Operator SOP
-## Standard Operating Procedure for New Operators
-**Bullseye Medical Intelligence | Internal Use Only**
+# Bullseye Medical Intelligence — Operator SOP
+
+**Standard Operating Procedure | Internal Use Only**
+**Last updated:** 2026-06-23 · Engine build **1.4.0** · Reference cartridge **obgyn-femasys-v12**
 
 ---
 
 ## What You're Operating
 
-BEMI is a two-part system:
+Bullseye is a two-part system:
 
-1. **Pipeline API** — a web app you access in a browser. You upload prospect lists, configure runs, review results, and export deliverables from here.
-2. **Enrichment Pipeline** — a background process the web app triggers automatically. It crawls practice websites, calls Claude and GPT to extract signals, scores each practice against your ICP, and tiers them. You never run this manually.
+1. **Operator Dashboard (the web app)** — where you work. You discover prospects, upload lists,
+   configure runs, review results, run verification, and export deliverables. Everything below
+   happens in the browser. No terminal required.
+2. **Enrichment Pipeline (the engine)** — a background process the dashboard triggers for you.
+   It crawls practice websites, calls Claude to extract signals, scores each practice against
+   your ICP, and tiers it. You never run it by hand.
 
-Your job as an operator is entirely in the browser UI. No terminal required.
+Your job is entirely in the browser UI.
+
+---
+
+## The Operator Flow at a Glance
+
+```
+(optional) Market Radar → Build ICP Profile → Create Project → Upload List
+   → Review Roster (no spend) → Enrich All → Recover Blocked Sites
+   → Review & QC → (optional) Verify / Re-extract / Rescore
+   → Approve → Export / Publish Deliverables
+```
 
 ---
 
 ## Before Your First Run
 
-### 1. Get your login credentials
-Your username and password are set by whoever manages the `.env` file on the server. Ask them for your credentials if you don't have them.
+1. **Get credentials.** Your username/password are set in the server `.env` by whoever runs
+   the host. The app remembers your login for 8 hours.
+2. **Log in** at the URL your team provided (e.g. `http://your-server:8000/login`). You land on
+   the main menu: **ICP Profiles · Projects · Upload & Run · Dashboard** (plus **Market Radar**).
+3. If a **System Health** banner appears on the dashboard, read it before running — it flags a
+   missing API key, an unwritable output folder, or a missing profile. Green/hidden means healthy.
 
-### 2. Log in
-Navigate to the BEMI web app URL your team provided (e.g. `http://your-server:8000`). Enter your username and password. You'll land on the main menu.
+---
 
-### 3. Understand the menu
-The main menu has four sections:
-- **ICP Profiles** — define what a great prospect looks like for a specific product
-- **Projects** — one per client engagement; holds geography and exclusion settings
-- **Upload & Run** — where you submit a prospect CSV and kick off enrichment
-- **Dashboard** — where you review results after a run completes
+## Part 0 — (Optional) Market Radar: Discover & Triage
+
+Use Market Radar when you want to screen a raw list before committing it to a full run.
+
+1. **Market Radar → Upload**, select an Outscraper CSV.
+2. Review the classified results (summary cards + table).
+3. Select the records you want — **new**, **changed**, or a manual selection — and **Send to
+   Enrichment**. This creates an *ingested* run for you, ready for "Enrich All."
+
+If you already have a clean list, skip this and go straight to Upload & Run.
 
 ---
 
 ## Part 1 — Build an ICP Profile
 
-An ICP (Ideal Customer Profile) profile defines the signals the pipeline looks for. You need one profile per product. Create it once; reuse it for every run on that product.
+An ICP profile defines the signals the pipeline looks for. Build one per product; reuse it for
+every run on that product.
 
-### Step 1: Open the ICP Builder
-From the menu, click **ICP Profiles → Build New Profile**.
+1. **ICP Profiles → Build New Profile.**
+2. Fill in **Profile Identity** (Profile ID slug, Version, Profile Name) and **Product & Company**
+   (company, product type, product name, target specialty, product description, key services,
+   practices to exclude). Optionally paste the company and product **URLs** — Claude will read
+   them so the draft is grounded in real marketing language.
+3. **Generate Hypothesis & Signals** (≈30–45s). Claude drafts a commercial-fit hypothesis,
+   synthetic demo accounts (one per tier), and a signal checklist (typically 8–12 signals).
+4. **Review carefully.** This is a starting point, not a source of truth — a domain expert must
+   approve the signals. For each signal you can edit:
+   - **Signal Label** — short UI name.
+   - **Prompt Instruction** — the question Claude asks; precise instructions produce precise
+     answers.
+   - **Weight** — relative importance. Rough guide: most important 25–30, strong positives
+     15–20, nice-to-haves 5–10, **friction signals negative** (a "yes" is bad, e.g. `-20`).
+     Weights are relative; they don't need to sum to 100.
+   - **Must-Have** — a confirmed *absence* blocks Bullseye. Reserve for true deal-breakers.
+5. **Score Simulator** (collapsible panel): set hypothetical signal states (Yes / Not Found / No)
+   and run a dry simulation to see the resulting tier/score — no LLM, no crawl. Use this to
+   validate weights *before* saving.
+6. **Save Profile.**
 
-### Step 2: Fill in Profile Identity
-| Field | What to enter | Example |
-|-------|---------------|---------|
-| **Profile ID** | Lowercase slug, used as the file name | `femaseed-obgyn-v1` |
-| **Version** | Leave as `1.0` unless updating an existing profile | `1.0` |
-| **Profile Name** | Human-readable label shown in the UI | `FemaSeed OBGYN ICP` |
-
-### Step 3: Fill in Product & Company
-| Field | What to enter | Example |
-|-------|---------------|---------|
-| **Company Name** | The manufacturer/vendor name | `Femasys` |
-| **Product Type** | Select from the dropdown | `Medical Device` |
-| **Company Website URL** | *(Optional)* The company's main site — Claude will read it | `https://femasys.com` |
-| **Product Page URL** | *(Optional)* The specific product page — Claude will read it | `https://femasys.com/femaseed` |
-| **Product Name** | The exact product name | `FemaSeed` |
-| **Target Specialty** | Medical specialty of the target buyer | `OBGYN` |
-| **Product Description** | What the product does, who buys it, deal size, sales cycle | *(see below)* |
-| **Key Services / Focus Areas** | Procedures the ideal practice offers (one per line) | `IUD insertion` / `Infertility workup` |
-| **Practices to Exclude** | Types of practices that are NOT a fit | `Hospital-employed, academic centers, wrong specialty` |
-
-**Writing a good Product Description:** Answer these four questions in 2–3 sentences:
-- What does this product do in plain English?
-- Who is the clinical buyer (which physician type, what setting)?
-- What problem does it solve for that buyer?
-- What is the typical deal size and sales cycle?
-
-> Example: *"FemaSeed is an in-office intrauterine insemination device used by OBGYNs for fertility treatment. It targets independent private practices where the physician performs IUI procedures themselves and is not affiliated with an REI center. Typical deal size is $X; sales cycle is 2–3 months."*
-
-**Providing URLs:** If you paste in the company and product URLs, Claude will crawl the pages before generating the profile. This grounds the hypothesis in your actual marketing language and product claims — use it whenever possible.
-
-### Step 4: Generate
-Click **Generate Hypothesis & Signals →**. Wait 30–45 seconds. Claude will:
-- Crawl the URLs you provided (if any)
-- Write a commercial fit hypothesis (ideal practice profile, fit reasoning, fast-close indicators, common objections)
-- Generate 3 synthetic demo account examples (one Bullseye, one Contender, one Excluded)
-- Generate a signal checklist (typically 8–12 signals)
-
-### Step 5: Review the output
-The Review page shows everything Claude generated. Go through it carefully:
-
-**Commercial Fit Hypothesis** (4 cells, read-only preview)
-- Check that the ideal practice profile matches who you actually sell to.
-- Check that the fast-close indicators match what your best reps look for.
-
-**Demo Account Examples** (3 cards)
-- These are synthetic (not real practices). They show how the scoring logic would classify a Bullseye, Contender, and Excluded account for your product.
-- Review the reasoning. If a card's reasoning doesn't feel right, the signals may need tuning.
-
-**Signal Checklist** (editable table)
-
-Each row is one signal. The columns you can edit:
-| Column | What it means | When to change it |
-|--------|---------------|-------------------|
-| **Signal Label** | Short name shown in the UI | Make it clear and specific |
-| **Prompt Instruction** | Question Claude asks about each practice | Make it precise — vague instructions produce vague answers |
-| **Weight** | How much this signal contributes to the score | Higher = more important to the deal |
-| **Must-Have** | If checked, a confirmed *absence* of this signal prevents Bullseye | Use for true deal-breakers (e.g. cash pay required) |
-
-**Rules of thumb for signal weights:**
-- The most important signal for your ICP: 25–30 points
-- Strong positive signals: 15–20 points
-- Nice-to-have signals: 5–10 points
-- Friction signals (where a "yes" is bad): negative weight (e.g. `-20` for "REI on staff")
-- Weights don't have to sum to 100 — they're relative
-
-**Add, remove, or reorder signals** using the +/× controls in the table. The order matters: list the most important signals first.
-
-### Step 6: Save the profile
-When the checklist looks right, click **Save Profile**. The profile is saved as a JSON file on the server. You'll be taken to the ICP Profiles list.
+> **Cartridges, weights, caps, and floors are how target behavior is tuned — not code.** If a
+> client's targeting changes, it is a profile change, not an engineering ticket.
 
 ---
 
-## Part 2 — Generate a Prospect Demo Brief
+## Part 2 — (Pre-Pilot) Generate a Demo Brief
 
-Before a client commits to a pilot, show them a one-page demo brief: three synthetic example practices, one per tier, with scoring reasoning. This is the pre-pilot sales deliverable.
-
-### From the ICP Profiles list:
-- Click **Demo Brief** next to a profile that has demo accounts (profiles built with the AI builder always have them).
-- Review the HTML version in-browser.
-- Click **↓ Download HTML** to get a self-contained HTML file you can send to a prospect (print to PDF from your browser if a PDF is preferred).
-
-The brief shows:
-- Your ICP description and commercial fit hypothesis
-- A Bullseye example: what an ideal practice looks like and why it scores high
-- A Contender example: a near-fit that needs a conversation before committing
-- An Excluded example: the type of practice BEMI would surface and immediately flag out
-
-> **Note:** All three example accounts are AI-generated and labeled as synthetic. They are not real practices.
+From the ICP Profiles list, click **Demo Brief** next to an AI-built profile to get a one-page,
+three-example (Bullseye / Contender / Excluded) brief. Review it, then **Download HTML** (or
+print to PDF) to send to a prospect. The examples are clearly labeled **synthetic** — never
+present them as real practices.
 
 ---
 
 ## Part 3 — Create a Project
 
-A project holds the run configuration for one client engagement: geography, active exclusion rules, and which ICP profile to use.
+A project holds the run configuration for one engagement: geography, exclusion rules, and the
+ICP profile to use.
 
-### Step 1: Go to Projects → New Project
+1. **Projects → New Project.**
+2. Set **Project Name**, **ICP Profile**, **Target Geography** (state codes), and **Active
+   Exclusion Rules**.
+3. **Exclusion rules:** always enable the hard structural ones (hospital-owned, health-system
+   affiliated, wrong specialty, outside geography, no web presence). Enable specialty-specific
+   rules only when relevant.
 
-Fill in:
-| Field | What to enter |
-|-------|---------------|
-| **Project Name** | Client name + engagement descriptor | `Femasys Texas Pilot` |
-| **ICP Profile** | Select the profile you just built | `femaseed-obgyn-v1` |
-| **Target Geography** | State codes (comma-separated) | `TX, FL, GA` |
-| **Active Exclusion Rules** | Check all that apply — see below | ✓ Hospital-owned, ✓ REI on staff |
-
-**Exclusion rules explained:**
-| Rule | What it does |
-|------|--------------|
-| Hospital-owned | Excludes practices employed by or owned by a hospital system |
-| Health system affiliated | Excludes practices formally affiliated with a health system |
-| Wrong specialty | Excludes practices that don't match the target specialty |
-| Outside geography | Excludes practices not in the target states |
-| Practice closed | Excludes practices with no web presence or closed indicators |
-| Academic medical center | Excludes teaching hospitals and academic practices |
-| REI on staff | Excludes practices with a reproductive endocrinologist on staff |
-| No web presence | Excludes practices where URL validation and extraction both fail |
-
-When in doubt, enable the hard exclusions (hospital-owned, health system affiliated, wrong specialty, outside geography) for every run. Enable specialty-specific ones (like REI on staff) only when relevant to the product.
+> Runs **snapshot** their project + ICP at launch. Editing a project later never changes a past
+> run.
 
 ---
 
-## Part 4 — Prepare Your Prospect List
+## Part 4 — Prepare the Prospect List
 
-### Sourcing from Outscraper (default)
-1. Search for your target specialty + geography in Outscraper.
-2. Export as CSV.
-3. Make sure the export includes: `name`, `full_address`, `state`, `city`, `postal_code`, `phone`, `site` (or `website`), `type`.
-4. Save the file somewhere you can upload it.
-
-### Using a manual list
-If you have a pre-built CSV from another source (CRM export, analyst list):
-- It must have at minimum: `practice_name`, `address_city`, `address_state`, `website_url`.
-- Missing columns default to empty — the pipeline won't error.
-
-**File size guidance:** Runs of 50–200 records take 30–90 minutes depending on how many practices have websites. Runs over 500 records should be split or run overnight.
+- **Outscraper (default):** export CSV including `name`, `full_address`, `state`, `city`,
+  `postal_code`, `phone`, `site`/`website`, `type`.
+- **Manual list:** minimum columns `practice_name`, `address_city`, `address_state`,
+  `website_url`. Missing columns default to empty without erroring.
+- **Size guidance:** 50–200 records ≈ 30–90 min depending on how many have websites. Split runs
+  over ~500 or run overnight (single-host cap is ~1,000).
 
 ---
 
 ## Part 5 — Run Enrichment
 
-### Step 1: Upload & Run
-From the menu click **Upload & Run** (or **New Run** from the Dashboard).
+1. **Upload & Run** (or **New Run** from the Dashboard). Pick the **Project**, set **CSV Source**,
+   upload the file. The upload **validates the CSV before any spend** and shows the run as
+   **ingested**.
+2. **Review the roster first.** Ingested = loaded and structurally pre-filtered, **no budget
+   spent.** Confirm the record count and that obvious mismatches already landed in Excluded.
+3. Click **Enrich All.** Before it submits, the button shows an **estimated cost** for the run;
+   click again to confirm. Leave **auto browser-retry** on for lists with many modern sites — it
+   recovers bot-blocked sites automatically.
+4. The pipeline runs in the background: ingest → URL validation → web extraction → **Claude signal
+   extraction** (the longest step) → exclusion check → scoring → output. It **checkpoints after
+   every record**, so a crash resumes where it stopped.
+5. You can leave the page — a toast and a flashing tab title alert you when the run completes,
+   even if you navigated away.
 
-Fill in:
-| Field | What to enter |
-|-------|---------------|
-| **Project** | Select the project you created |
-| **CSV Source** | `Outscraper export` or `Manual (Bullseye canonical format)` |
-| **Outscraper CSV File** | Upload your prospect list (max 10,000 rows / 50 MB) |
-
-### Step 2: Review the roster, then Enrich All
-Uploading loads and validates the list without spending any crawl or LLM budget — the run shows as **ingested**, with structural exclusions (wrong specialty, outside geography) already applied. Review the roster: confirm the record count looks right and the obvious mismatches landed in Excluded.
-
-When the roster looks right, click **Enrich All**. The optional **auto browser retry** checkbox re-crawls bot-blocked sites with a headless browser automatically — leave it on for lists with many modern practice websites. The pipeline then runs in the background through 8 steps:
-1. Ingest
-2. URL validation
-3. Web extraction
-4. Signal extraction (Claude) ← longest step
-5. Bullseye verification (GPT) ← only for high-scoring records
-6. Exclusion check
-7. Scoring validation
-8. Output generation
-
-Do not close the tab — you can check progress from the Dashboard if you do.
-
-### Step 3: Wait for completion
-A typical run of 50 records takes 20–40 minutes. The pipeline checkpoints after every record, so if it crashes you can resume from where it stopped.
+> **Note:** GPT verification is **not** part of this automatic run. It is a separate post-run
+> action you trigger when needed (Part 7).
 
 ---
 
-## Part 6 — Review Results
+## Part 6 — Review Results & QC
 
-### Opening a run
-From **Dashboard**, click on the completed run. You'll see a summary: total records, tier breakdown (Bullseye / Needs Verification / Contender / Manual Review / Excluded), errors.
+Open the completed run from the **Dashboard**. You'll see tier stats (Bullseye / Needs
+Verification / Contender / Manual Review / Excluded), a filter bar, and the record table.
 
-### Tier meanings
-| Tier | What it means | Your action |
-|------|---------------|-------------|
-| **Bullseye** | High score + all must-have signals confirmed | Ready for rep outreach |
-| **Needs Verification** | Scored as a candidate but a key signal is unconfirmed | Call to verify before committing |
-| **Contender** | Solid fit but one or more signals are weak or missing | Warm — worth a call, but not the top priority |
-| **Manual Review** | No signal could be confirmed (often a thin or blocked website) | An operator must look before it enters any call queue |
-| **Excluded** | Hard or soft exclusion rule fired | Remove from outreach list |
+**Tier meanings & your action**
 
-Records whose website was bot-blocked or returned too little text appear in the dedicated **Site Blocked — Needs Re-crawl** section below the main table. Use **Retry All with Browser** there to recover them — many come back as scored Contenders or Bullseyes.
+| Tier | Meaning | Action |
+|------|---------|--------|
+| **Bullseye** | High score + all must-haves confirmed | Ready for outreach |
+| **Needs Verification** | Candidate, a key signal unconfirmed | Verify before committing |
+| **Contender** | Solid fit, some signals weak | Worth a call, lower priority |
+| **Manual Review** | Nothing confirmable (often thin/blocked site) | Look before queueing |
+| **Excluded** | An exclusion rule fired | Off the list |
 
-### Reviewing individual records
-Click any record to open its full detail view. You'll see:
-- **Call brief** — opening line, likely objection, discovery question, and hours of operation for the rep
-- **Signal checklist** — what Claude found (or didn't) for each signal, with evidence text and source URL
-- **Score breakdown** — fit score, confidence score, and composite Bullseye score
+**Recover blocked sites.** Records whose site was bot-blocked or returned too little text appear
+in a dedicated **Site Blocked — Needs Re-crawl** section (not mixed into the scored table). Use
+**Retry All with Browser** there, or select records and **Re-crawl with Browser**. For a single
+stubborn CAPTCHA-walled site, open the record and use **Paste site content** to supply the page
+text yourself. All re-crawls merge back into the **same run**.
 
-### Cartridge view
-Click **Cartridge** in the run header to see a read-only view of the exact configuration the run used: the client identity, every ICP signal with its weight and must-have flag, the exclusion gates and tier caps, and the geography. "No geography restriction" and "Not configured for this ICP" are normal states for some clients, not errors. Use this when you need to confirm which weights or rules produced a result without opening config files.
+**Per-record detail** shows the **call brief** (opening line, likely objection, discovery
+question, hours), the **signal checklist** (yes/no/not-found with evidence text and source URL),
+and the **score breakdown**. Each confirmed signal has an **Archived snapshot** (Evidence Vault)
+link — the exact page text the crawler saw, with the quote highlighted and a capture date. Use
+it when a site has since changed or a client questions a claim. Snapshots are internal only.
 
-### Run economics
-Completed runs show a **Run Economics** line above the results: records processed, LLM calls, token totals, and an estimated cost with cost-per-record. The figure is an estimate at the rates noted next to it; older runs that predate token tracking say "cost data not captured for this run".
+**Analyst overrides.** Disagree with a classification? Set an **Override** tier and enter a
+reason. Overrides flow into the approved export but never change the underlying scores or the
+immutable output.
 
-### Evidence Vault: Archived snapshots
-Each confirmed signal shows an **Archived snapshot** link next to its evidence. It opens the page text exactly as the crawler captured it, with the capture date, a content fingerprint, and the evidence quote highlighted. Use it when a practice's website has changed since the run, or when a client questions where a claim came from — the snapshot is the proof. Snapshots are internal only; they are never sent to clients.
+**Confirm Queue & bulk approve.** Open **Confirm Queue** for the analyst sign-off view (Bullseye
++ Contender pending review). Use **Approve High-Confidence** or **Approve All** to clear the queue
+in one write. **QC sign-off is required only for Bullseye and Contender** (the client-shipped
+tiers); the others never block readiness.
 
-### Analyst overrides
-If you disagree with how a record was classified:
-1. Open the record.
-2. Use the **Override** dropdown to set it to Bullseye / Needs Verification / Contender / Excluded.
-3. Enter a reason. The override is saved immediately.
+**Contact Queue.** The rep call sheet, sorted by contact priority, with each call brief
+pre-loaded — use it to drive a briefing session.
 
-Overrides appear in the approved export. They do not change the underlying scores.
-
-### Records flagged "needs_review"
-These are Bullseye-tier records where Claude and GPT disagreed. An analyst must look at these before they go to the rep. Check the signal checklist and the `internal_notes` field to see where the models differed. Then either approve with an override or move to Contender.
-
-### Contact Queue
-Click **Contact Queue** from the run view. This shows the callable records sorted by contact priority, with the call brief pre-loaded. Use this view during a rep briefing session.
+**Cartridge view & Run Economics.** **Cartridge** shows the exact frozen config the run used
+(signals, weights, gates, geography). **Run Economics** shows records processed, LLM calls,
+tokens, and estimated cost-per-record.
 
 ---
 
-## Part 7 — Export Deliverables
+## Part 7 — (Optional) Post-Run Passes
 
-From the run detail page, click the **Export** dropdown:
+From a completed run's header (**Reprocess ▾**), without re-uploading:
 
-| Export | What it contains | When to use |
-|--------|-----------------|-------------|
-| **Download JSON** | Full schema with all signals, scores, briefs | For dashboard import or data analysis |
-| **Download CSV** | Flat export — all records, signals omitted | For quick review in Excel |
-| **Export Approved** | Only analyst-approved records, with overrides applied | Deliver to client or hand to rep team |
-| **Export Excluded** | Only excluded records | QA check — confirm the right practices are out |
-| **Client Package** | ZIP of 5 client-safe files: Bullseye Target Report (HTML), Sales Handoff (HTML), and Bullseye / Contender / Excluded CSVs | Send to the client contact |
-
-**For a rep handoff:** use **Export Approved**. This contains only records that have been reviewed and approved, with the override classification and call brief for each.
-
-**For a client check-in:** use **Client Package**. It requires every Bullseye and Contender record to be reviewed first; numeric scores are stripped — clients see tier and confidence band only.
-
-**Before shipping any deliverable:** click **Check Evidence Links** on the run. It verifies every evidence link in Bullseye and Contender records still resolves and flags dead links and suspicious redirects. A 404 in a client brief is a credibility failure — fix or override flagged records before exporting. The check never changes any record; you decide what to do with the flags.
+| Pass | What it does | Cost |
+|------|--------------|------|
+| **Verify** (GPT) | Independent second-model check on Needs-Verification records; recommends promote / hold / disqualify without overwriting scores. A promote still needs your override. | LLM |
+| **Re-extract Signals** | Re-runs Claude against the frozen ICP using vault-rehydrated page text (no re-crawl). | LLM |
+| **Preview Rescore → Apply Rescore** | Re-tiers with current weights. Preview shows tier changes before you commit. | None |
+| **Re-check Suppression** | Re-applies the customer suppression list (only if the project has one). | None |
+| **Re-crawl Blocked** | Browser re-crawl of all blocked/thin records, merged in place. | Crawl |
 
 ---
 
-## Common Issues & What to Do
+## Part 8 — Export & Publish Deliverables
+
+From the run header:
+
+| Deliverable | Contents | Use |
+|-------------|----------|-----|
+| **Client Package (ZIP)** | Bullseye target report (HTML), Sales Handoff (HTML), and Bullseye / Contender / Excluded CSVs | Send to the client |
+| **Export Approved** | Analyst-approved, non-excluded records with overrides applied | Rep handoff |
+| **Export Excluded** | Excluded records only | QA check |
+| **Full CSV / JSON** | Complete output | Analysis / import |
+| **Run Manifest** | Provenance summary (scope, ICP version, counts) | Internal record |
+
+- The **Client Package requires every Bullseye and Contender to be reviewed first**, and **strips
+  numeric scores** — clients see tier + confidence band only.
+- **Publish** the **Sales Handoff** or **Sales Brief** to a stable shareable URL. Re-publishing
+  overwrites in place so the link never changes. An **amber dot** on the Sales Handoff button
+  means analyst edits post-date the last publish — re-publish to refresh.
+- **Before shipping anything, run Check Evidence Links** (Audit ▾). It verifies every cited
+  source URL in Bullseye/Contender records still resolves. A 404 in a client brief is a
+  credibility failure — fix or override flagged records first. The check never mutates a record.
+
+---
+
+## Common Issues
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Run stuck on Step 3 for >20 min | Many practices with complex websites | Wait — web extraction is slow. Check the run log for errors. |
-| Many records with `source_confidence = "limited"` | Practices have no website or URL is broken | Expected for some lists. These records still get scored from what's available. |
-| Bullseye records flagged `needs_review` | Claude and GPT disagreed on signals | Review manually. Check `internal_notes` on each record. |
-| ICP builder returns an error | Claude API key not configured, or the API is down | Contact your system admin to check the `.env` configuration. |
-| Run fails to start | CSV format issue | The upload validates the CSV before any spend — check the error message for which column is missing or malformed. |
-| Many records in Site Blocked section | Practice websites use bot protection | Click **Retry All with Browser** in that section, or re-run Enrich All with the auto browser retry checkbox on. |
+| Run slow on web extraction | Many complex sites | Expected; check the run log for errors |
+| Many `source_confidence = limited` | No/broken site, or bot-gated | Use the Site Blocked section → Retry All with Browser |
+| Many records in Site Blocked | Bot protection | Retry All with Browser, or re-run with auto browser-retry on |
+| Bullseye flagged for review | Models disagreed / unconfirmed must-have | Review evidence; run **Verify**; approve or override |
+| Upload rejected | CSV format | Read the validation message — it names the missing/bad column |
+| ICP builder errors | Claude key not set or API down | Tell your system admin to check `.env` |
+| New cartridge not reflected | Profile version changed | A profile change loads on the next run; an engine/build change needs an **API restart** |
 
 ---
 
-## Data & Compliance Reminders
+## Data & Compliance
 
-- The pipeline uses **only public-facing data**: practice websites, Google Business profiles, NPI registry, public directories.
-- It never accesses patient data, PHI, EMRs, or login-gated systems.
-- All output files stay on the BEMI server. Never commit output CSVs or JSONs to the git repository.
+- The pipeline uses **only public-facing data**: practice websites, Google Business profiles, the
+  NPI registry, public directories. **Never** patient data, PHI, EMRs, or login-gated systems.
+- Output files stay on the Bullseye server. **Never commit output CSV/JSON to git.**
 - API keys live only in `.env` — never shared, never emailed.
-- The synthetic demo accounts in the demo brief are labeled clearly and are not real practices. Do not present them as real.
+- Demo-brief example accounts are **synthetic and labeled** — never present them as real.
 
 ---
 
-## Quick-Reference Checklist: First Run on a New Engagement
+## First-Run Checklist (New Engagement)
 
-- [ ] Build ICP profile (ICP Builder → review → save)
-- [ ] Download the demo brief HTML (for the pre-pilot prospect meeting)
-- [ ] Create a project (geography + exclusion rules + ICP profile linked)
-- [ ] Pull Outscraper CSV for target specialty + geography
-- [ ] Upload CSV — review the ingested roster before spending budget
-- [ ] Click Enrich All
-- [ ] Review results: Bullseye → Needs Verification → Contender → Manual Review
-- [ ] Re-crawl any Site Blocked records with the browser retry
-- [ ] Override any misclassified records
-- [ ] Export Approved CSV for the rep team
+- [ ] (Optional) Market Radar: triage the raw list, send selected to enrichment
+- [ ] Build ICP profile → review signals/weights → simulate → save
+- [ ] Download demo brief (pre-pilot meeting)
+- [ ] Create project (geography + exclusions + ICP linked)
+- [ ] Pull/prepare the prospect CSV
+- [ ] Upload → **review the ingested roster before spending**
+- [ ] Enrich All (confirm the cost estimate; auto browser-retry on)
+- [ ] Recover Site Blocked records (browser re-crawl / paste content)
+- [ ] Review tiers; override misclassifications; (optional) run Verify
+- [ ] Confirm Queue → approve Bullseye/Contender
+- [ ] Check Evidence Links
+- [ ] Export Approved (reps) / Client Package (client); publish Sales Handoff
 
 ---
 
-*Bullseye Medical Intelligence | Internal Use Only*
-*Last updated: June 2026*
+*Bullseye Medical Intelligence — Internal Use Only.*
