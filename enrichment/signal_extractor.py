@@ -439,27 +439,39 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     Calculate fit_signal_score, confidence_score, and bullseye_score as a
     commercial-fit confidence reading dictated by the ICP.
 
-    fit_signal_score is the share of the *achievable* positive weight a practice
-    actually captures, expressed 0–100. Matching every desirable signal lands
-    near 100; matching only minor ones earns proportionally less, so a long tail
-    of low-value signals can never out-score the few that matter. Logic:
+    Two fit models, selected by the ICP itself:
 
-    - max_positive = sum of all positive (desirable) signal weights — the ideal.
-    - A confirmed ("yes") desirable signal adds its full weight to achieved.
-    - An inferred desirable signal (state_inferred, set by reinforcement) adds
-      INFERENCE_CREDIT of its weight — partial credit for indirect evidence.
-    - An unconfirmed ("not_found") desirable signal applies its not_found_weight
-      penalty (usually 0 or negative).
-    - A confirmed-absent ("no") desirable signal applies its no_weight penalty
-      (usually 0 or negative) — a missing must-have costs points, not just credit.
-    - A confirmed friction signal (negative weight, "yes") subtracts its weight.
-    - confidence_score is the mean confidence across confirmed/inferred signals.
-    - bullseye_score is the weighted blend of fit and confidence.
+    LEGACY (default — no signal carries ``reinforcer: true``): every positive
+    weight joins the fit denominator, and a confirmed friction signal (negative
+    weight, "yes") folds into fit scaled by confidence. Behavior is unchanged.
+
+    PRIMARY/REINFORCER (active when any ICP signal sets ``reinforcer: true``):
+    - The fit denominator (max_positive) is the sum of the PRIMARY positive
+      weights only — the non-reinforcer desirable signals define the achievable
+      base. Reinforcers add their confirmed weight on TOP of that base (numerator
+      only), never enlarging it, so a practice that confirms every primary already
+      reaches fit 100 and reinforcers cannot dilute it. Fit is hard-capped at 100.
+    - A negative-weight signal confirmed "yes" is NOT folded into fit. It
+      contributes its full weight (NOT confidence-credited) to a penalty subtracted
+      from the blended score after the fit/confidence blend, floored at 0. Multiple
+      negatives stack, so a disqualifier's bite is independent of read confidence.
+
+    In both models a confirmed ("yes") desirable signal adds weight × confidence
+    credit to achieved; an inferred one (state_inferred) adds INFERENCE_CREDIT of
+    its weight; a "not_found" applies not_found_weight; a confirmed-absent ("no")
+    applies no_weight. confidence_score is the mean confidence across
+    confirmed/inferred desirable signals (penalties never credit confidence).
+    bullseye_score = FIT_WEIGHT × fit + CONFIDENCE_WEIGHT × confidence − penalty.
     """
     signal_map = {s["signal_id"]: s for s in signals}
+    # A single ``reinforcer`` flag anywhere in the ICP selects the primary/
+    # reinforcer fit model (denominator = primaries only; negatives become a
+    # post-blend penalty). Absent it, scoring is identical to the legacy model.
+    primary_reinforcer_model = any(s.get("reinforcer") for s in icp_signals)
 
     max_positive = 0.0
     achieved = 0.0
+    penalty = 0.0
     confidence_values = []
 
     for icp_signal in icp_signals:
@@ -467,12 +479,16 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
         weight = icp_signal.get("positive_weight", 0)
         not_found_weight = icp_signal.get("not_found_weight", 0)
         no_weight = icp_signal.get("no_weight", 0)
+        is_reinforcer = bool(icp_signal.get("reinforcer"))
         matched = signal_map.get(sid)
         state = matched["signal_state"] if matched else "not_found"
         inferred = bool(matched and matched.get("state_inferred"))
 
         if weight >= 0:
-            max_positive += weight
+            # Primaries define the achievable denominator; reinforcers add on top
+            # of it (numerator only) and never enlarge the base.
+            if not is_reinforcer:
+                max_positive += weight
             if state == "yes":
                 credit = SIGNAL_CONFIDENCE_CREDIT.get(
                     matched.get("confidence", "low"), SIGNAL_CONFIDENCE_CREDIT["low"]
@@ -489,9 +505,14 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
                     achieved += not_found_weight  # penalty (usually <= 0)
             elif state == "no":
                 achieved += no_weight  # confirmed absent — penalty (usually <= 0), default 0
+        elif primary_reinforcer_model:
+            # Negative signal as a flat post-blend penalty: full weight, not
+            # confidence-credited, kept out of the fit numerator and denominator.
+            if state == "yes":
+                penalty += abs(weight)
         else:
-            # Friction signal: only a confirmed "yes" applies the negative weight,
-            # scaled by confidence so a low-confidence friction claim has less impact.
+            # Legacy friction handling: a confirmed "yes" folds the negative weight
+            # into fit, scaled by confidence so a low-confidence claim bites less.
             if state == "yes":
                 credit = SIGNAL_CONFIDENCE_CREDIT.get(
                     matched.get("confidence", "low"), SIGNAL_CONFIDENCE_CREDIT["low"]
@@ -501,7 +522,8 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
                     CONFIDENCE_SCORE_MAP.get(matched["confidence"], CONFIDENCE_SCORE_MAP["low"])
                 )
 
-    # Fit = captured share of the ideal profile, scaled to 0–100.
+    # Fit = captured share of the ideal profile, scaled to 0–100. Reinforcers can
+    # push the numerator past the base, so clamp to 100.
     if max_positive > 0:
         fit_signal_score = round((achieved / max_positive) * 100)
     else:
@@ -514,8 +536,10 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     else:
         confidence_score = NO_SIGNAL_CONFIDENCE
 
-    # Bullseye score: weighted blend of fit and confidence
+    # Bullseye score: weighted blend of fit and confidence, less any negative-signal
+    # penalty (primary/reinforcer model only), floored at 0.
     bullseye_score = round(FIT_WEIGHT * fit_signal_score + CONFIDENCE_WEIGHT * confidence_score)
+    bullseye_score -= round(penalty)
     bullseye_score = max(MIN_SCORE, min(MAX_SCORE, bullseye_score))
 
     return {

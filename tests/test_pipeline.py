@@ -406,6 +406,183 @@ class TestScoring:
         assert scores["fit_signal_score"] == 75
 
 
+class TestPrimaryReinforcerModel:
+    """Femasys v12 scoring: two must-haves define the 85-pt fit base, three
+    reinforcers stack on top (fit caps at 100), and two negatives apply a flat
+    post-blend penalty while capping the tier. The model is opt-in via the
+    per-signal ``reinforcer`` flag — absent it, scoring stays on the legacy path."""
+
+    ICP = [
+        {"signal_id": "cash_pay_signal", "signal_label": "Cash pay",
+         "prompt_instruction": "?", "positive_weight": 50,
+         "required_for_bullseye": True},
+        {"signal_id": "fertility_services", "signal_label": "Fertility",
+         "prompt_instruction": "?", "positive_weight": 35,
+         "required_for_bullseye": True, "floor_tier": "Contender"},
+        {"signal_id": "iui_listed", "signal_label": "IUI",
+         "prompt_instruction": "?", "positive_weight": 15, "reinforcer": True},
+        {"signal_id": "cycle_monitoring_listed", "signal_label": "Cycle monitoring",
+         "prompt_instruction": "?", "positive_weight": 10, "reinforcer": True},
+        {"signal_id": "patient_financing_visible", "signal_label": "Financing",
+         "prompt_instruction": "?", "positive_weight": 10, "reinforcer": True},
+        {"signal_id": "ivf_listed", "signal_label": "IVF",
+         "prompt_instruction": "?", "positive_weight": -20, "cap_tier": "Contender"},
+        {"signal_id": "rei_on_staff", "signal_label": "REI",
+         "prompt_instruction": "?", "positive_weight": -20, "cap_tier": "Contender"},
+    ]
+
+    RUN_CONFIG = {
+        "target_specialty": "OBGYN",
+        "target_geography": [],
+        "active_exclusion_rules": ["wrong_specialty", "outside_geography",
+                                   "no_web_presence", "hospital_owned",
+                                   "health_system_affiliated"],
+        "bullseye_min_score": 80,
+    }
+
+    def _signals(self, **states):
+        """Build output-shaped signals carrying the ICP tier flags.
+
+        Each value is a state string ("yes"/"no"/"not_found") or a
+        (state, confidence) tuple; omitted signals default to not_found/low.
+        """
+        out = []
+        for icp_sig in self.ICP:
+            val = states.get(icp_sig["signal_id"], ("not_found", "low"))
+            state, conf = val if isinstance(val, tuple) else (val, "high")
+            out.append({
+                "signal_id": icp_sig["signal_id"],
+                "signal_label": icp_sig["signal_label"],
+                "signal_state": state,
+                "confidence": conf,
+                "positive_weight": icp_sig.get("positive_weight", 0),
+                "required_for_bullseye": icp_sig.get("required_for_bullseye", False),
+                "required_for_contender": icp_sig.get("required_for_contender", False),
+                "cap_tier": icp_sig.get("cap_tier", ""),
+                "floor_tier": icp_sig.get("floor_tier", ""),
+                "verification_required": icp_sig.get("verification_required", False),
+                "state_inferred": False,
+            })
+        return out
+
+    def _tier(self, signals, specialty="OBGYN"):
+        """Score the signals, run the exclusion/tier pass, return the record."""
+        rec = _clear_record(specialty=specialty)
+        rec["signals"] = signals
+        rec["source_confidence"] = "complete"
+        rec.update(_calculate_scores(signals, self.ICP))
+        apply_exclusions(rec, self.RUN_CONFIG)
+        return rec
+
+    # --- fit math -------------------------------------------------------------
+
+    def test_two_must_haves_define_full_fit(self):
+        # cash(50)+fertility(35)=85 of an 85 base -> fit 100.
+        scores = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes"), self.ICP)
+        assert scores["fit_signal_score"] == 100
+
+    def test_reinforcers_excluded_from_denominator(self):
+        # cash(50) over the 85 base (reinforcers NOT in the denominator) -> 59.
+        scores = _calculate_scores(self._signals(cash_pay_signal="yes"), self.ICP)
+        assert scores["fit_signal_score"] == 59
+
+    def test_reinforcer_adds_on_top(self):
+        base = _calculate_scores(
+            self._signals(cash_pay_signal="yes"), self.ICP)["fit_signal_score"]
+        boosted = _calculate_scores(
+            self._signals(cash_pay_signal="yes", iui_listed="yes"),
+            self.ICP)["fit_signal_score"]
+        assert boosted > base
+
+    def test_reinforcers_cannot_push_fit_over_100(self):
+        scores = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes",
+                          iui_listed="yes", cycle_monitoring_listed="yes",
+                          patient_financing_visible="yes"), self.ICP)
+        assert scores["fit_signal_score"] == 100
+
+    def test_negative_is_flat_post_blend_penalty(self):
+        clean = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes"), self.ICP)
+        dinged = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes",
+                          ivf_listed="yes"), self.ICP)
+        assert clean["bullseye_score"] == 96
+        assert dinged["bullseye_score"] == 76          # flat -20 after the blend
+        assert dinged["fit_signal_score"] == 100       # fit itself untouched
+
+    def test_negative_penalty_ignores_confidence(self):
+        # A low-confidence IVF still costs the full 20 (not confidence-credited).
+        low = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes",
+                          ivf_listed=("yes", "low")), self.ICP)
+        assert low["bullseye_score"] == 76
+
+    def test_two_negatives_stack(self):
+        scores = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes",
+                          ivf_listed="yes", rei_on_staff="yes"), self.ICP)
+        assert scores["bullseye_score"] == 56          # 96 - 20 - 20
+
+    def test_legacy_model_used_without_reinforcer_flag(self):
+        # No reinforcer flag anywhere -> the negative folds into fit (legacy path),
+        # with no separate post-blend penalty.
+        legacy_icp = [
+            {"signal_id": "p", "signal_label": "P", "prompt_instruction": "?",
+             "positive_weight": 50},
+            {"signal_id": "n", "signal_label": "N", "prompt_instruction": "?",
+             "positive_weight": -20},
+        ]
+        signals = [
+            {"signal_id": "p", "signal_state": "yes", "confidence": "high"},
+            {"signal_id": "n", "signal_state": "yes", "confidence": "high"},
+        ]
+        scores = _calculate_scores(signals, legacy_icp)
+        # achieved = 50 - 20 = 30 of 50 -> fit 60; blend 0.6*60 + 0.4*90 = 72.
+        assert scores["fit_signal_score"] == 60
+        assert scores["bullseye_score"] == 72
+
+    # --- verification cases (tier outcomes, bullseye_min 80) ------------------
+
+    def test_case1_cash_fertility_iui_reaches_bullseye(self):
+        rec = self._tier(self._signals(
+            cash_pay_signal="yes", fertility_services="yes", iui_listed="yes"))
+        assert rec["bullseye_score"] == 96
+        assert rec["target_tier"] == "Bullseye"
+
+    def test_case2_no_cash_strong_fertility_cannot_reach_bullseye(self):
+        rec = self._tier(self._signals(
+            fertility_services="yes", iui_listed="yes",
+            cycle_monitoring_listed="yes", patient_financing_visible="yes"))
+        assert rec["target_tier"] != "Bullseye"
+        assert rec["target_tier"] == "Needs Verification"
+
+    def test_case3_fertility_plus_ivf_capped_at_contender_thin(self):
+        rec = self._tier(self._signals(fertility_services="yes", ivf_listed="yes"))
+        assert rec["target_tier"] == "Contender"
+
+    def test_case3_fertility_plus_ivf_capped_at_contender_high(self):
+        rec = self._tier(self._signals(
+            cash_pay_signal="yes", fertility_services="yes", iui_listed="yes",
+            cycle_monitoring_listed="yes", patient_financing_visible="yes",
+            ivf_listed="yes"))
+        # Strong fit (100) but the IVF cap holds the tier at Contender.
+        assert rec["fit_signal_score"] == 100
+        assert rec["target_tier"] == "Contender"
+
+    def test_case4_ivf_and_rei_penalized_and_capped(self):
+        rec = self._tier(self._signals(ivf_listed="yes", rei_on_staff="yes"))
+        assert rec["bullseye_score"] == 0              # 40-point penalty floors it
+        assert rec["target_tier"] == "Manual Review"   # zero positive fit
+
+    def test_case5_out_of_scope_record_excluded_at_scoring(self):
+        rec = self._tier(self._signals(fertility_services="yes"),
+                         specialty="Dermatology")
+        assert rec["exclusion_status"] == "EXCLUDED"
+        assert rec["target_tier"] == "Excluded"
+
+
 class TestReinforcement:
     """Elective/cosmetic 'yes' should infer (boost) an unconfirmed cash-pay signal."""
 

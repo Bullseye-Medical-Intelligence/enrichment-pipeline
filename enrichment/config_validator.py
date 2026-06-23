@@ -142,7 +142,7 @@ def validate_icp(icp_data: dict, *, source_label: str = "ICP config") -> None:
 
         # Boolean flags
         for bool_field in ("verification_required", "required_for_bullseye",
-                           "required_for_contender", "exclude_if_yes"):
+                           "required_for_contender", "exclude_if_yes", "reinforcer"):
             if bool_field in sig and not isinstance(sig[bool_field], bool):
                 raise ValueError(
                     f"{source_label}: signal '{sid}' '{bool_field}' must be true or false, "

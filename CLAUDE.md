@@ -128,6 +128,19 @@ matching more signals does not mean a higher score.
   signals, else `NO_SIGNAL_CONFIDENCE`.
 - **`bullseye_score`** = `FIT_WEIGHT * fit + CONFIDENCE_WEIGHT * confidence`, clamped.
 
+**Primary/reinforcer fit model (opt-in via `reinforcer`).** When an ICP marks any
+signal `reinforcer: true`, `_calculate_scores` switches models: `max_positive` (the
+fit denominator) is the sum of the **primary** (non-reinforcer) positive weights only,
+and reinforcers add their `weight × credit` to `achieved` on top of that base without
+enlarging the denominator — so confirming every primary already yields fit 100 (still
+clamped to 100) and reinforcers cannot dilute it. A confirmed negative signal is then
+**not** folded into fit; it contributes its **full** `|weight|` (not confidence-credited)
+to a penalty: `bullseye_score = round(FIT_WEIGHT * fit + CONFIDENCE_WEIGHT * confidence)
+− penalty`, floored at 0 (negatives stack; pair with `cap_tier` to also bound the tier).
+With no `reinforcer` flag the default model above is used unchanged. The Femasys
+cartridge uses this model: two must-haves (cash-pay, fertility) define the 85-point base,
+IUI / cycle-monitoring / financing reinforce on top, and IVF / REI penalize and cap.
+
 ### Rep call brief (`signal_extractor.py::_build_call_brief`)
 Every record carries a `call_brief` object. Grounded fields are **derived from the
 signals** (no extra LLM call): `top_evidence`, `missing_to_verify` (mirrors the
@@ -168,6 +181,7 @@ never in engine code (RULE 3).
 | Field | Type | Effect |
 |-------|------|--------|
 | `positive_weight` | number | Desirability weight. Negative = friction (a `"yes"` is bad). |
+| `reinforcer` | bool | When `true`, the signal's confirmed weight adds on top of the fit base (numerator only) and is **not** part of the fit denominator. Marking any signal `reinforcer` activates the primary/reinforcer fit model for the whole ICP (see Scoring Model); under it, negative-weight signals become a flat post-blend penalty. Default off. |
 | `not_found_weight` | number | Score delta when the signal is `not_found` (use negative to penalize an expected-but-absent signal). |
 | `no_weight` | number | Score delta when a positive-weight signal is confirmed `"no"` (use negative to penalize a confirmed-absent must-have). Default 0. |
 | `verification_required` | bool | When `not_found` (and not inferred), caps a would-be Bullseye at `"Needs Verification"`. |

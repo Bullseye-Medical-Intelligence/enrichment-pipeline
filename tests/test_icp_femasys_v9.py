@@ -1,26 +1,25 @@
 """
 test_icp_femasys_v9.py
 
-Regression tests that encode the client-confirmed Femasys (FemaSeed) ICP intent
-(now the national v11 merge). They drive the SHIPPED cartridge
+Regression tests encoding the SHIPPED Femasys (FemaSeed) cartridge intent
+(currently v12). They drive the real config
 (config/clients/obgyn_femasys/icp_checklist.json) through simulate() — the same
-function the API and the pipeline use, composing reinforcement + scoring +
-tiering + exclusion — so the tests guard the real config, not a synthetic fixture.
+composition of reinforcement + scoring + tiering + exclusion the API and the
+pipeline use — so the tests guard the real cartridge, not a synthetic fixture.
 
-Design intent under test (v11 — national merge of the prior national v10 and the
-Michigan v10-MI cartridge):
-  - Fit is soft on fertility: nothing is required_for_bullseye; any fertility
-    activity scores, and the fertility signals bind on SERVICE CONTEXT (a named
-    service, a service/fertility page, a 'we treat/offer' statement, or a provider
-    specialty) — not only verbatim phrases.
-  - Cash-pay (S-ICP-007) is now a GATE: positive_weight 20 + required_for_contender.
-    A practice with no confirmed cash-pay/self-pay capability is routed to Manual
-    Review (held out of every call tier) — UNLESS the elective/aesthetic proxy
-    (S-ICP-008) infers it, which suppresses the gate.
-  - Exclusions are load-bearing: IVF/REI fertility centers are dropped (with a
-    refer-vs-offer guard so community OBGYNs who merely refer out are not excluded).
-  - FemVue / FemaSeed (the warm-lead signal) floors a confirmed practice at Contender.
-  - The cartridge is national: target_geography is empty in run_config.
+v12 signal model under test:
+  - Two PRIMARY must-haves define an 85-point fit base: cash_pay_signal (50) and
+    fertility_services (35), both required_for_bullseye.
+  - Three REINFORCERS add fit on top of the base (not members of the denominator;
+    fit caps at 100): iui_listed (+15), cycle_monitoring_listed (+10),
+    patient_financing_visible (+10).
+  - Two NEGATIVES apply a flat 20-point penalty (full weight, not confidence-
+    credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender:
+    ivf_listed, rei_on_staff. Neither is a hard exclusion any longer.
+  - fertility_services carries floor_tier Contender (a confirmed fertility practice
+    is always at least Contender, even on a thin score).
+  - The cartridge is national: target_geography is empty in run_config, and REI is
+    no longer a pre-crawl taxonomy skip.
 
 These are deterministic — no API calls, no HTTP.
 """
@@ -40,24 +39,26 @@ _RUN_CONFIG_PATH = _CLIENT_DIR / "run_config.json"
 # Read the Bullseye cutoff from the shipped run_config so these tests always
 # reflect the threshold the pipeline actually runs with, not a hardcoded copy.
 _BULLSEYE_MIN = json.loads(_RUN_CONFIG_PATH.read_text(encoding="utf-8"))["bullseye_min_score"]
-_TOP_TIERS = ("Bullseye", "Contender")
-_FIT_SIGNAL_IDS = ("S-ICP-001", "S-ICP-002", "S-ICP-003",
-                   "S-ICP-004", "S-ICP-005", "S-ICP-006")
+
+_PRIMARIES = ("cash_pay_signal", "fertility_services")
+_REINFORCERS = ("iui_listed", "cycle_monitoring_listed", "patient_financing_visible")
+_NEGATIVES = ("ivf_listed", "rei_on_staff")
+_ALL_IDS = _PRIMARIES + _REINFORCERS + _NEGATIVES
 
 
 def _load_signals() -> list[dict]:
-    """Load the shipped Femasys v11 signal list from the cartridge on disk."""
+    """Load the shipped Femasys v12 signal list from the cartridge on disk."""
     data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
     return data["signals"]
 
 
 def _states(yes_ids, confidence="high") -> dict:
-    """Build a signal_states map marking the given signal_ids as 'yes'."""
+    """Build a signal_states map marking the given signal_ids 'yes'."""
     return {sid: {"state": "yes", "confidence": confidence} for sid in yes_ids}
 
 
 def _run(states, confidence="high") -> dict:
-    """Simulate the shipped v11 ICP with the given signal states.
+    """Simulate the shipped v12 cartridge with the given signal states.
 
     Accepts either a list of signal_ids to mark 'yes', or a full signal_states map.
     """
@@ -66,242 +67,160 @@ def _run(states, confidence="high") -> dict:
     return simulate(_load_signals(), states, _BULLSEYE_MIN)
 
 
-class TestFemasysV11Intent:
-    """End-to-end tier outcomes for the shipped Femasys cartridge (v11 national merge)."""
+class TestFemasysV12Intent:
+    """End-to-end tier outcomes for the shipped v12 cartridge — the task's
+    verification cases, driven through the real config."""
 
-    def test_version_is_v11(self):
-        """The shipped cartridge is the v11 national merge."""
+    def test_version_is_v12(self):
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
-        assert data["version"] == "obgyn-femasys-v11.1"
+        assert data["version"] == "obgyn-femasys-v12"
 
-    def test_readiness_alone_cannot_qualify(self):
-        """Elective (which infers cash-pay) with NO fertility signal stays out of the
-        call queue.
+    def test_both_must_haves_alone_reach_bullseye(self):
+        # The two primaries fill the 85-point base -> fit 100 -> Bullseye.
+        result = _run(["cash_pay_signal", "fertility_services"])
+        assert result["tier"] == "Bullseye"
 
-        The elective proxy satisfies the cash-pay gate by inference, but it carries
-        zero fit weight, so a readiness-only practice has too little fit to clear the
-        Manual Review floor and can never reach a client tier.
-        """
-        result = _run(["S-ICP-008"])
-        assert result["tier"] not in _TOP_TIERS
-        assert result["tier"] == "Manual Review"
+    def test_case1_cash_fertility_iui_is_bullseye(self):
+        result = _run(["cash_pay_signal", "fertility_services", "iui_listed"])
+        assert result["tier"] == "Bullseye"
 
-    def test_financing_confirmed_alone_cannot_qualify(self):
-        """Directly-confirmed cash-pay, with no fertility fit, cannot qualify."""
-        result = _run(["S-ICP-007"])
-        assert result["tier"] not in _TOP_TIERS
+    def test_case2_strong_fertility_no_cash_cannot_reach_bullseye(self):
+        result = _run(["fertility_services", "iui_listed",
+                       "cycle_monitoring_listed", "patient_financing_visible"])
+        assert result["tier"] != "Bullseye"
+        assert result["tier"] == "Needs Verification"
 
-    def test_infertility_eval_plus_financing_reaches_top_tier(self):
-        """Fertility services + confirmed cash-pay lands in a client-shipped tier."""
-        result = _run(["S-ICP-003", "S-ICP-007"])
-        assert result["tier"] in _TOP_TIERS
-
-    def test_ivf_rei_excluded_despite_perfect_fit(self):
-        """A confirmed IVF/REI center is Excluded even with every fit signal 'yes'."""
-        all_fit_plus_ivf = list(_FIT_SIGNAL_IDS) + ["S-ICP-007", "S-ICP-009"]
-        result = _run(all_fit_plus_ivf)
-        assert result["tier"] == "Excluded"
-
-    def test_femvue_floors_at_contender(self):
-        """Confirmed FemVue/FemaSeed guarantees at least Contender on a thin score —
-        but the cash-pay gate must be satisfied first (floor cannot override it)."""
-        result = _run(["S-ICP-006", "S-ICP-007"])
+    def test_case3_fertility_plus_ivf_capped_at_contender(self):
+        result = _run(["fertility_services", "ivf_listed"])
         assert result["tier"] == "Contender"
 
-    def test_femvue_alone_is_not_bullseye(self):
-        """FemVue is a warm-lead accelerator, never a one-signal path to Bullseye."""
-        result = _run(["S-ICP-006", "S-ICP-007"])
-        assert result["tier"] != "Bullseye"
+    def test_case3_high_fit_plus_ivf_still_capped_at_contender(self):
+        # Strong fit (every positive yes) but the IVF cap holds the tier at Contender.
+        result = _run(list(_PRIMARIES) + list(_REINFORCERS) + ["ivf_listed"])
+        assert result["fit_signal_score"] == 100
+        assert result["tier"] == "Contender"
 
-    def test_bullseye_reachable_without_femvue(self):
-        """Strong fertility fit + confirmed cash-pay reaches Bullseye on its own —
-        FemVue is not required.
+    def test_case4_ivf_and_rei_penalized_and_manual_review(self):
+        result = _run(["ivf_listed", "rei_on_staff"])
+        assert result["bullseye_score"] == 0
+        assert result["tier"] == "Manual Review"
 
-        This is the load-bearing invariant: a practice doing broad in-office
-        fertility work (IUI + medicated cycles + fertility services + cash-pay +
-        cycle monitoring) must reach Bullseye with NO FemVue mention.
-        """
-        result = _run(["S-ICP-001", "S-ICP-002", "S-ICP-003",
-                       "S-ICP-007", "S-ICP-005"])
-        assert result["tier"] == "Bullseye"
-
-    def test_broad_fit_plus_femvue_can_reach_bullseye(self):
-        """Broad fertility fit plus cash-pay plus the FemVue warm lead reaches Bullseye."""
-        result = _run(list(_FIT_SIGNAL_IDS) + ["S-ICP-007"])
-        assert result["tier"] == "Bullseye"
+    def test_ivf_rei_no_longer_excludes(self):
+        # v12: IVF/REI are negative scoring signals, not a hard exclusion.
+        result = _run(list(_PRIMARIES) + list(_REINFORCERS) + ["ivf_listed", "rei_on_staff"])
+        assert result["tier"] != "Excluded"
+        assert result["tier"] == "Contender"
 
 
-class TestFemasysV11CashPayGate:
-    """v11 makes cash-pay a must-have-or-Manual-Review qualifier (required_for_contender)."""
+class TestFemasysV12Structure:
+    """Structural invariants of the v12 cartridge that scoring/tiering rely on."""
 
-    def test_cash_pay_signal_is_the_gate(self):
-        """S-ICP-007 carries positive_weight 20 and required_for_contender true."""
+    def test_signal_id_set(self):
+        ids = {s["signal_id"] for s in _load_signals()}
+        assert ids == set(_ALL_IDS)
+
+    def test_primary_weights_and_must_have_flags(self):
         by_id = {s["signal_id"]: s for s in _load_signals()}
-        cash = by_id["S-ICP-007"]
-        assert cash["positive_weight"] == 20
-        assert cash.get("required_for_contender") is True
+        assert by_id["cash_pay_signal"]["positive_weight"] == 50
+        assert by_id["fertility_services"]["positive_weight"] == 35
+        for sid in _PRIMARIES:
+            assert by_id[sid].get("required_for_bullseye") is True
+            assert not by_id[sid].get("reinforcer")
 
-    def test_strong_fit_without_cash_is_manual_review(self):
-        """A strong fertility practice with cash-pay not_found is held in Manual Review
-        regardless of score — the gate binds even above the score floor."""
-        result = _run(["S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-005"])
-        assert result["tier"] == "Manual Review"
-        assert "required to qualify" in result["tier_cap_reason"]
+    def test_reinforcer_weights_and_flags(self):
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert by_id["iui_listed"]["positive_weight"] == 15
+        assert by_id["cycle_monitoring_listed"]["positive_weight"] == 10
+        assert by_id["patient_financing_visible"]["positive_weight"] == 10
+        for sid in _REINFORCERS:
+            assert by_id[sid].get("reinforcer") is True
+            assert not by_id[sid].get("required_for_bullseye")
 
-    def test_strong_fit_with_cash_no_is_manual_review(self):
-        """Cash-pay confirmed 'no' also fails the qualifier gate -> Manual Review."""
-        states = _states(["S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-005"])
-        states["S-ICP-007"] = {"state": "no", "confidence": "high"}
-        result = _run(states)
-        assert result["tier"] == "Manual Review"
+    def test_negatives_penalize_and_cap_at_contender(self):
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        for sid in _NEGATIVES:
+            assert by_id[sid]["positive_weight"] == -20
+            assert by_id[sid].get("cap_tier") == "Contender"
+            assert not by_id[sid].get("reinforcer")
 
-    def test_elective_proxy_satisfies_cash_pay_gate(self):
-        """The elective/aesthetic proxy (S-ICP-008) infers cash-pay and suppresses the
-        gate, so a strong-fit practice qualifies without explicit cash-pay copy."""
-        result = _run(["S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-005", "S-ICP-008"])
-        assert result["tier"] in _TOP_TIERS
+    def test_no_signal_is_exclude_if_yes(self):
+        # v12 removed the IVF/REI hard exclusion; nothing routes to Excluded by signal.
+        assert [s["signal_id"] for s in _load_signals() if s.get("exclude_if_yes")] == []
 
-    def test_confirmed_cash_pay_satisfies_gate(self):
-        """Explicit cash-pay confirmed 'yes' satisfies the gate; a strong-fit practice
-        reaches a client tier."""
-        result = _run(["S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-005", "S-ICP-007"])
-        assert result["tier"] in _TOP_TIERS
+    def test_only_fertility_floors_at_contender(self):
+        floored = [s["signal_id"] for s in _load_signals() if s.get("floor_tier")]
+        assert floored == ["fertility_services"]
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert by_id["fertility_services"]["floor_tier"] == "Contender"
+
+    def test_nothing_is_required_for_contender(self):
+        assert [s["signal_id"] for s in _load_signals()
+                if s.get("required_for_contender")] == []
+
+    def test_cash_and_fertility_carry_dashboard_columns(self):
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert by_id["cash_pay_signal"].get("column_label") == "Cash Pay"
+        assert by_id["fertility_services"].get("column_label") == "Fertility"
+
+    def test_rei_taxonomy_skip_removed_from_run_config(self):
+        # Change 6: REI is no longer a pre-crawl taxonomy skip / exclusion rule.
+        cfg = json.loads(_RUN_CONFIG_PATH.read_text(encoding="utf-8"))
+        assert cfg.get("taxonomy_exclusion_rules") == []
+        assert "rei_on_staff" not in cfg.get("active_exclusion_rules", [])
 
 
-class TestFemasysV11PhraseBinding:
-    """Fit-signal prompts must carry their phrase anchors and a negative guard.
-
-    v11 binds on SERVICE CONTEXT (a named service, a dedicated service page, a 'we
-    treat/offer' statement, or a provider specialty) rather than strict verbatim
-    phrases, so a 'Fertility' service-menu item is detected. The negative guard is
-    editorial — a term appearing ONLY in a blog / patient-education article does not
-    qualify. These config-time tests guard the prompt text; the LLM enforces it at
-    runtime.
-    """
+class TestFemasysV12PhraseBinding:
+    """Each signal prompt must carry its word-for-word anchors, a no-inference
+    guard, the three-state vocabulary, and the evidence/source instruction."""
 
     REQUIRED_ANCHORS = {
-        "S-ICP-001": ["IUI", "intrauterine insemination",
-                      "artificial insemination", "in-office insemination"],
-        "S-ICP-002": ["medicated cycle", "ovulation induction"],
-        # S-ICP-003 v11: Michigan broad service-context language.
-        "S-ICP-003": ["infertility evaluation", "hysterosalpingogram", "HSG",
-                      "fertility care", "fertility services", "PCOS treatment",
-                      "recurrent pregnancy loss", "anovulation", "Family Building"],
-        "S-ICP-004": ["infertility consultation", "fertility consultation",
-                      "infertility counseling", "fertility consultations"],
-        # S-ICP-005 v11: Michigan expanded ultrasound phrases.
-        "S-ICP-005": ["follicle monitoring", "follicular monitoring", "cycle monitoring",
-                      "saline sonohysterogram", "sonohysterogram", "hysterosonography"],
-        # S-ICP-006 v11: FemVue OR FemaSeed.
-        "S-ICP-006": ["FemVue", "FemaSeed"],
+        "cash_pay_signal": ["cash pay", "self-pay", "CareCredit", "elective",
+                            "med spa", "membership", "hormone optimization"],
+        "fertility_services": ["fertility", "infertility", "trying to conceive",
+                               "TTC", "ovulation induction", "preconception"],
+        "iui_listed": ["IUI", "intrauterine insemination", "artificial insemination"],
+        "cycle_monitoring_listed": ["cycle monitoring", "follicle monitoring",
+                                    "serial ultrasound", "ovulation tracking"],
+        "patient_financing_visible": ["CareCredit", "Cherry", "Sunbit",
+                                      "payment plan", "financing available"],
+        "ivf_listed": ["IVF", "in vitro fertilization", "embryo transfer",
+                       "egg retrieval", "ICSI"],
+        "rei_on_staff": ["reproductive endocrinologist", "REI",
+                         "reproductive endocrinology and infertility"],
     }
 
-    def test_fit_prompts_contain_their_anchors(self):
+    def test_prompts_contain_their_anchors(self):
         by_id = {s["signal_id"]: s for s in _load_signals()}
         for sid, anchors in self.REQUIRED_ANCHORS.items():
             prompt = by_id[sid]["prompt_instruction"]
             for anchor in anchors:
                 assert anchor in prompt, f"{sid} prompt missing anchor {anchor!r}"
 
-    def test_phrase_signals_forbid_bare_words(self):
-        """The signals most prone to false positives must carry a negative guard."""
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        for sid in ("S-ICP-001", "S-ICP-002", "S-ICP-003",
-                    "S-ICP-004", "S-ICP-005"):
-            prompt = by_id[sid]["prompt_instruction"]
-            assert "Do NOT" in prompt, f"{sid} prompt missing a bare-word guard"
-
-    def test_fertility_prompts_bind_to_service_context(self):
-        """v11: every fertility fit prompt must require service context and exclude
-        blog/editorial mentions."""
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        for sid in ("S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-004"):
-            prompt = by_id[sid]["prompt_instruction"].lower()
+    def test_prompts_are_three_state_no_inference(self):
+        for s in _load_signals():
+            prompt = s["prompt_instruction"]
             assert "not_found" in prompt
-            assert "service" in prompt and "blog" in prompt, \
-                f"{sid} prompt missing service-context / editorial binding"
+            assert "Do NOT" in prompt, f"{s['signal_id']} missing a no-inference guard"
+            assert "evidence_text" in prompt and "source_url" in prompt
 
-    def test_cash_pay_signal_contains_plain_english_terms(self):
-        """S-ICP-007 must contain plain-English self-pay language and merged
-        Michigan financing terms."""
+    def test_ivf_has_refer_vs_offer_guard(self):
         by_id = {s["signal_id"]: s for s in _load_signals()}
-        prompt = by_id["S-ICP-007"]["prompt_instruction"]
-        for phrase in ("self-pay", "cash pay", "financing available", "payment plan",
-                       "Ally Lending", "PatientFi"):
-            assert phrase in prompt, f"S-ICP-007 prompt missing phrase: {phrase!r}"
-
-
-class TestFemasysV11Structure:
-    """Structural invariants of the cartridge that downstream logic relies on."""
-
-    def test_ivf_rei_is_the_only_exclude_if_yes(self):
-        """The IVF/REI signal is the sole exclude_if_yes route to Excluded."""
-        excluders = [s["signal_id"] for s in _load_signals()
-                     if s.get("exclude_if_yes")]
-        assert excluders == ["S-ICP-009"]
-
-    def test_ivf_rei_has_refer_vs_offer_guard(self):
-        """v11: the IVF/REI exclusion carries the Michigan refer-vs-offer guard so
-        community OBGYNs who merely refer out are not excluded."""
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        prompt = by_id["S-ICP-009"]["prompt_instruction"].lower()
+        prompt = by_id["ivf_listed"]["prompt_instruction"].lower()
         assert "refer" in prompt and "offer" in prompt
 
-    def test_femvue_carries_floor_tier_contender(self):
+    def test_rei_disambiguation_routes_bare_specialist_to_fertility(self):
         by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert by_id["S-ICP-006"].get("floor_tier") == "Contender"
+        # Both the REI and the fertility prompts must carry the disambiguation rule:
+        # a bare "fertility specialist" with no REI credential is fertility, not REI.
+        assert "fertility specialist" in by_id["rei_on_staff"]["prompt_instruction"]
+        assert "fertility specialist" in by_id["fertility_services"]["prompt_instruction"]
 
-    def test_femvue_matches_femaseed(self):
-        """v11: S-ICP-006 also matches FemaSeed (the strongest warm lead)."""
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert "FemaSeed" in by_id["S-ICP-006"]["prompt_instruction"]
-        assert "FemaSeed" in by_id["S-ICP-006"]["signal_label"]
 
-    def test_elective_reinforces_cash_pay_target(self):
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert by_id["S-ICP-008"].get("reinforces") == "S-ICP-007"
-        assert by_id["S-ICP-008"]["positive_weight"] == 0
-
-    def test_elective_brand_list_expanded(self):
-        """v11: S-ICP-008 adopts the Michigan fuller brand list."""
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        prompt = by_id["S-ICP-008"]["prompt_instruction"]
-        for brand in ("Botox", "semaglutide", "labiaplasty", "med spa", "Emsella"):
-            assert brand in prompt, f"S-ICP-008 prompt missing brand: {brand!r}"
-
-    def test_s_icp_010_not_in_cartridge(self):
-        """S-ICP-010 is reserved for in-house ultrasound (pending clinical confirmation)."""
-        ids = {s["signal_id"] for s in _load_signals()}
-        assert "S-ICP-010" not in ids, "S-ICP-010 must not be added until clinical confirmation"
-
-    def test_signal_id_set_is_the_national_nine(self):
-        """v11 keeps the national signal IDs (no Michigan S-MI-* IDs); the
-        contraception signal S-ICP-011 was removed, leaving nine."""
-        ids = {s["signal_id"] for s in _load_signals()}
-        assert ids == {
-            "S-ICP-001", "S-ICP-002", "S-ICP-003", "S-ICP-004", "S-ICP-005",
-            "S-ICP-006", "S-ICP-007", "S-ICP-008", "S-ICP-009",
-        }
-
-    def test_cash_pay_is_the_only_required_for_contender(self):
-        """Cash-pay (S-ICP-007) is the sole qualifier gate."""
-        gated = [s["signal_id"] for s in _load_signals()
-                 if s.get("required_for_contender")]
-        assert gated == ["S-ICP-007"]
-
-    def test_nothing_is_required_for_bullseye(self):
-        """v11 keeps the soft-bullseye design: no signal is required_for_bullseye."""
-        assert all(
-            not s.get("required_for_bullseye", False) for s in _load_signals()
-        )
+class TestFemasysV12CartridgeSeedParity:
+    """The CLI cartridge and the API seed must carry identical signal logic, so the
+    same practice scores the same in the pipeline and in the operator UI."""
 
     def test_cli_cartridge_matches_api_seed_signals(self):
-        """The CLI cartridge and the API seed must carry identical signal logic.
-
-        Two homes for the same ICP (CLI reads the cartridge, the operator UI reads
-        the seeded profile); a drift between them would score the same practice two
-        different ways.
-        """
         seed_path = (
             Path(__file__).parent.parent
             / "pipeline-api" / "seeds" / "icp_profiles" / "obgyn_femasys.json"
@@ -309,13 +228,14 @@ class TestFemasysV11Structure:
         seed = json.loads(seed_path.read_text(encoding="utf-8"))
         cartridge_signals = _load_signals()
         keys = (
-            "signal_id", "positive_weight", "floor_tier", "cap_tier",
-            "reinforces", "exclude_if_yes", "required_for_bullseye",
-            "required_for_contender", "verification_required",
-            "not_found_weight", "no_weight",
+            "signal_id", "signal_label", "prompt_instruction", "positive_weight",
+            "floor_tier", "cap_tier", "reinforcer", "reinforces", "exclude_if_yes",
+            "required_for_bullseye", "required_for_contender", "verification_required",
+            "not_found_weight", "no_weight", "column_label",
         )
 
         def _norm(sigs):
             return [{k: s.get(k) for k in keys} for s in sigs]
+
         assert _norm(cartridge_signals) == _norm(seed["signals"])
         assert seed["version"] == json.loads(_ICP_PATH.read_text(encoding="utf-8"))["version"]

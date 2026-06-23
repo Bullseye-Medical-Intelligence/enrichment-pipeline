@@ -1,75 +1,58 @@
 {
-  "version": "obgyn-femasys-v11.1",
-  "version_note": "v11 — national merge: folds the Michigan cartridge's service-context prompt fixes into the national 9-signal structure (a named service, a dedicated service/fertility page, a 'we treat/offer' statement, or a provider specialty now count — not only verbatim phrases; editorial/blog mentions still excluded). Cash-pay (S-ICP-007) is promoted to a high-weight must-have-or-Manual-Review gate (positive_weight 20, required_for_contender true): a practice with no confirmed cash-pay/self-pay capability is held in Manual Review until an operator confirms it, UNLESS the elective/aesthetic proxy (S-ICP-008) infers it. FemVue signal (S-ICP-006) also matches FemaSeed (strongest warm lead). REI/IVF exclusion gains the Michigan refer-vs-offer guard and expanded ART terms. Geography limit removed in run_config (all states). The in-office contraceptive-device signal (S-ICP-011) was removed: contraception is procedural readiness, not a fertility-intent signal, and was inflating fertility fit. v11.1: added presentation-only column_label (Cash Pay on S-ICP-007, Fertility on S-ICP-003) for at-a-glance dashboard columns; no scoring change.",
+  "version": "obgyn-femasys-v12",
+  "version_note": "v12 — signal-model reconfiguration. Replaces the v11 nine-signal set with a tighter two-must-have + three-reinforcer + two-negative model. PRIMARY must-haves define an 85-point fit base: cash_pay_signal (weight 50, required_for_bullseye) and fertility_services (weight 35, required_for_bullseye, floor_tier Contender — a confirmed fertility practice is always at least Contender even on a thin score). REINFORCERS add fit on top of that base (not members of the denominator; fit caps at 100): iui_listed (+15), cycle_monitoring_listed (+10), patient_financing_visible (+10). NEGATIVES apply a flat 20-point penalty (full weight, not confidence-credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender: ivf_listed and rei_on_staff. REI is no longer a hard exclusion gate — it moved out of run_config into a negative scoring signal, and the 207VE0102X taxonomy pre-crawl skip was removed (run_config) so every record is crawled and scored. All signals are three-state (yes/no/not_found) with word-for-word textual anchoring and no inference; a yes without evidence_text + source_url is downgraded by the existing sourcing gate. Presentation-only column_label retained on cash_pay_signal (Cash Pay) and fertility_services (Fertility). The primary/reinforcer fit model is activated by the reinforcer:true flags and is read by the engine's _calculate_scores.",
   "signals": [
     {
-      "signal_id": "S-ICP-001",
-      "signal_label": "IUI offered",
-      "prompt_instruction": "Does this practice OFFER IUI (intrauterine insemination)? Answer yes when 'IUI', 'intrauterine insemination', 'artificial insemination', or 'in-office insemination' appears in a SERVICE context — a services page, a service-menu item, a procedures list, a fertility service page, or a physician/provider bio or specialty. A service-menu item or a fertility service page that lists IUI counts. Do NOT infer from generic words like 'fertility', 'consultation', 'treatment', or 'family planning' without one of these insemination terms, and do NOT answer yes when the term appears ONLY in a blog post, news item, or health-education article explaining what IUI is, with no sign the practice performs it (that is not_found). Evidence: quote the surrounding text and cite the specific page URL it came from (e.g. /services/fertility), not just the homepage.",
-      "positive_weight": 25,
-      "note": "Core fit, heaviest fertility signal. Direct Femasys procedure match: an in-office IUI service line is the clearest signal a practice already does the office-based fertility work FemaSeed upgrades. v11: adopts the Michigan service-context prompt — a Fertility/IUI service-menu item, a fertility service page, or a provider bio counts, not only the verbatim phrase; editorial/blog mentions still excluded."
+      "signal_id": "cash_pay_signal",
+      "signal_label": "Cash-pay / self-pay capability",
+      "prompt_instruction": "Does the website show, word-for-word, that the practice offers cash-pay / self-pay / elective services or patient financing? Answer \"yes\" ONLY when one or more of these terms appears verbatim in a services, pricing, billing, or patient-information context: \"cash pay\", \"cash-pay\", \"self pay\", \"self-pay\", \"out of pocket\", \"out-of-pocket\", \"elective\", \"cosmetic\", \"aesthetic\", \"med spa\", \"medspa\", \"membership\", \"concierge\", \"package pricing\", \"financing\", \"CareCredit\", or \"hormone optimization\". Answer \"no\" ONLY when the page explicitly states cash-pay/self-pay is not available (e.g. \"insurance required\"). Otherwise answer \"not_found\". Do NOT infer from the mere presence of services; the term must appear word-for-word. Quote the exact matched phrase in evidence_text and put the page URL it came from in source_url.",
+      "positive_weight": 50,
+      "required_for_bullseye": true,
+      "column_label": "Cash Pay"
     },
     {
-      "signal_id": "S-ICP-002",
-      "signal_label": "Medicated / stimulated cycles offered",
-      "prompt_instruction": "Does this practice OFFER medicated or stimulated ovulation cycles? Answer yes when 'medicated cycle', 'medicated cycles', 'stimulated cycle', or 'ovulation induction' appears in a SERVICE context — listed as an offered service or procedure, named on a fertility service page or service menu, or stated in a provider bio. Do NOT match bare words like 'cycle', 'medication', or 'treatment' on their own, and do NOT answer yes when the phrase appears ONLY in a blog post or patient-education article (that is not_found). Evidence: quote the surrounding sentence and cite the specific page URL.",
-      "positive_weight": 22,
-      "note": "Strong fit. Medicated-cycle management indicates an active fertility-treatment workflow, the same patient population FemaSeed serves. v11: relaxed to Michigan-style service-context matching (named service / service page / provider specialty), with the editorial guard retained, instead of strict verbatim-only binding."
-    },
-    {
-      "signal_id": "S-ICP-003",
-      "signal_label": "Fertility services / infertility evaluation",
-      "prompt_instruction": "Does this practice OFFER fertility or infertility services? Answer yes when the website shows the practice provides fertility / infertility care as a service. Qualifying service-context evidence is ANY of: (a) a named service or service-menu item such as 'Fertility', 'Infertility', 'Fertility Care', 'Family Building', or 'PCOS'; (b) a dedicated fertility/infertility service page (e.g. a /fertility or /services/fertility URL, or a page whose heading is Fertility/Infertility); (c) a statement that the practice treats, manages, evaluates, or offers it — e.g. 'we treat infertility', 'fertility services', 'fertility care', 'fertility management', 'infertility care', 'infertility evaluation', 'infertility workup', 'infertility diagnosis', 'fertility testing', 'infertility testing', 'HSG', 'hysterosalpingogram', 'fertility consultation', 'fertility treatment', 'ovulation induction', 'PCOS treatment', 'polycystic ovary treatment', 'ovulation disorders', 'anovulation', 'recurrent pregnancy loss', 'irregular periods', 'hormone imbalance', or 'thyroid and fertility'; or (d) a provider bio listing fertility or infertility as a specialty or clinical interest. The signal is whether the practice OFFERS fertility care — a bare service-menu item like 'Fertility' or 'PCOS', or a fertility service page, DOES count. Do NOT answer yes when fertility/infertility appears ONLY in a blog post, news/press item, patient-education article, or testimonial with no sign the practice offers it (an educational article 'understanding infertility' with no fertility service listed is not_found). Do NOT match bare standalone words such as 'evaluation', 'testing', 'diagnosis', 'treatment', or 'consultation' alone — the term must be fertility-bound or tied to a fertility service. Evidence: quote the menu item or sentence and cite the specific page URL (e.g. /services/fertility).",
-      "positive_weight": 18,
-      "column_label": "Fertility",
-      "note": "Moderate fit. Covers the full range of in-office fertility service and infertility management language: a named service, a dedicated service page, a 'we treat/offer' statement, or a provider specialty all count. v11: adopts the Michigan S-MI-002 broad service-context matching, fixing the prior false negative where a practice with a 'Fertility' service-menu item, a /service/fertility page, and 'treats infertility' on its about page scored not_found. The editorial guard still keeps blog / patient-education mentions out."
-    },
-    {
-      "signal_id": "S-ICP-004",
-      "signal_label": "Infertility / fertility consultation",
-      "prompt_instruction": "Does this practice OFFER an infertility or fertility consultation or counseling service? Answer yes when 'infertility consultation', 'fertility consultation', 'fertility consultations', 'infertility counseling', or 'fertility counseling' appears in a SERVICE context — listed as an offered service, named on a fertility service page or service menu, or stated in a provider bio. Do NOT match the bare words 'consultation' or 'counseling' on their own, and do NOT answer yes when the phrase appears ONLY in a blog or patient-education article (that is not_found). Evidence: quote the surrounding sentence and cite the specific page URL.",
-      "positive_weight": 6,
-      "note": "Weak fit. A named fertility consultation or counseling offering shows fertility intent but is the lowest-commitment fertility signal, so it carries the smallest fit weight. v11: service-context relaxation (named service / service page / provider bio counts) with the editorial guard retained."
-    },
-    {
-      "signal_id": "S-ICP-005",
-      "signal_label": "Cycle monitoring ultrasound",
-      "prompt_instruction": "Does this practice perform fertility cycle monitoring by ultrasound? Answer yes when one of these phrases appears as a listed service or procedure: 'follicle monitoring', 'follicular monitoring', 'cycle monitoring', 'monitoring ultrasound', 'transvaginal ultrasound', 'saline sonohysterogram', 'sonohysterogram', 'hysterosonography', 'SIS/FemVue', or 'saline infusion sonogram'. Do NOT match the bare word 'ultrasound' or 'monitoring' alone. 'Obstetric ultrasound' or 'pregnancy ultrasound' alone is not_found — the phrase must be tied to gynecologic or cycle-related (fertility) context. SERVICE-CONTEXT RULE: must appear as a listed service or procedure, not in a blog or education article. Evidence: quote the surrounding sentence and cite the specific page URL.",
-      "positive_weight": 8,
-      "note": "A plus, not a gate. Cycle-monitoring ultrasound (incl. saline sonohysterogram / SIS) reinforces that fertility treatment happens in-office and adds confidence, but its absence is not disqualifying, so it carries a modest fit weight and no penalty when not found. v11: adopts the Michigan S-MI-003 expanded phrase list (saline sonohysterogram, sonohysterogram, hysterosonography, follicular monitoring) plus the service-context rule."
-    },
-    {
-      "signal_id": "S-ICP-006",
-      "signal_label": "FemVue or FemaSeed mentioned",
-      "prompt_instruction": "Does this practice mention FemVue or FemaSeed anywhere on the site? Answer yes when any of these exact Femasys product names appears verbatim: 'FemVue', 'SIS/FemVue', 'FemVue saline', or 'FemaSeed'. A FemaSeed mention is the strongest possible signal — the practice already uses Femasys's own FemaSeed product (the product being sold), not just a related one. Evidence: quote the surrounding sentence and cite the page URL it came from, and make clear in the quote whether it is FemVue or FemaSeed.",
-      "positive_weight": 14,
+      "signal_id": "fertility_services",
+      "signal_label": "Fertility / infertility services",
+      "prompt_instruction": "Does the website show, word-for-word, that the practice offers fertility or infertility services? Answer \"yes\" ONLY when one or more of these terms appears verbatim as a service or clinical offering: \"fertility\", \"infertility\", \"trying to conceive\", \"TTC\", \"preconception\", \"ovulation induction\", \"reproductive health\", \"fertility evaluation\", or \"fertility workup\". DISAMBIGUATION: a bare \"fertility specialist\" with NO reproductive-endocrinology credential language counts toward THIS signal (yes), not toward rei_on_staff. Answer \"no\" ONLY when the page explicitly states the practice does not provide fertility care. Otherwise answer \"not_found\". Do NOT infer. Quote the exact matched phrase in evidence_text and the page URL in source_url.",
+      "positive_weight": 35,
+      "required_for_bullseye": true,
       "floor_tier": "Contender",
-      "note": "Warm-lead accelerator, not a gate. Matches FemVue (the tubal-assessment product) OR FemaSeed (the product being sold); either on a practice's own site means they already use Femasys. A FemaSeed mention is the strongest of all — the practice is already a FemaSeed user, so the motion is expansion / reference, NOT a cold sell (operator should decide suppress-vs-expand). Its power is the floor_tier (a confirmed practice never falls below Contender), deliberately NOT a heavy fit weight: a very-high fit weight would inflate max_positive and cap every non-relationship practice below Bullseye, contradicting the rule that this signal is not required for Bullseye. v11: renamed and adopts the Michigan S-MI-004 prompt (also matches FemaSeed verbatim)."
+      "column_label": "Fertility"
     },
     {
-      "signal_id": "S-ICP-007",
-      "signal_label": "Cash-pay / patient financing visible",
-      "prompt_instruction": "Does the website show explicit evidence of cash-pay / self-pay capability or third-party patient financing? Answer yes when any of these appears in a service, billing, or patient-information context: branded financing — 'CareCredit', 'Care Credit', 'Ally Lending', 'Alphaeon', 'Cherry financing', 'Prosper Healthcare', 'PatientFi', 'GreenSky'; account types — 'FSA', 'HSA', 'FSA accepted', 'FSA eligible', 'HSA accepted', 'HSA eligible', 'flexible spending', 'health savings account'; plain-English cash-pay — 'patient financing', 'cash pay', 'cash-pay', 'cash accepted', 'cash patients welcome', 'cash patients', 'self-pay', 'self pay', 'self-pay patients', 'no insurance required', 'insurance not required', 'patients without insurance', 'uninsured patients', 'financing available', 'payment plans available', 'payment plan', 'interest-free financing', '0% financing', 'monthly payment', 'flexible payment', 'affordable payment', 'we offer financing', or 'financing options'; published self-pay or package pricing for fertility or related services; the phrase 'out-of-network'; a statement that a service is not covered by insurance; or offering superbills/invoices for reimbursement. GUARD: 'We accept most insurance plans' alone is not_found (insurance context, not cash-pay). 'Call for pricing' alone is not_found (ambiguous). Answer yes only when such language is explicitly present as a stated offering or policy.",
-      "positive_weight": 20,
-      "column_label": "Cash Pay",
-      "required_for_contender": true,
-      "note": "Readiness GATE. Direct-billing / financing infrastructure predicts adoption velocity for a patient-pay device workflow. v11: promoted to a high-weight must-have-or-Manual-Review qualifier (positive_weight 20, required_for_contender true): a practice with NO confirmed cash-pay/self-pay capability is held in Manual Review until an operator confirms it, removing it from every call tier — UNLESS the elective-aesthetic proxy (S-ICP-008) infers it, which suppresses the gate. Merges the national plain-English + branded-financing phrase list with the Michigan financing terms and false-positive guards."
+      "signal_id": "iui_listed",
+      "signal_label": "IUI offered",
+      "prompt_instruction": "Does the website list IUI as an offered procedure? Answer \"yes\" ONLY when \"IUI\", \"intrauterine insemination\", or \"artificial insemination\" appears verbatim as a service or procedure. Answer \"no\" ONLY when the page states IUI is not offered. Otherwise answer \"not_found\". Do NOT infer from generic fertility language. Quote the exact phrase in evidence_text and the page URL in source_url.",
+      "positive_weight": 15,
+      "reinforcer": true
     },
     {
-      "signal_id": "S-ICP-008",
-      "signal_label": "Elective / aesthetic cash-pay service line",
-      "prompt_instruction": "Does this practice offer elective, aesthetic, or cosmetic services that are typically patient-pay? Answer yes when one or more of these is explicitly named as an offered service: medical aesthetics — 'Botox', 'Dysport', 'Xeomin', 'dermal filler', 'lip filler', 'Juvederm', 'Restylane', 'Sculptra', 'Kybella', 'CoolSculpting', 'Emsculpt', 'truSculpt', 'body contouring', 'laser hair removal', 'IPL', 'microneedling', 'chemical peel', 'HydraFacial'; intimate/aesthetic gyn — 'Mona Lisa Touch', 'MonaLisa Touch', 'vaginal rejuvenation', 'labiaplasty', 'vaginoplasty', 'labial reduction', 'O-Shot', 'PRP therapy', 'ovarian PRP', or energy-based intimate devices ('Votiva', 'ThermiVa', 'FemiLift', 'diVa', 'Emsella'); weight management — 'semaglutide', 'tirzepatide', 'GLP-1', 'medical weight loss', 'weight loss program', 'weight management program'; spa/wellness — 'med spa', 'MedSpa', 'medspa', 'medical spa', 'aesthetic center', 'aesthetics', 'esthetics', 'IV therapy', 'IV drip', 'IV infusion', 'vitamin infusion', 'wellness program'; in-office elective devices — 'NovaSure', 'Cerene'. GUARD: a blog post about 'what is CoolSculpting' is not_found; a patient testimonial mentioning Botox is not_found. Must appear on a services page, procedures list, or treatment menu. Answer yes only when one or more such services are explicitly named as an offering.",
-      "positive_weight": 0,
-      "reinforces": "S-ICP-007",
-      "note": "Readiness reinforcer / cash-pay proxy. Elective aesthetic / cash-pay services are patient-pay by definition, so their presence implies direct-billing infrastructure even when no explicit cash-pay language appears. Weight 0: it contributes only by inferring the cash-pay readiness target (S-ICP-007) — which now also SATISFIES the cash-pay qualifier gate via inference — never independently inflating fit. v11: adopts the Michigan S-MI-008 fuller brand list (aesthetics, intimate gyn, weight management, spa/wellness, in-office elective devices)."
+      "signal_id": "cycle_monitoring_listed",
+      "signal_label": "Cycle monitoring offered",
+      "prompt_instruction": "Does the website list fertility cycle monitoring as a service? Answer \"yes\" ONLY when one of these appears verbatim: \"cycle monitoring\", \"follicle monitoring\", \"follicle tracking\", \"monitoring ultrasound\", \"serial ultrasound\", or \"ovulation tracking\". Answer \"no\" ONLY when the page states it is not offered. Otherwise answer \"not_found\". Do NOT match the bare word \"ultrasound\" or \"monitoring\" alone. Quote the exact phrase in evidence_text and the page URL in source_url.",
+      "positive_weight": 10,
+      "reinforcer": true
     },
     {
-      "signal_id": "S-ICP-009",
-      "signal_label": "IVF / REI fertility center",
-      "prompt_instruction": "Does this practice operate as, or hold itself out as, an IVF or reproductive-endocrinology fertility center? Answer yes when any of these appears as a listed SERVICE or as the practice identity: 'IVF', 'in vitro fertilization', 'egg retrieval', 'embryo transfer', 'reproductive endocrinology', 'reproductive endocrinologist', 'REI', 'egg freezing', 'sperm freezing', 'embryo freezing', 'cryopreservation', 'egg donation', 'donor eggs', 'gestational carrier', 'surrogacy', or the practice naming itself a 'fertility center' (name, tagline, or specialty description). REFER-VS-OFFER GUARD: 'we refer patients for IVF when needed' in a community OBGYN context is NOT an exclusion — the practice is not offering IVF. Distinguish 'we offer IVF' (exclude) from 'we refer for IVF' (do not exclude). The exclusion fires only when IVF/REI is a listed in-house service or the practice's own identity is REI. Evidence: quote the surrounding sentence and cite the page URL.",
-      "positive_weight": 0,
-      "exclude_if_yes": true,
-      "note": "Exclusion. A confirmed yes means a specialized fertility center that routes patients to in-house ART and male-factor pathways, not the office-based OBGYN profile FemaSeed upgrades. The NPI taxonomy structural gate (rei_on_staff) pre-filters most of these before crawl; this signal catches any that reach the LLM pass. v11: adopts the Michigan S-MI-007 refer-vs-offer guard (community OBGYNs who merely refer out for IVF are not excluded) and the expanded ART term list (egg/sperm/embryo freezing, cryopreservation, donor eggs, gestational carrier, surrogacy)."
+      "signal_id": "patient_financing_visible",
+      "signal_label": "Patient financing visible",
+      "prompt_instruction": "Does the website show, word-for-word, a third-party or in-house patient financing option? Answer \"yes\" ONLY when one of these appears verbatim: \"CareCredit\", \"Cherry\", \"Sunbit\", \"patient financing\", \"financing available\", \"apply for financing\", \"payment plan\", \"payment plans\", or \"monthly payments\". Answer \"no\" ONLY when the page states financing is not available. Otherwise answer \"not_found\". Do NOT infer. Quote the exact phrase in evidence_text and the page URL in source_url.",
+      "positive_weight": 10,
+      "reinforcer": true
+    },
+    {
+      "signal_id": "ivf_listed",
+      "signal_label": "IVF offered in-house",
+      "prompt_instruction": "Does the practice offer IVF (in vitro fertilization) as an in-house service? Answer \"yes\" ONLY when one of these appears verbatim as a listed service or practice identity: \"IVF\", \"in vitro fertilization\", \"embryo transfer\", \"egg retrieval\", or \"ICSI\". REFER-VS-OFFER GUARD: \"we refer for IVF\" or \"referral for IVF\" is NOT a yes (answer not_found) — only an in-house IVF offering counts. Answer \"no\" ONLY when the page explicitly states IVF is not offered. Otherwise answer \"not_found\". Do NOT infer. Quote the exact phrase in evidence_text and the page URL in source_url.",
+      "positive_weight": -20,
+      "cap_tier": "Contender"
+    },
+    {
+      "signal_id": "rei_on_staff",
+      "signal_label": "Reproductive endocrinologist on staff",
+      "prompt_instruction": "Does the practice have a reproductive endocrinologist (REI) on staff or identify as an REI practice? Answer \"yes\" ONLY when one of these appears verbatim: \"reproductive endocrinologist\", \"REI\", \"board-certified in reproductive endocrinology\", or \"reproductive endocrinology and infertility\". DISAMBIGUATION: a bare \"fertility specialist\" with NO REI credential language is NOT a yes here (it belongs to fertility_services) — this signal fires ONLY on the explicit REI terms above. Answer \"no\" ONLY when the page states there is no REI on staff. Otherwise answer \"not_found\". Do NOT infer. Quote the exact phrase in evidence_text and the page URL in source_url.",
+      "positive_weight": -20,
+      "cap_tier": "Contender"
     }
   ]
 }

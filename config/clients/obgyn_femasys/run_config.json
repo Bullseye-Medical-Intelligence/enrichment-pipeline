@@ -4,16 +4,13 @@
   "target_specialty": "OBGYN",
   "target_geography": [],
   "active_exclusion_rules": [
-    "rei_on_staff",
     "wrong_specialty",
     "outside_geography",
     "no_web_presence",
     "hospital_owned",
     "health_system_affiliated"
   ],
-  "taxonomy_exclusion_rules": [
-    {"taxonomy_code": "207VE0102X", "rule_name": "rei_on_staff"}
-  ],
+  "taxonomy_exclusion_rules": [],
   "bullseye_min_score": 80,
   "verify_near_miss_band": 10,
   "auto_browser_retry": true,
