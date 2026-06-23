@@ -16,9 +16,10 @@ v12 signal model under test:
   - Two NEGATIVES apply a flat 20-point penalty (full weight, not confidence-
     credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender:
     ivf_listed, rei_on_staff. Neither is a hard exclusion any longer.
-  - No signal carries floor_tier: a record whose blended score falls below the
-    50-point Manual Review floor (e.g. a thin fertility practice dragged under by an
-    IVF/REI penalty) routes to Manual Review rather than auto-qualifying.
+  - Both primaries (cash_pay_signal, fertility_services) carry floor_tier Contender:
+    a confirmed must-have guarantees at least a Contender call even when an IVF/REI
+    penalty drags the score below the 50-point floor. A record with no confirmed
+    primary (e.g. a zero-fit IVF/REI center) has no floor and falls to Manual Review.
   - The cartridge is national: target_geography is empty in run_config, and REI is
     no longer a pre-crawl taxonomy skip.
 
@@ -91,11 +92,11 @@ class TestFemasysV12Intent:
         assert result["tier"] != "Bullseye"
         assert result["tier"] == "Needs Verification"
 
-    def test_case3_fertility_plus_ivf_thin_is_manual_review(self):
-        # The IVF penalty pulls a thin fertility-only record under the 50-pt floor,
-        # so it routes to Manual Review (the low-score floor wins over the cap).
+    def test_case3_fertility_plus_ivf_capped_at_contender(self):
+        # Confirmed fertility (a primary) floors the record at Contender even though
+        # the IVF penalty drags the score under 50; the IVF cap holds the ceiling.
         result = _run(["fertility_services", "ivf_listed"])
-        assert result["tier"] == "Manual Review"
+        assert result["tier"] == "Contender"
 
     def test_case3_high_fit_plus_ivf_still_capped_at_contender(self):
         # Strong fit (every positive yes) but the IVF cap holds the tier at Contender.
@@ -150,10 +151,15 @@ class TestFemasysV12Structure:
         # v12 removed the IVF/REI hard exclusion; nothing routes to Excluded by signal.
         assert [s["signal_id"] for s in _load_signals() if s.get("exclude_if_yes")] == []
 
-    def test_no_signal_carries_floor_tier(self):
-        # No floor_tier anywhere: the 50-pt Manual Review floor governs thin records,
-        # and cap_tier only bounds the ceiling (the low-score floor wins over the cap).
-        assert [s["signal_id"] for s in _load_signals() if s.get("floor_tier")] == []
+    def test_both_primaries_floor_at_contender(self):
+        # A confirmed primary (cash-pay or fertility) guarantees at least Contender
+        # even when an IVF/REI penalty drags the score below the 50-pt floor; a record
+        # with no confirmed primary (zero-fit IVF/REI) falls to Manual Review instead.
+        floored = sorted(s["signal_id"] for s in _load_signals() if s.get("floor_tier"))
+        assert floored == ["cash_pay_signal", "fertility_services"]
+        by_id = {s["signal_id"]: s for s in _load_signals()}
+        assert by_id["cash_pay_signal"]["floor_tier"] == "Contender"
+        assert by_id["fertility_services"]["floor_tier"] == "Contender"
 
     def test_nothing_is_required_for_contender(self):
         assert [s["signal_id"] for s in _load_signals()

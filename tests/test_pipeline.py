@@ -415,10 +415,10 @@ class TestPrimaryReinforcerModel:
     ICP = [
         {"signal_id": "cash_pay_signal", "signal_label": "Cash pay",
          "prompt_instruction": "?", "positive_weight": 50,
-         "required_for_bullseye": True},
+         "required_for_bullseye": True, "floor_tier": "Contender"},
         {"signal_id": "fertility_services", "signal_label": "Fertility",
          "prompt_instruction": "?", "positive_weight": 35,
-         "required_for_bullseye": True},
+         "required_for_bullseye": True, "floor_tier": "Contender"},
         {"signal_id": "iui_listed", "signal_label": "IUI",
          "prompt_instruction": "?", "positive_weight": 15, "reinforcer": True},
         {"signal_id": "cycle_monitoring_listed", "signal_label": "Cycle monitoring",
@@ -558,11 +558,19 @@ class TestPrimaryReinforcerModel:
         assert rec["target_tier"] != "Bullseye"
         assert rec["target_tier"] == "Needs Verification"
 
-    def test_case3_fertility_plus_ivf_thin_is_manual_review(self):
-        # The IVF penalty drags a thin fertility-only record under the 50-pt floor,
-        # so it routes to Manual Review (the low-score floor wins over the cap).
+    def test_case3_fertility_plus_ivf_capped_at_contender_thin(self):
+        # Confirmed fertility (a primary) floors the record at Contender even though
+        # the IVF penalty drags the score under 50; the IVF cap holds the ceiling.
         rec = self._tier(self._signals(fertility_services="yes", ivf_listed="yes"))
-        assert rec["target_tier"] == "Manual Review"
+        assert rec["target_tier"] == "Contender"
+
+    def test_confirmed_primary_floors_thin_record_to_contender(self):
+        # A confirmed primary (here low-confidence cash pay) guarantees at least
+        # Contender even on a sub-50 score; without a confirmed primary the record
+        # would fall to Manual Review (see the ivf+rei case).
+        rec = self._tier(self._signals(cash_pay_signal=("yes", "low")))
+        assert rec["bullseye_score"] < 50
+        assert rec["target_tier"] == "Contender"
 
     def test_case3_fertility_plus_ivf_capped_at_contender_high(self):
         rec = self._tier(self._signals(
