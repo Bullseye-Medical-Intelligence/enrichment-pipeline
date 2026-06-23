@@ -406,11 +406,11 @@ class TestScoring:
         assert scores["fit_signal_score"] == 75
 
 
-class TestPrimaryReinforcerModel:
-    """Femasys v12 scoring: two must-haves define the 85-pt fit base, three
-    reinforcers stack on top (fit caps at 100), and two negatives apply a flat
-    post-blend penalty while capping the tier. The model is opt-in via the
-    per-signal ``reinforcer`` flag — absent it, scoring stays on the legacy path."""
+class TestFemasysCartridgeScoring:
+    """Femasys v12 cartridge scored by the unchanged (legacy) engine: every positive
+    weight shares the fit denominator, a confirmed negative folds into fit, and tiers
+    come from cap_tier / floor_tier / required_for_bullseye. Achieved with config
+    only — no engine changes."""
 
     ICP = [
         {"signal_id": "cash_pay_signal", "signal_label": "Cash pay",
@@ -420,11 +420,11 @@ class TestPrimaryReinforcerModel:
          "prompt_instruction": "?", "positive_weight": 35,
          "required_for_bullseye": True, "floor_tier": "Contender"},
         {"signal_id": "iui_listed", "signal_label": "IUI",
-         "prompt_instruction": "?", "positive_weight": 15, "reinforcer": True},
+         "prompt_instruction": "?", "positive_weight": 15},
         {"signal_id": "cycle_monitoring_listed", "signal_label": "Cycle monitoring",
-         "prompt_instruction": "?", "positive_weight": 10, "reinforcer": True},
+         "prompt_instruction": "?", "positive_weight": 10},
         {"signal_id": "patient_financing_visible", "signal_label": "Financing",
-         "prompt_instruction": "?", "positive_weight": 10, "reinforcer": True},
+         "prompt_instruction": "?", "positive_weight": 10},
         {"signal_id": "ivf_listed", "signal_label": "IVF",
          "prompt_instruction": "?", "positive_weight": -20, "cap_tier": "Contender"},
         {"signal_id": "rei_on_staff", "signal_label": "REI",
@@ -474,89 +474,47 @@ class TestPrimaryReinforcerModel:
         apply_exclusions(rec, self.RUN_CONFIG)
         return rec
 
-    # --- fit math -------------------------------------------------------------
+    # --- fit math (legacy engine: all positive weights share the denominator) ---
 
-    def test_two_must_haves_define_full_fit(self):
-        # cash(50)+fertility(35)=85 of an 85 base -> fit 100.
-        scores = _calculate_scores(
-            self._signals(cash_pay_signal="yes", fertility_services="yes"), self.ICP)
-        assert scores["fit_signal_score"] == 100
-
-    def test_reinforcers_excluded_from_denominator(self):
-        # cash(50) over the 85 base (reinforcers NOT in the denominator) -> 59.
-        scores = _calculate_scores(self._signals(cash_pay_signal="yes"), self.ICP)
-        assert scores["fit_signal_score"] == 59
-
-    def test_reinforcer_adds_on_top(self):
-        base = _calculate_scores(
-            self._signals(cash_pay_signal="yes"), self.ICP)["fit_signal_score"]
-        boosted = _calculate_scores(
-            self._signals(cash_pay_signal="yes", iui_listed="yes"),
-            self.ICP)["fit_signal_score"]
-        assert boosted > base
-
-    def test_reinforcers_cannot_push_fit_over_100(self):
+    def test_full_positive_capture_is_100(self):
         scores = _calculate_scores(
             self._signals(cash_pay_signal="yes", fertility_services="yes",
                           iui_listed="yes", cycle_monitoring_listed="yes",
                           patient_financing_visible="yes"), self.ICP)
         assert scores["fit_signal_score"] == 100
 
-    def test_negative_is_flat_post_blend_penalty(self):
+    def test_two_must_haves_capture_partial_fit(self):
+        # The secondary signals share the denominator, so the two must-haves alone
+        # capture 85 of 120 -> fit 71 (a Contender, not a perfect Bullseye).
+        scores = _calculate_scores(
+            self._signals(cash_pay_signal="yes", fertility_services="yes"), self.ICP)
+        assert scores["fit_signal_score"] == 71
+
+    def test_confirmed_negative_pulls_score_down(self):
         clean = _calculate_scores(
             self._signals(cash_pay_signal="yes", fertility_services="yes"), self.ICP)
         dinged = _calculate_scores(
             self._signals(cash_pay_signal="yes", fertility_services="yes",
                           ivf_listed="yes"), self.ICP)
-        assert clean["bullseye_score"] == 96
-        assert dinged["bullseye_score"] == 76          # flat -20 after the blend
-        assert dinged["fit_signal_score"] == 100       # fit itself untouched
-
-    def test_negative_penalty_ignores_confidence(self):
-        # A low-confidence IVF still costs the full 20 (not confidence-credited).
-        low = _calculate_scores(
-            self._signals(cash_pay_signal="yes", fertility_services="yes",
-                          ivf_listed=("yes", "low")), self.ICP)
-        assert low["bullseye_score"] == 76
-
-    def test_two_negatives_stack(self):
-        scores = _calculate_scores(
-            self._signals(cash_pay_signal="yes", fertility_services="yes",
-                          ivf_listed="yes", rei_on_staff="yes"), self.ICP)
-        assert scores["bullseye_score"] == 56          # 96 - 20 - 20
-
-    def test_legacy_model_used_without_reinforcer_flag(self):
-        # No reinforcer flag anywhere -> the negative folds into fit (legacy path),
-        # with no separate post-blend penalty.
-        legacy_icp = [
-            {"signal_id": "p", "signal_label": "P", "prompt_instruction": "?",
-             "positive_weight": 50},
-            {"signal_id": "n", "signal_label": "N", "prompt_instruction": "?",
-             "positive_weight": -20},
-        ]
-        signals = [
-            {"signal_id": "p", "signal_state": "yes", "confidence": "high"},
-            {"signal_id": "n", "signal_state": "yes", "confidence": "high"},
-        ]
-        scores = _calculate_scores(signals, legacy_icp)
-        # achieved = 50 - 20 = 30 of 50 -> fit 60; blend 0.6*60 + 0.4*90 = 72.
-        assert scores["fit_signal_score"] == 60
-        assert scores["bullseye_score"] == 72
+        assert dinged["fit_signal_score"] < clean["fit_signal_score"]
+        assert dinged["bullseye_score"] < clean["bullseye_score"]
 
     # --- verification cases (tier outcomes, bullseye_min 80) ------------------
 
     def test_case1_cash_fertility_iui_reaches_bullseye(self):
         rec = self._tier(self._signals(
             cash_pay_signal="yes", fertility_services="yes", iui_listed="yes"))
-        assert rec["bullseye_score"] == 96
+        assert rec["bullseye_score"] >= self.RUN_CONFIG["bullseye_min_score"]
         assert rec["target_tier"] == "Bullseye"
 
     def test_case2_no_cash_strong_fertility_cannot_reach_bullseye(self):
         rec = self._tier(self._signals(
             fertility_services="yes", iui_listed="yes",
             cycle_monitoring_listed="yes", patient_financing_visible="yes"))
+        # Missing the cash-pay must-have keeps it out of Bullseye; fertility floors
+        # it at a callable Contender.
         assert rec["target_tier"] != "Bullseye"
-        assert rec["target_tier"] == "Needs Verification"
+        assert rec["target_tier"] == "Contender"
 
     def test_case3_fertility_plus_ivf_capped_at_contender_thin(self):
         # Confirmed fertility (a primary) floors the record at Contender even though
@@ -577,14 +535,16 @@ class TestPrimaryReinforcerModel:
             cash_pay_signal="yes", fertility_services="yes", iui_listed="yes",
             cycle_monitoring_listed="yes", patient_financing_visible="yes",
             ivf_listed="yes"))
-        # Strong fit (100) but the IVF cap holds the tier at Contender.
-        assert rec["fit_signal_score"] == 100
+        # A Bullseye-qualifying score, but the IVF cap holds the tier at Contender.
+        assert rec["bullseye_score"] >= self.RUN_CONFIG["bullseye_min_score"]
         assert rec["target_tier"] == "Contender"
 
-    def test_case4_ivf_and_rei_penalized_and_capped(self):
+    def test_case4_ivf_and_rei_zero_fit_is_manual_review(self):
         rec = self._tier(self._signals(ivf_listed="yes", rei_on_staff="yes"))
-        assert rec["bullseye_score"] == 0              # 40-point penalty floors it
-        assert rec["target_tier"] == "Manual Review"   # zero positive fit
+        # Two negatives crush fit and no primary is confirmed, so the record falls
+        # under the 50-pt floor with no floor guarantee -> Manual Review.
+        assert rec["bullseye_score"] < 50
+        assert rec["target_tier"] == "Manual Review"
 
     def test_case5_out_of_scope_record_excluded_at_scoring(self):
         rec = self._tier(self._signals(fertility_services="yes"),

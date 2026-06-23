@@ -14,8 +14,8 @@
   ],
   "client": "Femasys",
   "product": "FemaSeed",
-  "description": "Office-based OBGYN / women's health practices doing fertility work who are candidates to adopt FemaSeed (intratubal insemination) as an upgrade to in-office IUI. Fit is carried by two must-haves — confirmed cash-pay/self-pay capability and confirmed fertility services — which together define the achievable fit base. In-office fertility procedures (IUI, cycle monitoring) and visible patient financing reinforce fit on top of that base. IVF/REI fertility centers are no longer hard-excluded: a confirmed IVF offering or a reproductive endocrinologist on staff applies a scoring penalty and caps the record at Contender, because those practices are specialized ART centers rather than the office-based OBGYN profile FemaSeed upgrades. National (no geography limit).",
-  "scoring_notes": "v12 signal-model reconfiguration. PRIMARY must-haves (fit denominator = 85): cash_pay_signal (50, required_for_bullseye, floor_tier Contender) and fertility_services (35, required_for_bullseye, floor_tier Contender). REINFORCERS add fit on top of the 85 base and are not members of the denominator (fit caps at 100): iui_listed (+15), cycle_monitoring_listed (+10), patient_financing_visible (+10). NEGATIVES apply a flat 20-point penalty (full weight, not confidence-credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender: ivf_listed, rei_on_staff. Both primaries carry floor_tier Contender: a confirmed must-have (cash-pay OR fertility) guarantees at least a Contender call even when an IVF/REI penalty drags the score below the 50-point floor (so fertility=yes + ivf=yes lands at Contender). A record with NO confirmed primary (e.g. a zero-fit IVF/REI center) has no floor and falls to Manual Review. A practice confirming both must-haves at high confidence reaches fit 100; missing cash-pay caps a would-be Bullseye (required_for_bullseye). REI moved out of the exclusion gate into this scoring signal, and the 207VE0102X taxonomy pre-crawl skip was removed so every record is crawled and scored. Out-of-scope records (wrong specialty, hospital/health-system-affiliated) still land in the Excluded tier at scoring time. bullseye_min_score is 80 (set in run_config). All signals are three-state with word-for-word anchoring and no inference.",
+  "description": "Office-based OBGYN / women's health practices doing fertility work who are candidates to adopt FemaSeed (intratubal insemination) as an upgrade to in-office IUI. Fit is carried by two must-haves — confirmed cash-pay/self-pay capability and confirmed fertility services — which together anchor the score. In-office fertility procedures (IUI, cycle monitoring) and visible patient financing add fit on top. IVF/REI fertility centers are no longer hard-excluded: a confirmed IVF offering or a reproductive endocrinologist on staff reduces fit and caps the record at Contender, because those practices are specialized ART centers rather than the office-based OBGYN profile FemaSeed upgrades. National (no geography limit).",
+  "scoring_notes": "v12 signal-model reconfiguration (cartridge-only; scored by the standard engine). PRIMARY must-haves: cash_pay_signal (50, required_for_bullseye, floor_tier Contender) and fertility_services (35, required_for_bullseye, floor_tier Contender). SECONDARY positive fit signals: iui_listed (15), cycle_monitoring_listed (10), patient_financing_visible (10). All positive weights share the fit denominator, so the two must-haves alone capture ~71 of 100 fit (a Contender, not a perfect Bullseye); confirming the secondary signals lifts a practice toward Bullseye. NEGATIVES reduce fit when confirmed and cap the tier at Contender: ivf_listed (-20), rei_on_staff (-20). A confirmed primary (cash-pay OR fertility) floors the record at Contender even when a negative drags the score below the 50-point Manual Review floor (so fertility=yes + ivf=yes lands at Contender); a record with NO confirmed primary (a zero-fit IVF/REI center) has no floor and falls to Manual Review. Missing cash-pay caps a would-be Bullseye (required_for_bullseye). REI moved out of the exclusion gate into this scoring signal, and the 207VE0102X taxonomy pre-crawl skip was removed so every record is crawled and scored. Out-of-scope records (wrong specialty, hospital/health-system-affiliated) still land in the Excluded tier at scoring time. bullseye_min_score is 80 (set in run_config). All signals are three-state with word-for-word anchoring and no inference.",
   "signals": [
     {
       "signal_id": "cash_pay_signal",
@@ -39,22 +39,19 @@
       "signal_id": "iui_listed",
       "signal_label": "IUI offered",
       "prompt_instruction": "Does the website list IUI as an offered procedure? Answer \"yes\" ONLY when \"IUI\", \"intrauterine insemination\", or \"artificial insemination\" appears verbatim as a service or procedure. Answer \"no\" ONLY when the page states IUI is not offered. Otherwise answer \"not_found\". Do NOT infer from generic fertility language. Quote the exact phrase in evidence_text and the page URL in source_url.",
-      "positive_weight": 15,
-      "reinforcer": true
+      "positive_weight": 15
     },
     {
       "signal_id": "cycle_monitoring_listed",
       "signal_label": "Cycle monitoring offered",
       "prompt_instruction": "Does the website list fertility cycle monitoring as a service? Answer \"yes\" ONLY when one of these appears verbatim: \"cycle monitoring\", \"follicle monitoring\", \"follicle tracking\", \"monitoring ultrasound\", \"serial ultrasound\", or \"ovulation tracking\". Answer \"no\" ONLY when the page states it is not offered. Otherwise answer \"not_found\". Do NOT match the bare word \"ultrasound\" or \"monitoring\" alone. Quote the exact phrase in evidence_text and the page URL in source_url.",
-      "positive_weight": 10,
-      "reinforcer": true
+      "positive_weight": 10
     },
     {
       "signal_id": "patient_financing_visible",
       "signal_label": "Patient financing visible",
       "prompt_instruction": "Does the website show, word-for-word, a third-party or in-house patient financing option? Answer \"yes\" ONLY when one of these appears verbatim: \"CareCredit\", \"Cherry\", \"Sunbit\", \"patient financing\", \"financing available\", \"apply for financing\", \"payment plan\", \"payment plans\", or \"monthly payments\". Answer \"no\" ONLY when the page states financing is not available. Otherwise answer \"not_found\". Do NOT infer. Quote the exact phrase in evidence_text and the page URL in source_url.",
-      "positive_weight": 10,
-      "reinforcer": true
+      "positive_weight": 10
     },
     {
       "signal_id": "ivf_listed",

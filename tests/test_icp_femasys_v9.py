@@ -4,22 +4,20 @@ test_icp_femasys_v9.py
 Regression tests encoding the SHIPPED Femasys (FemaSeed) cartridge intent
 (currently v12). They drive the real config
 (config/clients/obgyn_femasys/icp_checklist.json) through simulate() — the same
-composition of reinforcement + scoring + tiering + exclusion the API and the
-pipeline use — so the tests guard the real cartridge, not a synthetic fixture.
+scoring + tiering + exclusion composition the API and the pipeline use — so the
+tests guard the real cartridge, not a synthetic fixture.
 
-v12 signal model under test:
-  - Two PRIMARY must-haves define an 85-point fit base: cash_pay_signal (50) and
-    fertility_services (35), both required_for_bullseye.
-  - Three REINFORCERS add fit on top of the base (not members of the denominator;
-    fit caps at 100): iui_listed (+15), cycle_monitoring_listed (+10),
-    patient_financing_visible (+10).
-  - Two NEGATIVES apply a flat 20-point penalty (full weight, not confidence-
-    credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender:
-    ivf_listed, rei_on_staff. Neither is a hard exclusion any longer.
-  - Both primaries (cash_pay_signal, fertility_services) carry floor_tier Contender:
-    a confirmed must-have guarantees at least a Contender call even when an IVF/REI
-    penalty drags the score below the 50-point floor. A record with no confirmed
-    primary (e.g. a zero-fit IVF/REI center) has no floor and falls to Manual Review.
+v12 signal model under test (cartridge-only; scored by the unchanged engine):
+  - Two PRIMARY must-haves: cash_pay_signal (50) and fertility_services (35), both
+    required_for_bullseye and floor_tier Contender.
+  - Three SECONDARY positive fit signals in the shared fit denominator: iui_listed
+    (+15), cycle_monitoring_listed (+10), patient_financing_visible (+10). The two
+    must-haves alone capture ~71 of 100 fit (a Contender, not a perfect Bullseye).
+  - Two NEGATIVES reduce fit when confirmed and cap the tier at Contender:
+    ivf_listed (-20), rei_on_staff (-20). Neither is a hard exclusion any longer.
+  - A confirmed primary (cash-pay OR fertility) floors the record at Contender even
+    when an IVF/REI penalty drags the score below the 50-point floor. A record with
+    no confirmed primary (e.g. a zero-fit IVF/REI center) falls to Manual Review.
   - The cartridge is national: target_geography is empty in run_config, and REI is
     no longer a pre-crawl taxonomy skip.
 
@@ -43,9 +41,9 @@ _RUN_CONFIG_PATH = _CLIENT_DIR / "run_config.json"
 _BULLSEYE_MIN = json.loads(_RUN_CONFIG_PATH.read_text(encoding="utf-8"))["bullseye_min_score"]
 
 _PRIMARIES = ("cash_pay_signal", "fertility_services")
-_REINFORCERS = ("iui_listed", "cycle_monitoring_listed", "patient_financing_visible")
+_SECONDARY = ("iui_listed", "cycle_monitoring_listed", "patient_financing_visible")
 _NEGATIVES = ("ivf_listed", "rei_on_staff")
-_ALL_IDS = _PRIMARIES + _REINFORCERS + _NEGATIVES
+_ALL_IDS = _PRIMARIES + _SECONDARY + _NEGATIVES
 
 
 def _load_signals() -> list[dict]:
@@ -77,10 +75,11 @@ class TestFemasysV12Intent:
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
         assert data["version"] == "obgyn-femasys-v12"
 
-    def test_both_must_haves_alone_reach_bullseye(self):
-        # The two primaries fill the 85-point base -> fit 100 -> Bullseye.
+    def test_both_must_haves_alone_are_contender_not_bullseye(self):
+        # The secondary signals share the denominator, so the two must-haves alone
+        # capture ~71 fit -> blended ~79 -> a callable Contender, just shy of Bullseye.
         result = _run(["cash_pay_signal", "fertility_services"])
-        assert result["tier"] == "Bullseye"
+        assert result["tier"] == "Contender"
 
     def test_case1_cash_fertility_iui_is_bullseye(self):
         result = _run(["cash_pay_signal", "fertility_services", "iui_listed"])
@@ -89,8 +88,10 @@ class TestFemasysV12Intent:
     def test_case2_strong_fertility_no_cash_cannot_reach_bullseye(self):
         result = _run(["fertility_services", "iui_listed",
                        "cycle_monitoring_listed", "patient_financing_visible"])
+        # Missing the cash-pay must-have keeps it out of Bullseye; fertility floors
+        # it at a callable Contender.
         assert result["tier"] != "Bullseye"
-        assert result["tier"] == "Needs Verification"
+        assert result["tier"] == "Contender"
 
     def test_case3_fertility_plus_ivf_capped_at_contender(self):
         # Confirmed fertility (a primary) floors the record at Contender even though
@@ -99,19 +100,22 @@ class TestFemasysV12Intent:
         assert result["tier"] == "Contender"
 
     def test_case3_high_fit_plus_ivf_still_capped_at_contender(self):
-        # Strong fit (every positive yes) but the IVF cap holds the tier at Contender.
-        result = _run(list(_PRIMARIES) + list(_REINFORCERS) + ["ivf_listed"])
-        assert result["fit_signal_score"] == 100
+        # A Bullseye-qualifying score (every positive yes), but the IVF cap holds the
+        # tier at Contender regardless of score.
+        result = _run(list(_PRIMARIES) + list(_SECONDARY) + ["ivf_listed"])
+        assert result["bullseye_score"] >= _BULLSEYE_MIN
         assert result["tier"] == "Contender"
 
-    def test_case4_ivf_and_rei_penalized_and_manual_review(self):
+    def test_case4_ivf_and_rei_zero_fit_is_manual_review(self):
         result = _run(["ivf_listed", "rei_on_staff"])
-        assert result["bullseye_score"] == 0
+        # Two negatives crush fit and no primary is confirmed, so the record falls
+        # under the 50-pt floor with no floor guarantee -> Manual Review.
+        assert result["bullseye_score"] < 50
         assert result["tier"] == "Manual Review"
 
     def test_ivf_rei_no_longer_excludes(self):
         # v12: IVF/REI are negative scoring signals, not a hard exclusion.
-        result = _run(list(_PRIMARIES) + list(_REINFORCERS) + ["ivf_listed", "rei_on_staff"])
+        result = _run(list(_PRIMARIES) + list(_SECONDARY) + ["ivf_listed", "rei_on_staff"])
         assert result["tier"] != "Excluded"
         assert result["tier"] == "Contender"
 
@@ -131,14 +135,15 @@ class TestFemasysV12Structure:
             assert by_id[sid].get("required_for_bullseye") is True
             assert not by_id[sid].get("reinforcer")
 
-    def test_reinforcer_weights_and_flags(self):
+    def test_secondary_weights_and_no_special_flags(self):
         by_id = {s["signal_id"]: s for s in _load_signals()}
         assert by_id["iui_listed"]["positive_weight"] == 15
         assert by_id["cycle_monitoring_listed"]["positive_weight"] == 10
         assert by_id["patient_financing_visible"]["positive_weight"] == 10
-        for sid in _REINFORCERS:
-            assert by_id[sid].get("reinforcer") is True
+        for sid in _SECONDARY:
+            assert not by_id[sid].get("reinforcer")
             assert not by_id[sid].get("required_for_bullseye")
+            assert not by_id[sid].get("cap_tier")
 
     def test_negatives_penalize_and_cap_at_contender(self):
         by_id = {s["signal_id"]: s for s in _load_signals()}

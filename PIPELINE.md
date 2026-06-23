@@ -718,11 +718,6 @@ Each signal may also carry these optional fields (all default to off):
   partial fit credit and its `verification_required` gate does not fire. Use to
   let an observable signal stand in for one that is rarely printed verbatim
   (e.g. listed elective/cosmetic procedures imply cash pay).
-- **`reinforcer`** (bool, default `false`): marks a desirable signal as a
-  *reinforcer*. Under the primary/reinforcer fit model (see "How fit is scored"),
-  a reinforcer's confirmed weight is added on top of the fit base (numerator only)
-  and is **not** part of the fit denominator, so it lifts fit without diluting it.
-  Marking any signal `reinforcer` activates that model for the whole ICP.
 - **`column_label`** (string, ≤24 chars): *API presentation only; ignored by the
   pipeline engine.* Surfaces the signal as an at-a-glance column on the operator
   dashboard (`pipeline-api` results table + Contact Queue). Documented here so the
@@ -742,16 +737,6 @@ clamped 0–100. Matching every key signal lands near 100; a long tail of minor
 signals can never out-score the few heavy ones, and a missing high-weight signal
 costs proportionally more than a missing minor one. `bullseye_score` is then the
 weighted blend `0.6 * fit + 0.4 * confidence`.
-
-**Primary/reinforcer model (opt-in).** When any signal sets `reinforcer: true`,
-`max_positive` is the sum of the **primary** (non-reinforcer) positive weights only;
-reinforcers add their confirmed `weight × credit` to the numerator on top of that
-base, so confirming every primary already reaches fit 100 (still clamped to 100) and
-reinforcers cannot dilute it. A confirmed negative signal is then **not** folded into
-fit — it contributes its **full** `|weight|` (not confidence-credited) to a penalty
-subtracted after the blend: `bullseye_score = round(0.6 * fit + 0.4 * confidence) −
-penalty`, floored at 0. Multiple negatives stack; pair with `cap_tier` to also bound
-the tier. Without any `reinforcer` flag the legacy model above is used unchanged.
 
 Example — cash pay gated, inferred from elective procedures:
 

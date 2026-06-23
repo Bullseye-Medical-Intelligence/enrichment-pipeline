@@ -1,6 +1,6 @@
 {
   "version": "obgyn-femasys-v12",
-  "version_note": "v12 — signal-model reconfiguration. Replaces the v11 nine-signal set with a tighter two-must-have + three-reinforcer + two-negative model. PRIMARY must-haves define an 85-point fit base: cash_pay_signal (weight 50, required_for_bullseye, floor_tier Contender) and fertility_services (weight 35, required_for_bullseye, floor_tier Contender). REINFORCERS add fit on top of that base (not members of the denominator; fit caps at 100): iui_listed (+15), cycle_monitoring_listed (+10), patient_financing_visible (+10). NEGATIVES apply a flat 20-point penalty (full weight, not confidence-credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender: ivf_listed and rei_on_staff. Both primaries carry floor_tier Contender: a confirmed must-have (cash-pay OR fertility) guarantees at least a Contender call even when an IVF/REI penalty drags the blended score below the 50-point floor — so fertility=yes + ivf=yes lands at Contender. A record with NO confirmed primary (e.g. a zero-fit IVF/REI center) has no floor and falls to Manual Review, keeping poor-fit labs out of the call queue. REI is no longer a hard exclusion gate — it moved out of run_config into a negative scoring signal, and the 207VE0102X taxonomy pre-crawl skip was removed (run_config) so every record is crawled and scored. All signals are three-state (yes/no/not_found) with word-for-word textual anchoring and no inference; a yes without evidence_text + source_url is downgraded by the existing sourcing gate. Presentation-only column_label retained on cash_pay_signal (Cash Pay) and fertility_services (Fertility). The primary/reinforcer fit model is activated by the reinforcer:true flags and is read by the engine's _calculate_scores.",
+  "version_note": "v12 — signal-model reconfiguration (cartridge-only; no engine change). Replaces the v11 nine-signal set with a tighter model scored by the standard engine. PRIMARY must-haves: cash_pay_signal (weight 50, required_for_bullseye, floor_tier Contender) and fertility_services (weight 35, required_for_bullseye, floor_tier Contender). SECONDARY positive fit signals (in-office fertility procedures + visible financing): iui_listed (15), cycle_monitoring_listed (10), patient_financing_visible (10). All positive weights share the fit denominator, so the two must-haves alone capture roughly 71 of 100 fit (a Contender); confirming the secondary signals lifts a practice toward Bullseye. NEGATIVE signals reduce fit when confirmed and cap the tier at Contender: ivf_listed (-20), rei_on_staff (-20). A confirmed primary (cash-pay OR fertility) floors the record at Contender even when a negative drags the blended score below the 50-point Manual Review floor, so fertility=yes + ivf=yes lands at Contender; a record with NO confirmed primary (a zero-fit IVF/REI center) has no floor and falls to Manual Review. REI is no longer a hard exclusion gate — it moved out of run_config into this negative scoring signal, and the 207VE0102X taxonomy pre-crawl skip was removed (run_config) so every record is crawled and scored. All signals are three-state (yes/no/not_found) with word-for-word textual anchoring and no inference; a yes without evidence_text + source_url is downgraded by the existing sourcing gate. Presentation-only column_label retained on cash_pay_signal (Cash Pay) and fertility_services (Fertility).",
   "signals": [
     {
       "signal_id": "cash_pay_signal",
@@ -24,22 +24,19 @@
       "signal_id": "iui_listed",
       "signal_label": "IUI offered",
       "prompt_instruction": "Does the website list IUI as an offered procedure? Answer \"yes\" ONLY when \"IUI\", \"intrauterine insemination\", or \"artificial insemination\" appears verbatim as a service or procedure. Answer \"no\" ONLY when the page states IUI is not offered. Otherwise answer \"not_found\". Do NOT infer from generic fertility language. Quote the exact phrase in evidence_text and the page URL in source_url.",
-      "positive_weight": 15,
-      "reinforcer": true
+      "positive_weight": 15
     },
     {
       "signal_id": "cycle_monitoring_listed",
       "signal_label": "Cycle monitoring offered",
       "prompt_instruction": "Does the website list fertility cycle monitoring as a service? Answer \"yes\" ONLY when one of these appears verbatim: \"cycle monitoring\", \"follicle monitoring\", \"follicle tracking\", \"monitoring ultrasound\", \"serial ultrasound\", or \"ovulation tracking\". Answer \"no\" ONLY when the page states it is not offered. Otherwise answer \"not_found\". Do NOT match the bare word \"ultrasound\" or \"monitoring\" alone. Quote the exact phrase in evidence_text and the page URL in source_url.",
-      "positive_weight": 10,
-      "reinforcer": true
+      "positive_weight": 10
     },
     {
       "signal_id": "patient_financing_visible",
       "signal_label": "Patient financing visible",
       "prompt_instruction": "Does the website show, word-for-word, a third-party or in-house patient financing option? Answer \"yes\" ONLY when one of these appears verbatim: \"CareCredit\", \"Cherry\", \"Sunbit\", \"patient financing\", \"financing available\", \"apply for financing\", \"payment plan\", \"payment plans\", or \"monthly payments\". Answer \"no\" ONLY when the page states financing is not available. Otherwise answer \"not_found\". Do NOT infer. Quote the exact phrase in evidence_text and the page URL in source_url.",
-      "positive_weight": 10,
-      "reinforcer": true
+      "positive_weight": 10
     },
     {
       "signal_id": "ivf_listed",
