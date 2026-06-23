@@ -418,7 +418,7 @@ class TestPrimaryReinforcerModel:
          "required_for_bullseye": True},
         {"signal_id": "fertility_services", "signal_label": "Fertility",
          "prompt_instruction": "?", "positive_weight": 35,
-         "required_for_bullseye": True, "floor_tier": "Contender"},
+         "required_for_bullseye": True},
         {"signal_id": "iui_listed", "signal_label": "IUI",
          "prompt_instruction": "?", "positive_weight": 15, "reinforcer": True},
         {"signal_id": "cycle_monitoring_listed", "signal_label": "Cycle monitoring",
@@ -558,9 +558,11 @@ class TestPrimaryReinforcerModel:
         assert rec["target_tier"] != "Bullseye"
         assert rec["target_tier"] == "Needs Verification"
 
-    def test_case3_fertility_plus_ivf_capped_at_contender_thin(self):
+    def test_case3_fertility_plus_ivf_thin_is_manual_review(self):
+        # The IVF penalty drags a thin fertility-only record under the 50-pt floor,
+        # so it routes to Manual Review (the low-score floor wins over the cap).
         rec = self._tier(self._signals(fertility_services="yes", ivf_listed="yes"))
-        assert rec["target_tier"] == "Contender"
+        assert rec["target_tier"] == "Manual Review"
 
     def test_case3_fertility_plus_ivf_capped_at_contender_high(self):
         rec = self._tier(self._signals(

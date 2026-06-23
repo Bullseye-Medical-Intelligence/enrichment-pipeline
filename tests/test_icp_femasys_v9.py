@@ -16,8 +16,9 @@ v12 signal model under test:
   - Two NEGATIVES apply a flat 20-point penalty (full weight, not confidence-
     credited, subtracted after the 0.6/0.4 blend) and cap the tier at Contender:
     ivf_listed, rei_on_staff. Neither is a hard exclusion any longer.
-  - fertility_services carries floor_tier Contender (a confirmed fertility practice
-    is always at least Contender, even on a thin score).
+  - No signal carries floor_tier: a record whose blended score falls below the
+    50-point Manual Review floor (e.g. a thin fertility practice dragged under by an
+    IVF/REI penalty) routes to Manual Review rather than auto-qualifying.
   - The cartridge is national: target_geography is empty in run_config, and REI is
     no longer a pre-crawl taxonomy skip.
 
@@ -90,9 +91,11 @@ class TestFemasysV12Intent:
         assert result["tier"] != "Bullseye"
         assert result["tier"] == "Needs Verification"
 
-    def test_case3_fertility_plus_ivf_capped_at_contender(self):
+    def test_case3_fertility_plus_ivf_thin_is_manual_review(self):
+        # The IVF penalty pulls a thin fertility-only record under the 50-pt floor,
+        # so it routes to Manual Review (the low-score floor wins over the cap).
         result = _run(["fertility_services", "ivf_listed"])
-        assert result["tier"] == "Contender"
+        assert result["tier"] == "Manual Review"
 
     def test_case3_high_fit_plus_ivf_still_capped_at_contender(self):
         # Strong fit (every positive yes) but the IVF cap holds the tier at Contender.
@@ -147,11 +150,10 @@ class TestFemasysV12Structure:
         # v12 removed the IVF/REI hard exclusion; nothing routes to Excluded by signal.
         assert [s["signal_id"] for s in _load_signals() if s.get("exclude_if_yes")] == []
 
-    def test_only_fertility_floors_at_contender(self):
-        floored = [s["signal_id"] for s in _load_signals() if s.get("floor_tier")]
-        assert floored == ["fertility_services"]
-        by_id = {s["signal_id"]: s for s in _load_signals()}
-        assert by_id["fertility_services"]["floor_tier"] == "Contender"
+    def test_no_signal_carries_floor_tier(self):
+        # No floor_tier anywhere: the 50-pt Manual Review floor governs thin records,
+        # and cap_tier only bounds the ceiling (the low-score floor wins over the cap).
+        assert [s["signal_id"] for s in _load_signals() if s.get("floor_tier")] == []
 
     def test_nothing_is_required_for_contender(self):
         assert [s["signal_id"] for s in _load_signals()
