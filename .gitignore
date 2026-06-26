@@ -55,3 +55,10 @@ build/
 
 # Generated renderer output (sample_run.py artifact)
 sample_output.html
+
+# Golden eval fixtures scaffolded from real runs are input lists + crawled page
+# text + enriched records — keep them out of git (RULE 2). The two synthetic demo
+# cases (cedar_park, lone_star) are the tracked exception.
+/evals/golden/*/
+!/evals/golden/cedar_park/
+!/evals/golden/lone_star/
