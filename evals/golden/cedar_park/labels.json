@@ -5,6 +5,7 @@
   "address_city": "Cedar Park",
   "address_state": "TX",
   "notes": "SYNTHETIC demo fixture (not a real practice). A clear cash-pay + fertility Bullseye profile. Replace with real labeled sites captured from the Evidence Vault.",
+  "reviewed": true,
   "expected": {
     "cash_pay_signal": "yes",
     "fertility_services": "yes",

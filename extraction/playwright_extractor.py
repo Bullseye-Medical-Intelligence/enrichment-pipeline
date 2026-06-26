@@ -226,99 +226,103 @@ def crawl_with_playwright(
     try:
         with sync_playwright() as pw:
             browser = launch_browser(pw)
-            context = browser.new_context(
-                user_agent=_REAL_USER_AGENT,
-                viewport={"width": 1280, "height": 800},
-                java_script_enabled=True,
-                locale="en-US",
-                timezone_id="America/Chicago",
-                extra_http_headers={
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Accept": ("text/html,application/xhtml+xml,application/xml;"
-                               "q=0.9,image/avif,image/webp,*/*;q=0.8"),
-                    "Sec-Fetch-Dest": "document",
-                    "Sec-Fetch-Mode": "navigate",
-                    "Sec-Fetch-Site": "none",
-                    "Upgrade-Insecure-Requests": "1",
-                },
-            )
-            # Mask headless tells before any page script runs.
-            context.add_init_script(_STEALTH_INIT_SCRIPT)
-            page = context.new_page()
-
-            # --- Homepage ---
-            print(f"    [Playwright] Fetching homepage: {url}")
             try:
-                page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
-                # Let the page (and any JS challenge timer) run: settle to network
-                # idle if we can, then a brief pause for lazy content.
+                context = browser.new_context(
+                    user_agent=_REAL_USER_AGENT,
+                    viewport={"width": 1280, "height": 800},
+                    java_script_enabled=True,
+                    locale="en-US",
+                    timezone_id="America/Chicago",
+                    extra_http_headers={
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept": ("text/html,application/xhtml+xml,application/xml;"
+                                   "q=0.9,image/avif,image/webp,*/*;q=0.8"),
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                        "Upgrade-Insecure-Requests": "1",
+                    },
+                )
+                # Mask headless tells before any page script runs.
+                context.add_init_script(_STEALTH_INIT_SCRIPT)
+                page = context.new_page()
+
+                # --- Homepage ---
+                print(f"    [Playwright] Fetching homepage: {url}")
                 try:
-                    page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 8000))
+                    page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                    # Let the page (and any JS challenge timer) run: settle to network
+                    # idle if we can, then a brief pause for lazy content.
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 8000))
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(1500)
+                    html = page.content()
+                    final_url = page.url
+                    # JS-based challenge pages (Cloudflare "Just a moment...") clear on
+                    # a 5-10s timer and only then redirect to real content. Wait it out
+                    # patiently — nudging like a human — instead of grabbing the wall.
+                    if _looks_like_challenge(html) or len(_extract_text_from_html(html)) < _MIN_REAL_TEXT:
+                        budget = _challenge_wait_budget_ms()
+                        print(f"    [Playwright] Challenge/thin page — waiting up to {budget // 1000}s for it to clear...")
+                        html, final_url = _wait_for_real_content(page, budget)
+                        if not _looks_like_challenge(html):
+                            print("    [Playwright] Challenge cleared / content loaded.")
+                except PlaywrightTimeout:
+                    return ExtractionResult(url=url, context_text="", pages_crawled=[],
+                                            error=f"Timeout after {timeout_ms}ms")
+                except Exception as e:
+                    return ExtractionResult(url=url, context_text="", pages_crawled=[],
+                                            error=f"Navigation error: {str(e)[:120]}")
+
+                # If the page is still a challenge wall, report it clearly rather
+                # than passing the bot-verification text downstream as "content".
+                if _looks_like_challenge(html):
+                    hint = (
+                        "" if _headful_requested()
+                        else " — retry with PIPELINE_BROWSER_HEADFUL=1 (a visible window "
+                             "clears most of these), or paste the page content manually"
+                    )
+                    return ExtractionResult(
+                        url=url, context_text="", pages_crawled=[],
+                        error=f"Blocked by bot/security challenge (CAPTCHA wall){hint}",
+                    )
+
+                homepage_text = _extract_text_from_html(html)
+                if homepage_text:
+                    all_text_blocks.append(f"[Source: {final_url}]\n{homepage_text}")
+                    pages_crawled.append(final_url)
+                    evidence_pages.append({"url": final_url, "text": homepage_text})
+
+                # --- Subpages ---
+                subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
+                print(f"    [Playwright] Found {len(subpages)} subpages")
+
+                for sub_url in subpages:
+                    if len(all_text_blocks) >= max_pages:
+                        break
+                    print(f"    [Playwright] Fetching subpage: {sub_url}")
+                    try:
+                        page.goto(sub_url, timeout=timeout_ms, wait_until="domcontentloaded")
+                        page.wait_for_timeout(800)
+                        sub_html = page.content()
+                        sub_final = page.url
+                        sub_text = _extract_text_from_html(sub_html)
+                        if sub_text:
+                            all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
+                            pages_crawled.append(sub_final)
+                            evidence_pages.append({"url": sub_final, "text": sub_text})
+                    except Exception:
+                        pass  # Skip failed subpages; homepage text is still valuable
+            finally:
+                # Guarantee Chromium closes even if an exception fires mid-crawl, so a
+                # failed record can never leak a zombie browser process. close() is
+                # wrapped so a teardown error cannot mask the real failure.
+                try:
+                    browser.close()
                 except Exception:
                     pass
-                page.wait_for_timeout(1500)
-                html = page.content()
-                final_url = page.url
-                # JS-based challenge pages (Cloudflare "Just a moment...") clear on
-                # a 5-10s timer and only then redirect to real content. Wait it out
-                # patiently — nudging like a human — instead of grabbing the wall.
-                if _looks_like_challenge(html) or len(_extract_text_from_html(html)) < _MIN_REAL_TEXT:
-                    budget = _challenge_wait_budget_ms()
-                    print(f"    [Playwright] Challenge/thin page — waiting up to {budget // 1000}s for it to clear...")
-                    html, final_url = _wait_for_real_content(page, budget)
-                    if not _looks_like_challenge(html):
-                        print("    [Playwright] Challenge cleared / content loaded.")
-            except PlaywrightTimeout:
-                browser.close()
-                return ExtractionResult(url=url, context_text="", pages_crawled=[],
-                                        error=f"Timeout after {timeout_ms}ms")
-            except Exception as e:
-                browser.close()
-                return ExtractionResult(url=url, context_text="", pages_crawled=[],
-                                        error=f"Navigation error: {str(e)[:120]}")
-
-            # If the page is still a challenge wall, report it clearly rather
-            # than passing the bot-verification text downstream as "content".
-            if _looks_like_challenge(html):
-                browser.close()
-                hint = (
-                    "" if _headful_requested()
-                    else " — retry with PIPELINE_BROWSER_HEADFUL=1 (a visible window "
-                         "clears most of these), or paste the page content manually"
-                )
-                return ExtractionResult(
-                    url=url, context_text="", pages_crawled=[],
-                    error=f"Blocked by bot/security challenge (CAPTCHA wall){hint}",
-                )
-
-            homepage_text = _extract_text_from_html(html)
-            if homepage_text:
-                all_text_blocks.append(f"[Source: {final_url}]\n{homepage_text}")
-                pages_crawled.append(final_url)
-                evidence_pages.append({"url": final_url, "text": homepage_text})
-
-            # --- Subpages ---
-            subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
-            print(f"    [Playwright] Found {len(subpages)} subpages")
-
-            for sub_url in subpages:
-                if len(all_text_blocks) >= max_pages:
-                    break
-                print(f"    [Playwright] Fetching subpage: {sub_url}")
-                try:
-                    page.goto(sub_url, timeout=timeout_ms, wait_until="domcontentloaded")
-                    page.wait_for_timeout(800)
-                    sub_html = page.content()
-                    sub_final = page.url
-                    sub_text = _extract_text_from_html(sub_html)
-                    if sub_text:
-                        all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
-                        pages_crawled.append(sub_final)
-                        evidence_pages.append({"url": sub_final, "text": sub_text})
-                except Exception:
-                    pass  # Skip failed subpages; homepage text is still valuable
-
-            browser.close()
 
     except Exception as e:
         return ExtractionResult(url=url, context_text="", pages_crawled=[],

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -108,6 +109,84 @@ def run_case_live(case_dir: Path, icp_signals: list[dict],
     return _signals_to_state_map(record.get("signals", []))
 
 
+def _slugify(name: str, fallback: str) -> str:
+    """Reduce a practice name to a filesystem-safe golden case id."""
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "").lower()).strip("_")
+    return slug[:40] or fallback
+
+
+def scaffold_from_run(run_dir: Path, golden_dir: Path,
+                      icp_signals: list[dict]) -> tuple[list[str], list[tuple]]:
+    """Generate golden case stubs from a completed run's Evidence Vault.
+
+    For each record with an archived snapshot: write page.txt (rehydrated vault
+    text), labels.json (practice fields + expected states PREFILLED from the run's
+    own extraction and flagged ``reviewed: false``), and recorded_response.json
+    (the run's signals, for --offline replay). Existing case dirs are never
+    clobbered. The prefilled expected states are a draft a human must verify, not
+    ground truth — the harness refuses to gate on a case until ``reviewed`` is true.
+    """
+    from output.evidence_writer import read_record_context_text
+
+    et = run_dir / "enriched_targets.json"
+    if not et.exists():
+        print(f"No enriched_targets.json in {run_dir}", file=sys.stderr)
+        return [], []
+    data = json.loads(et.read_text(encoding="utf-8"))
+    records = data.get("records", data) if isinstance(data, dict) else data
+    sig_ids = [s["signal_id"] for s in icp_signals]
+
+    created: list[str] = []
+    skipped: list[tuple] = []
+    used: set[str] = set()
+    for rec in records:
+        rid = str(rec.get("id", "")).strip()
+        page_text = read_record_context_text(run_dir, rid)
+        name = rec.get("practice_name") or rid or "case"
+        if not page_text.strip():
+            skipped.append((name, "no Evidence Vault snapshot"))
+            continue
+        base = _slugify(rec.get("practice_name", ""), rid or "case")
+        case_id, n = base, 2
+        while case_id in used or (golden_dir / case_id).exists():
+            case_id, n = f"{base}_{n}", n + 1
+            if n > 99:
+                break
+        if (golden_dir / case_id).exists():
+            skipped.append((case_id, "already exists"))
+            continue
+        used.add(case_id)
+        case_dir = golden_dir / case_id
+        case_dir.mkdir(parents=True)
+        (case_dir / "page.txt").write_text(page_text, encoding="utf-8")
+        rec_sigs = {s.get("signal_id"): s for s in rec.get("signals", [])}
+        labels = {
+            "practice_name": rec.get("practice_name", ""),
+            "website_url": rec.get("website_url", ""),
+            "specialty": rec.get("specialty", ""),
+            "address_city": rec.get("address_city", ""),
+            "address_state": rec.get("address_state", ""),
+            "reviewed": False,
+            "notes": "Auto-scaffolded from the run's Evidence Vault. 'expected' is PREFILLED "
+                     "from the run's own extraction — VERIFY each value against page.txt, "
+                     "correct it, then set reviewed: true.",
+            "expected": {sid: rec_sigs.get(sid, {}).get("signal_state", "not_found") for sid in sig_ids},
+        }
+        (case_dir / "labels.json").write_text(json.dumps(labels, indent=2) + "\n", encoding="utf-8")
+        recorded = {
+            "_note": "Auto-scaffolded from the run's signals for --offline replay.",
+            "signals": [
+                {"signal_id": s.get("signal_id"), "signal_state": s.get("signal_state", "not_found"),
+                 "confidence": s.get("confidence", "low"), "evidence_text": s.get("evidence_text", ""),
+                 "source_url": s.get("source_url", "")}
+                for s in rec.get("signals", [])
+            ],
+        }
+        (case_dir / "recorded_response.json").write_text(json.dumps(recorded, indent=2) + "\n", encoding="utf-8")
+        created.append(case_id)
+    return created, skipped
+
+
 def anchor_ok(signal: dict, page_text: str) -> bool:
     """True if a 'yes' signal's evidence_text appears verbatim in the page text."""
     ev = (signal.get("evidence_text") or "").strip().lower()
@@ -161,7 +240,7 @@ def aggregate(case_results: list[dict]) -> dict:
     }
 
 
-def print_report(metrics: dict, mode: str, model_note: str) -> None:
+def print_report(metrics: dict, mode: str, model_note: str, unreviewed: list | None = None) -> None:
     """Print a human-readable metrics report."""
     fmt = lambda v: "  n/a" if v is None else f"{v * 100:5.1f}%"
     print(f"\nSignal-extraction eval  ({mode})  {model_note}")
@@ -177,11 +256,14 @@ def print_report(metrics: dict, mode: str, model_note: str) -> None:
         print(f"  {len(metrics['misses'])} mismatch(es):")
         for case, sid, exp, got in metrics["misses"]:
             print(f"    [{case}] {sid}: expected {exp!r}, got {got!r}")
+    if unreviewed:
+        print("  " + "-" * 46)
+        print(f"  WARNING: {len(unreviewed)} unreviewed case(s) (labels not verified): {', '.join(unreviewed)}")
     print()
 
 
-def check_baseline(metrics: dict, baseline: dict) -> bool:
-    """Return True if every metric meets its baseline floor; print each gate."""
+def check_baseline(metrics: dict, baseline: dict, unreviewed: list | None = None) -> bool:
+    """Return True if every metric meets its baseline floor and no case is unreviewed."""
     gates = {
         "state_accuracy": "min_state_accuracy",
         "yes_recall": "min_yes_recall",
@@ -198,6 +280,9 @@ def check_baseline(metrics: dict, baseline: dict) -> bool:
         ok = ok and passed
         print(f"    {'PASS' if passed else 'FAIL'}  {metric} {('%.1f%%' % (val*100)) if val is not None else 'n/a'} "
               f">= {floor*100:.1f}%")
+    if unreviewed:
+        ok = False
+        print(f"    FAIL  {len(unreviewed)} unreviewed case(s) — set reviewed:true after verifying labels")
     print(f"  RESULT: {'PASS' if ok else 'FAIL'}\n")
     return ok
 
@@ -214,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--live", action="store_true", help="call the real extractor (spends tokens)")
     ap.add_argument("--check", action="store_true", help="enforce baseline.json; exit 1 on regression")
     ap.add_argument("--update-baseline", action="store_true", help="write current metrics as the baseline")
+    ap.add_argument("--scaffold-from-run", type=Path, default=None, metavar="RUN_DIR",
+                    help="generate golden stubs from a completed run's Evidence Vault, then exit")
     args = ap.parse_args(argv)
 
     if args.live and args.offline:
@@ -221,6 +308,19 @@ def main(argv: list[str] | None = None) -> int:
     live = args.live  # default is offline (never spends unless asked)
 
     icp_signals = load_icp_signals(args.icp)
+
+    if args.scaffold_from_run:
+        created, skipped = scaffold_from_run(args.scaffold_from_run, args.golden, icp_signals)
+        print(f"\nScaffolded {len(created)} case(s) into {args.golden}")
+        for case_id in created:
+            print(f"  + {case_id}")
+        if skipped:
+            print(f"  skipped {len(skipped)}:")
+            for name, why in skipped:
+                print(f"    - {name}: {why}")
+        print("\nNext: in each labels.json, verify 'expected' against page.txt, correct it, set reviewed: true.\n")
+        return 0
+
     target_specialty, contact_strategy = load_run_meta(args.config)
     cases = discover_cases(args.golden)
     if not cases:
@@ -238,11 +338,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"skip [{case_dir.name}]: no recorded_response.json (need --live)", file=sys.stderr)
                 continue
             got = run_case_offline(case_dir, icp_signals)
-        results.append(score_case(case_dir, expected, got))
+        cr = score_case(case_dir, expected, got)
+        cr["reviewed"] = bool(labels.get("reviewed", False))
+        results.append(cr)
 
+    unreviewed = [cr["case"] for cr in results if not cr.get("reviewed", False)]
     metrics = aggregate(results)
     model_note = "live: real extractor" if live else "offline: replayed responses"
-    print_report(metrics, "live" if live else "offline", model_note)
+    print_report(metrics, "live" if live else "offline", model_note, unreviewed)
 
     if args.update_baseline:
         baseline = {
@@ -258,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         baseline = json.loads(args.baseline.read_text(encoding="utf-8")) if args.baseline.exists() else {}
-        return 0 if check_baseline(metrics, baseline) else 1
+        return 0 if check_baseline(metrics, baseline, unreviewed) else 1
     return 0
 
 

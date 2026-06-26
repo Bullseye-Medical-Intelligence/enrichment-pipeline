@@ -5,6 +5,7 @@
   "address_city": "Round Rock",
   "address_state": "TX",
   "notes": "SYNTHETIC demo fixture (not a real practice). A Contender: fertility present, cash-pay absent (insurance-led). Tests that the model confirms fertility but does NOT invent cash-pay.",
+  "reviewed": true,
   "expected": {
     "cash_pay_signal": "not_found",
     "fertility_services": "yes",
