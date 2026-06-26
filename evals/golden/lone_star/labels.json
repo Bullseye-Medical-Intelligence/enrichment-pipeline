@@ -1,0 +1,17 @@
+{
+  "practice_name": "Lone Star Women's Center",
+  "website_url": "https://example-lonestar.invalid",
+  "specialty": "OBGYN",
+  "address_city": "Round Rock",
+  "address_state": "TX",
+  "notes": "SYNTHETIC demo fixture (not a real practice). A Contender: fertility present, cash-pay absent (insurance-led). Tests that the model confirms fertility but does NOT invent cash-pay.",
+  "expected": {
+    "cash_pay_signal": "not_found",
+    "fertility_services": "yes",
+    "iui_listed": "not_found",
+    "cycle_monitoring_listed": "not_found",
+    "patient_financing_visible": "not_found",
+    "ivf_listed": "not_found",
+    "rei_on_staff": "not_found"
+  }
+}

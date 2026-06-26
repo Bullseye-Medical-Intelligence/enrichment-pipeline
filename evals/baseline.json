@@ -1,0 +1,6 @@
+{
+  "min_state_accuracy": 0.85,
+  "min_yes_recall": 0.85,
+  "min_anchor_rate": 0.95,
+  "note": "Starter floors. Once you have a real labeled golden set, run `python eval_signals.py --live --update-baseline` and then relax each floor a few points below the observed value so normal model variance does not flap the gate."
+}

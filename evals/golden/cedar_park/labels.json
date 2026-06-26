@@ -1,0 +1,17 @@
+{
+  "practice_name": "Cedar Park Women's Health",
+  "website_url": "https://example-cedarpark.invalid",
+  "specialty": "OBGYN",
+  "address_city": "Cedar Park",
+  "address_state": "TX",
+  "notes": "SYNTHETIC demo fixture (not a real practice). A clear cash-pay + fertility Bullseye profile. Replace with real labeled sites captured from the Evidence Vault.",
+  "expected": {
+    "cash_pay_signal": "yes",
+    "fertility_services": "yes",
+    "iui_listed": "yes",
+    "cycle_monitoring_listed": "not_found",
+    "patient_financing_visible": "yes",
+    "ivf_listed": "not_found",
+    "rei_on_staff": "not_found"
+  }
+}

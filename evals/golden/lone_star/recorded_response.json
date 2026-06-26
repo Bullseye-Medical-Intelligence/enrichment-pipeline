@@ -1,0 +1,7 @@
+{
+  "_note": "SYNTHETIC saved model output for --offline replay. Confirms fertility, leaves everything else not_found (omitted signals default to not_found in the validator). The cash-pay absence is the point: the model must not fabricate it.",
+  "signals": [
+    {"signal_id": "fertility_services", "signal_state": "yes", "confidence": "medium",
+     "evidence_text": "fertility evaluation for patients who are trying to conceive", "source_url": "https://example-lonestar.invalid/fertility"}
+  ]
+}

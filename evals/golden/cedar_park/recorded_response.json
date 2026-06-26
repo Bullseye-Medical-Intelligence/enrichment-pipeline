@@ -1,0 +1,19 @@
+{
+  "_note": "SYNTHETIC saved model output for --offline replay. Mirrors a correct extraction for this fixture. Evidence quotes are verbatim substrings of page.txt so the anchor check passes.",
+  "signals": [
+    {"signal_id": "cash_pay_signal", "signal_state": "yes", "confidence": "high",
+     "evidence_text": "cash-pay and self-pay options for elective services", "source_url": "https://example-cedarpark.invalid/services"},
+    {"signal_id": "fertility_services", "signal_state": "yes", "confidence": "high",
+     "evidence_text": "fertility and infertility services", "source_url": "https://example-cedarpark.invalid/services"},
+    {"signal_id": "iui_listed", "signal_state": "yes", "confidence": "high",
+     "evidence_text": "intrauterine insemination (IUI)", "source_url": "https://example-cedarpark.invalid/services"},
+    {"signal_id": "cycle_monitoring_listed", "signal_state": "not_found", "confidence": "low",
+     "evidence_text": "", "source_url": ""},
+    {"signal_id": "patient_financing_visible", "signal_state": "yes", "confidence": "high",
+     "evidence_text": "patient financing is available through CareCredit", "source_url": "https://example-cedarpark.invalid/financing"},
+    {"signal_id": "ivf_listed", "signal_state": "not_found", "confidence": "low",
+     "evidence_text": "", "source_url": ""},
+    {"signal_id": "rei_on_staff", "signal_state": "not_found", "confidence": "low",
+     "evidence_text": "", "source_url": ""}
+  ]
+}
