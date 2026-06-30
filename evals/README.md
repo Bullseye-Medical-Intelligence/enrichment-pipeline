@@ -31,11 +31,16 @@ Defaults to the Femasys cartridge (`config/clients/obgyn_femasys/`). Point at an
 | Metric | Meaning |
 |--------|---------|
 | `state_accuracy` | Share of (case, signal) pairs whose `signal_state` matches the label. |
-| `yes_recall` | Of signals labeled `yes`, how many the model confirmed. **The business-critical one — a miss is a lost target.** |
-| `yes_precision` | Of signals the model called `yes`, how many were truly `yes` (fabrication guard). |
-| `anchor_rate` | Of model `yes` signals, how many quote text that appears verbatim in `page.txt`. |
+| `yes_recall` | Of signals labeled `yes`, how many the model confirmed (overall). **A miss is a lost target.** |
+| `must_have_recall` | yes-recall over the must-have signals (`required_for_bullseye`). Gated. |
+| `exclusion_recall` | yes-recall over the negative signals (`positive_weight < 0`, e.g. ivf/rei). A miss sends a rep to a disqualified account. Gated. |
+| `other_recall` | yes-recall over the remaining positive signals. Gated. |
+| `yes_precision` | Of signals the model called `yes`, how many were truly `yes` (fabrication guard). Gated. |
+| `anchor_rate` | Of model `yes` signals, how many quote text that appears verbatim in `page.txt`. Gated at 100%. |
 
-Floors live in `baseline.json`. `--check` fails the run if any floor is breached and names the offending case + signal.
+Groups are derived from the cartridge's own flags (no hardcoded signal IDs). Floors live in
+`baseline.json` and mirror `LABELING_SOP.md`; `--check` fails the run if any floor is breached and
+names the offending case + signal. A group with no labeled `yes` examples in the set is skipped (n/a).
 
 ## Adding a real case (the part only your team can do)
 

@@ -210,18 +210,39 @@ def score_case(case_dir: Path, expected: dict, got: dict) -> dict:
     return {"case": case_dir.name, "rows": rows, "misses": misses}
 
 
-def aggregate(case_results: list[dict]) -> dict:
+def _signal_groups(icp_signals: list[dict]) -> dict:
+    """Classify each signal_id into 'must_have' | 'negative' | 'other' from the ICP
+    flags, so per-group recall stays generic (no hardcoded signal IDs)."""
+    groups = {}
+    for s in icp_signals:
+        sid = s.get("signal_id")
+        if s.get("required_for_bullseye"):
+            groups[sid] = "must_have"
+        elif (s.get("positive_weight") or 0) < 0:
+            groups[sid] = "negative"
+        else:
+            groups[sid] = "other"
+    return groups
+
+
+def aggregate(case_results: list[dict], groups: dict) -> dict:
     """Roll per-case rows up into the headline extraction metrics."""
     total = correct = 0
     yes_labeled = yes_caught = yes_pred = yes_pred_correct = 0
     yes_signals = anchored = 0
+    grp_labeled = {"must_have": 0, "negative": 0, "other": 0}
+    grp_caught = {"must_have": 0, "negative": 0, "other": 0}
     for cr in case_results:
         for r in cr["rows"]:
             total += 1
             correct += r["ok"]
             if r["expected"] == "yes":
                 yes_labeled += 1
-                yes_caught += (r["got"] == "yes")
+                caught = (r["got"] == "yes")
+                yes_caught += caught
+                grp = groups.get(r["signal_id"], "other")
+                grp_labeled[grp] += 1
+                grp_caught[grp] += caught
             if r["got"] == "yes":
                 yes_pred += 1
                 yes_pred_correct += (r["expected"] == "yes")
@@ -233,6 +254,9 @@ def aggregate(case_results: list[dict]) -> dict:
         "signals_compared": total,
         "state_accuracy": pct(correct, total),
         "yes_recall": pct(yes_caught, yes_labeled),
+        "must_have_recall": pct(grp_caught["must_have"], grp_labeled["must_have"]),
+        "exclusion_recall": pct(grp_caught["negative"], grp_labeled["negative"]),
+        "other_recall": pct(grp_caught["other"], grp_labeled["other"]),
         "yes_precision": pct(yes_pred_correct, yes_pred),
         "anchor_rate": pct(anchored, yes_signals),
         "yes_labeled": yes_labeled,
@@ -249,6 +273,9 @@ def print_report(metrics: dict, mode: str, model_note: str, unreviewed: list | N
     print("  " + "-" * 46)
     print(f"  state accuracy   {fmt(metrics['state_accuracy'])}")
     print(f"  yes recall       {fmt(metrics['yes_recall'])}   (caught of {metrics['yes_labeled']} labeled-yes)")
+    print(f"    must-have      {fmt(metrics['must_have_recall'])}")
+    print(f"    exclusion      {fmt(metrics['exclusion_recall'])}")
+    print(f"    other          {fmt(metrics['other_recall'])}")
     print(f"  yes precision    {fmt(metrics['yes_precision'])}")
     print(f"  anchor rate      {fmt(metrics['anchor_rate'])}")
     if metrics["misses"]:
@@ -266,20 +293,25 @@ def check_baseline(metrics: dict, baseline: dict, unreviewed: list | None = None
     """Return True if every metric meets its baseline floor and no case is unreviewed."""
     gates = {
         "state_accuracy": "min_state_accuracy",
-        "yes_recall": "min_yes_recall",
+        "must_have_recall": "min_must_have_recall",
+        "exclusion_recall": "min_exclusion_recall",
+        "other_recall": "min_other_recall",
+        "yes_precision": "min_yes_precision",
         "anchor_rate": "min_anchor_rate",
     }
     ok = True
     print("  baseline gates:")
     for metric, key in gates.items():
         floor = baseline.get(key)
-        val = metrics.get(metric)
         if floor is None:
             continue
-        passed = val is not None and val >= floor
+        val = metrics.get(metric)
+        if val is None:
+            print(f"    n/a   {metric}: no labeled examples in this set (gate skipped)")
+            continue
+        passed = val >= floor
         ok = ok and passed
-        print(f"    {'PASS' if passed else 'FAIL'}  {metric} {('%.1f%%' % (val*100)) if val is not None else 'n/a'} "
-              f">= {floor*100:.1f}%")
+        print(f"    {'PASS' if passed else 'FAIL'}  {metric} {val*100:.1f}% >= {floor*100:.1f}%")
     if unreviewed:
         ok = False
         print(f"    FAIL  {len(unreviewed)} unreviewed case(s) — set reviewed:true after verifying labels")
@@ -343,18 +375,22 @@ def main(argv: list[str] | None = None) -> int:
         results.append(cr)
 
     unreviewed = [cr["case"] for cr in results if not cr.get("reviewed", False)]
-    metrics = aggregate(results)
+    metrics = aggregate(results, _signal_groups(icp_signals))
     model_note = "live: real extractor" if live else "offline: replayed responses"
     print_report(metrics, "live" if live else "offline", model_note, unreviewed)
 
     if args.update_baseline:
-        baseline = {
+        floors = {
             "min_state_accuracy": metrics["state_accuracy"],
-            "min_yes_recall": metrics["yes_recall"],
+            "min_must_have_recall": metrics["must_have_recall"],
+            "min_exclusion_recall": metrics["exclusion_recall"],
+            "min_other_recall": metrics["other_recall"],
+            "min_yes_precision": metrics["yes_precision"],
             "min_anchor_rate": metrics["anchor_rate"],
-            "recorded_at": datetime.now().isoformat(timespec="seconds"),
-            "mode": "live" if live else "offline",
         }
+        baseline = {k: v for k, v in floors.items() if v is not None}
+        baseline["recorded_at"] = datetime.now().isoformat(timespec="seconds")
+        baseline["mode"] = "live" if live else "offline"
         args.baseline.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
         print(f"  baseline written to {args.baseline}\n")
         return 0

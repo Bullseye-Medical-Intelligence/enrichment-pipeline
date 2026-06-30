@@ -1,6 +1,9 @@
 {
   "min_state_accuracy": 0.85,
-  "min_yes_recall": 0.85,
-  "min_anchor_rate": 0.95,
-  "note": "Starter floors. Once you have a real labeled golden set, run `python eval_signals.py --live --update-baseline` and then relax each floor a few points below the observed value so normal model variance does not flap the gate."
+  "min_must_have_recall": 0.95,
+  "min_exclusion_recall": 0.95,
+  "min_other_recall": 0.90,
+  "min_yes_precision": 0.85,
+  "min_anchor_rate": 1.0,
+  "note": "Starter floors aligned to evals/LABELING_SOP.md. anchor_rate is 100% (any unanchored 'yes' fails). exclusion_recall gates the negative signals (e.g. ivf/rei); a gate with no labeled 'yes' examples in the set is skipped (n/a), not failed. After a real --live run, run --update-baseline and then relax each floor a few points below the observed value so normal model variance does not flap the gate."
 }
