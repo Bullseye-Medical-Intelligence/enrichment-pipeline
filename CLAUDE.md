@@ -253,9 +253,10 @@ structural/LLM trigger, or a signal flagged `exclude_if_yes` that is confirmed
 `target_tier == "Excluded" iff exclusion_status == "EXCLUDED"` is enforced in
 `enrichment/scorer.py`. Exported tiers: Bullseye / Needs Verification / Contender
 / Manual Review / Excluded. Analyst overrides in the API use the four call tiers.
-**QC sign-off is required only for Bullseye and Contender** (the client-shipped
-tiers); Needs Verification / Manual Review / Excluded never block run readiness —
-operators audit them ad hoc (`pipeline-api/ui.py::_compute_readiness`).
+**QC sign-off blocks client-package readiness for Bullseye only.** Contenders ship
+in client deliverables (CSV + Sales Handoff) unless an analyst rejects them; Needs
+Verification / Manual Review / Excluded never block readiness either — operators
+audit them ad hoc (`pipeline-api/ui.py::_compute_readiness`).
 
 **Confidence band (client-facing).** Every record carries a `confidence_band`
 (`High` / `Moderate` / `Low`) derived from `confidence_score` (`constants.confidence_band_for_score`).

@@ -88,9 +88,17 @@ def build_bullseye_csv(run_id, run_directory, records=None, all_reviews=None) ->
 
 
 def build_contender_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
-    """Return a BytesIO CSV of approved Contender-tier records."""
+    """Return a BytesIO CSV of Contender-tier records, shipped unless rejected.
+
+    Only Bullseye blocks client-package readiness; Contenders are reviewed by the
+    external sales team and ship by default, dropped only when an analyst sets
+    qc_status == "rejected". This matches the Sales Handoff, which also drops only
+    rejected records. (displayed_tier == "contender" already excludes Excluded /
+    Needs Verification / low-score Manual-Review-promoted records.)
+    """
     def _contender(rec: dict, rev: dict) -> bool:
-        return is_approved(rec, rev) and record_adapter.displayed_tier(rec, rev).lower() == "contender"
+        return (record_adapter.displayed_tier(rec, rev).lower() == "contender"
+                and rev.get("qc_status") != "rejected")
 
     return _build_csv(run_id, run_directory, _contender, records, all_reviews)
 

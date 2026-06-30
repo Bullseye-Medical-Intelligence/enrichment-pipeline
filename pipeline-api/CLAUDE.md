@@ -316,7 +316,7 @@ GET    /runs/{run_id}/download/csv               Full enriched_targets.csv downl
 GET    /runs/{run_id}/download/manifest          Internal run manifest JSON (not in client package)
 GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
 GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
-GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs; requires all Bullseye/Contender reviewed)
+GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs; requires all Bullseye reviewed)
 GET    /runs/{run_id}/download/sales-brief       Prospect-facing methodology brief (select 1 Bullseye, 1 Contender, 1 Excluded via query params)
 GET    /runs/{run_id}/enrich-estimate            JSON cost estimate for enriching an ingested run (reads token history from past runs)
 POST   /runs/{run_id}/publish/{brief_type}       Publish brief HTML to Hostinger; saves URL to published_briefs.json

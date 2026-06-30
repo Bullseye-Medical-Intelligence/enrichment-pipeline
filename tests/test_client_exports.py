@@ -221,15 +221,30 @@ def test_hidden_columns_absent_from_client_csv(tmp_path):
                     f"Internal field '{field}' leaked into client CSV '{csv_name}'"
 
 
-def test_contender_csv_empty_when_no_contender_records(tmp_path):
-    """Fixture has only Bullseye-tier approved records — contender CSV should contain none."""
+def test_contender_csv_includes_pending_contender(tmp_path):
+    """Only Bullseye blocks readiness, so a non-rejected Contender ships in the
+    contender CSV even while still pending QC (T-3 is a pending Contender)."""
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
     with zipfile.ZipFile(buf) as zf:
         contender = zf.read("contender_accounts.csv").decode("utf-8")
-    # T-1 is Bullseye, T-2 is EXCLUDED+override Bullseye → no contender records
-    assert "T-1" not in contender
-    assert "T-2" not in contender
+    assert "T-3" in contender         # pending Contender ships unless rejected
+    assert "T-1" not in contender     # Bullseye → bullseye CSV, not contender
+    assert "T-2" not in contender     # EXCLUDED + override Bullseye → bullseye CSV
+
+
+def test_contender_csv_excludes_rejected_contender(tmp_path):
+    """A Contender an analyst rejected is dropped from the contender CSV."""
+    records = [{"record_id": "C-R", "practice_name": "Rejected Clinic",
+                "target_tier": "Contender", "bullseye_score": 60, "exclusion_status": "CLEAR"}]
+    reviews_map = {"C-R": {"override_tier": None, "override_reason": None,
+                           "qc_status": "rejected", "analyst_note": "",
+                           "reviewed_by": "t", "reviewed_at": "now"}}
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+    import exports
+    content = exports.build_contender_csv("RUN-test", tmp_path).getvalue().decode("utf-8")
+    assert "C-R" not in content
 
 
 def test_handoff_account_mapping_for_rep_fields():

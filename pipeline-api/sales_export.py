@@ -341,11 +341,13 @@ def _build_handoff_run(
         tier_str = record_adapter.effective_tier(rec, all_reviews)
         if tier_str not in _CLIENT_TIERS:
             continue
-        # Bullseye and Contender require positive analyst approval.
-        if tier_str in ("Bullseye", "Contender") and not exports.is_approved(rec, review):
+        # Only Bullseye requires positive analyst approval before it ships.
+        if tier_str == "Bullseye" and not exports.is_approved(rec, review):
             continue
-        # NV and MR appear in the handoff unless the analyst explicitly rejected them.
-        if tier_str in ("Needs Verification", "Manual Review") and review.get("qc_status") == "rejected":
+        # Contender / Needs Verification / Manual Review appear in the handoff unless
+        # the analyst explicitly rejected them. Only Bullseye blocks client-package
+        # readiness; Contenders are reviewed by the external sales team downstream.
+        if tier_str in ("Contender", "Needs Verification", "Manual Review") and review.get("qc_status") == "rejected":
             continue
         # Apply signal overrides and strip the internal is_override marker before the
         # renderer sees the record — the client sees overridden signals as normal confirmed

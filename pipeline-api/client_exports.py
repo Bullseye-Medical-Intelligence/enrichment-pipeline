@@ -6,7 +6,7 @@ Builds an in-memory ZIP containing:
   Bullseye_Target_Report.html   — per-account intelligence briefs for Bullseye tier
   Sales_Handoff.html            — rep-facing sales handoff (handoff_renderer)
   bullseye_accounts.csv         — Bullseye-tier approved records
-  contender_accounts.csv        — Contender-tier approved records
+  contender_accounts.csv        — Contender-tier records (shipped unless rejected)
   excluded_targets.csv          — all excluded records
 
 No internal/debug artifacts (run_log.json, reviews.json, raw enriched JSON) are

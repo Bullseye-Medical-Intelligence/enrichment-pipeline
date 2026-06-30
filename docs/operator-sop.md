@@ -177,8 +177,8 @@ immutable output.
 
 **Confirm Queue & bulk approve.** Open **Confirm Queue** for the analyst sign-off view (Bullseye
 + Contender pending review). Use **Approve High-Confidence** or **Approve All** to clear the queue
-in one write. **QC sign-off is required only for Bullseye and Contender** (the client-shipped
-tiers); the others never block readiness.
+in one write. **QC sign-off blocks readiness for Bullseye only.** Contenders ship unless an
+analyst rejects them; the other tiers never block readiness either.
 
 **Contact Queue.** The rep call sheet, sorted by contact priority, with each call brief
 pre-loaded — use it to drive a briefing session.
@@ -215,8 +215,8 @@ From the run header:
 | **Full CSV / JSON** | Complete output | Analysis / import |
 | **Run Manifest** | Provenance summary (scope, ICP version, counts) | Internal record |
 
-- The **Client Package requires every Bullseye and Contender to be reviewed first**, and **strips
-  numeric scores** — clients see tier + confidence band only.
+- The **Client Package requires every Bullseye to be reviewed first** (Contenders ship unless
+  rejected), and **strips numeric scores** — clients see tier + confidence band only.
 - **Publish** the **Sales Handoff** or **Sales Brief** to a stable shareable URL. Re-publishing
   overwrites in place so the link never changes. An **amber dot** on the Sales Handoff button
   means analyst edits post-date the last publish — re-publish to refresh.
