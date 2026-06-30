@@ -314,7 +314,7 @@ def test_compute_readiness_no_approved():
 
 
 def test_compute_readiness_ignores_pending_non_call_tiers():
-    """Only Bullseye + Contender require QC; pending NV / Manual Review do not block."""
+    """Only Bullseye blocks readiness; pending NV / Manual Review / Excluded do not."""
     records = [
         {"review": {"qc_status": "approved"}, "displayed_tier": "Bullseye"},
         {"review": {"qc_status": "pending"}, "displayed_tier": "Needs Verification"},

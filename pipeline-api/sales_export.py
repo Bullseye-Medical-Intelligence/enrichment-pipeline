@@ -144,8 +144,8 @@ if _REPO_ROOT not in sys.path:
 from handoff_renderer import Account, Confidence, HandoffRun, Tier, render_handoff  # noqa: E402
 
 # All pipeline tiers are included in the client handoff so the client can see
-# the full scope of what was screened. Bullseye and Contender require analyst
-# approval; the other tiers appear without an approval gate.
+# the full scope of what was screened. Only Bullseye requires analyst approval;
+# every other tier appears unless an analyst rejects it.
 _CLIENT_TIERS = {"Bullseye", "Contender", "Needs Verification", "Manual Review", "Excluded"}
 
 _TIER_MAP = {
@@ -255,9 +255,9 @@ def _build_client_handoff_html(run_id: str, run_directory: Path, status) -> byte
     """Build the client-facing Sales Handoff HTML for the client package ZIP.
 
     All five tiers (Bullseye, Contender, Needs Verification, Manual Review,
-    Excluded) so the client sees the full screening picture. Needs Verification
-    and Manual Review appear unless an analyst rejects them; Bullseye and
-    Contender require analyst approval. No analyst notes, no internal scores.
+    Excluded) so the client sees the full screening picture. Only Bullseye
+    requires analyst approval; Contender / Needs Verification / Manual Review
+    appear unless an analyst rejects them. No analyst notes, no internal scores.
     Uses handoff_renderer with client_facing=True.
     """
     records = _load_records(run_directory)
