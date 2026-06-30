@@ -59,9 +59,9 @@ footprint and scores it against the project's ICP.
 ### 7. Review enriched results
 When the run completes, QC the results: tiers (Bullseye / Needs Verification /
 Contender / Manual Review / Excluded), confidence bands, evidence, and call
-briefs. Override tiers where your judgment differs. GPT verification has already
-flagged uncertain records for you, but human QC is the authority — see the README
-"GPT verification is selective" note.
+briefs. Override tiers where your judgment differs. GPT verification is a separate,
+operator-triggered pass: run **Verify** from the completed run's header to get a
+second-model check on Needs Verification records. It does not run automatically.
 
 ### 8. Explicitly update the Master Practice Registry
 On the completed run page, click **Update Registry**. This is an explicit,

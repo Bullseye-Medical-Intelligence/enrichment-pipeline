@@ -1,6 +1,10 @@
 # HANDOFF — Signal Override + Signal Filtering build
 
-**Read this before any task.** It captures the real state of a 6-prompt build
+> ⚠️ **HISTORICAL — superseded, do not follow as current guidance.** Documents a June
+> 2026 build; references an old branch and stale test counts. Current state lives in
+> `CLAUDE.md`, `PIPELINE.md`, and `docs/operator-sop.md`.
+
+**Historical context (June 2026).** It captures the real state of a 6-prompt build
 (signal-override feature + signal-filtering) on the BEMI `pipeline-api`. Values
 below were pulled by running git and reading the files, not from memory.
 

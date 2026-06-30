@@ -134,6 +134,11 @@ python pipeline.py --input data/manual_list.csv --source manual \
 | `--icp` | `config/icp_checklist.json` | ICP signal definitions |
 | `--dry-run` | off | Parse only, skip all API calls |
 | `--limit N` | off | Process only the first N records |
+| `--playwright` | off | Use headless Chromium (Playwright) instead of `requests` for web extraction |
+| `--auto-browser-retry` | off | After the standard crawl, re-crawl blocked/thin sites once with headless Chromium before signal extraction (ignored when `--playwright` is set) |
+| `--manual-content-path PATH` | off | Operator-provided HTML/text file used instead of crawling (repeatable, once per page); for CAPTCHA-blocked sites |
+| `--ingest-only` | off | Ingest + normalize + structural exclusions only; write the roster and exit before any crawl or LLM call |
+| `--run-id ID` | auto | Use this run identifier instead of generating one (the API passes its own) |
 
 ---
 
@@ -215,7 +220,7 @@ See `config/clients/obgyn_femasys/` for a complete reference implementation.
 
 **Start with `run_log.json`:**
 - `records_failed` — records where the pipeline threw an error (API failure, etc.)
-- `records_needs_review` — records where the two LLMs disagreed on a Bullseye score
+- `records_needs_review` — records whose LLM response could not be parsed (JSON decode failure or a missing required key); flagged `enrichment_status: "needs_review"` for an operator to re-extract
 - `errors` array — per-record error details with step name and error message
 
 **`enrichment_status` values in the output:**

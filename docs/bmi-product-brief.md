@@ -125,8 +125,8 @@ Deterministic structural exclusion gates run before LLM spend whenever they can 
 |---|---|---|
 | `complete` | 2+ pages crawled, substantial text | No cap |
 | `partial` | Homepage only or short text | No cap |
-| `limited` | URL failed, 403, no website | Hard-capped at Contender |
-| `failed` | Pipeline error | Hard-capped at Contender |
+| `limited` | URL failed, 403, thin/blocked crawl | Routed to Manual Review (operator review) |
+| `failed` | Pipeline error | Routed to Manual Review (operator review) |
 
 Records with `source_confidence: limited` or `failed` require operator review before any export. The download button in the pipeline-api is locked until every record in the run is labeled.
 
@@ -169,7 +169,7 @@ Defined per signal in the cartridge's ICP checklist. Required fields: `signal_id
 3. **Exclusion-first:** hard gates run before any LLM tokens. No exceptions.
 4. **Gates must be structural:** brand loyalty is not a gate. It lives in fit scoring.
 5. **Asymmetric wedge:** `fit_signal` and `confidence` are independent dimensions, stored separately, never averaged. HIGH FIT / LOW EVIDENCE must survive to output.
-6. **Store source URLs, short evidence snippets, and extraction metadata only.** Do not store screenshots, raw HTML, full-page cached content, login-gated content, or patient-level data. Never infer from absence.
+6. **Store source URLs, extraction metadata, and the extracted page text the crawler saw.** The page text is kept in the internal Evidence Vault (`output/evidence_writer.py`) for audit and post-run rehydration (verify / re-extract); it is operator-facing only and never shipped to clients. Do not store screenshots, raw HTML, login-gated content, or patient-level data. Never infer from absence.
 7. **Public sources only:** practice websites, Google Business, Healthgrades, NPI registry, directories. Never login-gated, patient portals, EMRs, paywalled, or claims/patient-level data.
 8. **Matching anchors in priority order:** website URL → clinic phone → zip code. NPI is often missing — do not rely on it for dedup.
 9. **Secrets in `.env` only:** API keys never in source, never in config files.

@@ -15,7 +15,7 @@ Open a terminal (PowerShell on Windows, Terminal on Mac) and run:
 cd C:\users\yourname\desktop\bemi
 git clone https://github.com/Bullseye-Medical-Intelligence/enrichment-pipeline.git enrichment
 cd enrichment
-git checkout claude/pensive-cray-MaWmt
+git checkout main
 ```
 
 ### Step 2: Install Python packages
@@ -237,7 +237,7 @@ When there are code updates:
 
 ```
 cd C:\users\rajiv\desktop\bemi\enrichment
-git pull origin claude/pensive-cray-MaWmt
+git pull origin main
 cd pipeline-api
 python -m pip install -r requirements.txt
 ```

@@ -1,6 +1,10 @@
 # Bullseye Medical Intelligence — Project Handoff
 *As of 2026-06-21*
 
+> ⚠️ **HISTORICAL — superseded, do not follow as current guidance.** Test counts and
+> tier names here are stale. Current state lives in `CLAUDE.md`, `PIPELINE.md`, and
+> `docs/operator-sop.md`.
+
 ---
 
 ## What Bullseye Is
