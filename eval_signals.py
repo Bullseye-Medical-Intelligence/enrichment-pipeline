@@ -290,7 +290,12 @@ def print_report(metrics: dict, mode: str, model_note: str, unreviewed: list | N
 
 
 def check_baseline(metrics: dict, baseline: dict, unreviewed: list | None = None) -> bool:
-    """Return True if every metric meets its baseline floor and no case is unreviewed."""
+    """Return True if every measured metric meets its floor and no case is unreviewed.
+
+    A metric with no labeled examples in this set is skipped. A metric that IS
+    measured but has no floor in the baseline fails the check — an unenforced gate
+    is treated as a regression, not a silent pass (run --update-baseline to set one).
+    """
     gates = {
         "state_accuracy": "min_state_accuracy",
         "must_have_recall": "min_must_have_recall",
@@ -302,13 +307,15 @@ def check_baseline(metrics: dict, baseline: dict, unreviewed: list | None = None
     ok = True
     print("  baseline gates:")
     for metric, key in gates.items():
-        floor = baseline.get(key)
-        if floor is None:
-            print(f"    UNPROTECTED  {metric}: no floor in baseline — this gate is NOT enforced")
-            continue
         val = metrics.get(metric)
         if val is None:
             print(f"    n/a   {metric}: no labeled examples in this set (gate skipped)")
+            continue
+        floor = baseline.get(key)
+        if floor is None:
+            ok = False
+            print(f"    UNPROTECTED  {metric}: {val*100:.1f}% measured but no floor in "
+                  f"baseline — gate NOT enforced (run --update-baseline to set one)")
             continue
         passed = val >= floor
         ok = ok and passed

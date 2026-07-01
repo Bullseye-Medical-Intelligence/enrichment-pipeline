@@ -473,7 +473,7 @@ or an `exclude_if_yes` signal_id). `""` for CLEAR records. Operator/UI-facing
 - `"complete"` — all pipeline steps succeeded
 - `"partial"` — some steps succeeded, others failed or returned no data
 - `"failed"` — pipeline failure, record may be incomplete
-- `"needs_review"` — pipeline flagged for human attention (e.g. LLM disagreement)
+- `"needs_review"` — the LLM response could not be parsed into the expected structure (JSON decode / missing key); flagged for operator re-extraction
 - `"not_enriched"` — written by `--ingest-only`: the record was ingested and
   structurally screened (specialty/geography/no-web-presence) but has not been
   crawled or scored. Scores are 0 and `signals` is empty until enrichment runs.
@@ -545,7 +545,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
     }
   ],
   "warnings": [
-    "3 records triggered LLM disagreement and are flagged needs_review"
+    "3 records could not be parsed from the LLM response and are flagged needs_review"
   ]
 }
 ```
@@ -837,11 +837,11 @@ All post-run CLIs follow the same pattern: load `enriched_targets.json`, process
 "verification": {
   "verified_at": "2026-06-17T12:00:00Z",
   "verifier_model": "gpt-5.5",
-  "method": "anchor_check + blind_reextraction",
-  "per_signal_verdicts": [{"signal_id": "S-001", "claude_state": "yes", "gpt_state": "yes", "agree": true}],
+  "method": "anchor+gpt",
+  "per_signal_verdicts": [{"signal_id": "S-001", "anchor_found": true, "anchor_failed": false, "gpt_verdict": "yes", "gpt_confidence": "high", "gpt_evidence": "..."}],
   "anchor_failures": [],
-  "recommended_action": "confirm",
-  "notes": ""
+  "recommended_action": "promote",
+  "notes": "GPT independently confirmed gating signal(s): S-001. Operator confirmation required before client export."
 }
 ```
 
