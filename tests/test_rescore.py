@@ -174,9 +174,70 @@ def _read_records(run_dir: Path) -> list:
     return raw.get("records", raw) if isinstance(raw, dict) else raw
 
 
+def _make_stripped_excluded_record(record_id="T-EXC", reason="Hospital-owned practice",
+                                   primary_gate="hospital_owned"):
+    """An EXCLUDED record shaped like real pipeline output.
+
+    The `_`-prefixed exclusion provenance (`_llm_exclusion_triggers`,
+    `_customer_suppressed`, `_npi_taxonomy_exclusions`) is stripped at Step 8, so a
+    real excluded record in enriched_targets.json carries none of it — only the
+    resolved exclusion_status / reason / tier. Its single yes-signal would score
+    high if it were ever re-evaluated as CLEAR, which is exactly what must NOT happen.
+    """
+    return {
+        "id": record_id,
+        "practice_name": "Excluded Clinic",
+        "specialty": "OBGYN",
+        "address_state": "TX",
+        "address_city": "Houston",
+        "address_zip": "77001",
+        "website_url": "https://example.com",
+        "bullseye_score": 40,
+        "fit_signal_score": 80,
+        "confidence_score": 80,
+        "target_tier": "Excluded",
+        "exclusion_status": "EXCLUDED",
+        "exclusion_reason": reason,
+        "exclusion_primary_gate": primary_gate,
+        "source_confidence": "complete",
+        "enrichment_status": "complete",
+        "signals": [_make_signal(state="yes", positive_weight=50)],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+def test_rescore_preserves_llm_trigger_exclusion(tmp_path):
+    """A hospital-owned exclusion (LLM trigger, provenance stripped from the output
+    file) must stay Excluded after a rescore — never re-tiered to a callable tier."""
+    run_dir = _write_run(tmp_path, [_make_stripped_excluded_record()])
+    run_rescore_pass(run_dir, [_make_icp_signal(positive_weight=50)])
+    out = _read_records(run_dir)[0]
+    assert out["exclusion_status"] == "EXCLUDED"
+    assert out["target_tier"] == "Excluded"
+    assert out["exclusion_reason"] == "Hospital-owned practice"
+
+
+def test_rescore_preserves_customer_suppression(tmp_path):
+    """An existing-customer suppression must survive rescore even though the
+    _customer_suppressed marker is stripped from enriched_targets.json."""
+    rec = _make_stripped_excluded_record(
+        record_id="T-SUP", reason="Existing customer", primary_gate="")
+    run_dir = _write_run(tmp_path, [rec])
+    run_rescore_pass(run_dir, [_make_icp_signal(positive_weight=50)])
+    out = _read_records(run_dir)[0]
+    assert out["exclusion_status"] == "EXCLUDED"
+    assert out["target_tier"] == "Excluded"
+
+
+def test_rescore_preview_never_un_excludes(tmp_path):
+    """Preview must not report an excluded record transitioning to a call tier."""
+    run_dir = _write_run(tmp_path, [_make_stripped_excluded_record()])
+    stats = run_rescore_preview(run_dir, [_make_icp_signal(positive_weight=50)])
+    for key in stats["tier_transitions"]:
+        assert not key.startswith("Excluded"), f"excluded record un-excluded in preview: {key}"
 
 class TestRescoreChangesScore:
 

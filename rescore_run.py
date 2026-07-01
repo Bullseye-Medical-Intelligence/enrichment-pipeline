@@ -64,12 +64,24 @@ def _reset_exclusion_fields(record: dict) -> None:
 def _rescore_record(record: dict, icp_signals: list[dict], run_config: dict) -> dict:
     """Re-score a single record using updated ICP weights.
 
-    Applies reinforcement, recalculates scores, resets stale exclusion fields,
-    re-runs apply_exclusions (Step 6) and validate_and_finalize (Step 7).
-    Signals are never modified — only scores and tiers change.
+    Applies reinforcement, recalculates scores, then re-runs the exclusion check
+    (Step 6) and validation (Step 7) for records the pipeline left CLEAR. Signals
+    are never modified — only scores and tiers change.
+
+    Excluded records are preserved untouched. Exclusions are weight-independent
+    hard gates, and the provenance that produced an LLM / customer-suppression /
+    NPI-taxonomy exclusion is stripped from enriched_targets.json at write time,
+    so re-deriving exclusions here would silently un-exclude those records. A
+    rescore adjusts weights only; to change an exclusion outcome, re-run the pipeline.
 
     Returns the updated record.
     """
+    # An excluded record can never be un-excluded by a weight change, and its
+    # exclusion provenance is not in the output file to re-derive, so it is
+    # returned exactly as-is (tier Excluded, score already capped).
+    if record.get("exclusion_status") == "EXCLUDED":
+        return record
+
     from enrichment.signal_extractor import _apply_reinforcement, _calculate_scores, _determine_fit_confidence_status
     from enrichment.exclusion_checker import apply_exclusions
     from enrichment.scorer import validate_and_finalize

@@ -1369,6 +1369,19 @@ class TestValidateAndFinalizeInvariant:
         result = validate_and_finalize(record)
         assert result["call_brief"] == empty_call_brief()
 
+    def test_clear_manual_review_high_score_not_promoted(self):
+        """Fail-closed path: when the exclusion check raises, the record is routed
+        to Manual Review with exclusion_status CLEAR. Manual Review is a valid tier
+        consistent with CLEAR, so validation must preserve it and never promote it
+        to Bullseye by bare score (the old fail-open bug left the tier unset, so the
+        scorer inferred Bullseye from the score and bypassed every exclusion gate)."""
+        record = self._base_record()
+        record["exclusion_status"] = "CLEAR"
+        record["target_tier"] = "Manual Review"
+        record["bullseye_score"] = 95
+        result = validate_and_finalize(record)
+        assert result["target_tier"] == "Manual Review"
+
     def test_call_brief_partial_is_completed(self):
         """A partial call_brief keeps valid fields and fills the rest."""
         record = self._base_record()

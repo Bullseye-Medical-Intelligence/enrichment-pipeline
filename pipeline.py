@@ -842,13 +842,20 @@ def run_pipeline(input_file: str, source_type: str,
         except Exception as e:
             error_msg = str(e)[:200]
             print(f"  [FAIL] Exclusion check error for {record.get('id', '?')}: {error_msg}")
+            # Fail closed: an exclusion check that raised cannot certify the record
+            # as safe, so route it to Manual Review rather than let Step 7 tier it
+            # by bare score (which would bypass every exclusion and cap gate and
+            # could ship a should-be-Excluded record). exclusion_status stays CLEAR
+            # because no exclusion was confirmed; the operator decides.
             record["exclusion_status"] = "CLEAR"
             record["exclusion_reason"] = None
+            record["exclusion_primary_gate"] = ""
+            record["target_tier"] = "Manual Review"
             all_errors.append({
                 "record_id": record.get("id", "unknown"),
                 "step": "exclusion_check",
                 "error": error_msg,
-                "resolution": "Exclusion check skipped, status set to CLEAR",
+                "resolution": "Exclusion check failed; routed to Manual Review (fail-closed)",
             })
 
     excluded_count = sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED")
