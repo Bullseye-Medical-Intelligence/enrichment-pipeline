@@ -5,9 +5,12 @@
 # Output files — never commit real client data
 /output/*.json
 /output/*.csv
+/output/*.ndjson
 /output/icp_profiles/
 /output/runs/
 /output/projects/
+# Evidence Vault: crawled page text captured on default-output-dir CLI runs (RULE 2)
+/output/evidence/
 
 # Published client sales-handoff briefs mirrored from Hostinger (RULE 2):
 # generated client deliverables, not hand-edited marketing pages.

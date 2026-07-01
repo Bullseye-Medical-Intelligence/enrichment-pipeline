@@ -2,7 +2,7 @@
   "icp_id": "obgyn_femasys",
   "name": "Femasys — OBGYN Office-Based Fertility (FemaSeed)",
   "version": "obgyn-femasys-v12",
-  "version_note": "<<RAJIV: PASTE CLIENT DISCLAIMER HERE BEFORE RUNNING>>",
+  "version_note": "v12 — two primary must-haves (cash pay, fertility services) plus three positive fit signals (IUI, cycle monitoring, patient financing) and two negatives (IVF listed, REI on staff) that reduce fit and cap the tier at Contender. Scored by the standard engine; mirrors the config/clients/obgyn_femasys cartridge.",
   "default_specialty": "OBGYN",
   "default_geography": [],
   "default_exclusion_rules": [

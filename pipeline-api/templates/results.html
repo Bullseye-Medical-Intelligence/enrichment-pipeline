@@ -1412,7 +1412,11 @@ function submitAngle(rid, runId) {
     var list = document.getElementById('angles-list-' + rid);
     if (list) {
       var li = document.createElement('li');
-      li.innerHTML = angle + ' <span style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#b45309;margin-left:6px;">(Added by Operator)</span>';
+      li.textContent = angle + ' ';
+      var tag = document.createElement('span');
+      tag.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#b45309;margin-left:6px;';
+      tag.textContent = '(Added by Operator)';
+      li.appendChild(tag);
       list.appendChild(li);
     }
     inp.value = '';

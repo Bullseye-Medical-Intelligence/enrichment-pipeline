@@ -469,14 +469,14 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     of low-value signals can never out-score the few that matter. Logic:
 
     - max_positive = sum of all positive (desirable) signal weights — the ideal.
-    - A confirmed ("yes") desirable signal adds its full weight to achieved.
+    - A confirmed ("yes") desirable signal adds weight × SIGNAL_CONFIDENCE_CREDIT[confidence] to achieved.
     - An inferred desirable signal (state_inferred, set by reinforcement) adds
       INFERENCE_CREDIT of its weight — partial credit for indirect evidence.
     - An unconfirmed ("not_found") desirable signal applies its not_found_weight
       penalty (usually 0 or negative).
     - A confirmed-absent ("no") desirable signal applies its no_weight penalty
       (usually 0 or negative) — a missing must-have costs points, not just credit.
-    - A confirmed friction signal (negative weight, "yes") subtracts its weight.
+    - A confirmed friction signal (negative weight, "yes") subtracts |weight| × SIGNAL_CONFIDENCE_CREDIT[confidence].
     - confidence_score is the mean confidence across confirmed/inferred signals.
     - bullseye_score is the weighted blend of fit and confidence.
     """

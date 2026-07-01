@@ -47,7 +47,6 @@ from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import MAX_CRAWL_PAGES, batch_extract
 from enrichment.constants import (
     DEFAULT_BULLSEYE_MIN_SCORE,
-    DEFAULT_NEAR_MISS_BAND,
     MIN_CONTEXT_CHARS,
 )
 from enrichment.config_validator import validate_icp, validate_run_config
@@ -332,7 +331,7 @@ def _sync_shared_data_to_drive(drive_config: dict) -> None:
                 print(f"  [WARN] Drive sync: {src.name} failed "
                       f"(exit {result.returncode}): {result.stderr.strip()[:120]}")
         except FileNotFoundError:
-            print(f"  [WARN] Drive sync: rclone not found — shared data not uploaded.")
+            print("  [WARN] Drive sync: rclone not found — shared data not uploaded.")
             return
         except subprocess.TimeoutExpired:
             print(f"  [WARN] Drive sync: {src.name} timed out after 60s.")
@@ -639,7 +638,7 @@ def run_pipeline(input_file: str, source_type: str,
         (pre_excluded if triggered else eligible).append(record)
     if pre_excluded:
         print(f"\n  Pre-filter: {len(pre_excluded)} records skip enrichment "
-              f"(wrong specialty / outside geography / REI taxonomy); "
+              f"(wrong specialty / outside geography / excluded taxonomy); "
               f"{len(eligible)} eligible")
     records = eligible
 

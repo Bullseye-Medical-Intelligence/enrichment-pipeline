@@ -1,5 +1,5 @@
 {
-  "version": "ormco-spark-v1",
+  "version": "ormco-spark-v3",
   "contact_strategy": "Prefer the lead orthodontist or practice owner when associated with Damon system content, digital workflow pages, or CBCT technology — a named provider tied to the tech investment is the fastest path to a yes. If no such association is apparent, prefer the practice manager or treatment coordinator; they own scheduling and day-to-day workflow friction. Fall back to the first listed orthodontist. Role names in the brief should reference how Spark reduces their workflow friction, not product features.",
   "signals": [
     {
@@ -53,14 +53,14 @@
       "prompt_instruction": "Does this practice's website name the iTero intraoral scanner as equipment they use or offer?",
       "positive_weight": -15,
       "inhibited_by": "S-OS-008",
-      "note": "FRICTION. iTero is Align Technology's proprietary scanner — an iTero-only practice has its digital capture workflow tightly bound to Invisalign. If the practice also lists a non-iTero scanner (S-OS-008=yes), this friction is suppressed via inhibited_by: a multi-scanner practice is not locked. Friction applies only when the practice is iTero-exclusive."
+      "note": "FRICTION. iTero is Align Technology's proprietary scanner — an iTero-only practice has its digital capture workflow tightly bound to Invisalign. This -15 friction applies whenever iTero is confirmed; a practice that also lists a non-iTero scanner (S-OS-008) earns that signal's positive weight, which offsets the friction in the fit blend. (inhibited_by only suppresses an exclude_if_yes exclusion, which this scoring-only signal does not use.)"
     },
     {
       "signal_id": "S-OS-008",
       "signal_label": "Open intraoral scanner present (non-iTero)",
       "prompt_instruction": "Does this practice's website explicitly name an intraoral scanner other than iTero — such as 3Shape Trios, Medit, Planmeca, Carestream, Dentsply Sirona, or any other non-iTero digital impression system — as equipment they use?",
       "positive_weight": 25,
-      "note": "Digital sophistication signal, open-ecosystem only. A non-iTero scanner exports open STL files, meaning the practice is not locked to Align's capture workflow. Also suppresses iTero friction (S-OS-007) via inhibited_by when both are present."
+      "note": "Digital sophistication signal, open-ecosystem only. A non-iTero scanner exports open STL files, meaning the practice is not locked to Align's capture workflow. Its positive weight offsets the iTero friction (S-OS-007) when both are present."
     },
     {
       "signal_id": "S-OS-009",
