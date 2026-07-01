@@ -95,17 +95,30 @@ def run_suppress_pass(
 
         is_suppressed, reason = check_suppression(record, suppression_list)
         if is_suppressed:
+            # A matching record that is already EXCLUDED was suppressed on a prior
+            # run — the _customer_suppressed marker is stripped from output, so
+            # exclusion_status is the durable signal. Count it as already suppressed,
+            # not newly, so a re-check does not inflate the churn number.
+            if record.get("exclusion_status") == "EXCLUDED":
+                already_suppressed += 1
+                continue
             _suppress_record(record, reason, run_config)
             newly_suppressed += 1
             newly_suppressed_names.append(record.get("practice_name", ""))
 
     if newly_suppressed:
+        # Strip internal (_-prefixed) fields before writing, matching the Step-8
+        # output convention: _suppress_record sets _customer_suppressed and
+        # validate_and_finalize re-injects _npi_taxonomy_exclusions, neither of
+        # which belongs in enriched_targets.json.
+        from enrichment.scorer import strip_internal_fields
+        clean = [strip_internal_fields(r) for r in records]
         tmp_path = targets_path.with_suffix(".json.tmp")
         if wrapper is not None:
-            wrapper["records"] = records
+            wrapper["records"] = clean
             output = wrapper
         else:
-            output = records
+            output = clean
         tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp_path, targets_path)
 

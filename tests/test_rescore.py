@@ -239,6 +239,17 @@ def test_rescore_preview_never_un_excludes(tmp_path):
     for key in stats["tier_transitions"]:
         assert not key.startswith("Excluded"), f"excluded record un-excluded in preview: {key}"
 
+
+def test_rescore_strips_internal_fields(tmp_path):
+    """Rescore output must carry no _-prefixed internal fields: validate_and_finalize
+    re-injects _npi_taxonomy_exclusions, and the loaded record may hold _context_text."""
+    rec = _make_record(signals=[_make_signal(state="yes")])
+    run_dir = _write_run(tmp_path, [rec])
+    run_rescore_pass(run_dir, [_make_icp_signal()])
+    out = _read_records(run_dir)[0]
+    leaked = [k for k in out if k.startswith("_")]
+    assert leaked == [], f"internal fields leaked into rescore output: {leaked}"
+
 class TestRescoreChangesScore:
 
     def test_rescore_changes_score_when_weights_change(self, tmp_path):

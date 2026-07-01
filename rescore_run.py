@@ -176,6 +176,11 @@ def run_rescore_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
 
         updated_records.append(record)
 
+    # Strip internal (_-prefixed) fields before writing — validate_and_finalize
+    # re-injects _npi_taxonomy_exclusions — matching the Step-8 output convention.
+    from enrichment.scorer import strip_internal_fields
+    updated_records = [strip_internal_fields(r) for r in updated_records]
+
     # Atomic write: write to a .tmp file then os.replace() for crash safety.
     tmp_path = targets_path.with_suffix(".json.tmp")
     if wrapper is not None:

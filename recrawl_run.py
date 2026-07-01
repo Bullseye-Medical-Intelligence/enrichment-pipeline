@@ -189,6 +189,7 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
 
         # Re-crawl succeeded — update crawl fields
         print(f"    [OK] Re-crawl returned {len(result.context_text)} chars")
+        original_confidence = record.get("source_confidence")
         record["_context_text"] = result.context_text
         record["_pages_crawled"] = result.pages_crawled
         record["_evidence_pages"] = result.pages or []
@@ -214,6 +215,12 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
             )
         except Exception as e:
             print(f"    [FAIL] Signal extraction failed: {str(e)[:150]}")
+            # Revert the crawl mutations so this record stays in its original blocked
+            # state (retryable) instead of being written with a leaked _context_text
+            # and a flipped source_confidence that removes it from the re-crawl set.
+            for k in ("_context_text", "_pages_crawled", "_evidence_pages"):
+                record.pop(k, None)
+            record["source_confidence"] = original_confidence
             stats["still_blocked"] += 1
             continue
 

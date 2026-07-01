@@ -174,7 +174,30 @@ class TestSuppressPass:
         assert "Alpha Clinic" in stats["newly_suppressed_names"]
 
         saved = json.loads((run_dir / "enriched_targets.json").read_text())
-        assert saved["records"][0]["_customer_suppressed"] is True
+        # The suppression markers are internal and must be stripped from output
+        # (matching Step-8 convention); suppression itself is verified via stats above.
+        assert "_customer_suppressed" not in saved["records"][0]
+        assert "_suppression_reason" not in saved["records"][0]
+        assert not any(k.startswith("_") for k in saved["records"][0])
+
+    def test_already_excluded_match_not_counted_newly(self, tmp_path):
+        # Real output has no _customer_suppressed marker (stripped at Step 8), so an
+        # already-excluded record that still matches the suppression list must count
+        # as already suppressed, not newly — otherwise a re-check inflates the churn.
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        supp_csv = tmp_path / "supp.csv"
+        rec = _make_record(practice_name="Alpha Clinic", npi_number="1111111111")
+        rec["exclusion_status"] = "EXCLUDED"
+        del rec["_customer_suppressed"]
+        _write_targets(run_dir, [rec])
+        _write_suppression(supp_csv, [
+            {"npi_number": "1111111111", "practice_name": "Alpha Clinic",
+             "address_zip": "78701", "address_state": "TX"},
+        ])
+        stats = run_suppress_pass(run_dir, supp_csv)
+        assert stats["newly_suppressed"] == 0
+        assert stats["already_suppressed"] == 1
 
     def test_skips_already_suppressed(self, tmp_path, monkeypatch):
         import enrichment.exclusion_checker as ec
@@ -246,13 +269,15 @@ class TestSuppressPass:
             {"npi_number": "1111111111", "practice_name": "Alpha Clinic",
              "address_zip": "78701", "address_state": "TX"},
         ])
-        run_suppress_pass(run_dir, supp_csv)
+        stats = run_suppress_pass(run_dir, supp_csv)
         saved = json.loads((run_dir / "enriched_targets.json").read_text())
         records = saved["records"]
-        alpha = next(r for r in records if r["practice_name"] == "Alpha Clinic")
-        beta = next(r for r in records if r["practice_name"] == "Beta Clinic")
-        assert alpha["_customer_suppressed"] is True
-        assert beta.get("_customer_suppressed") is False
+        # Alpha matched and was suppressed; Beta did not match but is preserved. The
+        # internal marker is stripped from output (Step-8 convention), so suppression
+        # is asserted via stats, and both records still appear.
+        assert stats["newly_suppressed"] == 1
+        assert {r["practice_name"] for r in records} == {"Alpha Clinic", "Beta Clinic"}
+        assert all("_customer_suppressed" not in r for r in records)
 
     def test_missing_targets_raises(self, tmp_path):
         run_dir = tmp_path / "RUN-20260101-120000"

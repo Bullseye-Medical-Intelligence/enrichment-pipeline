@@ -395,7 +395,10 @@ function addSignalRow() {
 
 /* Score simulator: read the live signal definitions from the form, pair each
    with its chosen outcome, and POST to /icp-profiles/simulate. The endpoint
-   shells out to the pipeline's scorer so the preview matches a real run. */
+   shells out to the pipeline's scorer. The preview honors the signal weights and
+   flags (including exclude_if_yes) but uses the engine default Bullseye threshold,
+   so a project configured with a different bullseye_min_score may tier a
+   borderline score differently. */
 function runIcpSimulation(btn) {
   function field(prefix, n) {
     var el = document.querySelector('[name="' + prefix + '_' + n + '"]');
@@ -425,6 +428,7 @@ function runIcpSimulation(btn) {
     var ct = field('cap_tier', n); if (ct) sig.cap_tier = ct;
     var rein = field('reinforces', n); if (rein) sig.reinforces = rein;
     var ft = field('floor_tier', n); if (ft) sig.floor_tier = ft;
+    if (field('exclude_if_yes', n)) sig.exclude_if_yes = true;
 
     icpSignals.push(sig);
     signalStates[sid] = { state: sel.value, confidence: 'high' };
