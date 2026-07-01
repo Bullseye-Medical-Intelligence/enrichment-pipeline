@@ -132,8 +132,6 @@ Static site on Hostinger shared hosting. FTP via port 21 (SFTP port 22 blocked f
 - `upload_site.py` — upload specific files
 - `update_site_logos.py` — batch: download all HTML, replace old fan-geometry SVG logos with new bullseye ring mark (`/assets/bullseye-mark-ink.svg`), re-upload
 
-After any logo script update: `git pull && python update_site_logos.py`
-
 **Intelligence blog** (`/intelligence/`) — geo-focused market analysis pages, same Hostinger host.
 
 ---
@@ -173,4 +171,4 @@ After any logo script update: `git pull && python update_site_logos.py`
 | Femasys run config | `config/clients/obgyn_femasys/run_config.json` |
 | ICP simulator | `simulate_icp.py` |
 | Website upload | `upload_site.py`, `update_site_logos.py` |
-| Tests | `tests/` (756+ deterministic tests, no API calls) |
+| Tests | `tests/` (deterministic tests, no API calls) |

@@ -346,13 +346,6 @@ server-side.
   `PIPELINE.md`, and `pipeline-api/CLAUDE.md`. They are canonical; if code conflicts
   with them, fix the code.
 
----
-
-### Quick resume checklist for the next session
-1. `git status` (expect clean, on `main`, up to date with
-   `origin/claude/pensive-cray-MaWmt`).
-2. `python -m pytest tests/ -q` (expect **1038 passed**).
-3. Read root `CLAUDE.md` + `pipeline-api/CLAUDE.md` before touching anything.
-4. If asked to verify the client boundary, do the side-by-side handoff render in §5.
-5. Develop on `claude/pensive-cray-MaWmt`; do not push to `main` without explicit
-   human authorization.
+*(The original resume checklist was removed: it pointed at a since-deleted branch
+and a stale test count. Current guidance lives in `CLAUDE.md`, `PIPELINE.md`, and
+`docs/operator-sop.md`.)*

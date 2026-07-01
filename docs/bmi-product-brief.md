@@ -49,15 +49,13 @@ Everything else — the schema, the scoring model, the exclusion-first evaluatio
 ## THE TWO ENGINES
 
 ### Engine One — Sales Hook (3-Target Dossier)
-Cross-references a client ICP against existing Asset Bank profiles (or sources live). Outputs exactly three target cards: **Bullseye / Warm / Excluded**. Each card carries signals with source URLs, a fit_confidence_status, and a tailored sales angle. The Excluded card is a deliberate proof point — showing the client who NOT to call is the move no list vendor makes.
+Cross-references a client ICP against existing Asset Bank profiles (or sources live). Outputs exactly three target cards: **Bullseye / Contender / Excluded**. Each card carries signals with source URLs, a fit_confidence_status, and a tailored sales angle. The Excluded card is a deliberate proof point — showing the client who NOT to call is the move no list vendor makes.
 
 ### Engine Two — Bulk Processing
 Processes 10,000+ record legacy lists. Zero chain-of-thought, no markdown, schema-compliant raw JSON output for clean CRM import. Same chassis and cartridge system, different output mode.
 
 ### Free Brief Sourcing Path
-Given only a company name and website, the pipeline crawls the client's site, generates a product hypothesis, sources practices live from public directories, and populates the 3-target dossier. **No client list required.** The first Angel Aligner run against the Dallas metro was a Free Brief sourcing run.
-
-*Note: Angel Aligner (`ortho_angel_v1`) was a concept/demo cartridge and has since been removed from the repo. The references below are retained as historical context for the Free Brief sourcing workflow.*
+Given only a company name and website, the pipeline crawls the client's site, generates a product hypothesis, sources practices live from public directories, and populates the 3-target dossier. **No client list required.**
 
 This is a controlled sample-generation workflow, not a full market map. The goal is to produce a credible sales conversation asset, not to exhaustively source a territory.
 
@@ -102,7 +100,7 @@ Two independent dimensions — **never averaged**:
 - **`confidence_score`** (0–100): mean evidence quality across confirmed signals.
 - **`bullseye_score`** = `0.6 × fit + 0.4 × confidence`, clamped 0–100. Threshold: ≥ 90 for Bullseye.
 
-**`HIGH FIT / LOW EVIDENCE` must survive to output.** A practice with strong procedure signals and a single thin source stays flagged as a Warm record — it is never collapsed into one number that hides the evidence weakness.
+**`HIGH FIT / LOW EVIDENCE` must survive to output.** A practice with strong procedure signals and a single thin source keeps a high fit score and a low confidence score — it is never collapsed into one number that hides the evidence weakness.
 
 ### Tier Ladder
 
@@ -206,75 +204,6 @@ FastAPI server at `pipeline-api/`. Server-rendered HTML UI for internal operator
 
 ---
 
-### Cartridge 2: Angel Aligner (US clear-aligner challenger)
-
-*Note: this cartridge (`ortho_angel_v1`) was a concept/demo and has since been removed from the repo. The spec below is kept as historical context, not an active cartridge.*
-
-**Status:** Cartridge spec complete (V1.0, May 2026). First live sourcing run executed against Dallas metro. No pre-qualified records in Asset Bank — every Angel run is currently a live Free Brief sourcing run.
-
-**ICP in one line:** A practice positioned to adopt a challenger aligner system against an entrenched incumbent. Already running aligner volume. Not single-brand locked. Competing on aesthetics and cash-pay, not insurance throughput.
-
-**Market context:**
-- The incumbent's moat is the iTero scanner, which funnels digital workflow toward its own aligner. Angel integrates with 3Shape and Medit, not iTero. Scanner brand is therefore a workflow-friction tell, publicly observable, almost never scored by competitors.
-- General dentists and group practices are the fastest-growing adopter segment. The ICP targets both orthodontists and general dentists.
-- A major DTC aligner brand exited the market, orphaning patients — practices absorbing that demand have proven they acquire aligner patients outside the incumbent default.
-- Angel's clinical differentiators are Class II (mandibular advancement) and growing-patient Class III/pediatric systems.
-
-**Section 3 — Procedure & Service Signals:**
-
-| Field | Values | Notes |
-|---|---|---|
-| `clear_aligner_services_listed` | yes/no/not found | Clear aligner therapy explicitly listed |
-| `aligner_brands_named` | Array[String] or not found | THE WEDGE FIELD. Multi-brand = open to challenger. |
-| `scanner_technology_visible` | iTero/3Shape/Medit/Primescan/Other/none/not found | Workflow-compatibility tell. 3Shape/Medit = Angel-compatible. |
-| `cosmetic_dentistry_marketed` | yes/no/not found | Cosmetic/aesthetic dentistry marketed |
-| `teen_pediatric_ortho_program` | yes/no/not found | Teen or pediatric/early-intervention program |
-| `complex_case_marketing` | yes/no/not found | Class II/III, growth modification, surgical-ortho |
-| `new_patient_aligner_promotion` | yes/no/not found | Financing, consults, or specials tied to aligners |
-| `before_after_aligner_gallery` | yes/no/not found | Public before/after aligner results gallery |
-| `failed_dtc_or_refinement_messaging` | yes/no/not found | DTC-failure repair, refinement, or treatment restart |
-| `patient_reviews_mention_aligners` | yes/no/not found | Patient reviews reference aligner experience |
-| `review_aligner_excerpt` | String <50 words or not found | Short review excerpt |
-
-**Section 6 — Hard Exclusion Gates:**
-
-| Gate | Values | Notes |
-|---|---|---|
-| `dso_single_vendor_aligner_lock` | yes/no/not found | Corporate single-vendor aligner mandate. STRUCTURAL. |
-| `no_aligner_workflow_signal` | yes/no | Pure traditional-braces practice, no digital aligner muscle |
-| `practice_closed_or_inactive` | yes/no/not found | Closed or permanently relocated |
-| `no_web_presence_found` | yes/no | No website, no directory listings |
-| `out_of_scope_specialty` | yes/no | Not orthodontic or general-dental |
-
-**NOT a hard gate:** independent Invisalign-loyal practices. These score LOW FIT — a rep can still convert a frustrated incumbent-loyal independent. Gating them weakens the disqualification log.
-
-**Scoring emphasis (priority order):**
-
-Positive:
-1. Brand-agnostic positioning — generic "clear aligners" or multi-brand naming
-2. Scanner compatibility — 3Shape or Medit (positive); iTero-exclusive (negative)
-3. Clinical-fit lane — teen/pediatric program + complex-case marketing
-4. Orphan-absorber signal — DTC-failure or refinement messaging
-5. Multi-location/group leverage multiplier
-
-Negative:
-- iTero-exclusive workflow with no open-scanner signal
-- Single incumbent brand named, no other aligner signal, premium incumbent badging
-
-**Note on state_mandate_status field:** Does not apply to this cartridge. Clear aligners are elective and cash-pay across all states. Read cash-pay readiness from financing, cosmetic marketing, and new-patient promotion signals instead.
-
-**Dallas Free Brief result (May 2026):**
-
-| Card | Practice | Key Signals | fit_signal | confidence |
-|---|---|---|---|---|
-| Bullseye | Ellis Orthodontics, 6333 E Mockingbird Ln | Medit scanner; Spark+Invisalign+ClearCorrect; teen/pediatric program; Surgical Orthodontist; multi-location | 87 | 71 |
-| Warm | Ohlenforst Carney Orthodontics, 5925 Forest Lane | 3Shape scanner; left Invisalign for 3M Clarity; zero-interest financing; teen program | 78 | 38 |
-| Excluded | MINT Orthodontics — Mockingbird Station | DSO (50+ locations); iTero scanner; Invisalign-only across all public pages; no practice-level brand autonomy observable | 35 (capped) | — |
-
-**Dallas data constraint:** All practice websites returned HTTP 403 during the WebFetch-based sourcing run. Signal data was extracted from search engine index snippets referencing public page URLs. The pipeline's `requests`-based web extractor with browser-spoofed headers bypasses this; the Free Brief sourcing tool used in the session does not. Running the actual pipeline against Dallas would yield higher confidence scores.
-
----
-
 ## WHAT WAS BUILT — SESSION LOG (MAY 2026)
 
 ### Shipped to `main` this session
@@ -302,9 +231,6 @@ After an analyst saves a QC review, the account card auto-collapses after a 900m
 - Approve button disables and shows "Generating…" during LLM call (prevents double-submit)
 - Post-approve button state: approve goes gray ("Demo Brief Generated"), Save Profile becomes the primary CTA (terracotta)
 - Active Exclusion Rules display as readable pill badges instead of raw snake_case strings
-
-**6. Angel Aligner cartridge** (this session)
-Full ICP cartridge spec defined for the US clear-aligner challenger market. Covers both orthodontists and general dentists. Three swap points loaded. Dallas Free Brief sourcing run executed and documented. First non-fertility cartridge.
 
 ---
 
@@ -338,7 +264,7 @@ python pipeline.py \
 | Specialty | Pool Status |
 |---|---|
 | Fertility / OBGYN | ACTIVE — deep pool, production-ready |
-| Orthodontics / General Dental | EMPTY — all Angel runs are live sourcing runs |
+| Orthodontics / General Dental | EMPTY — no records ingested |
 | Aesthetics | ICP template exists (`icp_templates/aesthetics.json`), no records ingested |
 | Orthopedics | ICP template exists, no records ingested |
 | Urology | ICP template exists, no records ingested |
@@ -347,13 +273,11 @@ python pipeline.py \
 
 ## OPEN ITEMS / KNOWN GAPS
 
-1. **Angel Aligner: no Asset Bank pool.** Every Dallas (or any metro) Angel run requires a live sourcing pass. Pre-ingesting a batch of ortho/dental records from Outscraper would enable the Engine One draw-from-pool flow.
+1. **Bot-blocking on practice sites.** Some practice websites (Cloudflare WAF and similar) return 403 to automated crawlers. The pipeline's `requests`-based extractor with browser-spoofed headers bypasses most of these, and `--auto-browser-retry` / `--playwright` recover the rest; the Free Brief WebFetch path does not. The system routes 403'd records to `source_confidence: limited` → Manual Review, which forces operator review — but operators currently have no in-system signal distinguishing "retry-able 403" from "genuinely no content."
 
-2. **Dental site 403 rate.** Dental/ortho practice websites have higher bot-blocking rates than OBGYN sites (Cloudflare WAF is more common in dental). The pipeline's `requests`-based extractor bypasses most of these; the Free Brief WebFetch path does not. The system correctly routes 403'd records to `source_confidence: limited` → Contender, which forces operator review — but operators currently have no in-system signal distinguishing "retry-able 403" from "genuinely no content."
+2. **`not_found_reason` field.** Three situations produce `signal_state: not_found` with different rep implications: (a) crawled successfully, service absent; (b) site couldn't be crawled; (c) LLM claimed "yes" but evidence gate downgraded it. The `not_found_reason` field (`""` / `"no_context"` / `"evidence_gate"`) is in the schema and surfaced in the UI but the distinction is not yet exposed in client exports.
 
-3. **`not_found_reason` field.** Three situations produce `signal_state: not_found` with different rep implications: (a) crawled successfully, service absent; (b) site couldn't be crawled; (c) LLM claimed "yes" but evidence gate downgraded it. The `not_found_reason` field (`""` / `"no_context"` / `"evidence_gate"`) is in the schema and surfaced in the UI but the distinction is not yet exposed in client exports.
-
-4. **`inferred_from` field.** When a signal is inferred via reinforcement (`state_inferred: true`), `inferred_from` carries the reinforcing signal's ID. Present in the schema, surfaced in the UI as a tooltip, not yet in client exports.
+3. **`inferred_from` field.** When a signal is inferred via reinforcement (`state_inferred: true`), `inferred_from` carries the reinforcing signal's ID. Present in the schema, surfaced in the UI as a tooltip, not yet in client exports.
 
 ---
 
