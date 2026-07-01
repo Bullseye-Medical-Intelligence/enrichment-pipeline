@@ -20,7 +20,7 @@ import os
 # Ensure project root is on the path regardless of where pytest is invoked
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from ingestion.outscraper_adapter import _normalize_state, infer_specialty
+from ingestion.outscraper_adapter import _normalize_state, _parse_full_address, infer_specialty
 from ingestion.npi_lookup import (
     _normalize_phone,
     _names_agree,
@@ -143,6 +143,61 @@ class TestStateNormalization:
         # Unknown values are returned uppercased (best-effort)
         result = _normalize_state("Narnia")
         assert result == "NARNIA"
+
+    def test_territory_full_names(self):
+        assert _normalize_state("Puerto Rico") == "PR"
+        assert _normalize_state("Guam") == "GU"
+
+
+# ---------------------------------------------------------------------------
+# Full-address parsing
+# ---------------------------------------------------------------------------
+
+class TestFullAddressParsing:
+
+    def test_city_state_zip(self):
+        assert _parse_full_address("Miami, FL 33101") == {
+            "address_city": "Miami", "address_state": "FL", "address_zip": "33101"}
+
+    def test_city_state_no_zip_does_not_crash(self):
+        # The optional zip group used to be .strip()'d unconditionally, which
+        # raised AttributeError on a missing zip and silently dropped the row.
+        r = _parse_full_address("Austin, TX")
+        assert (r["address_city"], r["address_state"], r["address_zip"]) == ("Austin", "TX", "")
+
+    def test_multi_segment_uses_trailing_city_state(self):
+        r = _parse_full_address("123 Oak Ave, Suite 5, Miami, FL 33101")
+        assert (r["address_city"], r["address_state"], r["address_zip"]) == ("Miami", "FL", "33101")
+
+    def test_street_city_full_state_no_zip(self):
+        r = _parse_full_address("500 Main St, Dallas, Texas")
+        assert (r["address_city"], r["address_state"], r["address_zip"]) == ("Dallas", "Texas", "")
+
+    def test_zip_plus_four(self):
+        r = _parse_full_address("Dallas, TX 75201-1234")
+        assert (r["address_state"], r["address_zip"]) == ("TX", "75201-1234")
+
+    def test_empty_and_unparseable_return_blanks(self):
+        blank = {"address_city": "", "address_state": "", "address_zip": ""}
+        assert _parse_full_address("") == blank
+        assert _parse_full_address("no delimiters here") == blank
+
+
+# ---------------------------------------------------------------------------
+# Manual adapter state normalization
+# ---------------------------------------------------------------------------
+
+class TestManualAdapterStateNormalization:
+
+    def test_full_state_name_normalized(self):
+        from ingestion.manual_adapter import _map_row
+        rec = _map_row({"practice_name": "X", "address_state": "Florida"}, 2)
+        assert rec["address_state"] == "FL"
+
+    def test_abbreviation_passthrough(self):
+        from ingestion.manual_adapter import _map_row
+        rec = _map_row({"practice_name": "X", "address_state": "tx"}, 2)
+        assert rec["address_state"] == "TX"
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,10 @@ US_STATE_ABBREV = {
     "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT",
     "virginia": "VA", "washington": "WA", "west virginia": "WV",
     "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
+    # US territories (Outscraper occasionally emits these as full names)
+    "puerto rico": "PR", "guam": "GU", "u.s. virgin islands": "VI",
+    "virgin islands": "VI", "american samoa": "AS",
+    "northern mariana islands": "MP",
 }
 
 
@@ -112,22 +116,33 @@ def _generate_record_id(npi: Optional[str], practice_name: str,
 
 def _parse_full_address(full_address: str) -> dict:
     """
-    Attempt to parse city, state, zip from a full address string.
-    Returns a dict with address_city, address_state, address_zip.
-    Falls back to empty strings on parse failure.
+    Parse city, state, and (optional) zip from a free-form US address string.
+    Returns a dict with address_city, address_state, address_zip; each field is
+    "" when it cannot be determined. Never raises.
+
+    Reads the trailing comma segments, which for US addresses are
+    "..., City, ST ZIP" (or "..., City, State"). This resolves multi-segment
+    addresses like "123 Oak Ave, Suite 5, Miami, FL 33101" to Miami / FL / 33101
+    rather than an earlier street or suite fragment. The state is returned as
+    written; the caller normalizes it to a 2-letter abbreviation.
     """
     result = {"address_city": "", "address_state": "", "address_zip": ""}
     if not full_address:
         return result
 
-    # Match "City, ST 12345", "City, ST", or "City, Texas" — zip is optional,
-    # state is 2–20 letters (handles both abbreviations and full names).
-    pattern = r"([A-Za-z][A-Za-z\s\.]+?),\s*([A-Za-z]{2,20})(?:\s+(\d{5}(?:-\d{4})?))?" 
-    match = re.search(pattern, full_address)
-    if match:
-        result["address_city"] = match.group(1).strip()
-        result["address_state"] = match.group(2).strip()
-        result["address_zip"] = match.group(3).strip()
+    parts = [p.strip() for p in full_address.split(",") if p.strip()]
+    if len(parts) < 2:
+        return result
+
+    # The last segment carries the state and an optional zip: "FL", "FL 33101",
+    # "TX 75201-1234", or a full state name like "Texas".
+    m = re.match(r"^([A-Za-z][A-Za-z\s\.]*?)(?:\s+(\d{5}(?:-\d{4})?))?$", parts[-1])
+    if not m:
+        return result
+
+    result["address_state"] = m.group(1).strip()
+    result["address_zip"] = (m.group(2) or "").strip()
+    result["address_city"] = parts[-2]
     return result
 
 

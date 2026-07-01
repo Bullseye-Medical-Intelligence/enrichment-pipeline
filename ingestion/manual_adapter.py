@@ -11,6 +11,7 @@ import csv
 from ingestion.outscraper_adapter import (
     infer_specialty,
     _generate_record_id,
+    _normalize_state,
     _normalize_url,
 )
 
@@ -94,7 +95,9 @@ def _map_row(row: dict, row_num: int) -> dict:
         raise ValueError(f"Row {row_num}: missing required field 'practice_name'")
 
     npi = (row.get("npi_optional") or "").strip() or None
-    address_state = (row.get("address_state") or "").strip()
+    # Normalize to a 2-letter abbreviation so manual CSVs using full state names
+    # ("Florida") are not mass-excluded by the abbreviation-based geography gate.
+    address_state = _normalize_state(row.get("address_state") or "")
     address_city = (row.get("address_city") or "").strip()
     address_zip = (row.get("address_zip") or "").strip()
     website_url = _normalize_url(row.get("website_url") or row.get("website") or row.get("site") or row.get("url") or "")
