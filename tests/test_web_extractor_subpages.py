@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from extraction.web_extractor import _find_relevant_subpages
+from extraction.web_extractor import _find_relevant_subpages, _same_registered_domain
 
 BASE = "https://clinic.example"
 
@@ -148,3 +148,43 @@ def test_operator_keywords_augment_defaults():
     )
     result = _find_relevant_subpages(html, BASE, max_pages=2, keywords=["iui", "infertil"])
     assert result == [f"{BASE}/billing-and-insurance"]
+
+
+# ---------------------------------------------------------------------------
+# Off-domain redirect guard (subpage text must stay on the practice's domain)
+# ---------------------------------------------------------------------------
+
+def test_same_domain_www_and_subdomain_accepted():
+    assert _same_registered_domain("https://clinic.com/a", "https://www.clinic.com/b")
+    assert _same_registered_domain("https://booking.clinic.com/x", "https://clinic.com/")
+
+
+def test_off_domain_redirect_rejected():
+    # A subpage that redirects to a pay portal or social page is a different
+    # registered domain and must not become practice evidence.
+    assert not _same_registered_domain("https://pay.instamed.com/x", "https://clinic.com/")
+    assert not _same_registered_domain("https://facebook.com/clinic", "https://clinic.com/")
+
+
+def test_fetch_html_resniffs_encoding_when_header_lacks_charset(monkeypatch):
+    """A header-less UTF-8 page must not be decoded as ISO-8859-1 (mojibake)."""
+    import extraction.web_extractor as we
+
+    class FakeResp:
+        def __init__(self):
+            self.headers = {"content-type": "text/html"}  # no charset
+            self.url = "https://clinic.com/"
+            self.encoding = "ISO-8859-1"  # requests' header-less default
+        @property
+        def apparent_encoding(self):
+            return "utf-8"
+        @property
+        def text(self):
+            return "Dr. José — Women’s Health" if self.encoding.lower() == "utf-8" else "Dr. JosÃ©"
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(we.requests, "get", lambda *a, **k: FakeResp())
+    html, final, err = we._fetch_html("https://clinic.com/", retries=0)
+    assert err == ""
+    assert "José" in html

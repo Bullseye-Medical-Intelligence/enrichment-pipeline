@@ -11,6 +11,7 @@ ThreadPoolExecutor) so the async Playwright API is not required.
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 # Allow both `import playwright_extractor` (run from extraction/) and
@@ -23,8 +24,10 @@ from web_extractor import (  # noqa: E402
     ExtractionResult,
     MAX_CHARS_PER_PAGE,
     MAX_COMBINED_CHARS,
+    MAX_CRAWL_SECONDS,
     DEFAULT_SUBPAGE_KEYWORDS,
     _find_relevant_subpages,
+    _same_registered_domain,
     looks_like_challenge,
 )
 
@@ -299,8 +302,12 @@ def crawl_with_playwright(
                 subpages = _find_relevant_subpages(html, final_url, max_pages=max_pages, keywords=keywords)
                 print(f"    [Playwright] Found {len(subpages)} subpages")
 
+                crawled_chars = sum(len(b) for b in all_text_blocks)
+                crawl_deadline = time.monotonic() + MAX_CRAWL_SECONDS
                 for sub_url in subpages:
-                    if len(all_text_blocks) >= max_pages:
+                    if (len(all_text_blocks) >= max_pages
+                            or crawled_chars >= MAX_COMBINED_CHARS
+                            or time.monotonic() >= crawl_deadline):
                         break
                     print(f"    [Playwright] Fetching subpage: {sub_url}")
                     try:
@@ -308,9 +315,15 @@ def crawl_with_playwright(
                         page.wait_for_timeout(800)
                         sub_html = page.content()
                         sub_final = page.url
+                        # Drop subpages that redirected off the practice's domain so
+                        # third-party content never becomes practice evidence.
+                        if not _same_registered_domain(sub_final, final_url):
+                            continue
                         sub_text = _extract_text_from_html(sub_html)
                         if sub_text:
-                            all_text_blocks.append(f"[Source: {sub_final}]\n{sub_text}")
+                            block = f"[Source: {sub_final}]\n{sub_text}"
+                            all_text_blocks.append(block)
+                            crawled_chars += len(block)
                             pages_crawled.append(sub_final)
                             evidence_pages.append({"url": sub_final, "text": sub_text})
                     except Exception:

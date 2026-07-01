@@ -236,6 +236,11 @@ def _fetch_html(url: str, timeout: int = 15, retries: int = 3) -> tuple[str, str
             ct = response.headers.get("content-type", "")
             if "html" not in ct.lower():
                 return "", response.url, f"Non-HTML content type: {ct}"
+            # requests falls back to ISO-8859-1 when the HTTP header omits a
+            # charset, which mojibakes UTF-8 pages. Re-sniff from the bytes in that
+            # case so provider names and evidence quotes decode correctly.
+            if (response.encoding or "").lower() == "iso-8859-1" and "charset" not in ct.lower():
+                response.encoding = response.apparent_encoding or response.encoding
             return response.text, response.url, ""
         except requests.exceptions.HTTPError as e:
             last_error = f"HTTP error: {e}"
@@ -251,6 +256,20 @@ def _fetch_html(url: str, timeout: int = 15, retries: int = 3) -> tuple[str, str
             break
 
     return "", url, last_error
+
+
+def _registered_domain(netloc: str) -> str:
+    """Return the last two dot-labels of a host (best-effort registered domain)."""
+    host = netloc.lower().split(":")[0]  # drop any :port
+    parts = [p for p in host.split(".") if p]
+    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+
+
+def _same_registered_domain(url_a: str, url_b: str) -> bool:
+    """True when two URLs share a registered domain (www/subdomain-insensitive)."""
+    a = _registered_domain(urlparse(url_a).netloc)
+    b = _registered_domain(urlparse(url_b).netloc)
+    return bool(a) and a == b
 
 
 def _extract_visible_text(html: str) -> str:
@@ -464,7 +483,10 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
         time.sleep(0.5)  # Polite crawl delay
 
         sub_html, sub_final, _ = _fetch_html(subpage_url, timeout=timeout, retries=1)
-        if sub_html:
+        # A subpage can redirect off-site (a pay portal, a social page, an
+        # acquiring hospital). Keep only text whose FINAL url is still on the
+        # practice's domain so third-party content never becomes practice evidence.
+        if sub_html and _same_registered_domain(sub_final, final_url):
             sub_text = _extract_visible_text(sub_html)
             if sub_text:
                 block = f"[Source: {sub_final}]\n{sub_text}"
