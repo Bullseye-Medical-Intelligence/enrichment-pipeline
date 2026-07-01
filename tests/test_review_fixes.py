@@ -88,6 +88,61 @@ class TestEvidenceGateClearsStaleFields:
         assert sig["evidence_text"] == "We offer IUI"
         assert sig["source_url"] == "https://x.com"
 
+    def test_yes_with_not_found_source_is_downgraded(self):
+        # The prompt tells the model to emit source_url "not_found" when it cannot
+        # attribute a page; that non-empty sentinel must not pass the gate.
+        raw = [{
+            "signal_id": "S1", "signal_state": "yes",
+            "evidence_text": "We offer IUI", "source_url": "not_found", "confidence": "high",
+        }]
+        sig = _validate_and_clean_signals(raw, self.ICP)[0]
+        assert sig["signal_state"] == "not_found"
+        assert sig["not_found_reason"] == "evidence_gate"
+
+    def test_yes_with_non_url_source_is_downgraded(self):
+        raw = [{
+            "signal_id": "S1", "signal_state": "yes",
+            "evidence_text": "We offer IUI", "source_url": "the services page", "confidence": "high",
+        }]
+        sig = _validate_and_clean_signals(raw, self.ICP)[0]
+        assert sig["signal_state"] == "not_found"
+
+    def test_yes_with_placeholder_evidence_is_downgraded(self):
+        raw = [{
+            "signal_id": "S1", "signal_state": "yes",
+            "evidence_text": "not_found", "source_url": "https://x.com", "confidence": "high",
+        }]
+        sig = _validate_and_clean_signals(raw, self.ICP)[0]
+        assert sig["signal_state"] == "not_found"
+
+
+class TestCallClaudeTruncation:
+    """A response truncated at the token cap must raise so the record is flagged
+    needs_review instead of shipping a silently-incomplete signal set."""
+
+    def _client(self, stop_reason):
+        import types
+        usage = types.SimpleNamespace(
+            input_tokens=10, cache_creation_input_tokens=0,
+            cache_read_input_tokens=0, output_tokens=5,
+        )
+        block = types.SimpleNamespace(text='{"signals": [], "sales_angle": []}')
+        message = types.SimpleNamespace(content=[block], stop_reason=stop_reason, usage=usage)
+        messages = types.SimpleNamespace(create=lambda **kw: message)
+        return types.SimpleNamespace(messages=messages)
+
+    def test_truncated_response_raises(self):
+        import pytest
+        from enrichment.signal_extractor import _call_claude
+        with pytest.raises(ValueError):
+            _call_claude("sys", "msg", self._client("max_tokens"), "claude-x", retries=0)
+
+    def test_complete_response_returns_text(self):
+        from enrichment.signal_extractor import _call_claude
+        text, usage = _call_claude("sys", "msg", self._client("end_turn"), "claude-x", retries=0)
+        assert "signals" in text
+        assert usage["output_tokens"] == 5
+
 
 class TestCsvHeaderNormalization:
     """Case-variant CSV headers must import the same as lowercase ones."""

@@ -190,26 +190,36 @@ def _call_claude(system_prompt: str, user_message: str,
                     }
                 ],
             )
-            usage = getattr(message, "usage", None)
-            usage_dict = {
-                "input_tokens": (
-                    (getattr(usage, "input_tokens", 0) or 0)
-                    + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
-                    + (getattr(usage, "cache_read_input_tokens", 0) or 0)
-                ),
-                "output_tokens": getattr(usage, "output_tokens", 0) or 0,
-            }
-            return message.content[0].text, usage_dict
-
         except anthropic.RateLimitError as e:
             last_error = f"Rate limit: {e}"
             time.sleep(10)  # Extra wait on rate limit
+            continue
         except anthropic.APIStatusError as e:
             last_error = f"API error {e.status_code}: {e.message}"
             if e.status_code < 500:
                 break  # Don't retry 4xx
+            continue
         except Exception as e:
             last_error = f"Unexpected error: {str(e)[:100]}"
+            continue
+
+        usage = getattr(message, "usage", None)
+        usage_dict = {
+            "input_tokens": (
+                (getattr(usage, "input_tokens", 0) or 0)
+                + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
+                + (getattr(usage, "cache_read_input_tokens", 0) or 0)
+            ),
+            "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+        }
+        # A response cut off at the token cap yields an incomplete signal set;
+        # json_repair would silently close the JSON and the missing signals would
+        # default to not_found under enrichment_status "complete". Treat truncation
+        # as a parse failure so the record is flagged needs_review, not shipped as
+        # complete. Retrying with the same input would truncate again, so raise now.
+        if getattr(message, "stop_reason", None) == "max_tokens":
+            raise ValueError("Claude response truncated at max_tokens (incomplete signal set)")
+        return message.content[0].text, usage_dict
 
     raise RuntimeError(f"Claude API failed after {retries} retries: {last_error}")
 
@@ -244,6 +254,14 @@ def _parse_response(raw: str) -> dict:
         raise ValueError("Response missing 'sales_angle' key")
 
     return parsed
+
+
+# Placeholder strings a model emits when it has no real value. A "yes" signal
+# whose evidence quote is one of these is unverifiable and is downgraded by the
+# evidence gate (its source is separately required to be an http(s) URL).
+_MISSING_VALUE_SENTINELS = {
+    "", "not_found", "not found", "none", "n/a", "na", "null", "unknown",
+}
 
 
 def _validate_and_clean_signals(raw_signals: list[dict],
@@ -301,21 +319,27 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "analyst_note": "",
         }
 
-    # Enforce sourcing requirement: a "yes" must have both evidence text and a
-    # source URL traceable to the crawled pages. Without these anchors the claim
-    # is unverifiable — downgrade to not_found so it does not inflate the score.
+    # Enforce sourcing requirement: a "yes" must carry both a real evidence quote
+    # and an http(s) source URL. A model that cannot attribute a page is instructed
+    # to emit source_url "not_found" — a non-empty sentinel that a bare emptiness
+    # check would wave through — and prose or placeholder sources are not traceable.
+    # Require a real URL and reject placeholder evidence so an unverifiable claim
+    # cannot inflate the score.
     for sig in validated_map.values():
-        if sig["signal_state"] == "yes":
-            has_evidence = bool(sig.get("evidence_text", "").strip())
-            has_source = bool(sig.get("source_url", "").strip())
-            if not has_evidence or not has_source:
-                sig["not_found_reason"] = "evidence_gate"
-                sig["signal_state"] = "not_found"
-                sig["confidence"] = "low"
-                # Clear the partial/unverifiable claim so stale evidence cannot
-                # render in the UI or client PDF for a signal now marked not_found.
-                sig["evidence_text"] = ""
-                sig["source_url"] = ""
+        if sig["signal_state"] != "yes":
+            continue
+        evidence = (sig.get("evidence_text") or "").strip()
+        source = (sig.get("source_url") or "").strip()
+        has_evidence = evidence.lower() not in _MISSING_VALUE_SENTINELS
+        has_source = source.lower().startswith(("http://", "https://"))
+        if not has_evidence or not has_source:
+            sig["not_found_reason"] = "evidence_gate"
+            sig["signal_state"] = "not_found"
+            sig["confidence"] = "low"
+            # Clear the partial/unverifiable claim so stale evidence cannot render
+            # in the UI or client PDF for a signal now marked not_found.
+            sig["evidence_text"] = ""
+            sig["source_url"] = ""
 
     # Build final list in icp_signals order, inserting defaults for any omitted signal
     normalized = []
