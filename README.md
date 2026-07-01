@@ -78,7 +78,7 @@ cp .env.example .env
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 CLAUDE_MODEL=claude-sonnet-4-6
-OPENAI_MODEL=gpt-4.1
+OPENAI_MODEL=gpt-5.5
 ```
 
 Save the file. Never share or commit `.env` — it is already in `.gitignore`.

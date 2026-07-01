@@ -52,7 +52,7 @@ def _get_client() -> openai.OpenAI:
 
 def _get_model() -> str:
     """Return the OpenAI model ID from environment."""
-    return os.environ.get("OPENAI_MODEL", "gpt-4.1")
+    return os.environ.get("OPENAI_MODEL", "gpt-5.5")
 
 
 def _normalize(text: str) -> str:
@@ -149,7 +149,10 @@ def _call_gpt(prompt: str, retries: int = 3) -> str:
             print(f"    GPT retry {attempt}/{retries} after {wait}s…")
             time.sleep(wait)
         try:
-            is_reasoning = model.startswith(("o1", "o3", "o4"))
+            # o1/o3/o4 and the GPT-5 family are reasoning models that reject a
+            # custom temperature (400: "Only the default (1) value is supported"),
+            # so we omit it for them; older chat models still get the low temperature.
+            is_reasoning = model.startswith(("o1", "o3", "o4", "gpt-5"))
             kwargs: dict = {
                 "model": model,
                 "messages": [

@@ -534,7 +534,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
   "records_insufficient_context": 1,
   "records_skipped": 1,
   "llm_primary_model": "claude-sonnet-4-6",
-  "llm_verification_model": "gpt-4.1",
+  "llm_verification_model": "gpt-5.5",
   "prompt_version": "signal_extraction_v2",
   "errors": [
     {
@@ -598,7 +598,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
 ```
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4.1
+OPENAI_MODEL=gpt-5.5
 CLAUDE_MODEL=claude-sonnet-4-6
 ```
 
@@ -836,7 +836,7 @@ All post-run CLIs follow the same pattern: load `enriched_targets.json`, process
 ```json
 "verification": {
   "verified_at": "2026-06-17T12:00:00Z",
-  "verifier_model": "gpt-4.1",
+  "verifier_model": "gpt-5.5",
   "method": "anchor_check + blind_reextraction",
   "per_signal_verdicts": [{"signal_id": "S-001", "claude_state": "yes", "gpt_state": "yes", "agree": true}],
   "anchor_failures": [],
