@@ -35,7 +35,7 @@ _HIDDEN_SCORE_COLUMNS = {
     "raw_input",
 }
 
-# Review-overlay columns appended to every export row
+# Review-overlay columns appended to every OPERATOR export row.
 _REVIEW_COLUMNS = [
     "displayed_tier",
     "qc_status",
@@ -45,6 +45,29 @@ _REVIEW_COLUMNS = [
     "reviewed_by",
     "reviewed_at",
 ]
+
+# Client CSVs carry only the final tier from the review overlay — QC status,
+# analyst notes, override rationale, and reviewer identity are internal and must
+# never ship in a client deliverable.
+_CLIENT_REVIEW_COLUMNS = ["displayed_tier"]
+
+# Record-level scalar fields removed from CLIENT-facing CSVs on top of the score
+# columns above: free-text internal notes must never reach a client file.
+_CLIENT_HIDDEN_COLUMNS = {"internal_notes"}
+
+
+def _escape_csv_cell(value):
+    """Neutralize spreadsheet formula injection in a cell value.
+
+    A cell beginning with =, +, -, @, tab, or CR is executed as a formula when
+    the CSV is opened in Excel or Google Sheets. Practice names and LLM-derived
+    fields originate from untrusted sources (Outscraper exports, crawled sites),
+    so any such string cell is prefixed with a single quote to force text.
+    Non-string values pass through unchanged.
+    """
+    if isinstance(value, str) and value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
 
 
 def is_approved(rec: dict, rev: dict) -> bool:
@@ -74,20 +97,25 @@ def is_approved(rec: dict, rev: dict) -> bool:
     return True
 
 
-def build_approved_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
+def build_approved_csv(run_id, run_directory, records=None, all_reviews=None,
+                       client_facing=False) -> io.BytesIO:
     """Return a BytesIO CSV of approved records (all tiers)."""
-    return _build_csv(run_id, run_directory, is_approved, records, all_reviews)
+    return _build_csv(run_id, run_directory, is_approved, records, all_reviews,
+                      client_facing=client_facing)
 
 
-def build_bullseye_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
+def build_bullseye_csv(run_id, run_directory, records=None, all_reviews=None,
+                       client_facing=False) -> io.BytesIO:
     """Return a BytesIO CSV of approved Bullseye-tier records only."""
     def _bullseye(rec: dict, rev: dict) -> bool:
         return is_approved(rec, rev) and record_adapter.displayed_tier(rec, rev).lower() == "bullseye"
 
-    return _build_csv(run_id, run_directory, _bullseye, records, all_reviews)
+    return _build_csv(run_id, run_directory, _bullseye, records, all_reviews,
+                      client_facing=client_facing)
 
 
-def build_contender_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
+def build_contender_csv(run_id, run_directory, records=None, all_reviews=None,
+                        client_facing=False) -> io.BytesIO:
     """Return a BytesIO CSV of Contender-tier records, shipped unless rejected.
 
     Only Bullseye blocks client-package readiness; Contenders are reviewed by the
@@ -100,15 +128,18 @@ def build_contender_csv(run_id, run_directory, records=None, all_reviews=None) -
         return (record_adapter.displayed_tier(rec, rev).lower() == "contender"
                 and rev.get("qc_status") != "rejected")
 
-    return _build_csv(run_id, run_directory, _contender, records, all_reviews)
+    return _build_csv(run_id, run_directory, _contender, records, all_reviews,
+                      client_facing=client_facing)
 
 
-def build_excluded_csv(run_id, run_directory, records=None, all_reviews=None) -> io.BytesIO:
+def build_excluded_csv(run_id, run_directory, records=None, all_reviews=None,
+                       client_facing=False) -> io.BytesIO:
     """Return a BytesIO CSV of records whose effective tier is Excluded."""
     def _excluded(rec: dict, rev: dict) -> bool:
         return record_adapter.displayed_tier(rec, rev).lower() == "excluded"
 
-    return _build_csv(run_id, run_directory, _excluded, records, all_reviews)
+    return _build_csv(run_id, run_directory, _excluded, records, all_reviews,
+                      client_facing=client_facing)
 
 
 def build_retry_csv(run_id: str, run_directory: Path) -> io.BytesIO:
@@ -155,6 +186,7 @@ def _build_csv(
     filter_fn: Callable[[dict, dict], bool],
     records: list[dict] | None = None,
     all_reviews: dict | None = None,
+    client_facing: bool = False,
 ) -> io.BytesIO:
     """Load, merge, filter records and return a UTF-8 encoded BytesIO CSV.
 
@@ -175,15 +207,22 @@ def _build_csv(
     if all_reviews is None:
         all_reviews = reviews.get_reviews(run_id, run_directory)
 
-    # Derive column order from first record (scalar fields only, numeric scores
-    # excluded) then append review overlay. confidence_band rides along as a
-    # normal scalar field, so the client sees the band, not the number.
+    # Derive column order from first record (scalar fields only). Numeric scores
+    # are always hidden; confidence_band rides along as a normal scalar so the
+    # client sees the band, not the number. Client CSVs additionally drop internal
+    # free-text columns and carry only the final tier from the review overlay.
+    # Underscore-prefixed provenance is never a column — this defends against any
+    # internal field leaking into a CSV even if it reaches enriched_targets.json.
+    hidden = _HIDDEN_SCORE_COLUMNS | (_CLIENT_HIDDEN_COLUMNS if client_facing else set())
     first = records[0]
     record_columns = [
         k for k, v in first.items()
-        if not isinstance(v, (dict, list)) and k not in _HIDDEN_SCORE_COLUMNS
+        if not isinstance(v, (dict, list))
+        and k not in hidden
+        and not k.startswith("_")
     ]
-    all_columns = record_columns + _BRIEF_COLUMNS + _REVIEW_COLUMNS
+    review_columns = _CLIENT_REVIEW_COLUMNS if client_facing else _REVIEW_COLUMNS
+    all_columns = record_columns + _BRIEF_COLUMNS + review_columns
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=all_columns, extrasaction="ignore")
@@ -211,6 +250,6 @@ def _build_csv(
             "reviewed_by": review.get("reviewed_by") or "",
             "reviewed_at": review.get("reviewed_at") or "",
         })
-        writer.writerow(row)
+        writer.writerow({k: _escape_csv_cell(v) for k, v in row.items()})
 
     return io.BytesIO(buf.getvalue().encode("utf-8"))

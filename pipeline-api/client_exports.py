@@ -65,9 +65,12 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
 
     # Reuse the records/reviews already loaded above — the CSV builders accept
     # them so the same files are not re-read three more times.
-    bullseye_csv = exports.build_bullseye_csv(run_id, run_directory, records, all_reviews).getvalue()
-    contender_csv = exports.build_contender_csv(run_id, run_directory, records, all_reviews).getvalue()
-    excluded_csv = exports.build_excluded_csv(run_id, run_directory, records, all_reviews).getvalue()
+    bullseye_csv = exports.build_bullseye_csv(
+        run_id, run_directory, records, all_reviews, client_facing=True).getvalue()
+    contender_csv = exports.build_contender_csv(
+        run_id, run_directory, records, all_reviews, client_facing=True).getvalue()
+    excluded_csv = exports.build_excluded_csv(
+        run_id, run_directory, records, all_reviews, client_facing=True).getvalue()
 
     bullseye_cards_bytes = _build_bullseye_cards(
         run_id, status, project, icp, approved, all_reviews, len(records), excluded_count,

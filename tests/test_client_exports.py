@@ -221,6 +221,87 @@ def test_hidden_columns_absent_from_client_csv(tmp_path):
                     f"Internal field '{field}' leaked into client CSV '{csv_name}'"
 
 
+def test_review_overlay_absent_from_client_csv(tmp_path):
+    """Analyst notes, override rationale, QC status, reviewer identity, and internal
+    notes must never ship in a client CSV; only the final displayed tier is client-facing."""
+    records = [{
+        "record_id": "T-R1",
+        "practice_name": "Overlay Clinic",
+        "target_tier": "Bullseye",
+        "exclusion_status": "CLEAR",
+        "bullseye_score": 95,
+        "confidence_band": "High",
+        "internal_notes": "pipeline note: partial crawl on subpage 3",
+    }]
+    secret_note = "INTERNAL: client is price-sensitive, low-ball the first quote"
+    reviews_map = {
+        "T-R1": {"override_tier": None, "override_reason": "bumped for the demo",
+                 "qc_status": "approved", "analyst_note": secret_note,
+                 "reviewed_by": "rajiv", "reviewed_at": "2026-07-01"},
+    }
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+    (tmp_path / "project_config_snapshot.json").write_text(json.dumps({
+        "project_id": "p", "client_name": "C", "target_specialty": "OBGYN",
+        "target_geography": ["TX"], "icp_profile_id": "icp",
+    }))
+    (tmp_path / "icp_snapshot.json").write_text(json.dumps({
+        "icp_id": "icp", "name": "ICP", "version": "1.0",
+        "signals": [{"signal_id": "S-1", "signal_label": "x",
+                     "prompt_instruction": "y", "positive_weight": 10}],
+    }))
+
+    forbidden = {"analyst_note", "override_reason", "override_tier",
+                 "qc_status", "reviewed_by", "reviewed_at", "internal_notes"}
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    import csv as csv_mod
+    with zipfile.ZipFile(buf) as zf:
+        for csv_name in ("bullseye_accounts.csv", "contender_accounts.csv", "excluded_targets.csv"):
+            content = zf.read(csv_name).decode("utf-8")
+            if not content.strip():
+                continue
+            assert secret_note not in content, f"Analyst note leaked into {csv_name}"
+            assert "bumped for the demo" not in content, f"Override reason leaked into {csv_name}"
+            assert "partial crawl on subpage" not in content, f"Internal note leaked into {csv_name}"
+            fieldnames = csv_mod.DictReader(io.StringIO(content)).fieldnames or []
+            for field in forbidden:
+                assert field not in fieldnames, f"'{field}' leaked into client CSV '{csv_name}'"
+            assert "displayed_tier" in fieldnames
+
+
+def test_client_csv_escapes_formula_injection(tmp_path):
+    """A practice name starting with a formula character is neutralized so a client
+    opening the client CSV in Excel/Sheets cannot trigger formula execution."""
+    records = [{
+        "record_id": "T-F1",
+        "practice_name": '=HYPERLINK("http://evil","Women\'s Health")',
+        "target_tier": "Bullseye",
+        "exclusion_status": "CLEAR",
+        "bullseye_score": 95,
+        "confidence_band": "High",
+    }]
+    reviews_map = {"T-F1": {"qc_status": "approved", "override_tier": None,
+                            "override_reason": None, "analyst_note": "",
+                            "reviewed_by": "t", "reviewed_at": "now"}}
+    (tmp_path / "enriched_targets.json").write_text(json.dumps({"records": records}))
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+    (tmp_path / "project_config_snapshot.json").write_text(json.dumps({
+        "project_id": "p", "client_name": "C", "target_specialty": "OBGYN",
+        "target_geography": ["TX"], "icp_profile_id": "icp",
+    }))
+    (tmp_path / "icp_snapshot.json").write_text(json.dumps({
+        "icp_id": "icp", "name": "ICP", "version": "1.0",
+        "signals": [{"signal_id": "S-1", "signal_label": "x",
+                     "prompt_instruction": "y", "positive_weight": 10}],
+    }))
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    import csv as csv_mod
+    with zipfile.ZipFile(buf) as zf:
+        content = zf.read("bullseye_accounts.csv").decode("utf-8")
+    row = next(csv_mod.DictReader(io.StringIO(content)))
+    assert row["practice_name"].startswith("'="), "Formula-injection cell was not neutralized"
+
+
 def test_contender_csv_includes_pending_contender(tmp_path):
     """Only Bullseye blocks readiness, so a non-rejected Contender ships in the
     contender CSV even while still pending QC (T-3 is a pending Contender)."""

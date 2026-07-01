@@ -48,6 +48,19 @@ CSV_COLUMNS = [
 ]
 
 
+def _escape_csv_cell(value: str) -> str:
+    """Neutralize spreadsheet formula injection in a cell value.
+
+    A cell beginning with =, +, -, @, tab, or CR is executed as a formula when
+    the CSV is opened in Excel or Google Sheets. Practice names and LLM-derived
+    fields originate from untrusted sources (Outscraper exports, crawled sites),
+    so any such cell is prefixed with a single quote to force text interpretation.
+    """
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def _flatten_record(record: dict) -> dict:
     """Flatten nested fields to strings for CSV output."""
     flat = {}
@@ -66,7 +79,7 @@ def _flatten_record(record: dict) -> dict:
                 flat[col] = " | ".join(str(v) for v in val)
             else:
                 flat[col] = str(val)
-    return flat
+    return {col: _escape_csv_cell(v) for col, v in flat.items()}
 
 
 def write_csv(records: list[dict], output_dir: str = "./output",
