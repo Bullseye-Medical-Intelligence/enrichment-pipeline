@@ -107,9 +107,10 @@ Two independent dimensions — **never averaged**:
 ### Tier Ladder
 
 ```
-Bullseye       score ≥ 90, all must-have signals confirmed, source confidence complete
-Needs Verification  would-be Bullseye but a required signal is not_found
-Contender      score < 90, or source_confidence limited/failed, or no_weight cap
+Bullseye       score ≥ bullseye_min, all must-have signals confirmed, source confidence complete
+Needs Verification  would-be Bullseye but a required must-have signal is not_found
+Contender      solid fit a notch below Bullseye
+Manual Review  low score / no confirmed evidence, or source_confidence limited/failed (operator review)
 Excluded       any hard exclusion gate fired
 ```
 
@@ -128,7 +129,7 @@ Deterministic structural exclusion gates run before LLM spend whenever they can 
 | `limited` | URL failed, 403, thin/blocked crawl | Routed to Manual Review (operator review) |
 | `failed` | Pipeline error | Routed to Manual Review (operator review) |
 
-Records with `source_confidence: limited` or `failed` require operator review before any export. The download button in the pipeline-api is locked until every record in the run is labeled.
+Records with `source_confidence: limited` or `failed` route to Manual Review for operator attention. The client-package download is gated on Bullseye review only — Contenders ship unless an analyst rejects them.
 
 ### The Call Brief
 

@@ -883,7 +883,7 @@ in client deliverables.
 4. **LLM API errors:** Retry up to 3 times. If all retries fail, set `enrichment_status = "failed"`, log error, continue.
 5. **LLM response parse failures:** If the LLM response cannot be parsed into the expected structure, set `enrichment_status = "needs_review"`, store raw response in `internal_notes`, continue.
 6. **Rate limits:** Implement per-API rate limiting. Add delay between calls if approaching rate limits. Do not batch requests without rate limit awareness.
-7. **Verification disagreement:** Not an error. Set `enrichment_status = "needs_review"`, document the disagreement clearly in `internal_notes`, continue.
+7. **Verification (separate post-run pass):** GPT verification is operator-triggered and additive — it writes a `verification` object (`recommended_action`: promote / hold / disqualify) and never overwrites `enrichment_status`, signals, tier, or score. Disagreement surfaces there, not as `needs_review`.
 
 ---
 

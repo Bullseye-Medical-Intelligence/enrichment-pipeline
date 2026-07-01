@@ -230,7 +230,7 @@ See `config/clients/obgyn_femasys/` for a complete reference implementation.
 | `complete` | All pipeline steps succeeded |
 | `partial` | Some steps succeeded; others returned no data |
 | `failed` | Pipeline error on this record (see `internal_notes`) |
-| `needs_review` | LLM disagreement on Bullseye score, or parse error — needs human review |
+| `needs_review` | The LLM response could not be parsed (JSON decode / missing key); flag for operator re-extraction |
 
 **`source_confidence` values:**
 

@@ -304,6 +304,7 @@ def check_baseline(metrics: dict, baseline: dict, unreviewed: list | None = None
     for metric, key in gates.items():
         floor = baseline.get(key)
         if floor is None:
+            print(f"    UNPROTECTED  {metric}: no floor in baseline — this gate is NOT enforced")
             continue
         val = metrics.get(metric)
         if val is None:
@@ -388,11 +389,22 @@ def main(argv: list[str] | None = None) -> int:
             "min_yes_precision": metrics["yes_precision"],
             "min_anchor_rate": metrics["anchor_rate"],
         }
-        baseline = {k: v for k, v in floors.items() if v is not None}
+        # Merge into any existing baseline: update the floors we have data for, but
+        # never DROP a previously-set floor just because this (possibly partial) golden
+        # set had no examples for it — dropping one would silently disable that gate.
+        prior = json.loads(args.baseline.read_text(encoding="utf-8")) if args.baseline.exists() else {}
+        baseline = dict(prior)
+        for floor_key, floor_val in floors.items():
+            if floor_val is not None:
+                baseline[floor_key] = floor_val
+        unset = [k for k in floors if k not in baseline]
         baseline["recorded_at"] = datetime.now().isoformat(timespec="seconds")
         baseline["mode"] = "live" if live else "offline"
         args.baseline.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
-        print(f"  baseline written to {args.baseline}\n")
+        print(f"  baseline written to {args.baseline}")
+        if unset:
+            print(f"  WARNING: no data and no prior floor for {', '.join(unset)} — those gates stay unset")
+        print()
         return 0
 
     if args.check:
