@@ -83,17 +83,23 @@ def _names_agree(record_name: str, npi_name: str) -> bool:
     """Return True when the two names share enough significant tokens.
 
     Handles abbreviations, word-order differences, and DBA names by counting
-    token overlap on the significant (noise-stripped) token sets. A single
-    significant token in common is sufficient when either name is very short
-    after noise stripping (e.g. "Smith OB/GYN" vs "John Smith").
+    token overlap on the significant (noise-stripped) token sets. A single shared
+    token is accepted only when one name reduces to a single significant token
+    (e.g. "Kaiser" vs "Kaiser Permanente"); names with two or more significant
+    tokens must share at least two, so a lone generic or city word cannot attach a
+    wrong NPI.
     """
     rec = _name_tokens(record_name)
     npi = _name_tokens(npi_name)
     if not rec or not npi:
         return False
     common = len(rec & npi)
-    # Require at least 1 shared token, proportionally more for longer names
-    threshold = 1 if min(len(rec), len(npi)) <= 2 else 2
+    # A single shared token is only enough when one name reduces to a single
+    # significant token (e.g. "Kaiser" vs "Kaiser Permanente"). Two-plus-token
+    # names must share at least two, so one common generic or city word (e.g.
+    # "Park" in "Park Dermatology" vs "Park Endocrinology") cannot alone attach a
+    # wrong NPI, which would otherwise drive a wrong taxonomy exclusion.
+    threshold = 1 if min(len(rec), len(npi)) <= 1 else 2
     return common >= threshold
 
 

@@ -29,7 +29,6 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import openai
 from dotenv import load_dotenv
@@ -39,7 +38,9 @@ from output.evidence_writer import read_record_context_text
 load_dotenv()
 
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("LLM_REQUEST_TIMEOUT_SECONDS", "60"))
-_MAX_CONTEXT_CHARS = 12000  # trim context before sending to GPT
+_MAX_CONTEXT_CHARS = 25000  # trim context before sending to GPT; matches the
+# Evidence Vault read budget so GPT re-extraction sees the same text the anchor
+# check did (a lower cap hid gating evidence on later subpages and biased to hold)
 
 
 def _get_client() -> openai.OpenAI:

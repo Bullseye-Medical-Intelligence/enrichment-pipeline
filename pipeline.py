@@ -819,7 +819,12 @@ def run_pipeline(input_file: str, source_type: str,
                     })
 
             records[idx] = record
-            _write_step4_checkpoint(output_dir, record)
+            # Do not checkpoint a failed record. Checkpointing exists to avoid
+            # re-spending on already-completed work across a crash/resume; a
+            # transient failure (rate-limit exhaustion, an API error) should be
+            # re-attempted on resume, not frozen as failed and skipped forever.
+            if record.get("enrichment_status") != "failed":
+                _write_step4_checkpoint(output_dir, record)
 
     # Verification (Step 5) runs as a separate post-run pass via verify_run.py.
 
