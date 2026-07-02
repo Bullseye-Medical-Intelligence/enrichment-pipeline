@@ -3,12 +3,12 @@
 {% block content %}
 <div style="max-width:980px;margin:0 auto;padding:24px 16px;">
 
-  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-bottom:6px;">Evidence Link Check</div>
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">Evidence Link Check</div>
   <h1 style="font-family:'Instrument Serif',serif;font-size:30px;font-weight:400;margin:0 0 4px;">Link Check Report</h1>
   <p class="text-muted" style="margin:0 0 20px;font-size:13px;">Verifies that evidence source links in Bullseye and Contender records still resolve. Report only — no record is changed; the operator decides what to do with flagged links.</p>
 
   {% if not report %}
-  <div style="background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;padding:28px 24px;text-align:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:28px 24px;text-align:center;">
     <p style="font-size:15px;margin:0 0 6px;">No link check has been run yet.</p>
     <p class="text-muted" style="font-size:13px;margin:0 0 16px;">Run it from the dashboard before shipping a deliverable.</p>
     <form method="post" action="/runs/{{ run_id }}/check-links" style="display:inline;">
@@ -17,7 +17,7 @@
   </div>
   {% else %}
 
-  <div style="background:#0a0a0a;color:#f7f6f4;border-radius:10px;padding:16px 22px;margin-bottom:18px;font-size:13px;">
+  <div style="background:var(--ink);color:var(--surface);border-radius:10px;padding:16px 22px;margin-bottom:18px;font-size:13px;">
     <strong>{{ report.total_checked }}</strong> unique URLs checked &nbsp;·&nbsp;
     <strong style="color:#6ee7a8;">{{ report.ok }}</strong> OK &nbsp;·&nbsp;
     <strong style="color:{{ '#ffb4a2' if report.flagged else '#6ee7a8' }};">{{ report.flagged }}</strong> flagged
@@ -25,9 +25,9 @@
   </div>
 
   {% if flagged_rows %}
-  <table style="width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;border:1px solid #e3e1dd;">
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px;background:var(--white);border:1px solid var(--border);">
     <thead>
-      <tr style="border-bottom:2px solid #e3e1dd;text-align:left;">
+      <tr style="border-bottom:2px solid var(--border);text-align:left;">
         <th style="padding:8px 12px;">Account</th>
         <th style="padding:8px 12px;">Signal</th>
         <th style="padding:8px 12px;">URL</th>
@@ -40,7 +40,7 @@
         <td style="padding:7px 12px;">{{ row.practice_name }}</td>
         <td style="padding:7px 12px;">{{ row.signal_label }}</td>
         <td style="padding:7px 12px;max-width:320px;word-break:break-all;"><a href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row.url }}</a></td>
-        <td style="padding:7px 12px;"><span class="badge" style="background:{{ '#b91c1c' if row.classification == 'DEAD' else '#b45309' }};color:#fff;">{{ row.classification }}</span> {{ row.detail }}</td>
+        <td style="padding:7px 12px;"><span class="badge" style="background:{{ '#b91c1c' if row.classification == 'DEAD' else '#b45309' }};color:var(--white);">{{ row.classification }}</span> {{ row.detail }}</td>
       </tr>
       {% endfor %}
     </tbody>

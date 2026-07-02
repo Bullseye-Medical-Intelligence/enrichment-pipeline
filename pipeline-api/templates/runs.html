@@ -40,7 +40,7 @@
   <div style="padding:0 16px 14px;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       {% for c in health.checks %}
-      <tr style="border-top:1px solid #eee;">
+      <tr style="border-top:1px solid var(--border);">
         <td style="padding:6px 8px 6px 0;width:180px;font-weight:500;">{{ c.label }}</td>
         <td style="padding:6px 4px;width:48px;text-align:center;">
           {% if c.status == "ok" %}<span style="color:#166534;">✓</span>

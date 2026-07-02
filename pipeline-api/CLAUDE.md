@@ -221,6 +221,21 @@ tier caps, `competitive_brands` ("Not configured for this ICP" when absent — a
 valid state), and geography ("No geography restriction" when empty — also
 valid). STRICTLY read-only: no edit controls, no file writes.
 
+**Sales Hook / Exclusion Reason column**: every results-page table carries one
+shared macro cell (`hook-cell`) between Location and Tier. On call-tier tables the
+header is **Sales Hook** and the cell shows the first grounded `sales_angle`
+bullet (falling back to `call_brief.why_contact`, else a muted dash); on the two
+excluded tables the header is **Exclusion Reason** and the same cell shows
+`exclusion_reason`. Content picks itself from the record's exclusion state, so
+header and cell always agree. Server-side truncated to 90 chars with the full
+text in a `title` tooltip. Display-only — no scoring read/write.
+
+**High Fit / Low Evidence flag**: when a record's `fit_confidence_status` is
+`HIGH FIT / LOW EVIDENCE` (engine-computed, never derived here), the Tier cell
+shows an amber-outline `badge-hfle` under the tier badge so the anti-averaging
+wedge is visible at a glance. Hidden on Excluded records. `fit_confidence_status`
+remains stripped from all client CSVs.
+
 **ICP signal columns**: any ICP signal carrying an optional `column_label` is
 surfaced as an at-a-glance column on the results table and the Contact Queue.
 Column *definitions* come from the run's **live** ICP
@@ -622,6 +637,22 @@ Exact geometry (do not reconstruct from memory — copy from the files):
 - **Signal rows**: left border — green = yes, red = no, slate = not_found
 - **Detail panel border-top**: 2px solid accent
 - **Section headers in detail panel**: eyebrow style (uppercase, accent color)
+
+### Dark mode (operator option)
+The operator UI has an optional dark theme: same design system, dark neutrals.
+- Toggled by the navbar `◐` button (`base.html` → `toggleTheme()` in `app.js`),
+  persisted per browser in localStorage `bemi_theme`, applied pre-paint by a
+  head script in `base.html` via `html[data-theme="dark"]`.
+- Implemented as a token flip in `style.css` (`--surface`/`--white`/`--ink`/
+  `--border`/`--muted` re-mapped to dark values). The terracotta accent and the
+  six tier stat colors are NEVER remapped; ink-by-design components (navbar,
+  stat blocks) are pinned so they render identically in both themes.
+- Inline template styling uses the CSS tokens (`var(--surface)` etc.), never raw
+  brand hex, so panels theme automatically — keep it that way in new markup.
+- Client-facing HTML (handoff, reports, sales brief) is self-contained and never
+  touches `style.css`/`app.js`; the operator theme cannot affect deliverables
+  (guarded by `tests/test_dashboard_ux.py`).
+- Bump the `?v=` cache-busters in `base.html` when changing `style.css`/`app.js`.
 
 ### Copy rules
 - No em dashes (use commas or short sentences instead)

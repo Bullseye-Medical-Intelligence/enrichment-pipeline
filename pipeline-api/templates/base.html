@@ -8,7 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=9">
+  <link rel="stylesheet" href="/static/style.css?v=10">
+  <script>/* Apply the saved theme before first paint so dark mode never flashes light. */
+try{if(localStorage.getItem('bemi_theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}</script>
 </head>
 <body>
   <nav class="navbar">
@@ -32,6 +34,7 @@
         <span class="nav-user">{{ username }}</span>
         <a href="/logout" class="nav-link nav-logout">Logout</a>
       {% endif %}
+      <button id="theme-toggle" class="nav-theme-toggle" type="button" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">◐</button>
     </div>
   </nav>
 
@@ -43,6 +46,6 @@
     {% block content %}{% endblock %}
   </main>
 
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

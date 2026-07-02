@@ -14,6 +14,7 @@
 
   --border:      rgba(10,10,10,0.10);
   --muted:       rgba(10,10,10,0.45);
+  --text-muted:  rgba(10,10,10,0.45); /* alias of --muted; referenced by templates and .signal-group-header */
   --muted-dark:  rgba(247,246,244,0.45);
 
   --green:       #16a34a;
@@ -916,3 +917,73 @@ a.signal-state-badge:hover { opacity: 0.8; }
   margin: 6px 0 2px;
 }
 .demo-acct-body { font-size: 11px; line-height: 1.5; color: #333; margin: 0 0 4px; }
+
+/* ── Sales Hook / Exclusion Reason column ─────────────────────────── */
+.hook-cell { max-width: 300px; min-width: 170px; font-size: 12px; line-height: 1.45; color: var(--ink); }
+
+/* ── High Fit / Low Evidence flag (anti-averaging, surfaced) ──────── */
+.badge-hfle {
+  display: inline-block; margin-top: 4px;
+  background: transparent; border: 1px solid var(--amber); color: #92400e;
+  padding: 2px 9px; border-radius: 100px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Navbar theme toggle ──────────────────────────────────────────── */
+.nav-theme-toggle {
+  background: transparent; border: 1px solid rgba(247,246,244,0.25);
+  color: rgba(247,246,244,0.7); border-radius: 100px;
+  width: 26px; height: 26px; line-height: 1; font-size: 13px;
+  cursor: pointer; padding: 0;
+}
+.nav-theme-toggle:hover { color: #f7f6f4; border-color: rgba(247,246,244,0.55); }
+
+/* ── Dark mode (operator OPTION; BEMI palette preserved) ─────────────
+   A token flip re-maps the neutral tokens; components that are ink-dark BY
+   DESIGN in the light theme (navbar, stat blocks) are pinned back below so
+   they render identically in both themes. The terracotta accent and the six
+   tier stat colors are unchanged — the design system is the same in the dark.
+   Applied via html[data-theme="dark"], set pre-paint by a head script in
+   base.html from localStorage 'bemi_theme'; login/error pages never set it. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink:        #eceae5;
+  --surface:    #0f0f0e;
+  --white:      #161616;
+  --border:     rgba(247,246,244,0.13);
+  --muted:      rgba(247,246,244,0.55);
+  --text-muted: rgba(247,246,244,0.55);
+}
+html[data-theme="dark"] .navbar { background: #0a0a0a; border-bottom: 1px solid rgba(247,246,244,0.08); }
+html[data-theme="dark"] .nav-logo { color: #f7f6f4; }
+html[data-theme="dark"] .nav-logo:hover { color: #ffffff; }
+html[data-theme="dark"] .nav-link:hover { color: #f7f6f4; }
+html[data-theme="dark"] .btn-primary { background: #f7f6f4; color: #0a0a0a; border-color: #f7f6f4; }
+html[data-theme="dark"] .btn-secondary:hover { background: rgba(247,246,244,0.07); }
+html[data-theme="dark"] code { background: rgba(247,246,244,0.09); }
+html[data-theme="dark"] .data-table td { border-bottom-color: rgba(247,246,244,0.07); }
+html[data-theme="dark"] .data-table tbody tr:hover td { background: rgba(247,246,244,0.04); }
+html[data-theme="dark"] .detail-row td { background: rgba(247,246,244,0.05) !important; }
+html[data-theme="dark"] .signal-not_found { border-left-color: rgba(247,246,244,0.2); }
+html[data-theme="dark"] .badge-tier-excluded { background: rgba(247,246,244,0.10); }
+html[data-theme="dark"] .badge-archived { background: rgba(247,246,244,0.12); color: rgba(247,246,244,0.6); }
+html[data-theme="dark"] .bulk-actions { background: rgba(217,119,6,0.16); border-bottom-color: rgba(217,119,6,0.45); color: #e8b04a; }
+html[data-theme="dark"] .badge-hfle { color: #e8b04a; }
+html[data-theme="dark"] .hyp-preview-grid { background: #141414; border-color: rgba(247,246,244,0.12); }
+html[data-theme="dark"] .demo-acct-card { border-color: rgba(247,246,244,0.12); }
+html[data-theme="dark"] .modal { box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+html[data-theme="dark"] .dropdown-menu { box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+/* Stat blocks are dark components by design: pin numerals/labels to paper and
+   the base card to a dark neutral. The six tier colors are re-asserted after
+   the .stat-item pin because the attribute selector would otherwise win. */
+html[data-theme="dark"] .stat-item { background: #141414; }
+html[data-theme="dark"] .stat-bullseye           { background: #b91c1c; }
+html[data-theme="dark"] .stat-needs-verification { background: #b45309; }
+html[data-theme="dark"] .stat-contender          { background: #9a3823; }
+html[data-theme="dark"] .stat-manual-review      { background: #475569; }
+html[data-theme="dark"] .stat-excluded           { background: #1e2530; }
+html[data-theme="dark"] .stat-pending            { background: #5b21b6; }
+html[data-theme="dark"] .stat-num   { color: #f7f6f4; }
+html[data-theme="dark"] .stat-label { color: rgba(247,246,244,0.45); }
+html[data-theme="dark"] .stats-bar.filter-active .stat-item.stat-active { outline-color: rgba(247,246,244,0.45); }

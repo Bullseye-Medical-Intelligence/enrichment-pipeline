@@ -50,7 +50,7 @@
       'padding:12px 20px', 'border-radius:8px', 'font-size:14px',
       'font-weight:600', 'box-shadow:0 4px 16px rgba(0,0,0,0.18)',
       'cursor:pointer', 'transition:opacity 0.4s',
-      isOk ? 'background:#166534;color:#fff;' : 'background:#b91c1c;color:#fff;'
+      isOk ? 'background:#166534;color:var(--white);' : 'background:#b91c1c;color:var(--white);'
     ].join(';');
     toast.textContent = isOk ? '✓ Enrichment complete — ' + runId : '✗ Run failed — ' + runId;
     toast.onclick = function(){ toast.style.opacity = '0'; setTimeout(function(){ toast.remove(); }, 400); };
@@ -347,8 +347,8 @@
 
 {# ── Cost per run ─────────────────────────────────────────────────── #}
 {% if status.status == "complete" %}
-<div style="margin:10px 0 18px;padding:12px 18px;background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;font-size:12.5px;color:#0a0a0a;">
-  <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-right:14px;">Run Economics</span>
+<div style="margin:10px 0 18px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12.5px;color:var(--ink);">
+  <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-right:14px;">Run Economics</span>
   {% if cost_summary %}
   {{ status.records_output }} records &nbsp;·&nbsp;
   {{ cost_summary.llm_calls }} LLM calls &nbsp;·&nbsp;
@@ -421,6 +421,12 @@
         </td>
         {% endfor %}
         <td>{% if _city and _state %}{{ _city }}, {{ _state }}{% elif _city %}{{ _city }}{% elif _state %}{{ _state }}{% elif record.address_zip %}<span class="text-muted">{{ record.address_zip }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        {#- One shared cell, header varies per table: excluded tables label it
+            "Exclusion Reason", every other table "Sales Hook" — the content picks
+            itself from the record's state so the two always agree. -#}
+        {% set _angles = record.sales_angle | clean_angles %}
+        {% set _hook = record.exclusion_reason if (displayed == 'Excluded' or record.exclusion_status == 'EXCLUDED') else (_angles[0] if _angles else (record.call_brief.why_contact if record.call_brief else '')) %}
+        <td class="hook-cell">{% if _hook %}<span title="{{ _hook }}">{{ _hook | truncate(90, True, '…') }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
           {% if record.enrichment_status == "not_enriched" and record.exclusion_status != "EXCLUDED" %}
           <span class="badge badge-status-pending" title="Not yet enriched — run Enrich All">Not enriched</span>
@@ -430,6 +436,9 @@
           </span>
           {% if review.override_tier %}
           <span class="override-indicator" title="Analyst override">✎</span>
+          {% endif %}
+          {% if record.fit_confidence_status == 'HIGH FIT / LOW EVIDENCE' and displayed != 'Excluded' %}
+          <br><span class="badge badge-hfle" title="Strong fit signals but weak evidence quality. Verify the evidence before outreach.">High Fit / Low Evidence</span>
           {% endif %}
           {% endif %}
         </td>
@@ -441,7 +450,7 @@
 
       {# ── Detail / review row (hidden by default) ─────────────────── #}
       <tr class="detail-row" id="detail-{{ rid }}" style="display:none">
-        <td colspan="{{ 7 + (signal_columns | length) }}">
+        <td colspan="{{ 8 + (signal_columns | length) }}">
           <div class="detail-panel">
             {% if record.phone or record.website_url or status.status == "complete" %}
             <div class="detail-contact-header">
@@ -505,7 +514,7 @@
                   <div class="signal-item signal-{{ display_state }}">
                     <div class="signal-header">
                       <span class="signal-label">{{ sig.signal_label }}</span>
-                      {% if sig.is_override %}<span class="signal-polarity-tag" style="background:var(--accent);color:#fff;border-radius:100px;" title="Operator override — state set manually by an analyst, not from the crawl">Override</span>{% endif %}
+                      {% if sig.is_override %}<span class="signal-polarity-tag" style="background:var(--accent);color:var(--white);border-radius:100px;" title="Operator override — state set manually by an analyst, not from the crawl">Override</span>{% endif %}
                       {% if sig.required_for_bullseye %}<span class="signal-must-have-tag">Must Have</span>{% endif %}
                       {% if sig_weight > 0 and sig.signal_state == "yes" %}
                       <span class="signal-polarity-tag spt-positive" title="Positive signal — YES adds {{ sig_weight }} points to fit score">+{{ sig_weight }} pts</span>
@@ -554,7 +563,7 @@
                   <div class="signal-item signal-{{ display_state }}">
                     <div class="signal-header">
                       <span class="signal-label">{{ sig.signal_label }}</span>
-                      {% if sig.is_override %}<span class="signal-polarity-tag" style="background:var(--accent);color:#fff;border-radius:100px;" title="Operator override — state set manually by an analyst, not from the crawl">Override</span>{% endif %}
+                      {% if sig.is_override %}<span class="signal-polarity-tag" style="background:var(--accent);color:var(--white);border-radius:100px;" title="Operator override — state set manually by an analyst, not from the crawl">Override</span>{% endif %}
                       {% if sig.required_for_bullseye %}<span class="signal-must-have-tag">Must Have</span>{% endif %}
                       {# Point scores are only shown on FOUND signals — a not_found
                          signal earned no points, so the numeric badge is suppressed.
@@ -867,13 +876,13 @@
 {% for record in records %}{% for sig in record.signals or [] %}{% if (sig.signal_state == "yes" or sig.state_inferred) and sig.signal_id and sig.signal_id not in _sig_ns.seen %}{% set _sig_ns.seen = _sig_ns.seen + [sig.signal_id] %}{% set _sig_ns.pairs = _sig_ns.pairs + [{"id": sig.signal_id, "label": sig.signal_label}] %}{% endif %}{% endfor %}{% endfor %}
 {% if _sig_ns.pairs %}
 <style>
-  .sig-filter-btn{display:inline-flex;align-items:center;padding:4px 12px;font-size:12px;border:1px solid #d0cdc8;border-radius:100px;background:#fff;color:#0a0a0a;cursor:pointer;line-height:1.4;}
-  .sig-filter-btn:hover{border-color:#c84b2f;}
-  .sig-filter-btn.active{background:#0a0a0a;color:#f7f6f4;border-color:#0a0a0a;}
+  .sig-filter-btn{display:inline-flex;align-items:center;padding:4px 12px;font-size:12px;border:1px solid var(--border);border-radius:100px;background:var(--white);color:var(--ink);cursor:pointer;line-height:1.4;}
+  .sig-filter-btn:hover{border-color:var(--accent);}
+  .sig-filter-btn.active{background:var(--ink);color:var(--surface);border-color:var(--ink);}
 </style>
-<div id="signal-filter-bar" class="signal-filter-bar" style="margin:0 0 1em;padding:12px 16px;background:#f7f6f4;border:1px solid #e3e1dd;border-radius:8px;">
+<div id="signal-filter-bar" class="signal-filter-bar" style="margin:0 0 1em;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-    <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#c84b2f;margin-right:4px;">Filter by Signal</span>
+    <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-right:4px;">Filter by Signal</span>
     <button type="button" id="sig-filter-all" class="sig-filter-btn active" data-sig-id="" onclick="toggleSignalFilter(this)">All</button>
     {% for p in _sig_ns.pairs %}
     <button type="button" class="sig-filter-btn" data-sig-id="{{ p.id }}" onclick="toggleSignalFilter(this)">{{ p.label }}</button>
@@ -893,6 +902,7 @@
         <th style="width:3em; text-align:center;">{% if is_ingested %}<input type="checkbox" id="select-all-cb" onclick="toggleSelectAll(this)" title="Select all">{% elif status.status == 'complete' %}<input type="checkbox" id="reenrich-all-cb" onclick="toggleReenrichAll(this)" title="Select all for re-enrich">{% endif %}</th>
         <th class="sortable" onclick="sortRecords('practice', this)">Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th class="sortable" onclick="sortRecords('location', this)">Location</th>
+        <th>Sales Hook</th>
         <th class="sortable" onclick="sortRecords('tier', this)">Tier</th>
         <th class="sortable" onclick="sortRecords('score', this)">Score</th>
         <th class="sortable" onclick="sortRecords('qc', this)">QC</th>
@@ -926,6 +936,7 @@
           <th style="width:2em;"></th>
           <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
           <th>Location</th>
+          <th>Sales Hook</th>
           <th>Tier</th>
           <th>Score</th>
           <th class="qc-col">QC</th>
@@ -960,6 +971,7 @@
         <th style="width:2em; text-align:center;"><input type="checkbox" id="select-all-excl-cb" onclick="toggleSelectAll(this, 'excl')" title="Select all pre-excluded"></th>
         <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th>Location</th>
+        <th>Exclusion Reason</th>
         <th>Tier</th>
         <th>Score</th>
         <th class="qc-col">QC</th>
@@ -988,6 +1000,7 @@
         <th style="width:2em;"></th>
         <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
         <th>Location</th>
+        <th>Exclusion Reason</th>
         <th>Tier</th>
         <th>Score</th>
         <th class="qc-col">QC</th>
@@ -1029,6 +1042,7 @@
           <th style="width:2em;"></th>
           <th>Practice</th>{% for col in signal_columns %}<th class="signal-col-th">{{ col.label }}</th>{% endfor %}
           <th>Location</th>
+          <th>Sales Hook</th>
           <th>Tier</th>
           <th>Score</th>
           <th class="qc-col">QC</th>
@@ -1049,15 +1063,15 @@
 {# ── Sales Brief selection modal ───────────────────────────────────────── #}
 {% if status.status == "complete" %}
 <div id="sales-brief-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; overflow:auto; padding:2em 1em;">
-  <div style="background:#fff; margin:0 auto; max-width:520px; border-radius:12px; padding:2em; position:relative; box-shadow:0 8px 40px rgba(0,0,0,0.18);">
+  <div style="background:var(--white); margin:0 auto; max-width:520px; border-radius:12px; padding:2em; position:relative; box-shadow:0 8px 40px rgba(0,0,0,0.18);">
     <button onclick="closeSalesBriefModal()" aria-label="Close" style="position:absolute; top:1em; right:1em; background:none; border:none; font-size:1.5em; cursor:pointer; color:#888; line-height:1;">×</button>
-    <p class="eyebrow" style="font-size:0.72em; text-transform:uppercase; letter-spacing:0.12em; font-weight:600; color:var(--accent,#c84b2f); margin:0 0 0.3em;">Prospect Brief</p>
+    <p class="eyebrow" style="font-size:0.72em; text-transform:uppercase; letter-spacing:0.12em; font-weight:600; color:var(--accent,var(--accent)); margin:0 0 0.3em;">Prospect Brief</p>
     <h3 style="margin:0 0 0.4em; font-family:'Instrument Serif',Georgia,serif; font-size:1.4em; font-weight:400;">Generate Sales Brief</h3>
     <p style="color:#666; font-size:0.88em; margin:0 0 1.5em; line-height:1.5;">Select one account from each tier. The brief shows your prospect how BEMI ranks targets — the methodology, the evidence, and the reasoning behind each classification.</p>
 
     <div style="margin-bottom:1em;">
-      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Bullseye Account</label>
-      <select id="brief-bullseye-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
+      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,var(--accent)); margin-bottom:0.4em;">Bullseye Account</label>
+      <select id="brief-bullseye-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,var(--surface));">
         <option value="">— Select a Bullseye account —</option>
         {% for r in records if r.displayed_tier == 'Bullseye' and r.review.qc_status != 'rejected' %}
         <option value="{{ r.record_id }}">{{ r.practice_name | default('—') }}{% if r.address_city %} — {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}</option>
@@ -1068,8 +1082,8 @@
     </div>
 
     <div style="margin-bottom:1em;">
-      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Contender Account</label>
-      <select id="brief-contender-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
+      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,var(--accent)); margin-bottom:0.4em;">Contender Account</label>
+      <select id="brief-contender-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,var(--surface));">
         <option value="">— Select a Contender account —</option>
         {% for r in records | sort(attribute="bullseye_score", reverse=True) if r.displayed_tier == 'Contender' and r.review.qc_status != 'rejected' %}
         <option value="{{ r.record_id }}">{{ r.bullseye_score | int }} — {{ r.practice_name | default('—') }}{% if r.address_city %}, {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}</option>
@@ -1080,8 +1094,8 @@
     </div>
 
     <div style="margin-bottom:1.5em;">
-      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,#c84b2f); margin-bottom:0.4em;">Excluded Account</label>
-      <select id="brief-excluded-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,#f7f6f4);">
+      <label style="display:block; font-size:0.75em; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent,var(--accent)); margin-bottom:0.4em;">Excluded Account</label>
+      <select id="brief-excluded-id" style="width:100%; padding:8px 10px; border:1.5px solid #ddd; border-radius:8px; font-size:0.9em; background:var(--surface,var(--surface));">
         <option value="">— Select an Excluded account —</option>
         {% for r in records if r.displayed_tier == 'Excluded' or r.exclusion_status == 'EXCLUDED' %}
         <option value="{{ r.record_id }}">{{ r.practice_name | default('—') }}{% if r.address_city %} — {{ r.address_city }}{% if r.address_state %}, {{ r.address_state }}{% endif %}{% endif %}{% if r.exclusion_reason %} ({{ r.exclusion_reason[:60] }}{% if r.exclusion_reason | length > 60 %}…{% endif %}){% endif %}</option>
@@ -1091,7 +1105,7 @@
       </select>
     </div>
 
-    <div id="brief-error" style="display:none; color:var(--accent,#c84b2f); font-size:0.85em; margin-bottom:1em; padding:0.5em 0.75em; background:#fef2ef; border-radius:6px;"></div>
+    <div id="brief-error" style="display:none; color:var(--accent,var(--accent)); font-size:0.85em; margin-bottom:1em; padding:0.5em 0.75em; background:#fef2ef; border-radius:6px;"></div>
 
     <button id="brief-generate-btn" class="btn btn-submit" onclick="generateSalesBrief('{{ run_id }}')">Publish & Get Link</button>
   </div>
@@ -1198,7 +1212,7 @@ function fetchEnrichEstimate(runId, btn) {
         : (data.history_run_count + ' prior run' + (data.history_run_count === 1 ? '' : 's') + ' averaged');
       var tokNote = '~' + data.avg_input_tokens_per_record.toLocaleString() + ' input tokens/record · ' + basis;
       slot.innerHTML =
-        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;background:#f7f6f4;border:1px solid #e0ddd9;border-radius:6px;">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">' +
         '<span style="font-size:13px;">' +
         '<strong>Estimated Claude cost: ' + costStr + '</strong>' +
         ' &nbsp;<span style="color:#888;font-size:12px;">(' + data.record_count + ' records · ' + tokNote + ')</span>' +
@@ -1522,7 +1536,7 @@ function submitSignalOverride(runId, rid, sigId) {
 </script>
 
 {% if status.status == 'complete' %}
-<div id="reenrich-bar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:500; background:#1a2030; color:#fff; padding:12px 24px; align-items:center; gap:16px; box-shadow:0 -4px 20px rgba(0,0,0,0.3);">
+<div id="reenrich-bar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:500; background:#1a2030; color:var(--white); padding:12px 24px; align-items:center; gap:16px; box-shadow:0 -4px 20px rgba(0,0,0,0.3);">
   <span id="reenrich-bar-label" style="font-size:14px; font-weight:600; flex:1;">0 selected</span>
   <form method="post" action="/dashboard/{{ run_id }}/rerun-selected" id="reenrich-form" style="display:inline-flex; gap:10px; margin:0;" onsubmit="return prepareReenrichSubmit(this)">
     <div id="reenrich-ids-container"></div>

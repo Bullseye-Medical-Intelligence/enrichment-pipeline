@@ -435,3 +435,14 @@ function _moveRecord(recordId, toExcluded) {
   }
 }
 
+
+// ── Dark mode toggle (operator preference; persisted per browser) ──────────
+// base.html applies the saved theme pre-paint from localStorage 'bemi_theme';
+// this only flips the attribute and persists the choice.
+function toggleTheme() {
+  var root = document.documentElement;
+  var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  if (next === 'dark') { root.setAttribute('data-theme', 'dark'); }
+  else { root.removeAttribute('data-theme'); }
+  try { localStorage.setItem('bemi_theme', next); } catch (e) { /* private mode */ }
+}
