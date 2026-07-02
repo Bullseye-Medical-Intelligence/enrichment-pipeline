@@ -199,9 +199,13 @@ cash-pay practice is not parked on the watchlist over missing copy.
   confirmed. `""` = LLM returned `not_found` after a successful crawl (may be
   genuinely absent); `"no_context"` = site had insufficient text, no LLM call
   made; `"evidence_gate"` = LLM claimed "yes" but evidence_text or source_url was
-  missing, downgraded by the sourcing enforcement pass. Always `""` for `"yes"`
-  and `"no"` signals. Shown in the UI under the NOT FOUND state badge so reps can
-  distinguish "we looked and didn't find it" from "we couldn't look".
+  missing, downgraded by the sourcing enforcement pass; `"attribution_gate"` =
+  LLM claimed "yes" but the evidence was a bio / blog / referral-out /
+  testimonial / historical mention rather than a service the practice offers
+  (attribution guard, prompt v4 — generic, applies to all cartridges). Always
+  `""` for `"yes"` and `"no"` signals. Shown in the UI under the NOT FOUND state
+  badge so reps can distinguish "we looked and didn't find it" from "we couldn't
+  look".
 
 ---
 

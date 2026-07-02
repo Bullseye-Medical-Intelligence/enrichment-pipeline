@@ -44,8 +44,17 @@ load_dotenv()
 # Constants
 # ---------------------------------------------------------------------------
 
-PROMPT_VERSION = "signal_extraction_v3"
-_SYSTEM_TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_system_v3.txt"
+PROMPT_VERSION = "signal_extraction_v4"
+_SYSTEM_TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_system_v4.txt"
+
+# Attribution categories the extractor labels every "yes" with (prompt v4).
+# Only the SERVICE set attributes the capability to THIS practice as a current,
+# offered service; the rest (bios, blogs, referral-out, testimonials, historical
+# or aspirational mentions) describe the topic without offering it. Generic by
+# design — the categories are statement kinds, never specialty terms (RULE 3).
+SERVICE_ATTRIBUTIONS = frozenset({
+    "service_description", "treatment_menu", "capability_statement",
+})
 _USER_TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "signal_extraction_user_v3.txt"
 _SYSTEM_TEMPLATE: str = _SYSTEM_TEMPLATE_PATH.read_text(encoding="utf-8")
 _USER_TEMPLATE: str = _USER_TEMPLATE_PATH.read_text(encoding="utf-8")
@@ -282,10 +291,15 @@ def _validate_and_clean_signals(raw_signals: list[dict],
     # Parse and validate raw LLM output, keyed by signal_id.
     # Discard entries with unknown IDs.
     validated_map: dict[str, dict] = {}
+    # Attribution category per signal (prompt v4). Consumed by the attribution
+    # gate below and never written to the output signal — the record schema is
+    # unchanged.
+    attribution_by_id: dict[str, str] = {}
     for sig in raw_signals:
         signal_id = sig.get("signal_id", "")
         if signal_id not in icp_by_id:
             continue  # Discard unknown/invented signal IDs
+        attribution_by_id[signal_id] = str(sig.get("attribution") or "").lower().strip()
 
         # Coerce to str before .lower() — LLM may return JSON true/false (bool)
         raw_state = sig.get("signal_state")
@@ -318,6 +332,26 @@ def _validate_and_clean_signals(raw_signals: list[dict],
             "not_found_reason": "",
             "analyst_note": "",
         }
+
+    # Attribution gate (generic, all cartridges): a capability "yes" must be
+    # attributed to THIS practice as a current, offered service. The extractor
+    # labels every "yes" with the KIND of statement the evidence is; a physician
+    # bio ("has a deep interest in..."), an educational/condition page, a
+    # referral-out statement, a testimonial, or historical/aspirational language
+    # mentions the topic without offering it — downgrade to not_found. Never to
+    # "no": absent attribution is not an explicit contradiction. Signals without
+    # the attribution key (pre-v4 recorded responses, legacy fixtures) pass
+    # through unchanged; a present-but-unknown category fails closed.
+    for sig in validated_map.values():
+        if sig["signal_state"] != "yes":
+            continue
+        attribution = attribution_by_id.get(sig["signal_id"], "")
+        if attribution and attribution not in SERVICE_ATTRIBUTIONS:
+            sig["not_found_reason"] = "attribution_gate"
+            sig["signal_state"] = "not_found"
+            sig["confidence"] = "low"
+            sig["evidence_text"] = ""
+            sig["source_url"] = ""
 
     # Enforce sourcing requirement: a "yes" must carry both a real evidence quote
     # and an http(s) source URL. A model that cannot attribute a page is instructed

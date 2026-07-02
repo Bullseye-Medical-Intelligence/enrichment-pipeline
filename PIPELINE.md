@@ -394,7 +394,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "source_pipeline_version": "v1.0",
   "raw_input_source": "outscraper_export_2026-05-27.csv",
   "llm_model_used": "claude-sonnet-4-6",
-  "llm_prompt_version": "signal_extraction_v3",
+  "llm_prompt_version": "signal_extraction_v4",
   "enrichment_status": "complete",
 
   "qc_status": "pending",
@@ -425,7 +425,7 @@ signal tiering fields"; they default to off/empty when the ICP omits them.
 
 **inferred_from:** The `signal_id` of the reinforcing signal that triggered inference, when `state_inferred` is `true`. Empty string `""` for all other signals.
 
-**not_found_reason:** Explains why a `not_found` signal could not be confirmed. Values: `""` (LLM returned `not_found` normally after a successful crawl — the service may genuinely be absent), `"no_context"` (site had insufficient text to evaluate; no LLM call was made), `"evidence_gate"` (LLM returned `"yes"` but evidence_text or source_url was missing; downgraded by the sourcing enforcement pass). Always `""` for `"yes"` and `"no"` signals.
+**not_found_reason:** Explains why a `not_found` signal could not be confirmed. Values: `""` (LLM returned `not_found` normally after a successful crawl — the service may genuinely be absent), `"no_context"` (site had insufficient text to evaluate; no LLM call was made), `"evidence_gate"` (LLM returned `"yes"` but evidence_text or source_url was missing; downgraded by the sourcing enforcement pass), `"attribution_gate"` (LLM returned `"yes"` but classified the evidence as a physician bio, educational/blog page, referral-out statement, testimonial, or historical/aspirational mention — not a service this practice currently offers; downgraded by the generic attribution guard, prompt v4). Always `""` for `"yes"` and `"no"` signals.
 
 **call_brief:** A rep preparation object, always present. Grounded fields are
 derived from the signals (no LLM): `top_evidence` (highest-weight confirmed
@@ -570,7 +570,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
     config_validator.py     ← Validates run_config + ICP checklist before a run
     constants.py            ← All scoring constants, weights, thresholds, tier ranks
   /prompts                  ← (active templates loaded by signal_extractor; older v1/v2 kept for history)
-    signal_extraction_system_v3.txt   ← active system template
+    signal_extraction_system_v4.txt   ← active system template (adds the attribution guard)
     signal_extraction_user_v3.txt     ← active user template
     sales_angle_v1.txt
     sales_brief_gpt_v1.txt
