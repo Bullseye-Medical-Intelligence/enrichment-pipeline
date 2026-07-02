@@ -108,6 +108,26 @@ class TestSuppressPreview:
         assert stats["would_suppress"] == 0
         assert stats["already_suppressed"] == 1
 
+    def test_already_excluded_match_not_counted_would_suppress(self, tmp_path):
+        # Preview must agree with the pass: an already-EXCLUDED match (its
+        # _customer_suppressed marker stripped from output) is already suppressed,
+        # not a new one. Otherwise preview says "would suppress 1" and the pass
+        # then reports "0 newly suppressed".
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        supp_csv = tmp_path / "supp.csv"
+        rec = _make_record(practice_name="Alpha Clinic", npi_number="1111111111")
+        rec["exclusion_status"] = "EXCLUDED"
+        del rec["_customer_suppressed"]
+        _write_targets(run_dir, [rec])
+        _write_suppression(supp_csv, [
+            {"npi_number": "1111111111", "practice_name": "Alpha Clinic",
+             "address_zip": "78701", "address_state": "TX"},
+        ])
+        stats = run_suppress_preview(run_dir, supp_csv)
+        assert stats["would_suppress"] == 0
+        assert stats["already_suppressed"] == 1
+
     def test_preview_does_not_write(self, tmp_path):
         run_dir = tmp_path / "RUN-20260101-120000"
         run_dir.mkdir()

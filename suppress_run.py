@@ -158,6 +158,13 @@ def run_suppress_preview(run_dir: Path, suppression_path: Path) -> dict:
             continue
         is_suppressed, reason = check_suppression(record, suppression_list)
         if is_suppressed:
+            # Mirror run_suppress_pass: an already-EXCLUDED match was suppressed on a
+            # prior run (the _customer_suppressed marker is stripped from output), so
+            # it is already suppressed, not a new one. Without this, preview reports
+            # "would suppress N" while the pass reports "0 newly suppressed".
+            if record.get("exclusion_status") == "EXCLUDED":
+                already_suppressed += 1
+                continue
             would_suppress += 1
             would_suppress_names.append(record.get("practice_name", ""))
 

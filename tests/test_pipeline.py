@@ -46,6 +46,7 @@ from pipeline import (
     _finalize_ingest_only,
     _records_needing_browser_retry,
     _load_manual_content,
+    _load_step4_checkpoint,
 )
 
 
@@ -198,6 +199,28 @@ class TestManualAdapterStateNormalization:
         from ingestion.manual_adapter import _map_row
         rec = _map_row({"practice_name": "X", "address_state": "tx"}, 2)
         assert rec["address_state"] == "TX"
+
+
+# ---------------------------------------------------------------------------
+# Step-4 checkpoint
+# ---------------------------------------------------------------------------
+
+class TestStep4Checkpoint:
+
+    def test_load_skips_failed_rows(self, tmp_path):
+        """A failed record in the checkpoint (e.g. from an older version that
+        persisted failures) is ignored on load, so a resume re-attempts it instead
+        of freezing it as completed. complete and needs_review rows are kept."""
+        import json as _json
+        path = tmp_path / "step4_checkpoint.ndjson"
+        path.write_text(
+            _json.dumps({"id": "T-1", "enrichment_status": "complete"}) + "\n"
+            + _json.dumps({"id": "T-2", "enrichment_status": "failed"}) + "\n"
+            + _json.dumps({"id": "T-3", "enrichment_status": "needs_review"}) + "\n",
+            encoding="utf-8",
+        )
+        loaded = _load_step4_checkpoint(str(tmp_path))
+        assert set(loaded) == {"T-1", "T-3"}
 
 
 # ---------------------------------------------------------------------------

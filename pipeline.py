@@ -135,6 +135,12 @@ def _load_step4_checkpoint(output_dir: str) -> dict:
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
+            # Skip failed rows on load too, not just on write. A failed record is not
+            # completed work; ignoring it here re-attempts it on resume and applies
+            # the same retry behavior to checkpoints written by older versions that
+            # did persist failures.
+            if rec.get("enrichment_status") == "failed":
+                continue
             rid = rec.get("id") or rec.get("record_id")
             if rid:
                 completed[rid] = rec
