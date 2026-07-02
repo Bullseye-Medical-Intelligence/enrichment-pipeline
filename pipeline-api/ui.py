@@ -1196,6 +1196,7 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
     with open(results_path, "r", encoding="utf-8") as f:
         raw_records = record_adapter.normalize_records_payload(json.load(f))
     all_reviews = reviews.get_reviews(run_id, run_directory)
+    refresh_map = runner.load_refresh_status(run_directory)
     merged = []
     for record in raw_records:
         record_id = record_adapter.get_record_id(record)
@@ -1219,6 +1220,9 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
             "confidence_band": record_adapter.effective_confidence_band(record),
             "address_city": city,
             "address_state": state,
+            # In-place refresh state (running/done/failed + last_refreshed_at),
+            # display-only, from <run_dir>/refresh_status.json.
+            "refresh": refresh_map.get(record_id),
         })
     return merged
 
@@ -1927,6 +1931,23 @@ async def recrawl_progress(run_id: str, username: str = Depends(auth.require_ses
             "step_name": prog.get("step_name", ""),
         })
     return JSONResponse(content={"active": False})
+
+
+@router.get("/runs/{run_id}/refresh-status")
+async def refresh_status(run_id: str, username: str = Depends(auth.require_session)):
+    """Per-record in-place refresh state for a run (running / done / failed).
+
+    Reads <run_dir>/refresh_status.json (written by the runner's in-place
+    re-enrich paths); stale 'running' entries are reported as failed. Polled by
+    the dashboard to flip spinners into refreshed/failed badges.
+    """
+    try:
+        run_directory = runs.run_dir(run_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    return JSONResponse(content=runner.load_refresh_status(run_directory))
 
 
 @router.post("/runs/{run_id}/records/{record_id}/manual-content")

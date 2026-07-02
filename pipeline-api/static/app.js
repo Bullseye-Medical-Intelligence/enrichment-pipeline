@@ -60,14 +60,71 @@ function submitRecrawl(form, event) {
       .catch(function() {});
   }, 1500);
 
-  function done() {
+  function stopPoll() {
     if (_recrawlPoll) { clearInterval(_recrawlPoll); _recrawlPoll = null; }
-    window.location = target;
   }
   fetch(form.action, {method: 'POST', body: new FormData(form), redirect: 'follow'})
-    .then(done).catch(done);
+    .then(function(r) {
+      stopPoll();
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      /* Follow the server's redirect URL so its outcome flash (success OR
+         failure notice) is shown — the old handler navigated to a bare target
+         and silently discarded failure messages. */
+      window.location = r.url || target;
+    })
+    .catch(function(err) {
+      stopPoll();
+      form.dataset.submitting = '';
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('btn-working');
+        btn.textContent = 'Retry re-crawl';
+      }
+      alert('The re-crawl request did not complete: ' + (err && err.message ? err.message : err) +
+            '\n\nThe job may still be running on the server — the record will carry a ' +
+            'refresh indicator (spinner / ↻ / ⚠) with the outcome. Reload the page to check.');
+    });
   return false;
 }
+
+/* ── Expand / Collapse All (respects the active filter) ─────── */
+function toggleExpandAll(btn) {
+  var expand = btn.dataset.state !== 'expanded';
+  document.querySelectorAll('#results-table .record-row').forEach(function(row) {
+    if (row.style.display === 'none') return;   /* hidden by an active filter */
+    var rid = row.dataset.rid;
+    if (!rid) return;
+    var detail = document.getElementById('detail-' + rid);
+    var icon = document.getElementById('icon-' + rid);
+    if (detail) detail.style.display = expand ? 'table-row' : 'none';
+    if (icon) icon.textContent = expand ? '▼' : '▶';
+  });
+  btn.dataset.state = expand ? 'expanded' : '';
+  btn.textContent = expand ? 'Collapse All' : 'Expand All';
+}
+
+/* ── Refresh-status poller ──────────────────────────────────── */
+/* While any record on the page is mid re-enrich (data-refreshing="1"), poll the
+   run's refresh-status until no job is running, then reload once so spinners
+   become refreshed / failed badges with fresh record data. */
+document.addEventListener('DOMContentLoaded', function() {
+  if (!document.querySelector('.record-row[data-refreshing="1"]')) return;
+  var m = window.location.pathname.match(/^\/dashboard\/([^\/]+)$/);
+  if (!m) return;
+  var runId = m[1];
+  var timer = setInterval(function() {
+    fetch('/runs/' + runId + '/refresh-status', {headers: {'Accept': 'application/json'}})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(map) {
+        if (!map) return;
+        var running = Object.keys(map).some(function(k) {
+          return map[k] && map[k].state === 'running';
+        });
+        if (!running) { clearInterval(timer); window.location.reload(); }
+      })
+      .catch(function() {});
+  }, 4000);
+});
 
 /* ── Inline URL edit ────────────────────────────────────────── */
 function showUrlEdit(rid) {

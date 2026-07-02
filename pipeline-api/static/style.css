@@ -987,3 +987,10 @@ html[data-theme="dark"] .stat-pending            { background: #5b21b6; }
 html[data-theme="dark"] .stat-num   { color: #f7f6f4; }
 html[data-theme="dark"] .stat-label { color: rgba(247,246,244,0.45); }
 html[data-theme="dark"] .stats-bar.filter-active .stat-item.stat-active { outline-color: rgba(247,246,244,0.45); }
+
+/* ── Per-record refresh indicator ─────────────────────────────────── */
+.refresh-flag { font-size: 11px; margin-left: 6px; white-space: nowrap; }
+.refresh-ok     { color: var(--green); cursor: help; }
+.refresh-failed { color: var(--red); font-weight: 600; cursor: help; }
+html[data-theme="dark"] .refresh-ok     { color: #5fc783; }
+html[data-theme="dark"] .refresh-failed { color: #f08a8a; }

@@ -268,6 +268,26 @@ No per-record cost fields exist.
 
 **Bulk browser re-crawl**: the "Re-enrich Selected" bulk bar (shown when a run is `complete`) carries a second button, "Re-crawl Selected with Browser", that posts the same selected `record_ids` to `POST /dashboard/{run_id}/rerun-selected` with `use_playwright=1`. `orchestrate_batch_reenrich(..., use_playwright=True)` then re-crawls the selection with headless Chromium (`--playwright`) and merges results in place.
 
+**Per-record refresh status**: every in-place re-enrich path (single-record
+re-crawl, manual content, excluded re-enrich, batch re-enrich) records per-record
+job state in `<run_dir>/refresh_status.json` (`runner.mark_refresh_running/done/
+failed`, written atomically): `state` running/done/failed, `kind`, `started_at`,
+`finished_at`, `error`, and a persisted `last_refreshed_at`. The dashboard renders
+a spinner while running, a green `↻` with the refresh timestamp on hover after
+success, and a red "⚠ refresh failed" with the error on hover after failure — a
+failed pipeline exit is never silent. `GET /runs/{run_id}/refresh-status` serves
+the map (stale `running` entries older than `REFRESH_STALE_MINUTES` are reported
+failed, read-only); rows mid-refresh carry `data-refreshing="1"` and app.js polls
+until no job is running, then reloads once. The single-record wait-and-merge is
+wrapped in `asyncio.shield` so a client disconnect or proxy timeout cannot cancel
+the job mid-flight (the old path's cleanup deleted the scratch dir from under the
+still-running subprocess).
+
+**Expand/Collapse All**: a toggle button above the results table
+(`toggleExpandAll` in app.js) expands or collapses every record's detail panel in
+the current filtered view — rows hidden by an active filter are untouched. The
+label flips between "Expand All" and "Collapse All".
+
 **System Health banner** (`/dashboard` run list): shown when `preflight.run_checks()` returns status other than `"ok"`. Auto-expanded for errors, collapsed for warnings. Shows a table of individual check results (✓/⚠/✗). Hidden entirely when all checks pass. Health is re-evaluated on every page load.
 
 **Pre-enrichment cost estimate**: on the run results page for ingested (not-yet-enriched) runs, the "Enrich All" button triggers a fetch to `GET /runs/{run_id}/enrich-estimate` before submitting. The estimate is computed by `llm_pricing.estimate_run_cost()` — averages token usage across up to 20 past completed runs; falls back to conservative defaults (6k input / 750 output tokens per record) when no history exists. Shown inline next to the button; clicking a second time confirms and submits.
@@ -334,6 +354,7 @@ GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
 GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs; requires all Bullseye reviewed)
 GET    /runs/{run_id}/download/sales-brief       Prospect-facing methodology brief (select 1 Bullseye, 1 Contender, 1 Excluded via query params)
 GET    /runs/{run_id}/enrich-estimate            JSON cost estimate for enriching an ingested run (reads token history from past runs)
+GET    /runs/{run_id}/refresh-status             Per-record in-place refresh state (running/done/failed) from refresh_status.json
 POST   /runs/{run_id}/publish/{brief_type}       Publish brief HTML to Hostinger; saves URL to published_briefs.json
                                                    brief_type: sales-handoff | sales-brief | executive-report | bullseye-report
                                                    sales-brief requires: ?bullseye_id=&contender_id=&excluded_id=
@@ -470,7 +491,10 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   (`runner._merge_recrawled_record`), recompute its status counts, and keep the run
   `complete`. The analyst's review is preserved and stamped with a dated
   "Re-enriched" note (`reviews.stamp_reenriched`). The route blocks until merge so
-  the operator returns to fresh data on the same run.
+  the operator returns to fresh data on the same run; the wait-and-merge is
+  `asyncio.shield`-ed so a dropped client connection cannot cancel it, and the
+  outcome is always persisted to `refresh_status.json` (see Per-record refresh
+  status) so success/failure survives the request.
 - **Constant-time auth**: the UI password comparison uses `hmac.compare_digest` (`auth.py`). There is no API-key/Bearer comparison — session cookie is the only auth.
 - **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
   output (`output/atomic_write.py`) use temp-file + `os.replace()`.

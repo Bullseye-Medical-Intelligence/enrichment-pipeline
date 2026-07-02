@@ -13,7 +13,7 @@ import secrets
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import icp_profiles
 import projects
@@ -30,6 +30,7 @@ from config import (
     PIPELINE_SCRIPT,
     PROJECT_CONFIG_SNAPSHOT_FILENAME,
     PYTHON_EXECUTABLE,
+    REFRESH_STALE_MINUTES,
 )
 
 logger = logging.getLogger(__name__)
@@ -510,6 +511,85 @@ async def orchestrate_enrich_all(
     )
 
 
+# ---------------------------------------------------------------------------
+# Per-record refresh status (in-place re-enrich job state)
+# ---------------------------------------------------------------------------
+# Every in-place re-enrich path (single-record re-crawl, manual content, batch
+# re-enrich) records per-record state in <run_dir>/refresh_status.json so the
+# dashboard can show running / done / failed instead of a fire-and-forget flash.
+# RULE 4-compliant: filesystem state only, written atomically.
+
+REFRESH_STATUS_FILENAME = "refresh_status.json"
+
+
+def _mark_refresh(run_directory: Path, record_ids, state: str,
+                  kind: str = "", error: str = "") -> None:
+    """Merge per-record refresh entries into refresh_status.json atomically."""
+    path = run_directory / REFRESH_STATUS_FILENAME
+    try:
+        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (ValueError, OSError):
+        current = {}
+    now = datetime.now(timezone.utc).isoformat()
+    for rid in record_ids:
+        entry = dict(current.get(rid) or {})
+        entry["state"] = state
+        if kind:
+            entry["kind"] = kind
+        entry["error"] = (error or "")[:300] if state == "failed" else ""
+        if state == "running":
+            entry["started_at"] = now
+            entry["finished_at"] = ""
+        else:
+            entry["finished_at"] = now
+        if state == "done":
+            entry["last_refreshed_at"] = now
+        current[rid] = entry
+    reviews._atomic_write(path, current)
+
+
+def mark_refresh_running(run_directory: Path, record_ids, kind: str) -> None:
+    """Record that an in-place refresh started for these records."""
+    _mark_refresh(run_directory, record_ids, "running", kind=kind)
+
+
+def mark_refresh_done(run_directory: Path, record_ids) -> None:
+    """Record a successful in-place refresh (stamps last_refreshed_at)."""
+    _mark_refresh(run_directory, record_ids, "done")
+
+
+def mark_refresh_failed(run_directory: Path, record_ids, error: str) -> None:
+    """Record a failed in-place refresh with an operator-facing error."""
+    _mark_refresh(run_directory, record_ids, "failed", error=error)
+
+
+def load_refresh_status(run_directory: Path) -> dict:
+    """Read refresh_status.json, reporting stale 'running' entries as failed.
+
+    Read-only: a monitor that died (server restart) or stalled past
+    REFRESH_STALE_MINUTES is reported failed in the returned dict without
+    rewriting the file, so GET routes never mutate run state.
+    """
+    path = run_directory / REFRESH_STATUS_FILENAME
+    try:
+        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (ValueError, OSError):
+        return {}
+    stale_before = datetime.now(timezone.utc) - timedelta(minutes=REFRESH_STALE_MINUTES)
+    for entry in current.values():
+        if entry.get("state") != "running":
+            continue
+        try:
+            started = datetime.fromisoformat(entry.get("started_at", ""))
+        except ValueError:
+            started = None
+        if started is None or started < stale_before:
+            entry["state"] = "failed"
+            entry["error"] = ("Job did not report completion — the server restarted "
+                              "or the job stalled. Re-run the refresh.")
+    return current
+
+
 def _prepare_single_record_job(source_run_id: str, record_id: str):
     """Validate a source run + record and build a scratch job dir for re-enrich.
 
@@ -654,9 +734,13 @@ async def orchestrate_single_recrawl(
         "In-place browser re-crawl of record %s in run %s started by '%s' (url=%s)",
         record_id, source_run_id, operator, url,
     )
-    return await _run_inplace_update(
+    mark_refresh_running(source_dir, [record_id], "browser re-crawl")
+    # Shielded so a client disconnect (proxy timeout, tab closed) cannot cancel
+    # the wait-and-merge mid-flight — the old path's finally-cleanup would delete
+    # the scratch dir from under the still-running subprocess.
+    return await asyncio.shield(asyncio.ensure_future(_run_inplace_update(
         source_run_id, scratch_dir, record_id, process, "browser re-crawl"
-    )
+    )))
 
 
 async def orchestrate_excluded_reenrich(
@@ -704,9 +788,10 @@ async def orchestrate_excluded_reenrich(
         "Excluded record re-enrich for %s in run %s started by '%s' (url=%s)",
         record_id, source_run_id, operator, url,
     )
-    return await _run_inplace_update(
+    mark_refresh_running(source_dir, [record_id], "excluded re-enrich")
+    return await asyncio.shield(asyncio.ensure_future(_run_inplace_update(
         source_run_id, scratch_dir, record_id, process, "excluded re-enrich"
-    )
+    )))
 
 
 async def orchestrate_manual_content_recrawl(
@@ -776,9 +861,10 @@ async def orchestrate_manual_content_recrawl(
         "In-place manual-content enrich of record %s in run %s started by '%s' (%d page(s), %d bytes)",
         record_id, source_run_id, operator, len(usable), total_bytes,
     )
-    return await _run_inplace_update(
+    mark_refresh_running(source_dir, [record_id], "manual content")
+    return await asyncio.shield(asyncio.ensure_future(_run_inplace_update(
         source_run_id, scratch_dir, record_id, process, "manual content"
-    )
+    )))
 
 
 def _write_multi_record_csv(scratch_dir: Path, records: list[dict]) -> Path:
@@ -905,6 +991,10 @@ async def orchestrate_batch_reenrich(
         "Batch re-enrich of %d records in run %s started by '%s' (browser=%s)",
         len(selected), source_run_id, operator, use_playwright,
     )
+    mark_refresh_running(
+        source_dir, list(id_set),
+        "browser re-crawl" if use_playwright else "re-enrich",
+    )
     background_tasks.add_task(
         _monitor_batch_reenrich, source_run_id, scratch_dir, list(id_set), process
     )
@@ -924,6 +1014,7 @@ async def _monitor_batch_reenrich(
     are preserved via stamp_reenriched(). The source run stays 'complete'.
     """
     loop = asyncio.get_event_loop()
+    source_dir = runs.run_dir(source_run_id)
     try:
         _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
         if process.returncode != 0:
@@ -931,6 +1022,10 @@ async def _monitor_batch_reenrich(
             logger.error(
                 "Batch re-enrich of run %s failed (exit %d): %.500s",
                 source_run_id, process.returncode, error_text,
+            )
+            mark_refresh_failed(
+                source_dir, record_ids,
+                f"Pipeline exited with an error: {error_text[:200]}",
             )
             return
 
@@ -940,19 +1035,20 @@ async def _monitor_batch_reenrich(
                 "Batch re-enrich of run %s: scratch output invalid: %s",
                 source_run_id, failure,
             )
+            mark_refresh_failed(source_dir, record_ids, f"Pipeline output invalid: {failure}")
             return
 
         with open(scratch_dir / "enriched_targets.json", "r", encoding="utf-8") as f:
             new_records = record_adapter.normalize_records_payload(json.load(f))
         new_by_id = {record_adapter.get_record_id(r): r for r in new_records}
 
-        source_dir = runs.run_dir(source_run_id)
         enriched_path = source_dir / "enriched_targets.json"
         with open(enriched_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
         records = record_adapter.normalize_records_payload(payload)
 
         merged_count = 0
+        merged_ids: list[str] = []
         for i, r in enumerate(records):
             rid = record_adapter.get_record_id(r)
             if rid in new_by_id:
@@ -960,6 +1056,7 @@ async def _monitor_batch_reenrich(
                 reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
                 _copy_recrawl_evidence(scratch_dir, source_dir, rid)
                 merged_count += 1
+                merged_ids.append(rid)
 
         if isinstance(payload, dict):
             payload["records"] = records
@@ -973,15 +1070,23 @@ async def _monitor_batch_reenrich(
         counts = _recompute_counts_from_records(records)
         runs.update_run_status(source_run_id, status="complete", **counts)
 
+        mark_refresh_done(source_dir, merged_ids)
+        missing = [rid for rid in record_ids if rid not in set(merged_ids)]
+        if missing:
+            mark_refresh_failed(
+                source_dir, missing,
+                "The record was not present in the re-enrich output.",
+            )
         logger.info(
             "Batch re-enrich of run %s: merged %d / %d requested records.",
             source_run_id, merged_count, len(record_ids),
         )
-    except Exception:
+    except Exception as e:
         logger.exception(
             "Batch re-enrich of run %s failed during merge; run left untouched.",
             source_run_id,
         )
+        mark_refresh_failed(source_dir, record_ids, f"Merge failed: {str(e)[:200]}")
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
@@ -1001,6 +1106,7 @@ async def _run_inplace_update(
     specific failure reason to the operator (RULE 7: fail loudly).
     """
     loop = asyncio.get_event_loop()
+    source_dir = runs.run_dir(source_run_id)
     try:
         _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
         if process.returncode != 0:
@@ -1009,12 +1115,34 @@ async def _run_inplace_update(
                 "In-place %s of record %s in run %s failed (exit %d): %.500s",
                 kind, record_id, source_run_id, process.returncode, error_text,
             )
+            mark_refresh_failed(
+                source_dir, [record_id],
+                f"Pipeline exited with an error: {error_text[:200]}",
+            )
             return InplaceUpdateResult(
                 ok=False,
                 message=f"The {kind} did not complete — the pipeline exited with an error. "
                         "The record was left unchanged.",
             )
-        return _merge_recrawled_record(source_run_id, scratch_dir, record_id, kind)
+        result = _merge_recrawled_record(source_run_id, scratch_dir, record_id, kind)
+        if result.ok:
+            mark_refresh_done(source_dir, [record_id])
+        else:
+            mark_refresh_failed(source_dir, [record_id], result.message)
+        return result
+    except Exception as e:
+        # Fail loudly to the operator (flash + per-record failed badge), never a
+        # silent 500 with the record left looking untouched.
+        logger.exception(
+            "In-place %s of record %s in run %s failed unexpectedly.",
+            kind, record_id, source_run_id,
+        )
+        mark_refresh_failed(source_dir, [record_id], f"{kind} failed: {str(e)[:200]}")
+        return InplaceUpdateResult(
+            ok=False,
+            message=f"The {kind} failed unexpectedly and the record was left unchanged. "
+                    f"({str(e)[:120]})",
+        )
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 

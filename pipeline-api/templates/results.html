@@ -389,6 +389,7 @@
           data-sort-tier="{{ _tier_rank }}"
           data-sort-score="{{ record.bullseye_score | default(0) }}"
           data-sort-qc="{{ review.qc_status }}"
+          data-refreshing="{{ '1' if record.refresh and record.refresh.state == 'running' else '' }}"
           onclick="toggleDetail('{{ rid }}')"
           style="cursor:pointer">
         {% if status.status == 'ingested' %}
@@ -405,6 +406,14 @@
         {% endif %}
         <td class="practice-cell">
           <strong>{{ record.practice_name | default("—") }}</strong>
+          {%- set _rf = record.refresh %}
+          {%- if _rf and _rf.state == 'running' %}
+          <span class="spinner" title="{{ _rf.kind or 'Refresh' }} in progress…"></span>
+          {%- elif _rf and _rf.state == 'failed' %}
+          <span class="refresh-flag refresh-failed" title="{{ _rf.error or 'Refresh failed' }}">⚠ refresh failed</span>
+          {%- elif _rf and _rf.state == 'done' %}
+          <span class="refresh-flag refresh-ok" title="Refreshed {{ _rf.last_refreshed_at }} ({{ _rf.kind }})">↻</span>
+          {%- endif %}
           {% if _blocked %}
           <br><span class="badge badge-blocked" title="Crawler could not read this site (bot/security wall). Use 'Re-crawl with Browser' or paste the page content.">Manual review</span>
           {% endif %}
@@ -894,6 +903,10 @@
 {% endif %}
 
 {# ── Records table ────────────────────────────────────────────────── #}
+<div style="display:flex; justify-content:flex-end; margin:0 0 6px;">
+  <button id="expand-all-btn" class="btn btn-secondary btn-sm" type="button"
+          onclick="toggleExpandAll(this)">Expand All</button>
+</div>
 <div class="card table-card">
   <div class="table-scroll">
   <table class="data-table results-table" id="results-table">
