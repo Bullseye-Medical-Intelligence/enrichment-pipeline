@@ -495,6 +495,16 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   `asyncio.shield`-ed so a dropped client connection cannot cancel it, and the
   outcome is always persisted to `refresh_status.json` (see Per-record refresh
   status) so success/failure survives the request.
+- **Data-loss guard on merge**: a re-crawl that comes back blocked/thin
+  (`source_confidence` `"limited"`/`"failed"`, via `runner._crawl_unreadable`)
+  never overwrites a record that already holds a good crawl — a transient bot gate
+  would otherwise destroy confirmed signals when an operator re-crawls a healthy
+  record. Both the single-record (`_merge_recrawled_record`) and batch
+  (`_monitor_batch_reenrich`) in-place paths keep the prior data and report the
+  record `failed` in `refresh_status.json` (never a silent success badge over
+  destroyed data). The overwrite proceeds only when the prior record was itself
+  unreadable — the normal "Re-crawl Blocked Sites" flow (blocked→blocked or
+  blocked→improved).
 - **Constant-time auth**: the UI password comparison uses `hmac.compare_digest` (`auth.py`). There is no API-key/Bearer comparison — session cookie is the only auth.
 - **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
   output (`output/atomic_write.py`) use temp-file + `os.replace()`.

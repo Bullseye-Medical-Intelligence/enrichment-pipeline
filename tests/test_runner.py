@@ -238,6 +238,81 @@ def test_reenrichment_id_mismatch_leaves_source_untouched(run_store):
     assert (run_dir / "enriched_targets.json").read_text() == before
 
 
+def test_merge_blocked_recrawl_keeps_good_record(run_store):
+    # Data-loss guard: a re-crawl that comes back blocked/thin (source_confidence
+    # "failed"/"limited") must NOT overwrite a record that already holds a good
+    # crawl. A transient bot gate would otherwise destroy confirmed signals.
+    run_id = "RUN-20260528-110010-f001"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+         "bullseye_score": 90, "exclusion_status": "CLEAR",
+         "source_confidence": "partial",
+         "signals": [{"signal_id": "S-1", "signal_state": "yes"}]},
+    ])
+    before = (run_dir / "enriched_targets.json").read_text()
+    scratch = _scratch_with(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Manual Review",
+        "bullseye_score": 0, "exclusion_status": "CLEAR",
+        "source_confidence": "failed", "signals": []})
+
+    result = runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    assert result.ok is False
+    assert "blocked" in result.message.lower()
+    assert (run_dir / "enriched_targets.json").read_text() == before
+
+
+def test_merge_blocked_recrawl_over_blocked_record_overwrites(run_store):
+    # The guard only protects readable records. When the prior record was ALREADY
+    # blocked, the normal "Re-crawl Blocked Sites" flow merges the new result
+    # (blocked→improved here) without being blocked by the guard.
+    run_id = "RUN-20260528-110011-f002"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Manual Review",
+         "bullseye_score": 0, "exclusion_status": "CLEAR",
+         "source_confidence": "limited", "signals": []},
+    ])
+    scratch = _scratch_with(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+        "bullseye_score": 90, "exclusion_status": "CLEAR",
+        "source_confidence": "partial",
+        "signals": [{"signal_id": "S-1", "signal_state": "yes"}]})
+
+    result = runner._merge_recrawled_record(run_id, scratch, "T-A", "browser re-crawl")
+
+    assert result.ok is True
+    by_id = {r["id"]: r for r in
+             json.loads((run_dir / "enriched_targets.json").read_text())["records"]}
+    assert by_id["T-A"]["target_tier"] == "Bullseye"
+
+
+def test_batch_merge_blocked_recrawl_keeps_good_record(run_store):
+    # Same data-loss guard on the batch in-place path: a good record whose
+    # re-crawl came back blocked is kept, and the record is reported failed in
+    # refresh_status (never a silent success badge over destroyed data).
+    run_id = "RUN-20260528-110012-f003"
+    run_dir = _complete_run(run_store, run_id, [
+        {"id": "T-A", "practice_name": "A", "target_tier": "Bullseye",
+         "bullseye_score": 90, "exclusion_status": "CLEAR",
+         "source_confidence": "partial",
+         "signals": [{"signal_id": "S-1", "signal_state": "yes"}]},
+    ])
+    scratch = _scratch_with(run_dir, {
+        "id": "T-A", "practice_name": "A", "target_tier": "Manual Review",
+        "bullseye_score": 0, "exclusion_status": "CLEAR",
+        "source_confidence": "failed", "signals": []})
+
+    asyncio.run(runner._monitor_batch_reenrich(
+        run_id, scratch, ["T-A"], _FakeProcess(returncode=0)))
+
+    by_id = {r["id"]: r for r in
+             json.loads((run_dir / "enriched_targets.json").read_text())["records"]}
+    assert by_id["T-A"]["target_tier"] == "Bullseye"   # kept
+    assert by_id["T-A"]["bullseye_score"] == 90
+    refresh = runner.load_refresh_status(run_dir)
+    assert refresh["T-A"]["state"] == "failed"
+
+
 def test_merge_invalid_scratch_leaves_source_untouched(run_store):
     run_id = "RUN-20260528-110003-dddd"
     run_dir = _complete_run(run_store, run_id, [

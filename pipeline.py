@@ -405,6 +405,34 @@ def _validate_required_fields(records: list[dict]) -> tuple[list[dict], list[dic
     return valid, invalid
 
 
+def _exclusion_check_fail_closed(record: dict, run_config: dict) -> tuple[dict, dict | None]:
+    """Run Step 6's exclusion check on one record, failing closed on any error.
+
+    On success returns (record, None). If apply_exclusions raises, the record
+    cannot be certified safe, so it is routed to Manual Review (held out of the
+    call queue) rather than tiered by bare score in Step 7 — which would bypass
+    every exclusion and cap gate and could ship a should-be-Excluded record.
+    exclusion_status stays CLEAR because no exclusion was confirmed; the operator
+    decides. Returns (record, error_entry) so the caller can collect the error.
+    """
+    try:
+        record = apply_exclusions(record, run_config)
+        return record, None
+    except Exception as e:
+        error_msg = str(e)[:200]
+        print(f"  [FAIL] Exclusion check error for {record.get('id', '?')}: {error_msg}")
+        record["exclusion_status"] = "CLEAR"
+        record["exclusion_reason"] = None
+        record["exclusion_primary_gate"] = ""
+        record["target_tier"] = "Manual Review"
+        return record, {
+            "record_id": record.get("id", "unknown"),
+            "step": "exclusion_check",
+            "error": error_msg,
+            "resolution": "Exclusion check failed; routed to Manual Review (fail-closed)",
+        }
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -858,27 +886,10 @@ def run_pipeline(input_file: str, source_type: str,
     print("STEP 6: EXCLUSION CHECK")
     print(f"{'-'*40}")
 
-    for record in records:
-        try:
-            record = apply_exclusions(record, run_config)
-        except Exception as e:
-            error_msg = str(e)[:200]
-            print(f"  [FAIL] Exclusion check error for {record.get('id', '?')}: {error_msg}")
-            # Fail closed: an exclusion check that raised cannot certify the record
-            # as safe, so route it to Manual Review rather than let Step 7 tier it
-            # by bare score (which would bypass every exclusion and cap gate and
-            # could ship a should-be-Excluded record). exclusion_status stays CLEAR
-            # because no exclusion was confirmed; the operator decides.
-            record["exclusion_status"] = "CLEAR"
-            record["exclusion_reason"] = None
-            record["exclusion_primary_gate"] = ""
-            record["target_tier"] = "Manual Review"
-            all_errors.append({
-                "record_id": record.get("id", "unknown"),
-                "step": "exclusion_check",
-                "error": error_msg,
-                "resolution": "Exclusion check failed; routed to Manual Review (fail-closed)",
-            })
+    for i, record in enumerate(records):
+        records[i], exclusion_error = _exclusion_check_fail_closed(record, run_config)
+        if exclusion_error:
+            all_errors.append(exclusion_error)
 
     excluded_count = sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED")
     print(f"\n  {excluded_count} records excluded")

@@ -53,7 +53,7 @@ MAX_CSV_SIZE_BYTES: int = MAX_CSV_SIZE_MB * 1024 * 1024
 MAX_RUNS_RETURNED: int = 50
 PIPELINE_VERSION: str = "v1.0"
 # API build version — bump MINOR for new capabilities, PATCH for fixes.
-BUILD_VERSION: str = "1.6.1"
+BUILD_VERSION: str = "1.6.2"
 BUILD_DATE: str = "2026-07-06"
 # A per-record in-place refresh still marked "running" after this many minutes is
 # reported as failed — the monitor died (server restart) or the job stalled.

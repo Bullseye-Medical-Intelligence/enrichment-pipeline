@@ -42,7 +42,9 @@ from enrichment.signal_extractor import (
 from enrichment.constants import empty_call_brief
 from enrichment.exclusion_checker import apply_exclusions, _assign_tier
 from enrichment.scorer import validate_and_finalize
+import pipeline
 from pipeline import (
+    _exclusion_check_fail_closed,
     _finalize_ingest_only,
     _records_needing_browser_retry,
     _load_manual_content,
@@ -2083,6 +2085,34 @@ class TestManualContent:
         assert rec["_pages_crawled"] == ["[Manual content] home.html",
                                          "[Manual content] about.txt"]
         assert rec["source_confidence"] == "partial"
+
+
+class TestExclusionCheckFailClosed:
+    """Step 6 fails closed: an exclusion check that raises holds the record."""
+
+    def test_success_passes_through_no_error(self, monkeypatch):
+        monkeypatch.setattr(pipeline, "apply_exclusions",
+                            lambda r, cfg: {**r, "exclusion_status": "CLEAR"})
+        rec, err = _exclusion_check_fail_closed({"id": "T-1"}, {})
+        assert err is None
+        assert rec["exclusion_status"] == "CLEAR"
+
+    def test_raise_routes_to_manual_review_fail_closed(self, monkeypatch):
+        def _boom(record, cfg):
+            raise ValueError("rule config malformed")
+        monkeypatch.setattr(pipeline, "apply_exclusions", _boom)
+
+        rec, err = _exclusion_check_fail_closed(
+            {"id": "T-9", "target_tier": "Bullseye", "bullseye_score": 95}, {})
+
+        # Held out of the call queue rather than tiered by bare score.
+        assert rec["target_tier"] == "Manual Review"
+        # No exclusion was confirmed, so status stays CLEAR — the operator decides.
+        assert rec["exclusion_status"] == "CLEAR"
+        assert err is not None
+        assert err["step"] == "exclusion_check"
+        assert err["record_id"] == "T-9"
+        assert "fail-closed" in err["resolution"]
 
 
 class TestNoContextReason:

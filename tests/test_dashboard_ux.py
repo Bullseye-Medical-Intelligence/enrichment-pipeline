@@ -16,6 +16,7 @@ fixture pattern.
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -175,9 +176,42 @@ def test_style_css_defines_dark_theme_block():
     css = (_API_DIR / "static" / "style.css").read_text(encoding="utf-8")
     assert 'html[data-theme="dark"]' in css
     assert "color-scheme: dark" in css
-    # Terracotta accent is never remapped by the dark theme (design system).
+    # Terracotta accent (and its darker shade) is never remapped by the dark
+    # theme (design system). Everything after the first dark selector is scanned.
     dark_block = css.split('html[data-theme="dark"]', 1)[1]
     assert "--accent:" not in dark_block
+    assert "--accent-dk:" not in dark_block
+
+
+def test_dark_theme_never_remaps_tier_stat_colors():
+    """The six tier stat colors are NEVER remapped in dark mode (design system) —
+    each dark-block declaration must keep its canonical hex, identical to light."""
+    css = (_API_DIR / "static" / "style.css").read_text(encoding="utf-8")
+    tier_hex = {
+        ".stat-bullseye": "#b91c1c",
+        ".stat-needs-verification": "#b45309",
+        ".stat-contender": "#9a3823",
+        ".stat-manual-review": "#475569",
+        ".stat-excluded": "#1e2530",
+        ".stat-pending": "#5b21b6",
+    }
+    for cls, hex_val in tier_hex.items():
+        # Light (:root-scope) declaration carries the canonical value.
+        assert re.search(rf"(?<!])\s{re.escape(cls)}\s*\{{\s*background:\s*{hex_val};",
+                         css), f"light {cls} != {hex_val}"
+        # Dark-block re-declaration must match the same value, not a dark-tuned one.
+        assert re.search(
+            rf'html\[data-theme="dark"\]\s{re.escape(cls)}\s*\{{\s*background:\s*{hex_val};',
+            css), f"dark {cls} remapped away from {hex_val}"
+
+
+def test_dark_theme_inverts_text_and_surface_for_legibility():
+    """The dark block must flip --ink light and --surface dark so the body
+    text/background pair can never collapse to illegible same-on-same."""
+    css = (_API_DIR / "static" / "style.css").read_text(encoding="utf-8")
+    dark_block = css.split('html[data-theme="dark"]', 1)[1].split("}", 1)[0]
+    assert re.search(r"--ink:\s*#ece", dark_block)      # light body text
+    assert re.search(r"--surface:\s*#0f0f0e", dark_block)  # dark page background
 
 
 def test_dark_mode_and_hook_absent_from_client_templates():

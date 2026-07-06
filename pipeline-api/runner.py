@@ -583,6 +583,11 @@ def load_refresh_status(run_directory: Path) -> dict:
             started = datetime.fromisoformat(entry.get("started_at", ""))
         except ValueError:
             started = None
+        # A naive timestamp (hand-edited file, older writer) cannot be compared
+        # against the tz-aware cutoff — treat it as UTC rather than 500 the GET
+        # route. Every in-repo writer already stamps tz-aware UTC.
+        if started is not None and started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
         if started is None or started < stale_before:
             entry["state"] = "failed"
             entry["error"] = ("Job did not report completion — the server restarted "
@@ -1047,16 +1052,23 @@ async def _monitor_batch_reenrich(
             payload = json.load(f)
         records = record_adapter.normalize_records_payload(payload)
 
-        merged_count = 0
         merged_ids: list[str] = []
+        kept_blocked_ids: list[str] = []
         for i, r in enumerate(records):
             rid = record_adapter.get_record_id(r)
-            if rid in new_by_id:
-                records[i] = new_by_id[rid]
-                reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
-                _copy_recrawl_evidence(scratch_dir, source_dir, rid)
-                merged_count += 1
-                merged_ids.append(rid)
+            if rid not in new_by_id:
+                continue
+            candidate = new_by_id[rid]
+            # Data-loss guard (see _merge_recrawled_record): a blocked/thin
+            # re-crawl must not overwrite a record that already holds a good crawl.
+            if _crawl_unreadable(candidate) and not _crawl_unreadable(r):
+                kept_blocked_ids.append(rid)
+                continue
+            records[i] = candidate
+            reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
+            _copy_recrawl_evidence(scratch_dir, source_dir, rid)
+            merged_ids.append(rid)
+        merged_count = len(merged_ids)
 
         if isinstance(payload, dict):
             payload["records"] = records
@@ -1071,7 +1083,14 @@ async def _monitor_batch_reenrich(
         runs.update_run_status(source_run_id, status="complete", **counts)
 
         mark_refresh_done(source_dir, merged_ids)
-        missing = [rid for rid in record_ids if rid not in set(merged_ids)]
+        if kept_blocked_ids:
+            mark_refresh_failed(
+                source_dir, kept_blocked_ids,
+                "The re-crawl came back blocked — the site could not be read, so the "
+                "existing data was kept.",
+            )
+        accounted = set(merged_ids) | set(kept_blocked_ids)
+        missing = [rid for rid in record_ids if rid not in accounted]
         if missing:
             mark_refresh_failed(
                 source_dir, missing,
@@ -1190,6 +1209,17 @@ def _copy_recrawl_evidence(scratch_dir: Path, source_dir: Path, record_id: str) 
         )
 
 
+def _crawl_unreadable(record: dict) -> bool:
+    """True when the crawl could not read the site (bot-gated or too thin).
+
+    A source_confidence of "limited" or "failed" means the page came back blocked
+    or below the usable-text threshold, so the record carries no trustworthy
+    signals. Used to protect a record that already holds a good crawl from being
+    overwritten by a transient re-crawl failure.
+    """
+    return record.get("source_confidence") in ("limited", "failed")
+
+
 def _merge_recrawled_record(
     source_run_id: str,
     scratch_dir: Path,
@@ -1255,6 +1285,25 @@ def _merge_recrawled_record(
             return InplaceUpdateResult(
                 ok=False,
                 message=f"Could not find record {record_id} in this run to update.",
+            )
+
+        # Data-loss guard: a re-crawl that came back blocked/thin must not
+        # overwrite a record that already holds a good crawl. A transient bot
+        # gate (Cloudflare, a site briefly down) would otherwise destroy
+        # confirmed signals when an operator re-crawls a healthy record. Allow
+        # the overwrite when the prior record was itself unreadable — the normal
+        # "Re-crawl Blocked Sites" case (blocked→blocked, or blocked→improved).
+        if _crawl_unreadable(updated) and not _crawl_unreadable(records[idx]):
+            logger.warning(
+                "In-place %s of record %s in run %s came back blocked/thin over a "
+                "readable record; kept existing data.",
+                kind, record_id, source_run_id,
+            )
+            return InplaceUpdateResult(
+                ok=False,
+                message=f"The {kind} came back blocked — the site could not be read this "
+                        "time, so the existing data was kept. Try a browser re-crawl or "
+                        "paste the page content.",
             )
 
         records[idx] = updated

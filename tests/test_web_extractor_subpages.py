@@ -166,6 +166,43 @@ def test_off_domain_redirect_rejected():
     assert not _same_registered_domain("https://facebook.com/clinic", "https://clinic.com/")
 
 
+def test_off_domain_subpage_redirect_dropped_from_crawl(monkeypatch):
+    """Call-site guard: a subpage whose FINAL url is off-domain contributes no
+    text or evidence. Pins the guard at extract_practice_text (not just the
+    helper) — reverting the redirect check to `if sub_html:` breaks this."""
+    import extraction.web_extractor as we
+
+    home = "https://clinic.example"
+    home_html = ("<html><body><nav>"
+                 '<a href="/services">Services</a>'
+                 '<a href="/procedures">Procedures</a>'
+                 "</nav></body></html>")
+
+    def fake_fetch(url, timeout=15, retries=3):
+        if url == home:
+            return (home_html, home, "")
+        if url == f"{home}/services":
+            # Redirects off-domain to a billing portal — must be dropped.
+            return ("<html><body><p>Instamed hospital billing portal.</p></body></html>",
+                    "https://pay.instamed.com/hijack", "")
+        if url == f"{home}/procedures":
+            # Stays on-domain — evidence should be kept.
+            return ("<html><body><p>We perform IUI in our on-site lab.</p></body></html>",
+                    f"{home}/procedures", "")
+        return ("", url, "not mocked")
+
+    monkeypatch.setattr(we, "_fetch_html", fake_fetch)
+    monkeypatch.setattr(we.time, "sleep", lambda *a, **k: None)
+
+    result = we.extract_practice_text(home, max_pages=5)
+
+    # On-domain subpage evidence is present.
+    assert "on-site lab" in result.context_text
+    # Off-domain redirect text is dropped and its host never recorded as evidence.
+    assert "Instamed" not in result.context_text
+    assert all("instamed.com" not in u for u in result.pages_crawled)
+
+
 def test_fetch_html_resniffs_encoding_when_header_lacks_charset(monkeypatch):
     """A header-less UTF-8 page must not be decoded as ISO-8859-1 (mojibake)."""
     import extraction.web_extractor as we
