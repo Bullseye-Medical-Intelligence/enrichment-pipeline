@@ -123,9 +123,11 @@ Website: {record.get("website_url", "")}
 ICP Signals to evaluate:
 {signal_defs}
 
+ATTRIBUTION, NOT MENTION: mark a signal "yes" ONLY when the website text attributes the capability to THIS practice as a current, offered service — a services/treatments/procedures listing, or an explicit "we offer / we perform / available at our office" statement. Text that merely MENTIONS the topic is NOT "yes": a provider's personal biography, interests, training, or own medical history ("has a deep interest in...", "conceived through IVF"); an educational, condition-explainer, blog, or news page; a statement that patients are referred elsewhere; a patient testimonial; or historical/aspirational language ("previously offered", "coming soon"). If the best evidence you can find is one of those, the signal is "not_found", never "yes". Absence of attribution is "not_found", not "no".
+
 For each signal return:
 - signal_id (string, exact as listed above)
-- signal_state: "yes" if clearly evidenced, "no" if explicitly contradicted, "not_found" if unclear or absent
+- signal_state: "yes" if the text attributes the service to this practice (see ATTRIBUTION rule above), "no" if explicitly contradicted, "not_found" if unclear, absent, or only mentioned
 - confidence: "high" if verbatim quote, "medium" if clearly implied, "low" if weak/indirect (only when signal_state is "yes")
 - evidence_text: exact short quote from the website text supporting a "yes" verdict (only when signal_state is "yes", empty string otherwise)
 

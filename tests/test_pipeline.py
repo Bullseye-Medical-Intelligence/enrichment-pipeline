@@ -2040,8 +2040,33 @@ class TestManualContent:
         path = self._write(tmp_path, "tiny.txt", "too short")
         rec = {"website_url": "https://x.com"}
         _load_manual_content([rec], [path])
-        assert rec["_context_text"] == "too short"
+        # Content is wrapped with the record's own [Source: url] header (so the
+        # evidence gate can accept a "yes"), but is otherwise not padded.
+        assert rec["_context_text"] == "[Source: https://x.com]\ntoo short"
         assert len(rec["_context_text"]) < 150
+
+    def test_content_attributed_to_record_url_for_evidence_gate(self, tmp_path):
+        # The pasted content must carry the record's own website_url as a
+        # [Source: url] header. Without it the model emits source_url "not_found"
+        # and every "yes" is force-downgraded by the http(s) evidence gate.
+        path = self._write(tmp_path, "page.txt",
+                            "We offer IUI and cycle monitoring in-office. " * 4)
+        rec = {"website_url": "https://clinic.example.com/services"}
+        _load_manual_content([rec], [path])
+        assert rec["_context_text"].startswith(
+            "[Source: https://clinic.example.com/services]\n")
+        # Evidence Vault carries the same real URL so verification/re-extraction
+        # rehydrate a citable source, not a bare filename.
+        assert rec["_evidence_pages"][0]["url"] == "https://clinic.example.com/services"
+
+    def test_no_url_leaves_content_unheadered(self, tmp_path):
+        # A record with no URL has nothing to attribute to — the content is left
+        # unheadered so the evidence gate correctly fires on any "yes".
+        path = self._write(tmp_path, "page.txt", "We offer IUI in-office. " * 8)
+        rec = {"website_url": ""}
+        _load_manual_content([rec], [path])
+        assert not rec["_context_text"].startswith("[Source:")
+        assert "IUI in-office" in rec["_context_text"]
 
     def test_multiple_pages_joined_with_separator(self, tmp_path):
         p1 = self._write(tmp_path, "home.html",

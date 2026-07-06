@@ -15,6 +15,7 @@ import pytest
 
 from enrichment.verifier import (
     _anchor_check,
+    _build_blind_extraction_prompt,
     _find_gating_signal_ids,
     _normalize,
     run_verification_pass,
@@ -156,6 +157,29 @@ def test_find_gating_verification_required():
     icp = _make_icp_signals(required_id="S-99", verification_required_id="S-02")
     # S-99 is not_found but doesn't exist in record signals, so only S-02 is gating
     assert "S-02" in _find_gating_signal_ids(record, icp)
+
+
+# ---------------------------------------------------------------------------
+# Blind re-extraction prompt — attribution rule parity with extraction v4
+# ---------------------------------------------------------------------------
+
+def test_blind_prompt_carries_attribution_rule():
+    """The blind GPT prompt must apply the same mention-vs-offering standard as
+    extraction. Without it GPT re-blesses bio/blog evidence the extraction
+    attribution guard downgraded, recommending 'promote' on a false positive."""
+    icp = _make_icp_signals(required_id="S-01")
+    prompt = _build_blind_extraction_prompt(
+        _make_record(), "Dr. X has a deep interest in IVF.", icp
+    )
+    lowered = prompt.lower()
+    # Names the standard and the disqualifying evidence categories.
+    assert "attribution, not mention" in lowered
+    assert "personal biography" in lowered
+    assert "referred elsewhere" in lowered
+    assert "testimonial" in lowered
+    assert "coming soon" in lowered
+    # A bio mention must be routed to not_found, never yes.
+    assert 'not_found", never "yes"' in lowered
 
 
 # ---------------------------------------------------------------------------

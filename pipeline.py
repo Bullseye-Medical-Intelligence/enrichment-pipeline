@@ -227,16 +227,19 @@ def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -
     extraction): it is loaded into every record's `_context_text` so Step 4
     signal extraction runs on it exactly as if the crawler had fetched it. HTML
     is converted to clean text with the same extractor the browser crawler uses;
-    plain text is used as-is. Multiple pages are joined with the same separator
-    the crawler uses and capped at MAX_COMBINED_CHARS. source_confidence is
-    "partial" — operator-vouched but not a full crawl.
+    plain text is used as-is. Each page is wrapped as "[Source: <url>]\n<text>"
+    — the same shape a live crawl produces — using the record's own website_url,
+    so Step 4's evidence gate can accept a "yes" (the model is told to cite that
+    header as source_url; without it every "yes" is force-downgraded because
+    source_url comes back "not_found"). Pages are joined with the crawler's
+    separator and capped at MAX_COMBINED_CHARS. source_confidence is "partial" —
+    operator-vouched but not a full crawl.
     """
     from extraction.playwright_extractor import _extract_text_from_html
     from extraction.web_extractor import MAX_COMBINED_CHARS
 
-    blocks = []
+    page_texts = []
     page_labels = []
-    evidence_pages = []
     for path in manual_content_paths:
         raw = Path(path).read_bytes().decode("utf-8", errors="replace")
         is_html = (
@@ -245,18 +248,27 @@ def _load_manual_content(records: list[dict], manual_content_paths: list[str]) -
         )
         clean_text = _extract_text_from_html(raw) if is_html else raw.strip()
         if clean_text:
-            blocks.append(clean_text)
+            page_texts.append(clean_text)
             page_labels.append(f"[Manual content] {Path(path).name}")
-            evidence_pages.append({"url": Path(path).name, "text": clean_text})
-
-    combined = "\n\n---\n\n".join(blocks)
-    if len(combined) > MAX_COMBINED_CHARS:
-        combined = combined[:MAX_COMBINED_CHARS] + "\n\n[... truncated for token budget ...]"
 
     for record in records:
+        # Attribute the pasted content to the record's own (CAPTCHA-walled) URL.
+        # website_url is normalized to an http(s) URL at ingest, so this satisfies
+        # the http(s) source requirement in the Step 4 evidence gate. When a record
+        # has no URL there is nothing to attribute to — leave the text unheadered
+        # and let the gate fire (the claim would be genuinely unverifiable).
+        source_url = (record.get("website_url") or "").strip()
+        if source_url:
+            blocks = [f"[Source: {source_url}]\n{text}" for text in page_texts]
+            record["_evidence_pages"] = [{"url": source_url, "text": text} for text in page_texts]
+        else:
+            blocks = list(page_texts)
+            record["_evidence_pages"] = [{"url": "", "text": text} for text in page_texts]
+        combined = "\n\n---\n\n".join(blocks)
+        if len(combined) > MAX_COMBINED_CHARS:
+            combined = combined[:MAX_COMBINED_CHARS] + "\n\n[... truncated for token budget ...]"
         record["_context_text"] = combined
         record["_pages_crawled"] = list(page_labels)
-        record["_evidence_pages"] = list(evidence_pages)
         record["_evidence_provenance"] = "operator_supplied"
         record["_url_valid"] = True
         record["_url_error"] = ""
