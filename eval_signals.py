@@ -27,8 +27,18 @@ MODES
     --offline   replay recorded_response.json through the REAL validator. No API,
                 fully deterministic. Use it in CI and to self-test the harness.
     --live      call the real extractor (Claude) on page.txt. Spends tokens.
-    --check     enforce the thresholds in evals/baseline.json; exit 1 on regression.
-    --update-baseline   write current metrics into the baseline file.
+    --check     enforce the thresholds in evals/baseline.json; exit 1 on regression
+                or when any discovered case is unreviewed.
+    --update-baseline   write current metrics into the baseline file. Refuses when
+                any discovered case is unreviewed, and refuses offline mode — a
+                production baseline must come from a live extractor run.
+
+REVIEW STATUS IS AUTHORITATIVE
+    Only cases with "reviewed": true in labels.json contribute to metrics. Drafts
+    (scaffolded or hand-started) are excluded from every aggregate, never spend
+    live tokens, and are reported as excluded-unreviewed. An unreviewed case
+    fails --check even when it cannot be executed (e.g. no recorded_response.json).
+    An empty reviewed set is a hard failure, not an n/a report.
 
 METRICS
     state_accuracy   share of (case, signal) pairs whose signal_state matches the label.
@@ -264,12 +274,22 @@ def aggregate(case_results: list[dict], groups: dict) -> dict:
     }
 
 
-def print_report(metrics: dict, mode: str, model_note: str, unreviewed: list | None = None) -> None:
-    """Print a human-readable metrics report."""
+def print_report(metrics: dict, mode: str, model_note: str,
+                 unreviewed: list | None = None, counts: dict | None = None) -> None:
+    """Print a human-readable metrics report.
+
+    Metrics cover reviewed cases only; `counts` breaks the golden set down into
+    discovered / reviewed / excluded-unreviewed / evaluated so a shrinking
+    denominator is always visible, never silent.
+    """
     fmt = lambda v: "  n/a" if v is None else f"{v * 100:5.1f}%"
     print(f"\nSignal-extraction eval  ({mode})  {model_note}")
     print(f"  {datetime.now().isoformat(timespec='seconds')}")
-    print(f"  cases: {metrics['cases']}   signals compared: {metrics['signals_compared']}")
+    if counts:
+        print(f"  cases: {counts['discovered']} discovered, {counts['reviewed']} reviewed, "
+              f"{counts['excluded_unreviewed']} excluded (unreviewed), {counts['evaluated']} evaluated")
+    print(f"  metrics over {metrics['cases']} reviewed case(s), "
+          f"{metrics['signals_compared']} signals compared")
     print("  " + "-" * 46)
     print(f"  state accuracy   {fmt(metrics['state_accuracy'])}")
     print(f"  yes recall       {fmt(metrics['yes_recall'])}   (caught of {metrics['yes_labeled']} labeled-yes)")
@@ -367,8 +387,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No golden cases found under {args.golden}", file=sys.stderr)
         return 2
 
-    results = []
+    # Review status is authoritative and read from DISCOVERED cases, not from
+    # whichever cases happened to execute — an unreviewed draft lacking a
+    # recorded_response.json must still be visible to --check, and a draft must
+    # never spend live tokens or leak into metrics.
+    reviewed_cases: list[Path] = []
+    unreviewed: list[str] = []
     for case_dir in cases:
+        labels = json.loads((case_dir / "labels.json").read_text(encoding="utf-8"))
+        if labels.get("reviewed") is True:
+            reviewed_cases.append(case_dir)
+        else:
+            unreviewed.append(case_dir.name)
+
+    if not reviewed_cases:
+        print(
+            f"FAIL: {len(cases)} case(s) discovered under {args.golden} but none are "
+            "reviewed: true. Verify each labels.json against page.txt per "
+            "evals/LABELING_SOP.md, then set reviewed: true — draft labels never "
+            "produce metrics.",
+            file=sys.stderr,
+        )
+        return 2
+
+    results = []
+    for case_dir in reviewed_cases:
         labels = json.loads((case_dir / "labels.json").read_text(encoding="utf-8"))
         expected = labels.get("expected", {})
         if live:
@@ -378,16 +421,50 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"skip [{case_dir.name}]: no recorded_response.json (need --live)", file=sys.stderr)
                 continue
             got = run_case_offline(case_dir, icp_signals)
-        cr = score_case(case_dir, expected, got)
-        cr["reviewed"] = bool(labels.get("reviewed", False))
-        results.append(cr)
+        results.append(score_case(case_dir, expected, got))
 
-    unreviewed = [cr["case"] for cr in results if not cr.get("reviewed", False)]
+    if not results:
+        print(
+            "FAIL: no reviewed case could be evaluated in this mode "
+            "(offline replay needs recorded_response.json; use --live to run the extractor).",
+            file=sys.stderr,
+        )
+        return 2
+
+    counts = {
+        "discovered": len(cases),
+        "reviewed": len(reviewed_cases),
+        "excluded_unreviewed": len(unreviewed),
+        "evaluated": len(results),
+    }
     metrics = aggregate(results, _signal_groups(icp_signals))
     model_note = "live: real extractor" if live else "offline: replayed responses"
-    print_report(metrics, "live" if live else "offline", model_note, unreviewed)
+    print_report(metrics, "live" if live else "offline", model_note, unreviewed, counts)
 
     if args.update_baseline:
+        # A baseline is a production quality gate. Refuse anything that could
+        # bake unverified or self-referential numbers into it:
+        #   - unreviewed drafts anywhere in the golden set (a scaffold prefills
+        #     'expected' from the run's own extraction — circular by design
+        #     until a human verifies it), and
+        #   - offline mode (replaying recorded responses measures the recording,
+        #     not the current extractor; baselines must come from a live run).
+        if unreviewed:
+            print(
+                f"REFUSED: --update-baseline with {len(unreviewed)} unreviewed case(s) "
+                f"({', '.join(unreviewed)}). Verify labels and set reviewed: true, or "
+                "remove the drafts from the golden set. Baseline not written.",
+                file=sys.stderr,
+            )
+            return 1
+        if not live:
+            print(
+                "REFUSED: --update-baseline requires --live. An offline replay measures "
+                "the recorded responses, not the current extractor — a production "
+                "baseline must come from a live extractor run. Baseline not written.",
+                file=sys.stderr,
+            )
+            return 1
         floors = {
             "min_state_accuracy": metrics["state_accuracy"],
             "min_must_have_recall": metrics["must_have_recall"],
