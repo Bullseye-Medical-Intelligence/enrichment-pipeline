@@ -13,6 +13,14 @@ then immediately re-runs Steps 6-7 (exclusion check + scoring validation).
 Records are skipped when:
   - enrichment_status == "not_enriched" (ingest-only roster rows)
   - no Evidence Vault snapshot (records that were never successfully crawled)
+  - exclusion_status == "EXCLUDED" — an exclusion is a hard gate, not a signal
+    outcome. The provenance that produced a customer-suppression / NPI-taxonomy /
+    LLM exclusion is stripped from enriched_targets.json at write time, so
+    re-deriving exclusions here would silently un-exclude those records and
+    return an existing customer or a hospital-owned practice to a sellable tier.
+    Re-extraction only ever re-adjudicates CLEAR records (where fresh signals
+    can still ADD an exclusion); to change an exclusion outcome, re-run the
+    pipeline. Mirrors the same guard in rescore_run.py.
 
 Records with thin context (source_confidence limited/failed) are not skipped —
 extract_signals() handles the thin-context short-circuit itself and sets
@@ -73,8 +81,18 @@ def _rehydrate_missing_context(run_dir: Path, records: list[dict]) -> None:
 
 
 def _is_eligible(record: dict) -> bool:
-    """Return True if a record has stored context text and was enriched (not roster-only)."""
+    """Return True if a record has stored context text, was enriched, and is not EXCLUDED.
+
+    EXCLUDED records are never re-extracted: their exclusion provenance
+    (_customer_suppressed, _npi_taxonomy_exclusions, _llm_exclusion_triggers) is
+    stripped from the output file, so re-running apply_exclusions on fresh
+    signals cannot reconstruct a suppression or taxonomy exclusion — the record
+    would silently return to a sellable tier. Un-excluding requires a full
+    pipeline re-run.
+    """
     if record.get("enrichment_status") == "not_enriched":
+        return False
+    if record.get("exclusion_status") == "EXCLUDED":
         return False
     return bool((record.get("_context_text") or "").strip())
 
@@ -99,7 +117,9 @@ def _reextract_record(
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
     target_specialty = run_config.get("target_specialty", "")
 
-    # Reset stale exclusion/tier fields before re-running.
+    # Reset stale tier/exclusion fields before re-running. Only CLEAR records
+    # ever reach this point (_is_eligible skips EXCLUDED), so this clears a
+    # stale tier ahead of apply_exclusions — it can never wipe a hard exclusion.
     record["exclusion_status"] = "CLEAR"
     record["exclusion_reason"] = ""
     record["exclusion_primary_gate"] = ""
@@ -149,9 +169,17 @@ def run_reextract_pass(
     _rehydrate_missing_context(run_dir, records)
     contact_strategy = icp_data.get("contact_strategy", "")
     eligible_indices = [i for i, r in enumerate(records) if _is_eligible(r)]
+    skipped_excluded = sum(
+        1 for r in records if r.get("exclusion_status") == "EXCLUDED"
+    )
 
     if not eligible_indices:
-        return {"processed": 0, "skipped": len(records), "tier_changes": []}
+        return {
+            "processed": 0,
+            "skipped": len(records),
+            "skipped_excluded": skipped_excluded,
+            "tier_changes": [],
+        }
 
     old_tiers = {i: records[i].get("target_tier", "") for i in eligible_indices}
     old_scores = {i: records[i].get("bullseye_score", 0) for i in eligible_indices}
@@ -194,6 +222,7 @@ def run_reextract_pass(
     return {
         "processed": len(eligible_indices),
         "skipped": len(records) - len(eligible_indices),
+        "skipped_excluded": skipped_excluded,
         "tier_changes": tier_changes,
     }
 
@@ -215,11 +244,15 @@ def run_reextract_preview(run_dir: Path) -> dict:
 
     eligible = 0
     skipped_not_enriched = 0
+    skipped_excluded = 0
     skipped_no_context = 0
 
     for record in records:
         if record.get("enrichment_status") == "not_enriched":
             skipped_not_enriched += 1
+        elif record.get("exclusion_status") == "EXCLUDED":
+            # Hard exclusions are preserved, never re-adjudicated (see _is_eligible).
+            skipped_excluded += 1
         elif not (record.get("_context_text") or "").strip():
             skipped_no_context += 1
         else:
@@ -229,6 +262,7 @@ def run_reextract_preview(run_dir: Path) -> dict:
         "preview": True,
         "eligible": eligible,
         "skipped_not_enriched": skipped_not_enriched,
+        "skipped_excluded": skipped_excluded,
         "skipped_no_context": skipped_no_context,
         "total": len(records),
     }

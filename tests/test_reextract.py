@@ -304,16 +304,21 @@ class TestReextractPass:
         stats = run_reextract_pass(run_dir, [], {}, {})
         assert stats["tier_changes"] == []
 
-    def test_resets_exclusion_fields_before_extract(self, tmp_path, monkeypatch):
-        """Stale exclusion fields on the record are cleared before extract_signals runs."""
+    def test_resets_stale_tier_on_clear_record_before_extract(self, tmp_path, monkeypatch):
+        """A CLEAR record's stale tier fields are cleared before extract_signals runs.
+
+        Only CLEAR records reach the reset — an EXCLUDED record is never
+        re-extracted (see TestExcludedPreservation), so the reset can never
+        wipe a hard exclusion.
+        """
         import enrichment.signal_extractor as se
         import enrichment.exclusion_checker as ec
         import enrichment.scorer as sc
 
-        observed_exclusion_status = []
+        observed = []
 
         def _capture_extract(record, *a, **kw):
-            observed_exclusion_status.append(record.get("exclusion_status"))
+            observed.append((record.get("exclusion_status"), record.get("target_tier")))
             return _fake_extract(record, *a, **kw)
 
         monkeypatch.setattr(se, "extract_signals", _capture_extract)
@@ -322,12 +327,10 @@ class TestReextractPass:
 
         run_dir = tmp_path / "RUN-20260101-120000"
         run_dir.mkdir()
-        record = _make_record()
-        record["exclusion_status"] = "EXCLUDED"
-        record["exclusion_reason"] = "stale reason"
+        record = _make_record(target_tier="Needs Verification")
         _write_targets(run_dir, [record])
         run_reextract_pass(run_dir, [], {}, {})
-        assert observed_exclusion_status == ["CLEAR"]
+        assert observed == [("CLEAR", "")]
 
     def test_missing_targets_raises(self, tmp_path):
         run_dir = tmp_path / "RUN-20260101-120000"
@@ -465,3 +468,134 @@ class TestVaultRehydration:
         result = json.loads((run_dir / "enriched_targets.json").read_text())
         assert "_context_text" not in result["records"][0]
         assert result["records"][0]["target_tier"] == "Bullseye"
+
+
+# ---------------------------------------------------------------------------
+# Hard exclusions survive re-extraction (provenance is stripped from output)
+# ---------------------------------------------------------------------------
+
+def _stripped_excluded_record(record_id, reason, primary_gate):
+    """An EXCLUDED record shaped like real pipeline output.
+
+    The _-prefixed exclusion provenance (_customer_suppressed,
+    _npi_taxonomy_exclusions, _llm_exclusion_triggers) is stripped at Step 8,
+    so a real excluded record carries only the resolved exclusion_status /
+    reason / gate. Its high-weight yes-signal would score straight into a
+    sellable tier if it were ever re-evaluated as CLEAR — which is exactly
+    what must NOT happen.
+    """
+    return {
+        "id": record_id,
+        "practice_name": f"Excluded {record_id}",
+        "specialty": "OBGYN",
+        "address_state": "TX",
+        "website_url": "https://example.com",
+        "enrichment_status": "complete",
+        "target_tier": "Excluded",
+        "exclusion_status": "EXCLUDED",
+        "exclusion_reason": reason,
+        "exclusion_primary_gate": primary_gate,
+        "bullseye_score": 0,
+        "fit_signal_score": 80,
+        "confidence_score": 80,
+        "source_confidence": "complete",
+        "signals": [{
+            "signal_id": "S-01", "signal_label": "Performs IUI",
+            "signal_state": "yes", "confidence": "high",
+            "evidence_text": "offers IUI", "source_url": "https://example.com/svc",
+            "positive_weight": 50, "state_inferred": False, "inferred_from": "",
+            "not_found_reason": "",
+        }],
+    }
+
+
+class TestExcludedPreservation:
+    """Re-extraction must never return a hard-excluded record to a sellable tier.
+
+    Uses the REAL apply_exclusions / validate_and_finalize (only the Claude call
+    is stubbed) against production-shaped records whose internal provenance was
+    stripped at write time, plus Evidence Vault snapshots — the exact state in
+    which the old unguarded reset silently un-excluded records.
+    """
+
+    _CASES = [
+        ("T-SUP", "Existing customer (suppression list)", ""),          # customer suppression
+        ("T-NPI", "NPI taxonomy: REI on staff", "npi_taxonomy"),        # taxonomy
+        ("T-STRUCT", "Wrong specialty: Dermatology", "wrong_specialty"),  # structural
+        ("T-SIG", "Telehealth-only practice", "telehealth_only"),       # signal exclude_if_yes
+    ]
+
+    def _run(self, tmp_path, monkeypatch, records):
+        import enrichment.signal_extractor as se
+
+        extracted_ids = []
+
+        def _capture_extract(record, icp_signals, context_text, run_id, **kwargs):
+            extracted_ids.append(record.get("id"))
+            return _fake_extract(record, icp_signals, context_text, run_id, **kwargs)
+
+        monkeypatch.setattr(se, "extract_signals", _capture_extract)
+
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, records)
+        # Every record gets a vault snapshot — excluded records CAN carry one
+        # (e.g. crawled while CLEAR, then suppressed by a later re-enrich).
+        for rec in records:
+            write_record_evidence(run_dir, rec["id"],
+                                  [{"url": "https://example.com/", "text": "Clinic offers IUI."}])
+        stats = run_reextract_pass(run_dir, [], {}, {}, llm_concurrency=1)
+        raw = json.loads((run_dir / "enriched_targets.json").read_text())
+        return stats, {r["id"]: r for r in raw["records"]}, extracted_ids
+
+    def test_all_hard_exclusion_kinds_survive_the_pass(self, tmp_path, monkeypatch):
+        records = [_stripped_excluded_record(rid, reason, gate)
+                   for rid, reason, gate in self._CASES]
+        stats, by_id, extracted_ids = self._run(tmp_path, monkeypatch, records)
+
+        assert stats["processed"] == 0
+        assert stats["skipped_excluded"] == len(self._CASES)
+        assert extracted_ids == []  # no LLM spend on excluded records
+        for rid, reason, gate in self._CASES:
+            out = by_id[rid]
+            assert out["exclusion_status"] == "EXCLUDED", rid
+            assert out["target_tier"] == "Excluded", rid
+            assert out["exclusion_reason"] == reason, rid
+            assert out["exclusion_primary_gate"] == gate, rid
+
+    def test_clear_record_still_reextracted_alongside_excluded(self, tmp_path, monkeypatch):
+        clear = _production_record(record_id="T-CLEAR")
+        records = [clear] + [_stripped_excluded_record(rid, reason, gate)
+                             for rid, reason, gate in self._CASES]
+        stats, by_id, extracted_ids = self._run(tmp_path, monkeypatch, records)
+
+        assert extracted_ids == ["T-CLEAR"]  # only the clear record spends LLM
+        assert stats["processed"] == 1
+        assert stats["skipped_excluded"] == len(self._CASES)
+        # Fresh signals re-adjudicated by the REAL Steps 6-7.
+        assert by_id["T-CLEAR"]["exclusion_status"] == "CLEAR"
+        assert by_id["T-CLEAR"]["signals"][0]["signal_state"] == "yes"
+        # Excluded neighbors untouched.
+        assert by_id["T-SUP"]["exclusion_status"] == "EXCLUDED"
+
+    def test_no_internal_fields_leak_into_output(self, tmp_path, monkeypatch):
+        records = [_production_record(record_id="T-CLEAR"),
+                   _stripped_excluded_record(*self._CASES[0])]
+        _, by_id, _ = self._run(tmp_path, monkeypatch, records)
+        for rid, rec in by_id.items():
+            leaked = [k for k in rec if k.startswith("_")]
+            assert not leaked, f"{rid} leaked internal fields: {leaked}"
+
+    def test_preview_reports_excluded_as_skipped(self, tmp_path):
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        records = [_production_record(record_id="T-CLEAR"),
+                   _stripped_excluded_record(*self._CASES[0])]
+        _write_targets(run_dir, records)
+        for rec in records:
+            write_record_evidence(run_dir, rec["id"],
+                                  [{"url": "https://example.com/", "text": "Clinic offers IUI."}])
+
+        stats = run_reextract_preview(run_dir)
+        assert stats["eligible"] == 1
+        assert stats["skipped_excluded"] == 1
