@@ -1,5 +1,9 @@
 # Golden Dataset Labeling SOP — Femasys (FemaSeed)
 
+**Rubric version: `femaseed-rubric-v1`** — record this exact string as `rubric_version` in
+every labels.json authored under this SOP. Bump it whenever a per-signal rule below changes;
+the preflight refuses a dataset that mixes rubric versions.
+
 How a human analyst assigns the `expected` signal states for a golden case that feeds
 `eval_signals.py`. The point of the golden set is a trustworthy ground truth that catches
 when a prompt edit or model swap degrades extraction. Garbage labels = a gate that lies.
@@ -103,13 +107,38 @@ signal's recall number meaningless. Swap a site in if a signal is short.
 - **Two analysts label independently, blind to the model's output.** Never label to match the
   extractor — that is how a golden set silently rots.
 - Every `yes` requires a verbatim copy-paste anchor quote; every `no` requires the explicit
-  denial/referral quote.
+  denial/referral quote. Anchors are RECORDED in labels.json (`anchors.<signal_id>`) and
+  MACHINE-CHECKED by the preflight: each must appear in `page.txt`, compared lowercase with
+  whitespace collapsed (the evaluator's own `normalize_anchor_text` policy) — so reflowed
+  whitespace never fails a correct anchor, and a paraphrase always does.
 - Disagreements go to an adjudicator; record the resolution.
 - A case is `reviewed: true` only when: all 7 labels filled, every `yes`/`no` anchored,
-  ambiguities noted, and the `page.txt` + rubric version recorded.
+  ambiguities noted, `rubric_version` set to this SOP's stamp, and `page_sha256` set to the
+  fingerprint of `page.txt` (`eval_signals.page_fingerprint`). If `page.txt` is ever edited
+  afterward, the fingerprint mismatch invalidates the case until it is re-verified.
 - **Never edit a label to make the model pass.** If labels and a correctly-behaving model keep
   disagreeing, that's a **cartridge** finding to reconcile (fix the term list), not a label to force.
 - Real fixtures stay **local only** (gitignored — RULE 2). Only this SOP and synthetic demos ship.
+
+### Enforced labels.json schema (preflight-checked before any token is spent)
+
+```json
+{
+  "practice_name": "...", "website_url": "...", "specialty": "...",
+  "address_city": "...", "address_state": "...",
+  "notes": "labeling ambiguities / adjudication record",
+  "reviewed": true,
+  "rubric_version": "femaseed-rubric-v1",
+  "page_sha256": "<eval_signals.page_fingerprint of page.txt>",
+  "anchors": { "<signal_id>": "verbatim on-page quote for every yes and no" },
+  "expected": { "<every ICP signal_id>": "yes | no | not_found" }
+}
+```
+
+`python eval_signals.py --live` / `--check` / `--update-baseline` refuse to run until the
+20-case set passes every check (count, key coverage, values, ≥4 yes per signal, metadata,
+anchors, nonempty page.txt) — the failure output lists each violation. The two shipped
+synthetic demos run under `--dev-dataset` only.
 
 ---
 
@@ -131,4 +160,6 @@ block a ship. After the first clean `--live` run, set each floor a few points **
 ---
 
 *Feeds `eval_signals.py`. Run `python eval_signals.py --live --check` before any prompt edit or
-`.env` model-snapshot change.*
+`.env` model-snapshot change. Baselines are live-only and production-only:
+`--update-baseline` refuses offline mode, refuses `--dev-dataset`, and refuses any dataset
+containing an unreviewed draft.*

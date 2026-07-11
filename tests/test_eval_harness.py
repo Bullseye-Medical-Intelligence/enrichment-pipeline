@@ -52,8 +52,7 @@ def _write_case(golden: Path, name: str, reviewed: bool = True,
         "practice_name": name, "website_url": "https://example.invalid",
         "reviewed": reviewed,
         "rubric_version": "bemi-labeling-v2",
-        "page_sha256": eval_signals.page_fingerprint(page)
-        if hasattr(eval_signals, "page_fingerprint") else "",
+        "page_sha256": eval_signals.page_fingerprint(page),
         "anchors": {sid: _ANCHORS[sid] for sid, st in expected.items()
                     if st in ("yes", "no")},
         "expected": expected,
@@ -140,10 +139,11 @@ def test_check_fails_on_unreviewed_without_recording(tmp_path, capsys):
     golden = tmp_path / "golden"
     _write_case(golden, "verified", reviewed=True)
     # Draft with NO recorded_response.json: it cannot run offline, but --check
-    # must still see and fail on it.
+    # must still see and fail on it. (--dev-dataset so the small demo-sized set
+    # clears the production preflight and the unreviewed gate itself is tested.)
     _write_case(golden, "draft", reviewed=False, with_recording=False)
 
-    rc = eval_signals.main(_args(tmp_path, golden, "--offline", "--check"))
+    rc = eval_signals.main(_args(tmp_path, golden, "--offline", "--check", "--dev-dataset"))
 
     assert rc == 1
     assert "unreviewed case(s)" in capsys.readouterr().out
@@ -152,7 +152,8 @@ def test_check_fails_on_unreviewed_without_recording(tmp_path, capsys):
 def test_check_passes_on_fully_reviewed_set(tmp_path):
     golden = tmp_path / "golden"
     _write_case(golden, "verified", reviewed=True)
-    assert eval_signals.main(_args(tmp_path, golden, "--offline", "--check")) == 0
+    assert eval_signals.main(
+        _args(tmp_path, golden, "--offline", "--check", "--dev-dataset")) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +176,8 @@ def test_update_baseline_refuses_offline(tmp_path, capsys):
 
 
 def test_update_baseline_refuses_unreviewed(tmp_path, capsys, monkeypatch):
+    """A draft in the golden set blocks a baseline write at preflight, before
+    any extractor call."""
     golden = tmp_path / "golden"
     _write_case(golden, "verified", reviewed=True)
     _write_case(golden, "draft", reviewed=False)
@@ -186,8 +189,23 @@ def test_update_baseline_refuses_unreviewed(tmp_path, capsys, monkeypatch):
         "--golden", str(golden), "--baseline", str(baseline),
         "--live", "--update-baseline"])
 
-    assert rc == 1
+    assert rc == 2
     assert "unreviewed" in capsys.readouterr().err
+    assert not baseline.exists()
+
+
+def test_update_baseline_refuses_dev_dataset(tmp_path, capsys):
+    golden = tmp_path / "golden"
+    _write_case(golden, "verified", reviewed=True)
+    baseline = tmp_path / "new_baseline.json"
+
+    rc = eval_signals.main([
+        "--icp", str(_write_icp(tmp_path)), "--config", str(tmp_path / "nc.json"),
+        "--golden", str(golden), "--baseline", str(baseline),
+        "--live", "--update-baseline", "--dev-dataset"])
+
+    assert rc == 1
+    assert "never valid with --dev-dataset" in capsys.readouterr().err
     assert not baseline.exists()
 
 
@@ -200,7 +218,9 @@ def _fake_live(case_dir, icp_signals, target_specialty, contact_strategy):
             for sid, st in labels["expected"].items()}
 
 
-def test_unreviewed_cases_never_spend_live_tokens(tmp_path, monkeypatch):
+def test_draft_in_production_dataset_blocks_all_live_spend(tmp_path, monkeypatch):
+    """Production preflight halts a --live run BEFORE any extractor call when a
+    draft is present — zero tokens spent."""
     golden = tmp_path / "golden"
     _write_case(golden, "verified", reviewed=True)
     _write_case(golden, "draft", reviewed=False)
@@ -212,6 +232,25 @@ def test_unreviewed_cases_never_spend_live_tokens(tmp_path, monkeypatch):
 
     monkeypatch.setattr(eval_signals, "run_case_live", _spy)
     rc = eval_signals.main(_args(tmp_path, golden, "--live"))
+
+    assert rc == 2
+    assert ran == []  # preflight blocked the run entirely
+
+
+def test_unreviewed_cases_never_spend_live_tokens_dev_mode(tmp_path, monkeypatch):
+    """In explicit dev mode the run proceeds, but drafts still never reach the
+    extractor — only reviewed cases spend tokens."""
+    golden = tmp_path / "golden"
+    _write_case(golden, "verified", reviewed=True)
+    _write_case(golden, "draft", reviewed=False)
+    ran = []
+
+    def _spy(case_dir, *a, **k):
+        ran.append(case_dir.name)
+        return _fake_live(case_dir, *a, **k)
+
+    monkeypatch.setattr(eval_signals, "run_case_live", _spy)
+    rc = eval_signals.main(_args(tmp_path, golden, "--live", "--dev-dataset"))
 
     assert rc == 0
     assert ran == ["verified"]  # the draft never reached the extractor
@@ -241,3 +280,9 @@ def test_scaffold_emits_reviewed_false(tmp_path):
     assert created == ["scaffold_clinic"]
     labels = json.loads((golden / "scaffold_clinic" / "labels.json").read_text())
     assert labels["reviewed"] is False
+    # Scaffolds emit the enforced schema: fingerprint computed, draft anchors
+    # prefilled from the run's own evidence, rubric_version left for the human.
+    page = (golden / "scaffold_clinic" / "page.txt").read_text()
+    assert labels["page_sha256"] == eval_signals.page_fingerprint(page)
+    assert labels["anchors"] == {"s1": "We offer IUI in office"}
+    assert labels["rubric_version"] == ""

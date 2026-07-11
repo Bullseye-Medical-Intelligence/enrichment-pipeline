@@ -12,16 +12,32 @@ WHY THIS EXISTS
     It is opt-in and, in --live mode, spends tokens. It is NOT collected by pytest.
 
 GOLDEN FORMAT — one directory per case under evals/golden/<case_id>/:
-    labels.json             required. practice fields + expected signal_state per signal_id:
+    labels.json             required. practice fields + labeling metadata + expected states:
                               { "practice_name": "...", "website_url": "...",
                                 "specialty": "OBGYN", "address_city": "...", "address_state": "...",
+                                "reviewed": true,
+                                "rubric_version": "femaseed-rubric-v1",
+                                "page_sha256": "<page_fingerprint of page.txt>",
+                                "anchors": { "cash_pay_signal": "verbatim on-page quote", ... },
                                 "expected": { "cash_pay_signal": "yes", "ivf_listed": "no", ... } }
-    page.txt                the captured website text. Required for --live and for the
-                              evidence-anchor check. (Tip: copy a real Evidence Vault snapshot.)
+                            'expected' keys must exactly match the ICP's signal IDs; values are
+                            yes / no / not_found. Every yes/no needs its verbatim anchor in
+                            'anchors' — preflight verifies each appears in page.txt under
+                            normalize_anchor_text. page_sha256 pins the text the labels were
+                            authored against (page_fingerprint recomputes it).
+    page.txt                the captured website text (nonempty). Required for --live and for
+                              the anchor checks. (Tip: copy a real Evidence Vault snapshot.)
     recorded_response.json  optional. A saved model signals list, replayed by --offline:
                               { "signals": [ { "signal_id": "...", "signal_state": "yes",
                                               "confidence": "high", "evidence_text": "...",
                                               "source_url": "..." }, ... ] }
+
+PREFLIGHT
+    Gating modes (--live / --check / --update-baseline) validate the dataset BEFORE any
+    extractor call: production requires exactly 20 reviewed cases, full ICP key coverage,
+    >= 4 labeled-yes per signal, one rubric_version, matching page_sha256 fingerprints, and
+    anchored yes/no labels. --dev-dataset relaxes everything but the schema checks (for the
+    shipped synthetic demos); it is never valid with --update-baseline.
 
 MODES
     --offline   replay recorded_response.json through the REAL validator. No API,
@@ -52,6 +68,7 @@ METRICS
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -170,6 +187,7 @@ def scaffold_from_run(run_dir: Path, golden_dir: Path,
         case_dir.mkdir(parents=True)
         (case_dir / "page.txt").write_text(page_text, encoding="utf-8")
         rec_sigs = {s.get("signal_id"): s for s in rec.get("signals", [])}
+        expected = {sid: rec_sigs.get(sid, {}).get("signal_state", "not_found") for sid in sig_ids}
         labels = {
             "practice_name": rec.get("practice_name", ""),
             "website_url": rec.get("website_url", ""),
@@ -177,10 +195,18 @@ def scaffold_from_run(run_dir: Path, golden_dir: Path,
             "address_city": rec.get("address_city", ""),
             "address_state": rec.get("address_state", ""),
             "reviewed": False,
-            "notes": "Auto-scaffolded from the run's Evidence Vault. 'expected' is PREFILLED "
-                     "from the run's own extraction — VERIFY each value against page.txt, "
-                     "correct it, then set reviewed: true.",
-            "expected": {sid: rec_sigs.get(sid, {}).get("signal_state", "not_found") for sid in sig_ids},
+            "notes": "Auto-scaffolded from the run's Evidence Vault. 'expected' and 'anchors' "
+                     "are PREFILLED from the run's own extraction — VERIFY each value against "
+                     "page.txt, correct it, fill every yes/no anchor with the verbatim quote, "
+                     "set rubric_version to your labeling SOP's version stamp, then set "
+                     "reviewed: true.",
+            "rubric_version": "",
+            "page_sha256": page_fingerprint(page_text),
+            # Draft anchors from the run's own evidence — a human must verify or
+            # replace each before the case can pass the production preflight.
+            "anchors": {sid: (rec_sigs.get(sid, {}).get("evidence_text") or "")
+                        for sid, st in expected.items() if st in ("yes", "no")},
+            "expected": expected,
         }
         (case_dir / "labels.json").write_text(json.dumps(labels, indent=2) + "\n", encoding="utf-8")
         recorded = {
@@ -197,10 +223,34 @@ def scaffold_from_run(run_dir: Path, golden_dir: Path,
     return created, skipped
 
 
+def normalize_anchor_text(text: str) -> str:
+    """THE anchor-normalization policy: lowercase, collapse all whitespace runs.
+
+    Used identically for (a) the evaluator's anchor_rate check on model evidence
+    and (b) the preflight check that every human label anchor appears in
+    page.txt — one documented policy, no divergence. Mirrors the production
+    verifier's normalization (enrichment/verifier.py::_normalize) so an anchor
+    that passes here also passes the post-run verification pass.
+    """
+    return re.sub(r"\s+", " ", text.lower()).strip()
+
+
+def page_fingerprint(page_text: str) -> str:
+    """Fingerprint of a case's captured page text: sha256 hex of the UTF-8 text.
+
+    Computed over the text as read with universal newlines (page.txt via
+    read_text), so the value is stable across platforms. Labels record it as
+    page_sha256 at labeling time; preflight recomputes and compares, catching
+    a page.txt edited after its labels were authored.
+    """
+    return hashlib.sha256(page_text.encode("utf-8")).hexdigest()
+
+
 def anchor_ok(signal: dict, page_text: str) -> bool:
-    """True if a 'yes' signal's evidence_text appears verbatim in the page text."""
-    ev = (signal.get("evidence_text") or "").strip().lower()
-    return bool(ev) and ev in page_text.lower()
+    """True if a 'yes' signal's evidence_text appears in the page text under
+    the documented anchor normalization (see normalize_anchor_text)."""
+    ev = normalize_anchor_text(signal.get("evidence_text") or "")
+    return bool(ev) and ev in normalize_anchor_text(page_text)
 
 
 def score_case(case_dir: Path, expected: dict, got: dict) -> dict:
@@ -347,6 +397,147 @@ def check_baseline(metrics: dict, baseline: dict, unreviewed: list | None = None
     return ok
 
 
+_PRODUCTION_CASE_COUNT = 20   # LABELING_SOP.md site-selection table
+_MIN_YES_PER_SIGNAL = 4       # LABELING_SOP.md denominator rule
+_VALID_STATES = {"yes", "no", "not_found"}
+
+
+def _load_labels_checked(path: Path) -> tuple[dict, list[str]]:
+    """Parse a labels.json, additionally reporting literal duplicate keys.
+
+    json.loads silently keeps the last of duplicate keys; a duplicated
+    signal_id in 'expected' would hide a label. Returns (labels, dup_keys).
+    """
+    dups: list[str] = []
+
+    def _pairs(pairs):
+        seen = set()
+        for k, _ in pairs:
+            if k in seen:
+                dups.append(k)
+            seen.add(k)
+        return dict(pairs)
+
+    labels = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_pairs)
+    return labels, dups
+
+
+def preflight_golden(cases: list[Path], icp_signals: list[dict],
+                     production: bool) -> list[str]:
+    """Validate the golden dataset BEFORE any tokens are spent. Returns violations.
+
+    Production gate (the default) enforces the full LABELING_SOP.md contract:
+      - exactly _PRODUCTION_CASE_COUNT reviewed cases, no unreviewed drafts;
+      - every case's 'expected' keys exactly match the current ICP signal IDs
+        (no missing, duplicate, unknown, or obsolete IDs), values in
+        yes/no/not_found;
+      - >= _MIN_YES_PER_SIGNAL true 'yes' labels per signal across the set;
+      - labeling metadata present: one consistent rubric_version, and a
+        page_sha256 that matches the current page.txt (a mismatch means the
+        text was edited after labeling);
+      - every human-labeled yes/no carries a verbatim anchor that appears in
+        page.txt under normalize_anchor_text (the evaluator's own policy);
+      - page.txt nonempty.
+
+    Non-production mode (--dev-dataset, for the shipped synthetic demos and
+    local experiments) keeps only the schema checks — expected keys match the
+    ICP, values valid, page.txt nonempty — and relaxes count, coverage,
+    metadata, and anchor requirements. It is never valid for --update-baseline.
+    """
+    violations: list[str] = []
+    sig_ids = [s["signal_id"] for s in icp_signals]
+    reviewed: list[tuple[Path, dict]] = []
+    rubric_versions: dict[str, list[str]] = {}
+
+    for case_dir in cases:
+        name = case_dir.name
+        try:
+            labels, dup_keys = _load_labels_checked(case_dir / "labels.json")
+        except (json.JSONDecodeError, OSError) as e:
+            violations.append(f"[{name}] labels.json unreadable: {e}")
+            continue
+        if dup_keys:
+            violations.append(f"[{name}] duplicate key(s) in labels.json: {', '.join(sorted(set(dup_keys)))}")
+        if labels.get("reviewed") is True:
+            reviewed.append((case_dir, labels))
+        elif production:
+            violations.append(f"[{name}] unreviewed draft in a production dataset "
+                              "(verify labels and set reviewed: true, or remove the case)")
+
+    yes_counts = {sid: 0 for sid in sig_ids}
+    for case_dir, labels in reviewed:
+        name = case_dir.name
+        expected = labels.get("expected") or {}
+
+        missing = [sid for sid in sig_ids if sid not in expected]
+        unknown = [sid for sid in expected if sid not in sig_ids]
+        if missing:
+            violations.append(f"[{name}] expected is missing ICP signal(s): {', '.join(missing)}")
+        if unknown:
+            violations.append(f"[{name}] expected has unknown/obsolete signal(s) "
+                              f"not in the current ICP: {', '.join(unknown)}")
+        bad_values = {sid: st for sid, st in expected.items() if st not in _VALID_STATES}
+        if bad_values:
+            violations.append(f"[{name}] invalid expected value(s): "
+                              + ", ".join(f"{sid}={st!r}" for sid, st in bad_values.items())
+                              + " (must be yes / no / not_found)")
+
+        page_path = case_dir / "page.txt"
+        page_text = page_path.read_text(encoding="utf-8") if page_path.exists() else ""
+        if not page_text.strip():
+            violations.append(f"[{name}] page.txt is missing or empty")
+
+        for sid, st in expected.items():
+            if st == "yes" and sid in yes_counts:
+                yes_counts[sid] += 1
+
+        if not production:
+            continue
+
+        rubric = (labels.get("rubric_version") or "").strip()
+        if not rubric:
+            violations.append(f"[{name}] missing rubric_version (stamp the SOP version "
+                              "the labels were authored under)")
+        else:
+            rubric_versions.setdefault(rubric, []).append(name)
+
+        recorded_fp = (labels.get("page_sha256") or "").strip()
+        if not recorded_fp:
+            violations.append(f"[{name}] missing page_sha256 (captured-text fingerprint)")
+        elif page_text.strip() and recorded_fp != page_fingerprint(page_text):
+            violations.append(f"[{name}] page_sha256 does not match page.txt — the page "
+                              "text changed after labeling; re-verify labels and re-fingerprint")
+
+        anchors = labels.get("anchors") or {}
+        norm_page = normalize_anchor_text(page_text)
+        for sid, st in expected.items():
+            if st not in ("yes", "no"):
+                continue
+            anchor = (anchors.get(sid) or "").strip()
+            if not anchor:
+                violations.append(f"[{name}] {sid}={st} has no verbatim anchor quote "
+                                  "(anchors.<signal_id>)")
+            elif normalize_anchor_text(anchor) not in norm_page:
+                violations.append(f"[{name}] anchor for {sid} not found in page.txt "
+                                  "(compared lowercase, whitespace-collapsed)")
+
+    if production:
+        if len(reviewed) != _PRODUCTION_CASE_COUNT:
+            violations.append(
+                f"reviewed case count is {len(reviewed)}, production gate requires exactly "
+                f"{_PRODUCTION_CASE_COUNT} (see LABELING_SOP.md site-selection table)")
+        if len(rubric_versions) > 1:
+            detail = "; ".join(f"{v}: {', '.join(names)}" for v, names in sorted(rubric_versions.items()))
+            violations.append(f"mixed rubric_version values across cases ({detail}) — "
+                              "relabel or re-verify so one rubric governs the whole set")
+        short = {sid: n for sid, n in yes_counts.items() if n < _MIN_YES_PER_SIGNAL}
+        for sid, n in sorted(short.items()):
+            violations.append(f"signal {sid} has only {n} labeled-yes case(s); production "
+                              f"gate requires >= {_MIN_YES_PER_SIGNAL} (recall is meaningless below that)")
+
+    return violations
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the golden-dataset eval and (optionally) enforce the baseline."""
     ap = argparse.ArgumentParser(description="Golden-dataset eval for signal extraction.")
@@ -359,6 +550,10 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--live", action="store_true", help="call the real extractor (spends tokens)")
     ap.add_argument("--check", action="store_true", help="enforce baseline.json; exit 1 on regression")
     ap.add_argument("--update-baseline", action="store_true", help="write current metrics as the baseline")
+    ap.add_argument("--dev-dataset", action="store_true",
+                    help="EXPLICIT non-production mode: relax the dataset gate to schema checks "
+                         "only (for the shipped synthetic demos / local experiments). Never valid "
+                         "with --update-baseline.")
     ap.add_argument("--scaffold-from-run", type=Path, default=None, metavar="RUN_DIR",
                     help="generate golden stubs from a completed run's Evidence Vault, then exit")
     args = ap.parse_args(argv)
@@ -366,6 +561,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.live and args.offline:
         ap.error("choose one of --live / --offline")
     live = args.live  # default is offline (never spends unless asked)
+
+    # Argument-level refusals, before any work: a baseline is a production
+    # artifact — it can come only from a live run over the production dataset.
+    if args.update_baseline and args.dev_dataset:
+        print("REFUSED: --update-baseline is never valid with --dev-dataset — a dev/demo "
+              "dataset must not produce a production baseline.", file=sys.stderr)
+        return 1
+    if args.update_baseline and not live:
+        print("REFUSED: --update-baseline requires --live. An offline replay measures the "
+              "recorded responses, not the current extractor — a production baseline must "
+              "come from a live extractor run. Baseline not written.", file=sys.stderr)
+        return 1
 
     icp_signals = load_icp_signals(args.icp)
 
@@ -378,7 +585,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  skipped {len(skipped)}:")
             for name, why in skipped:
                 print(f"    - {name}: {why}")
-        print("\nNext: in each labels.json, verify 'expected' against page.txt, correct it, set reviewed: true.\n")
+        print("\nNext: in each labels.json, verify 'expected' and every yes/no anchor against "
+              "page.txt, correct them, set rubric_version, then set reviewed: true.\n")
         return 0
 
     target_specialty, contact_strategy = load_run_meta(args.config)
@@ -386,6 +594,21 @@ def main(argv: list[str] | None = None) -> int:
     if not cases:
         print(f"No golden cases found under {args.golden}", file=sys.stderr)
         return 2
+
+    # Preflight the dataset BEFORE any tokens are spent. Gating modes (--live,
+    # --check, --update-baseline) refuse to proceed on a dataset that fails the
+    # production contract; --dev-dataset relaxes it to schema checks only, loudly.
+    if live or args.check or args.update_baseline:
+        if args.dev_dataset:
+            print("DEV DATASET MODE: production gate relaxed to schema checks — "
+                  "these numbers are not a production quality gate.", file=sys.stderr)
+        violations = preflight_golden(cases, icp_signals, production=not args.dev_dataset)
+        if violations:
+            print(f"PREFLIGHT FAILED — {len(violations)} violation(s), no extractor "
+                  "call was made:", file=sys.stderr)
+            for v in violations:
+                print(f"  - {v}", file=sys.stderr)
+            return 2
 
     # Review status is authoritative and read from DISCOVERED cases, not from
     # whichever cases happened to execute — an unreviewed draft lacking a
@@ -442,26 +665,16 @@ def main(argv: list[str] | None = None) -> int:
     print_report(metrics, "live" if live else "offline", model_note, unreviewed, counts)
 
     if args.update_baseline:
-        # A baseline is a production quality gate. Refuse anything that could
-        # bake unverified or self-referential numbers into it:
-        #   - unreviewed drafts anywhere in the golden set (a scaffold prefills
-        #     'expected' from the run's own extraction — circular by design
-        #     until a human verifies it), and
-        #   - offline mode (replaying recorded responses measures the recording,
-        #     not the current extractor; baselines must come from a live run).
+        # Defense-in-depth: the production preflight above already fails on any
+        # unreviewed draft, but a baseline write is the highest-stakes output of
+        # this harness — a scaffold prefills 'expected' from the run's own
+        # extraction, so an unverified draft is circular by design. Never let
+        # one into a baseline even if the gate wiring above changes.
         if unreviewed:
             print(
                 f"REFUSED: --update-baseline with {len(unreviewed)} unreviewed case(s) "
                 f"({', '.join(unreviewed)}). Verify labels and set reviewed: true, or "
                 "remove the drafts from the golden set. Baseline not written.",
-                file=sys.stderr,
-            )
-            return 1
-        if not live:
-            print(
-                "REFUSED: --update-baseline requires --live. An offline replay measures "
-                "the recorded responses, not the current extractor — a production "
-                "baseline must come from a live extractor run. Baseline not written.",
                 file=sys.stderr,
             )
             return 1

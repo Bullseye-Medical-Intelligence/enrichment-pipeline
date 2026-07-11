@@ -6,6 +6,14 @@
   "address_state": "TX",
   "notes": "SYNTHETIC demo fixture (not a real practice). A clear cash-pay + fertility Bullseye profile. Replace with real labeled sites captured from the Evidence Vault.",
   "reviewed": true,
+  "rubric_version": "femaseed-rubric-v1",
+  "page_sha256": "024109fc790780a5a625be67dcc152ca40c958fd5ed8216278288b5e3ce6252f",
+  "anchors": {
+    "cash_pay_signal": "We proudly offer cash-pay and self-pay options for elective services",
+    "fertility_services": "Our fertility and infertility services help patients who are trying to conceive",
+    "iui_listed": "intrauterine insemination (IUI), performed by our own physicians",
+    "patient_financing_visible": "Flexible patient financing is available through CareCredit, with monthly payment plans"
+  },
   "expected": {
     "cash_pay_signal": "yes",
     "fertility_services": "yes",
