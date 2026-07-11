@@ -16,6 +16,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import locking
 import record_adapter
 from schema import VALID_OVERRIDE_TIERS, VALID_QC_STATUSES, ReviewEdit, SignalOverride
 
@@ -116,17 +117,18 @@ def stamp_reenriched(run_id: str, record_id: str, run_directory: Path, kind: str
     kind is a human label, e.g. "browser re-crawl" or "manual content".
     Returns the updated review entry.
     """
-    all_reviews = get_reviews(run_id, run_directory)
-    entry = dict(all_reviews.get(record_id) or default_review())
+    with locking.run_lock(run_directory):
+        all_reviews = get_reviews(run_id, run_directory)
+        entry = dict(all_reviews.get(record_id) or default_review())
 
-    now = datetime.now(timezone.utc).isoformat()
-    stamp = f"Re-enriched on {datetime.now(timezone.utc).date().isoformat()} ({kind})."
-    existing = (entry.get("analyst_note") or "").rstrip()
-    entry["analyst_note"] = f"{existing}\n{stamp}".strip() if existing else stamp
-    entry["reviewed_at"] = now
+        now = datetime.now(timezone.utc).isoformat()
+        stamp = f"Re-enriched on {datetime.now(timezone.utc).date().isoformat()} ({kind})."
+        existing = (entry.get("analyst_note") or "").rstrip()
+        entry["analyst_note"] = f"{existing}\n{stamp}".strip() if existing else stamp
+        entry["reviewed_at"] = now
 
-    all_reviews[record_id] = entry
-    _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+        all_reviews[record_id] = entry
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
     return entry
 
 
@@ -161,34 +163,56 @@ def save_review(
     _validate_edit(edit)
 
     now = datetime.now(timezone.utc).isoformat()
-    # One read serves both the preserve-existing lookup and the full map that is
-    # written back (a second read here could also race a concurrent save).
-    all_reviews = get_reviews(run_id, run_directory)
-    # Preserve existing extra_sales_angles when a standard review edit is saved
-    # (the review form doesn't touch angles — they have their own endpoint).
-    existing = all_reviews.get(record_id, {})
-    entry = {
-        "analyst_note": edit.analyst_note.strip(),
-        "override_tier": edit.override_tier,
-        "override_reason": (edit.override_reason or "").strip() or None,
-        "qc_status": edit.qc_status,
-        "reviewed_by": username,
-        "reviewed_at": now,
-        "extra_sales_angles": existing.get("extra_sales_angles", []),
-        # Signal overrides have their own endpoint; preserve them across a
-        # standard tier/QC review save so a tier edit never wipes them.
-        "signal_overrides": existing.get("signal_overrides", {}),
-    }
+    with locking.run_lock(run_directory):
+        # One read serves both the preserve-existing lookup and the full map that
+        # is written back (a second read here could also race a concurrent save).
+        all_reviews = get_reviews(run_id, run_directory)
+        # Preserve existing extra_sales_angles when a standard review edit is saved
+        # (the review form doesn't touch angles — they have their own endpoint).
+        existing = all_reviews.get(record_id, {})
+        entry = {
+            "analyst_note": edit.analyst_note.strip(),
+            "override_tier": edit.override_tier,
+            "override_reason": (edit.override_reason or "").strip() or None,
+            "qc_status": edit.qc_status,
+            "reviewed_by": username,
+            "reviewed_at": now,
+            "extra_sales_angles": existing.get("extra_sales_angles", []),
+            # Signal overrides have their own endpoint; preserve them across a
+            # standard tier/QC review save so a tier edit never wipes them.
+            "signal_overrides": existing.get("signal_overrides", {}),
+        }
 
-    reviews_path = run_directory / REVIEWS_FILENAME
-    all_reviews[record_id] = entry
-
-    _atomic_write(reviews_path, all_reviews)
+        all_reviews[record_id] = entry
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
     logger.info(
         "Review saved for run=%s record=%s by %s (qc=%s, override=%s)",
         run_id, record_id, username, edit.qc_status, edit.override_tier,
     )
     return entry
+
+
+def add_sales_angle(
+    run_id: str,
+    record_id: str,
+    angle: str,
+    run_directory: Path,
+) -> list[str]:
+    """Append one operator-authored sales angle to a record's review overlay.
+
+    Runs under the per-run lock like every reviews.json read-modify-write.
+    Returns the record's updated extra_sales_angles list.
+    """
+    with locking.run_lock(run_directory):
+        all_reviews = get_reviews(run_id, run_directory)
+        entry = dict(all_reviews.get(record_id) or default_review())
+        angles = list(entry.get("extra_sales_angles") or [])
+        angles.append(angle)
+        entry["extra_sales_angles"] = angles
+
+        all_reviews[record_id] = entry
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+    return angles
 
 
 def bulk_approve(
@@ -207,27 +231,30 @@ def bulk_approve(
         return 0
 
     now = datetime.now(timezone.utc).isoformat()
-    all_reviews = get_reviews(run_id, run_directory)
-    approved_count = 0
+    with locking.run_lock(run_directory):
+        all_reviews = get_reviews(run_id, run_directory)
+        approved_count = 0
 
-    for record_id in record_ids:
-        existing = all_reviews.get(record_id, {})
-        if existing.get("qc_status") == "approved":
-            continue
-        all_reviews[record_id] = {
-            "analyst_note": existing.get("analyst_note", ""),
-            "override_tier": existing.get("override_tier"),
-            "override_reason": existing.get("override_reason"),
-            "qc_status": "approved",
-            "reviewed_by": username,
-            "reviewed_at": now,
-            "extra_sales_angles": existing.get("extra_sales_angles", []),
-            "signal_overrides": existing.get("signal_overrides", {}),
-        }
-        approved_count += 1
+        for record_id in record_ids:
+            existing = all_reviews.get(record_id, {})
+            if existing.get("qc_status") == "approved":
+                continue
+            all_reviews[record_id] = {
+                "analyst_note": existing.get("analyst_note", ""),
+                "override_tier": existing.get("override_tier"),
+                "override_reason": existing.get("override_reason"),
+                "qc_status": "approved",
+                "reviewed_by": username,
+                "reviewed_at": now,
+                "extra_sales_angles": existing.get("extra_sales_angles", []),
+                "signal_overrides": existing.get("signal_overrides", {}),
+            }
+            approved_count += 1
+
+        if approved_count:
+            _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
 
     if approved_count:
-        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
         logger.info(
             "Bulk approved %d record(s) in run=%s by %s",
             approved_count, run_id, username,
@@ -255,27 +282,30 @@ def bulk_set_qc_status(
 
     now = datetime.now(timezone.utc).isoformat()
     is_reset = qc_status == "pending"
-    all_reviews = get_reviews("", run_directory)
-    updated_count = 0
+    with locking.run_lock(run_directory):
+        all_reviews = get_reviews("", run_directory)
+        updated_count = 0
 
-    for record_id in record_ids:
-        existing = all_reviews.get(record_id, {})
-        if existing.get("qc_status") == qc_status:
-            continue
-        all_reviews[record_id] = {
-            "analyst_note": existing.get("analyst_note", ""),
-            "override_tier": existing.get("override_tier"),
-            "override_reason": existing.get("override_reason"),
-            "qc_status": qc_status,
-            "reviewed_by": None if is_reset else username,
-            "reviewed_at": None if is_reset else now,
-            "extra_sales_angles": existing.get("extra_sales_angles", []),
-            "signal_overrides": existing.get("signal_overrides", {}),
-        }
-        updated_count += 1
+        for record_id in record_ids:
+            existing = all_reviews.get(record_id, {})
+            if existing.get("qc_status") == qc_status:
+                continue
+            all_reviews[record_id] = {
+                "analyst_note": existing.get("analyst_note", ""),
+                "override_tier": existing.get("override_tier"),
+                "override_reason": existing.get("override_reason"),
+                "qc_status": qc_status,
+                "reviewed_by": None if is_reset else username,
+                "reviewed_at": None if is_reset else now,
+                "extra_sales_angles": existing.get("extra_sales_angles", []),
+                "signal_overrides": existing.get("signal_overrides", {}),
+            }
+            updated_count += 1
+
+        if updated_count:
+            _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
 
     if updated_count:
-        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
         logger.info(
             "Bulk set qc_status=%s on %d record(s) in run_dir=%s by %s",
             qc_status, updated_count, run_directory.name, username,
@@ -310,31 +340,32 @@ def save_signal_override(
     never recomputes scores or tiers. Returns the updated review entry.
     """
     now = datetime.now(timezone.utc).isoformat()
-    all_reviews = get_reviews(run_id, run_directory)
-    entry = dict(all_reviews.get(record_id) or default_review())
-    overrides = dict(entry.get("signal_overrides") or {})
+    with locking.run_lock(run_directory):
+        all_reviews = get_reviews(run_id, run_directory)
+        entry = dict(all_reviews.get(record_id) or default_review())
+        overrides = dict(entry.get("signal_overrides") or {})
 
-    prior = overrides.get(override.signal_id)
-    if prior and "original_state" in prior:
-        original_state = prior["original_state"]
-    else:
-        original_state = _read_original_signal_state(
-            record_id, override.signal_id, run_directory
-        )
+        prior = overrides.get(override.signal_id)
+        if prior and "original_state" in prior:
+            original_state = prior["original_state"]
+        else:
+            original_state = _read_original_signal_state(
+                record_id, override.signal_id, run_directory
+            )
 
-    overrides[override.signal_id] = {
-        "signal_id": override.signal_id,
-        "override_state": override.override_state,
-        "source_url": override.source_url,
-        "override_note": override.override_note,
-        "override_by": override.override_by,
-        "override_at": now,  # server-stamped, always authoritative
-        "original_state": original_state,
-    }
-    entry["signal_overrides"] = overrides
-    all_reviews[record_id] = entry
+        overrides[override.signal_id] = {
+            "signal_id": override.signal_id,
+            "override_state": override.override_state,
+            "source_url": override.source_url,
+            "override_note": override.override_note,
+            "override_by": override.override_by,
+            "override_at": now,  # server-stamped, always authoritative
+            "original_state": original_state,
+        }
+        entry["signal_overrides"] = overrides
+        all_reviews[record_id] = entry
 
-    _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
     logger.info(
         "Signal override saved run=%s record=%s signal=%s state=%s by=%s",
         run_id, record_id, override.signal_id, override.override_state,

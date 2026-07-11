@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import icp_profiles
+import locking
 import projects
 import record_adapter
 import reviews
@@ -199,6 +200,15 @@ async def monitor_pipeline(
             )
 
 
+def _admission_lock():
+    """Global lock making the MAX_CONCURRENT_RUNS check atomic with run
+    registration. Every count-then-register section acquires it; the pipeline
+    subprocess is always spawned AFTER release (a 'pending' run already counts
+    toward the cap, so nothing is held during slow work). Lock order when
+    nesting is unavoidable: admission -> registry -> per-run."""
+    return locking.file_lock(runs.OUTPUT_RUNS_PATH / ".admission.lock")
+
+
 async def _prepare_run(
     file,
     source_type: str,
@@ -215,15 +225,12 @@ async def _prepare_run(
 
     Raises ValueError if the concurrent-run cap is reached, the project/ICP
     cannot be resolved, or CSV validation fails.
+
+    The MAX_CONCURRENT_RUNS check runs AFTER the CSV-validation await, inside
+    the global admission lock, atomically with create_run — counting before an
+    await let two concurrent uploads both pass the cap and both register.
     """
     import validator  # imported here to avoid circular imports at module load
-
-    active = runs.count_active_runs()
-    if active >= MAX_CONCURRENT_RUNS:
-        raise ValueError(
-            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
-            f"Wait for a run to finish before starting another."
-        )
 
     # Resolve the project and its ICP profile before touching the CSV, so a bad
     # configuration is rejected with a clear message and no run dir is created.
@@ -263,23 +270,34 @@ async def _prepare_run(
 
     _write_json(icp_snapshot, icp_profile)
 
-    runs.create_run(
-        run_id=run_id,
-        project_id=project_id,
-        source_type=source_type,
-        input_filename=getattr(file, "filename", None) or "upload.csv",
-        operator=operator,
-        records_input=row_count,
-        metadata={
-            "client_name": project_config.get("client_name"),
-            "product_name": project_config.get("product_name"),
-            "target_specialty": project_config.get("target_specialty"),
-            "target_geography": project_config.get("target_geography") or [],
-            "icp_profile_id": project_config.get("icp_profile_id"),
-            "icp_profile_name": icp_profile.get("name"),
-            "icp_profile_version": icp_profile.get("version"),
-        },
-    )
+    # Admission: the cap check and the registration that makes this run count
+    # toward the cap (create_run writes status "pending") are one atomic
+    # section under the global admission lock. No await sits inside it.
+    with _admission_lock():
+        active = runs.count_active_runs()
+        if active >= MAX_CONCURRENT_RUNS:
+            shutil.rmtree(run_directory, ignore_errors=True)
+            raise ValueError(
+                f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+                f"Wait for a run to finish before starting another."
+            )
+        runs.create_run(
+            run_id=run_id,
+            project_id=project_id,
+            source_type=source_type,
+            input_filename=getattr(file, "filename", None) or "upload.csv",
+            operator=operator,
+            records_input=row_count,
+            metadata={
+                "client_name": project_config.get("client_name"),
+                "product_name": project_config.get("product_name"),
+                "target_specialty": project_config.get("target_specialty"),
+                "target_geography": project_config.get("target_geography") or [],
+                "icp_profile_id": project_config.get("icp_profile_id"),
+                "icp_profile_name": icp_profile.get("name"),
+                "icp_profile_version": icp_profile.get("version"),
+            },
+        )
     return run_id, run_directory, config_snapshot, icp_snapshot, row_count
 
 
@@ -343,13 +361,6 @@ async def orchestrate_rerun(
     if not source_csv.exists():
         raise ValueError(f"Input CSV for run '{source_run_id}' is missing.")
 
-    active = runs.count_active_runs()
-    if active >= MAX_CONCURRENT_RUNS:
-        raise ValueError(
-            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
-            "Wait for a run to finish before starting another."
-        )
-
     project_id = source_status.project_id
     project_config = projects.get_project(project_id)
     if project_config is None:
@@ -376,23 +387,33 @@ async def orchestrate_rerun(
         _write_json(config_snapshot, project_config)
     _write_json(icp_snapshot, icp_profile)
 
-    runs.create_run(
-        run_id=run_id,
-        project_id=project_id,
-        source_type=source_status.source_type,
-        input_filename=source_status.input_filename or "input.csv",
-        operator=operator,
-        records_input=source_status.records_input,
-        metadata={
-            "client_name": project_config.get("client_name"),
-            "product_name": project_config.get("product_name"),
-            "target_specialty": project_config.get("target_specialty"),
-            "target_geography": project_config.get("target_geography") or [],
-            "icp_profile_id": project_config.get("icp_profile_id"),
-            "icp_profile_name": icp_profile.get("name"),
-            "icp_profile_version": icp_profile.get("version"),
-        },
-    )
+    # Admission: cap check + registration are one atomic section (see
+    # _admission_lock); the subprocess spawns after release.
+    with _admission_lock():
+        active = runs.count_active_runs()
+        if active >= MAX_CONCURRENT_RUNS:
+            shutil.rmtree(run_directory, ignore_errors=True)
+            raise ValueError(
+                f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+                "Wait for a run to finish before starting another."
+            )
+        runs.create_run(
+            run_id=run_id,
+            project_id=project_id,
+            source_type=source_status.source_type,
+            input_filename=source_status.input_filename or "input.csv",
+            operator=operator,
+            records_input=source_status.records_input,
+            metadata={
+                "client_name": project_config.get("client_name"),
+                "product_name": project_config.get("product_name"),
+                "target_specialty": project_config.get("target_specialty"),
+                "target_geography": project_config.get("target_geography") or [],
+                "icp_profile_id": project_config.get("icp_profile_id"),
+                "icp_profile_name": icp_profile.get("name"),
+                "icp_profile_version": icp_profile.get("version"),
+            },
+        )
 
     process = spawn_pipeline(
         run_id,
@@ -468,13 +489,6 @@ async def orchestrate_enrich_all(
         ValueError if the run is not in 'ingested' status, its inputs are
         missing, or the concurrent-run cap is reached.
     """
-    active = runs.count_active_runs()
-    if active >= MAX_CONCURRENT_RUNS:
-        raise ValueError(
-            f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
-            "Wait for a run to finish before starting another."
-        )
-
     status = runs.get_run(run_id)
     if status is None:
         raise FileNotFoundError(f"Run '{run_id}' not found")
@@ -493,16 +507,33 @@ async def orchestrate_enrich_all(
         if not path.exists():
             raise ValueError(f"Run is missing its {label}; cannot enrich.")
 
-    process = spawn_pipeline(
-        run_id,
-        input_csv,
-        status.source_type,
-        run_directory,
-        config_snapshot,
-        icp_snapshot,
-        extra_flags=["--auto-browser-retry"] if auto_browser_retry else None,
-    )
-    runs.update_run_status(run_id, status="running", completed_at=None)
+    # Admission: cap check + the transition that makes this run count as active
+    # are one atomic section (admission -> per-run lock order, the one allowed
+    # nesting). The subprocess spawns after release — 'running' already holds
+    # the slot.
+    with _admission_lock():
+        active = runs.count_active_runs()
+        if active >= MAX_CONCURRENT_RUNS:
+            raise ValueError(
+                f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+                "Wait for a run to finish before starting another."
+            )
+        runs.update_run_status(run_id, status="running", completed_at=None)
+
+    try:
+        process = spawn_pipeline(
+            run_id,
+            input_csv,
+            status.source_type,
+            run_directory,
+            config_snapshot,
+            icp_snapshot,
+            extra_flags=["--auto-browser-retry"] if auto_browser_retry else None,
+        )
+    except Exception:
+        # The run claimed a concurrency slot but no process exists — release it.
+        runs.update_run_status(run_id, status="ingested", completed_at=None)
+        raise
     background_tasks.add_task(monitor_pipeline, run_id, process)
 
     logger.info(
@@ -524,28 +555,33 @@ REFRESH_STATUS_FILENAME = "refresh_status.json"
 
 def _mark_refresh(run_directory: Path, record_ids, state: str,
                   kind: str = "", error: str = "") -> None:
-    """Merge per-record refresh entries into refresh_status.json atomically."""
+    """Merge per-record refresh entries into refresh_status.json atomically.
+
+    Runs under the per-run lock: two refresh jobs finishing together must not
+    read-modify-write over each other and drop the other job's entries.
+    """
     path = run_directory / REFRESH_STATUS_FILENAME
-    try:
-        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (ValueError, OSError):
-        current = {}
-    now = datetime.now(timezone.utc).isoformat()
-    for rid in record_ids:
-        entry = dict(current.get(rid) or {})
-        entry["state"] = state
-        if kind:
-            entry["kind"] = kind
-        entry["error"] = (error or "")[:300] if state == "failed" else ""
-        if state == "running":
-            entry["started_at"] = now
-            entry["finished_at"] = ""
-        else:
-            entry["finished_at"] = now
-        if state == "done":
-            entry["last_refreshed_at"] = now
-        current[rid] = entry
-    reviews._atomic_write(path, current)
+    with locking.run_lock(run_directory):
+        try:
+            current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except (ValueError, OSError):
+            current = {}
+        now = datetime.now(timezone.utc).isoformat()
+        for rid in record_ids:
+            entry = dict(current.get(rid) or {})
+            entry["state"] = state
+            if kind:
+                entry["kind"] = kind
+            entry["error"] = (error or "")[:300] if state == "failed" else ""
+            if state == "running":
+                entry["started_at"] = now
+                entry["finished_at"] = ""
+            else:
+                entry["finished_at"] = now
+            if state == "done":
+                entry["last_refreshed_at"] = now
+            current[rid] = entry
+        reviews._atomic_write(path, current)
 
 
 def mark_refresh_running(run_directory: Path, record_ids, kind: str) -> None:
@@ -1047,24 +1083,41 @@ async def _monitor_batch_reenrich(
             new_records = record_adapter.normalize_records_payload(json.load(f))
         new_by_id = {record_adapter.get_record_id(r): r for r in new_records}
 
+        # The enriched_targets.json read-modify-write is one critical section
+        # under the per-run lock; the review stamps and evidence copies follow
+        # OUTSIDE it (each takes its own lock — locks never nest).
         enriched_path = source_dir / "enriched_targets.json"
-        with open(enriched_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        records = record_adapter.normalize_records_payload(payload)
-
         merged_ids: list[str] = []
         kept_blocked_ids: list[str] = []
-        for i, r in enumerate(records):
-            rid = record_adapter.get_record_id(r)
-            if rid not in new_by_id:
-                continue
-            candidate = new_by_id[rid]
-            # Data-loss guard (see _merge_recrawled_record): a blocked/thin
-            # re-crawl must not overwrite a record that already holds a good crawl.
-            if _crawl_unreadable(candidate) and not _crawl_unreadable(r):
-                kept_blocked_ids.append(rid)
-                continue
-            records[i] = candidate
+        with locking.run_lock(source_dir):
+            with open(enriched_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            records = record_adapter.normalize_records_payload(payload)
+
+            for i, r in enumerate(records):
+                rid = record_adapter.get_record_id(r)
+                if rid not in new_by_id:
+                    continue
+                candidate = new_by_id[rid]
+                # Data-loss guard (see _merge_recrawled_record): a blocked/thin
+                # re-crawl must not overwrite a record that already holds a good crawl.
+                if _crawl_unreadable(candidate) and not _crawl_unreadable(r):
+                    kept_blocked_ids.append(rid)
+                    continue
+                records[i] = candidate
+                merged_ids.append(rid)
+            merged_count = len(merged_ids)
+
+            if isinstance(payload, dict):
+                payload["records"] = records
+                payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+                payload["record_count"] = len(records)
+                out_payload = payload
+            else:
+                out_payload = records
+            reviews._atomic_write(enriched_path, out_payload)
+
+        for rid in merged_ids:
             try:
                 reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
             except reviews.ReviewsLoadError as e:
@@ -1073,17 +1126,6 @@ async def _monitor_batch_reenrich(
                 # the damaged file stays untouched for the operator to repair.
                 logger.error("Re-enrich stamp skipped for %s: %s", rid, e)
             _copy_recrawl_evidence(scratch_dir, source_dir, rid)
-            merged_ids.append(rid)
-        merged_count = len(merged_ids)
-
-        if isinstance(payload, dict):
-            payload["records"] = records
-            payload["generated_at"] = datetime.now(timezone.utc).isoformat()
-            payload["record_count"] = len(records)
-            out_payload = payload
-        else:
-            out_payload = records
-        reviews._atomic_write(enriched_path, out_payload)
 
         counts = _recompute_counts_from_records(records)
         runs.update_run_status(source_run_id, status="complete", **counts)
@@ -1275,54 +1317,58 @@ def _merge_recrawled_record(
 
         source_dir = runs.run_dir(source_run_id)
         enriched_path = source_dir / "enriched_targets.json"
-        with open(enriched_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        records = record_adapter.normalize_records_payload(payload)
+        # The enriched_targets.json read-modify-write is one critical section
+        # under the per-run lock; the review stamp and status counts follow
+        # OUTSIDE it (each takes its own lock — locks never nest).
+        with locking.run_lock(source_dir):
+            with open(enriched_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            records = record_adapter.normalize_records_payload(payload)
 
-        idx = next(
-            (i for i, r in enumerate(records) if record_adapter.get_record_id(r) == record_id),
-            None,
-        )
-        if idx is None:
-            logger.error(
-                "In-place %s: record %s vanished from run %s; leaving run untouched.",
-                kind, record_id, source_run_id,
+            idx = next(
+                (i for i, r in enumerate(records) if record_adapter.get_record_id(r) == record_id),
+                None,
             )
-            return InplaceUpdateResult(
-                ok=False,
-                message=f"Could not find record {record_id} in this run to update.",
-            )
+            if idx is None:
+                logger.error(
+                    "In-place %s: record %s vanished from run %s; leaving run untouched.",
+                    kind, record_id, source_run_id,
+                )
+                return InplaceUpdateResult(
+                    ok=False,
+                    message=f"Could not find record {record_id} in this run to update.",
+                )
 
-        # Data-loss guard: a re-crawl that came back blocked/thin must not
-        # overwrite a record that already holds a good crawl. A transient bot
-        # gate (Cloudflare, a site briefly down) would otherwise destroy
-        # confirmed signals when an operator re-crawls a healthy record. Allow
-        # the overwrite when the prior record was itself unreadable — the normal
-        # "Re-crawl Blocked Sites" case (blocked→blocked, or blocked→improved).
-        if _crawl_unreadable(updated) and not _crawl_unreadable(records[idx]):
-            logger.warning(
-                "In-place %s of record %s in run %s came back blocked/thin over a "
-                "readable record; kept existing data.",
-                kind, record_id, source_run_id,
-            )
-            return InplaceUpdateResult(
-                ok=False,
-                message=f"The {kind} came back blocked — the site could not be read this "
-                        "time, so the existing data was kept. Try a browser re-crawl or "
-                        "paste the page content.",
-            )
+            # Data-loss guard: a re-crawl that came back blocked/thin must not
+            # overwrite a record that already holds a good crawl. A transient bot
+            # gate (Cloudflare, a site briefly down) would otherwise destroy
+            # confirmed signals when an operator re-crawls a healthy record. Allow
+            # the overwrite when the prior record was itself unreadable — the normal
+            # "Re-crawl Blocked Sites" case (blocked→blocked, or blocked→improved).
+            if _crawl_unreadable(updated) and not _crawl_unreadable(records[idx]):
+                logger.warning(
+                    "In-place %s of record %s in run %s came back blocked/thin over a "
+                    "readable record; kept existing data.",
+                    kind, record_id, source_run_id,
+                )
+                return InplaceUpdateResult(
+                    ok=False,
+                    message=f"The {kind} came back blocked — the site could not be read this "
+                            "time, so the existing data was kept. Try a browser re-crawl or "
+                            "paste the page content.",
+                )
 
-        records[idx] = updated
+            records[idx] = updated
 
-        # Preserve the wrapper shape; refresh the generation timestamp only.
-        if isinstance(payload, dict):
-            payload["records"] = records
-            payload["generated_at"] = datetime.now(timezone.utc).isoformat()
-            payload["record_count"] = len(records)
-            out_payload = payload
-        else:
-            out_payload = records
-        reviews._atomic_write(enriched_path, out_payload)
+            # Preserve the wrapper shape; refresh the generation timestamp only.
+            if isinstance(payload, dict):
+                payload["records"] = records
+                payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+                payload["record_count"] = len(records)
+                out_payload = payload
+            else:
+                out_payload = records
+            reviews._atomic_write(enriched_path, out_payload)
 
         # Keep the analyst's decision; flag that the data changed under it. A
         # damaged review overlay must not undo the already-persisted merge —
@@ -1396,16 +1442,31 @@ async def resume_run(run_id: str, background_tasks) -> int:
             "The run may have failed before signal extraction began — restart instead."
         )
 
+    # A resume claims a concurrency slot like any other start; it must respect
+    # the same cap, atomically with the transition that makes it count.
+    with _admission_lock():
+        active = runs.count_active_runs()
+        if active >= MAX_CONCURRENT_RUNS:
+            raise ValueError(
+                f"Too many runs in progress ({active}/{MAX_CONCURRENT_RUNS}). "
+                "Wait for a run to finish before resuming this one."
+            )
+        runs.update_run_status(run_id, status="running", error_summary=None, completed_at=None)
+
     rd = runs.run_dir(run_id)
-    process = spawn_pipeline(
-        run_id=run_id,
-        input_path=rd / "input.csv",
-        source_type=status.source_type,
-        run_dir=rd,
-        config_path=rd / PROJECT_CONFIG_SNAPSHOT_FILENAME,
-        icp_path=rd / ICP_SNAPSHOT_FILENAME,
-    )
-    runs.update_run_status(run_id, status="running", error_summary=None, completed_at=None)
+    try:
+        process = spawn_pipeline(
+            run_id=run_id,
+            input_path=rd / "input.csv",
+            source_type=status.source_type,
+            run_dir=rd,
+            config_path=rd / PROJECT_CONFIG_SNAPSHOT_FILENAME,
+            icp_path=rd / ICP_SNAPSHOT_FILENAME,
+        )
+    except Exception:
+        # The run claimed a slot but no process exists — release it.
+        runs.update_run_status(run_id, status="failed")
+        raise
     background_tasks.add_task(monitor_pipeline, run_id, process)
     checkpoint_count = runs.step4_checkpoint_count(run_id)
     logger.info("Resumed run %s from Step 4 checkpoint (%d records)", run_id, checkpoint_count)

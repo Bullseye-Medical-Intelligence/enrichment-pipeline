@@ -27,6 +27,7 @@ from markupsafe import Markup, escape as jinja_escape
 import auth
 import brief_publisher
 import client_exports
+import locking
 import sales_export
 import config
 import discovery_runs
@@ -2163,21 +2164,26 @@ async def roster_delete(
     if not enriched_path.exists():
         raise HTTPException(status_code=409, detail="No roster file found for this run")
 
-    with open(enriched_path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    # The roster read-modify-write is one critical section under the per-run
+    # lock; the status update follows outside it (its own lock — never nested).
+    with locking.run_lock(run_directory):
+        with open(enriched_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
 
-    records = record_adapter.normalize_records_payload(payload)
-    before = len(records)
-    records = [r for r in records if record_adapter.get_record_id(r) not in ids_to_remove]
-    removed = before - len(records)
+        records = record_adapter.normalize_records_payload(payload)
+        before = len(records)
+        records = [r for r in records if record_adapter.get_record_id(r) not in ids_to_remove]
+        removed = before - len(records)
+
+        if removed > 0:
+            if isinstance(payload, dict):
+                payload["records"] = records
+                payload["record_count"] = len(records)
+            else:
+                payload = records
+            reviews._atomic_write(enriched_path, payload)
 
     if removed > 0:
-        if isinstance(payload, dict):
-            payload["records"] = records
-            payload["record_count"] = len(records)
-        else:
-            payload = records
-        reviews._atomic_write(enriched_path, payload)
         runs.update_run_status(run_id, records_input=len(records))
         logger.info(
             "Roster pruned for run %s by %s: removed %d, %d remaining",
@@ -3157,14 +3163,7 @@ async def add_sales_angle(
     if not angle:
         return JSONResponse(status_code=400, content={"detail": "angle must not be empty"})
 
-    all_reviews = reviews.get_reviews(run_id, run_directory)
-    entry = dict(all_reviews.get(record_id) or reviews.default_review())
-    existing_angles = list(entry.get("extra_sales_angles") or [])
-    existing_angles.append(angle)
-    entry["extra_sales_angles"] = existing_angles
-
-    all_reviews[record_id] = entry
-    reviews._atomic_write(run_directory / reviews.REVIEWS_FILENAME, all_reviews)
+    existing_angles = reviews.add_sales_angle(run_id, record_id, angle, run_directory)
 
     logger.info("Operator %s added sales angle to %s/%s", username, run_id, record_id)
     return JSONResponse(content={"ok": True, "extra_sales_angles": existing_angles})

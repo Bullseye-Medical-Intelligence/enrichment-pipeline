@@ -508,10 +508,24 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
 - **Constant-time auth**: the UI password comparison uses `hmac.compare_digest` (`auth.py`). There is no API-key/Bearer comparison — session cookie is the only auth.
 - **Atomic writes everywhere**: reviews.json (`reviews._atomic_write`) and all pipeline
   output (`output/atomic_write.py`) use temp-file + `os.replace()`.
-- **Read-modify-write safety relies on single-process uvicorn**: mutating routes are
-  `async def` with synchronous (no-await) read-modify-write bodies, so they cannot
-  interleave on the event loop. This guarantee breaks under multi-worker uvicorn —
-  add per-run file locking before any multi-worker deployment.
+- **Read-modify-write safety uses advisory file locks (`locking.py`)**: every
+  RMW on durable state runs inside an OS advisory lock on a sibling `.lock`
+  file, opened with a fresh descriptor per acquisition so threads (FastAPI's
+  threadpool — e.g. the registry update), asyncio tasks, and multiple server
+  processes all contend correctly. Locks: per-run `<run_dir>/.run.lock`
+  (status.json, reviews.json, refresh_status.json, in-place
+  enriched_targets.json merges), global `master_practice_registry.json.lock`,
+  and global `.admission.lock` making the `MAX_CONCURRENT_RUNS` count-then-
+  register section atomic (the cap check runs AFTER the CSV-validation await;
+  `resume_run` checks the cap too). Rules: lock only the state transaction —
+  never across LLM/crawl/subprocess work; locks never nest except in the
+  defined order admission → registry → per-run; acquisition has a bounded
+  timeout that surfaces as a clear, retryable 503 (`LockTimeout` handler in
+  `main.py`), and the atomic temp-file + `os.replace()` write stays in place
+  for crash safety. The guarantee is single-HOST (threads, tasks, and
+  multi-worker uvicorn on one machine); advisory locks do not extend across
+  hosts or rclone/Drive-synced copies — the deployment remains single-host.
+  Deterministic barrier-based tests live in `tests/test_locking.py`.
 
 Scale note: current design targets ~10 operators / ≤1000-record batches on a single
 host. Task queue / database / Redis remain out of scope until that ceiling is crossed.

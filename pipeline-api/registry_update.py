@@ -36,6 +36,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 
 import auth
+import locking
 import record_adapter
 import runs
 # Matching/normalization is shared with discovery via practice_matching — the
@@ -436,50 +437,58 @@ def update_registry_from_run(
     chosen = _choose_records(records, selected_record_ids, selection_mode)
 
     now = datetime.now(timezone.utc).isoformat()
-    registry = load_registry(registry_path())
-    entries = registry.setdefault("entries", {})
-    indexes = _build_indexes(entries)
+    # The registry read-modify-write is one critical section under the global
+    # registry lock: this function runs in FastAPI's threadpool, and two
+    # concurrent updates (two runs, or a double-submitted form) would otherwise
+    # both load, both save, and silently drop the loser's inserts from platform
+    # memory. The lock is released BEFORE the per-run status stamp below (lock
+    # order: admission -> registry -> per-run; never held across slow work —
+    # this section is pure local JSON I/O).
+    with locking.file_lock(Path(str(registry_path()) + ".lock")):
+        registry = load_registry(registry_path())
+        entries = registry.setdefault("entries", {})
+        indexes = _build_indexes(entries)
 
-    inserted: list[str] = []
-    updated: list[dict] = []
-    rejected: list[dict] = []
-    needs_manual_merge: list[dict] = []
+        inserted: list[str] = []
+        updated: list[dict] = []
+        rejected: list[dict] = []
+        needs_manual_merge: list[dict] = []
 
-    for rec in chosen:
-        rid = record_adapter.get_record_id(rec) or "(no id)"
-        fields = _fields_from_record(rec)
-        reason = _rejection_reason(
-            rec, fields,
-            include_needs_review=include_needs_review,
-            include_excluded=include_excluded,
-        )
-        if reason:
-            rejected.append({"record_id": rid, "reason": reason})
-            continue
+        for rec in chosen:
+            rid = record_adapter.get_record_id(rec) or "(no id)"
+            fields = _fields_from_record(rec)
+            reason = _rejection_reason(
+                rec, fields,
+                include_needs_review=include_needs_review,
+                include_excluded=include_excluded,
+            )
+            if reason:
+                rejected.append({"record_id": rid, "reason": reason})
+                continue
 
-        entry_id, ambiguous = match_entry(fields, indexes)
-        if ambiguous:
-            needs_manual_merge.append({
-                "record_id": rid,
-                "reason": "matches multiple existing registry entries",
-            })
-            continue
+            entry_id, ambiguous = match_entry(fields, indexes)
+            if ambiguous:
+                needs_manual_merge.append({
+                    "record_id": rid,
+                    "reason": "matches multiple existing registry entries",
+                })
+                continue
 
-        evidence = _evidence_path(run_directory, rid)
-        if entry_id is None:
-            new_id = uuid.uuid4().hex
-            entries[new_id] = _new_entry(
-                new_id, fields, rec, run_id, now, discovery_run_id, evidence)
-            _index_entry(indexes, new_id, entries[new_id])
-            inserted.append(rid)
-        else:
-            changes = _apply_update(
-                entries[entry_id], fields, rec, run_id, now, discovery_run_id, evidence)
-            updated.append({"record_id": rid, "changes": changes})
+            evidence = _evidence_path(run_directory, rid)
+            if entry_id is None:
+                new_id = uuid.uuid4().hex
+                entries[new_id] = _new_entry(
+                    new_id, fields, rec, run_id, now, discovery_run_id, evidence)
+                _index_entry(indexes, new_id, entries[new_id])
+                inserted.append(rid)
+            else:
+                changes = _apply_update(
+                    entries[entry_id], fields, rec, run_id, now, discovery_run_id, evidence)
+                updated.append({"record_id": rid, "changes": changes})
 
-    update_count = len(inserted) + len(updated)
-    if update_count:
-        save_registry(registry, registry_path())
+        update_count = len(inserted) + len(updated)
+        if update_count:
+            save_registry(registry, registry_path())
 
     log = {
         "run_id": run_id,

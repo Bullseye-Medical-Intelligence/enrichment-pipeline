@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import locking
 from config import MAX_RUNS_RETURNED, OUTPUT_RUNS_PATH, STATUS_FILENAME
 from schema import RunStatus, RunSummary
 
@@ -105,6 +106,11 @@ def update_run_status(run_id: str, **fields) -> RunStatus:
     """
     Merge field updates into the existing status.json and write it back.
 
+    The read-modify-write runs under the per-run lock so a threadpool writer
+    (e.g. the registry-update stamp) and an on-loop writer (monitors, operator
+    actions) can never interleave and silently drop each other's fields —
+    every update rewrites the whole file.
+
     Args:
         run_id: The run to update.
         **fields: Any RunStatus fields to overwrite.
@@ -114,12 +120,14 @@ def update_run_status(run_id: str, **fields) -> RunStatus:
 
     Raises:
         FileNotFoundError if the run directory does not exist.
+        locking.LockTimeout if another writer holds the run's lock too long.
     """
-    current = get_run(run_id)
-    if current is None:
-        raise FileNotFoundError(f"Run '{run_id}' not found in {OUTPUT_RUNS_PATH}")
-    updated = current.model_copy(update=fields)
-    _write_status(run_id, updated)
+    with locking.run_lock(run_dir(run_id)):
+        current = get_run(run_id)
+        if current is None:
+            raise FileNotFoundError(f"Run '{run_id}' not found in {OUTPUT_RUNS_PATH}")
+        updated = current.model_copy(update=fields)
+        _write_status(run_id, updated)
     return updated
 
 

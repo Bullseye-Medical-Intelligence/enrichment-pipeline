@@ -16,6 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 from jinja2 import select_autoescape as _jinja_autoescape
 
 import icp_profiles
+import locking
 import reviews
 import runs
 from config import HOST, PORT
@@ -173,6 +174,19 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     if _wants_html(request):
         return HTMLResponse(_render_error(exc.status_code, exc.detail), status_code=exc.status_code)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+@app.exception_handler(locking.LockTimeout)
+async def lock_timeout_handler(request: Request, exc: locking.LockTimeout):
+    """Surface a state-lock timeout as a clear, retryable 503.
+
+    The message already says nothing was written; the operator retries once
+    the competing operation finishes.
+    """
+    logger.error("State lock timeout on %s %s: %s", request.method, request.url.path, exc)
+    if _wants_html(request):
+        return HTMLResponse(_render_error(503, str(exc)), status_code=503)
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.exception_handler(reviews.ReviewsLoadError)
