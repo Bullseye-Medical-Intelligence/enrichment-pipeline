@@ -25,6 +25,27 @@ REVIEWS_FILENAME = "reviews.json"
 ENRICHED_TARGETS_FILENAME = "enriched_targets.json"
 
 
+class ReviewsLoadError(RuntimeError):
+    """reviews.json exists but cannot be read as the analyst-review overlay.
+
+    Raised when the file is malformed JSON, unreadable (OSError), or its root is
+    not an object. Callers must treat this as fail-closed: never write a fresh
+    overlay over the damaged file — a save after a silent empty read would erase
+    every prior analyst note, approval, override, and signal edit. The damaged
+    file is left untouched so the operator can repair or restore it.
+    """
+
+    def __init__(self, path: Path, reason: str):
+        self.path = path
+        self.reason = reason
+        super().__init__(
+            f"The analyst review file {path} exists but could not be read "
+            f"({reason}). No changes were written — the damaged file was left "
+            "untouched to protect prior analyst work. Repair the JSON by hand "
+            "or restore it from a backup, then retry."
+        )
+
+
 def default_review() -> dict:
     """Return a default review entry for a record that has not been reviewed."""
     return {
@@ -45,17 +66,35 @@ def get_reviews(run_id: str, run_directory: Path) -> dict[str, dict]:
 
     Returns:
         Dict mapping record_id → review entry.
-        Returns empty dict if reviews.json does not exist yet.
+        Returns empty dict if reviews.json does not exist yet (a valid state:
+        no analyst has reviewed anything).
+
+    Raises:
+        ReviewsLoadError: the file exists but is malformed, unreadable, or its
+        root is not an object. Fail-closed by design — returning {} here let a
+        subsequent save atomically replace the file with only the entry being
+        touched, silently erasing all prior analyst work. Write paths abort
+        before mutating anything; read paths surface the damage instead of
+        rendering a misleading "no reviews" state.
     """
     reviews_path = run_directory / REVIEWS_FILENAME
     if not reviews_path.exists():
         return {}
     try:
         with open(reviews_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.error("Failed to read reviews.json for run %s: %s", run_id, e)
-        return {}
+        raise ReviewsLoadError(reviews_path, str(e)) from e
+    if not isinstance(data, dict):
+        logger.error(
+            "reviews.json for run %s has a non-object root (%s)",
+            run_id, type(data).__name__,
+        )
+        raise ReviewsLoadError(
+            reviews_path, f"root is {type(data).__name__}, expected an object"
+        )
+    return data
 
 
 def get_review(run_id: str, record_id: str, run_directory: Path) -> dict:
@@ -122,9 +161,12 @@ def save_review(
     _validate_edit(edit)
 
     now = datetime.now(timezone.utc).isoformat()
+    # One read serves both the preserve-existing lookup and the full map that is
+    # written back (a second read here could also race a concurrent save).
+    all_reviews = get_reviews(run_id, run_directory)
     # Preserve existing extra_sales_angles when a standard review edit is saved
     # (the review form doesn't touch angles — they have their own endpoint).
-    existing = get_reviews(run_id, run_directory).get(record_id, {})
+    existing = all_reviews.get(record_id, {})
     entry = {
         "analyst_note": edit.analyst_note.strip(),
         "override_tier": edit.override_tier,
@@ -139,7 +181,6 @@ def save_review(
     }
 
     reviews_path = run_directory / REVIEWS_FILENAME
-    all_reviews = get_reviews(run_id, run_directory)
     all_reviews[record_id] = entry
 
     _atomic_write(reviews_path, all_reviews)

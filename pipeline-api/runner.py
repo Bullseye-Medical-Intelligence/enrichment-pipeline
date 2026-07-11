@@ -1065,7 +1065,13 @@ async def _monitor_batch_reenrich(
                 kept_blocked_ids.append(rid)
                 continue
             records[i] = candidate
-            reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
+            try:
+                reviews.stamp_reenriched(source_run_id, rid, source_dir, "batch re-enrich")
+            except reviews.ReviewsLoadError as e:
+                # A damaged review overlay must not abort the merge (the LLM
+                # spend already happened) — the stamp is skipped fail-closed and
+                # the damaged file stays untouched for the operator to repair.
+                logger.error("Re-enrich stamp skipped for %s: %s", rid, e)
             _copy_recrawl_evidence(scratch_dir, source_dir, rid)
             merged_ids.append(rid)
         merged_count = len(merged_ids)
@@ -1318,8 +1324,13 @@ def _merge_recrawled_record(
             out_payload = records
         reviews._atomic_write(enriched_path, out_payload)
 
-        # Keep the analyst's decision; flag that the data changed under it.
-        reviews.stamp_reenriched(source_run_id, record_id, source_dir, kind)
+        # Keep the analyst's decision; flag that the data changed under it. A
+        # damaged review overlay must not undo the already-persisted merge —
+        # the stamp is skipped fail-closed and the damaged file stays untouched.
+        try:
+            reviews.stamp_reenriched(source_run_id, record_id, source_dir, kind)
+        except reviews.ReviewsLoadError as e:
+            logger.error("Re-enrich stamp skipped for %s: %s", record_id, e)
 
         # Carry the scratch run's Evidence Vault snapshot into the source run so
         # the archived pages match the record the operator now sees. Best-effort:

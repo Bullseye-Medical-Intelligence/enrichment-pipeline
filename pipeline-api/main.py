@@ -16,6 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 from jinja2 import select_autoescape as _jinja_autoescape
 
 import icp_profiles
+import reviews
 import runs
 from config import HOST, PORT
 
@@ -172,6 +173,24 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     if _wants_html(request):
         return HTMLResponse(_render_error(exc.status_code, exc.detail), status_code=exc.status_code)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+@app.exception_handler(reviews.ReviewsLoadError)
+async def reviews_load_error_handler(request: Request, exc: reviews.ReviewsLoadError):
+    """Surface a damaged reviews.json as a clear operator-facing 409.
+
+    Fail-closed contract: write paths raised before mutating anything, so the
+    damaged file is untouched and every prior analyst note/approval/override is
+    still on disk. Read paths land here too, so the dashboard shows the damage
+    instead of a misleading "no reviews" state.
+    """
+    logger.error(
+        "Corrupt analyst-review overlay on %s %s: %s",
+        request.method, request.url.path, exc,
+    )
+    if _wants_html(request):
+        return HTMLResponse(_render_error(409, str(exc)), status_code=409)
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)
