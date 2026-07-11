@@ -19,7 +19,6 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _API_DIR = _REPO_ROOT / "pipeline-api"
 
-os.environ.setdefault("PIPELINE_API_KEY", "test-api-key")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 os.environ.setdefault("UI_USERNAME", "tester")
 os.environ.setdefault("UI_PASSWORD", "secret-pw")

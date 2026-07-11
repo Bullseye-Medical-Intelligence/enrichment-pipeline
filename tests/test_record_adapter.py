@@ -13,7 +13,6 @@ from pathlib import Path
 _API_DIR = Path(__file__).resolve().parent.parent / "pipeline-api"
 sys.path.insert(0, str(_API_DIR))
 
-os.environ.setdefault("PIPELINE_API_KEY", "test-api-key")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 os.environ.setdefault("UI_USERNAME", "tester")
 os.environ.setdefault("UI_PASSWORD", "secret-pw")

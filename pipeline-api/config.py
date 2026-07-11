@@ -13,10 +13,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Required — startup fails if these are absent
+# Core paths — empty values surface as preflight failures, not startup errors
 # ---------------------------------------------------------------------------
 
-PIPELINE_API_KEY: str = os.environ.get("PIPELINE_API_KEY", "")
 PIPELINE_REPO_PATH: Path = Path(os.environ.get("PIPELINE_REPO_PATH", ""))
 OUTPUT_RUNS_PATH: Path = Path(os.environ.get("OUTPUT_RUNS_PATH", ""))
 
@@ -53,8 +52,8 @@ MAX_CSV_SIZE_BYTES: int = MAX_CSV_SIZE_MB * 1024 * 1024
 MAX_RUNS_RETURNED: int = 50
 PIPELINE_VERSION: str = "v1.0"
 # API build version — bump MINOR for new capabilities, PATCH for fixes.
-BUILD_VERSION: str = "1.6.2"
-BUILD_DATE: str = "2026-07-06"
+BUILD_VERSION: str = "1.7.0"
+BUILD_DATE: str = "2026-07-11"
 # A per-record in-place refresh still marked "running" after this many minutes is
 # reported as failed — the monitor died (server restart) or the job stalled.
 REFRESH_STALE_MINUTES: int = 30

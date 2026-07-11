@@ -2,7 +2,19 @@
 
 ## 1. What This Service Does
 
-The BEMI Pipeline API is the operator UI and a thin process manager for the enrichment pipeline. It serves operators through its own server-rendered HTML UI behind session auth: it receives CSV uploads, spawns the enrichment pipeline as a background subprocess, and serves the pipeline's output files back to the browser. It does nothing else.
+The BEMI Pipeline API is the operator workbench for the enrichment pipeline: a
+server-rendered HTML UI behind session auth. It owns run orchestration
+(uploads, ingest-only rosters, enrich-all, resume-from-checkpoint, per-record
+and batch re-enrich, browser re-crawls, post-run verify/rescore/re-extract
+passes), the analyst review/QC overlay, client deliverable exports and CSVs,
+Market Radar discovery runs, the master practice registry, the AI-assisted ICP
+builder, brief publishing to Hostinger, and system preflight/cost estimation.
+
+The hard boundary is unchanged: every enrichment, scoring, signal, tier, and
+exclusion decision is made by the pipeline CLI, which this API spawns as a
+subprocess and whose output it serves without reinterpretation. The API never
+reimplements pipeline logic (see pipeline-api/CLAUDE.md RULE 1-3); its only
+LLM calls are the ICP builder's three stages.
 
 ## 2. What It Does NOT Do
 
@@ -89,6 +101,15 @@ RUN-20260527-143000/
   run_log.json                   ← pipeline metadata and counts (written by pipeline)
   enriched_targets.json          ← enriched prospect records (written by pipeline)
   enriched_targets.csv           ← flat CSV version (written by pipeline)
+  step4_checkpoint.ndjson        ← per-record Step 4 checkpoint (crash resume; pipeline)
+  evidence/<record_id>/          ← Evidence Vault page snapshots (pipeline)
+  reviews.json                   ← analyst review/QC overlay (this API; additive only)
+  refresh_status.json            ← per-record in-place re-enrich job state (this API)
+  published_briefs.json          ← published brief URLs, per brief type (this API)
+  link_check_report.json         ← evidence link check audit (this API, on demand)
+  registry_update_log.json       ← registry push audit trail (this API, on demand)
+  pipeline_stdout.log            ← pipeline stdout tail, kept on failure (this API)
+  .run.lock                      ← advisory lock for this run's state files (this API)
 ```
 
 The two snapshots are frozen at run start, so editing a project later never
@@ -106,8 +127,7 @@ changes what a past run was enriched against.
 ## 8. Environment Variables
 
 Authentication is **session-cookie only** (`UI_USERNAME`, `UI_PASSWORD`,
-`SESSION_SECRET_KEY`). There is no Bearer-token / API-key auth. `PIPELINE_API_KEY`
-exists in config but is **not** used for authentication.
+`SESSION_SECRET_KEY`). There is no Bearer-token / API-key auth.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -238,10 +258,29 @@ notes, or the raw `enriched_targets.json`. The individual **Export Approved** /
 ## 10. What Phase 2 Will Add
 
 - `POST /runs/{run_id}/cancel` — interrupt a running pipeline process
-- WebSocket endpoint for real-time run progress streaming
+- WebSocket endpoint for run progress streaming (today: progress.json polling
+  with a 5s reload, per-record refresh indicators, and a run-complete toast)
 - Database-backed run history (replaces filesystem JSON)
 - Docker containerization for consistent deployments
-- Multi-operator support with per-operator run filtering
+- Per-operator run filtering (multi-user login via `UI_USERS` and per-run
+  operator attribution already exist)
 - Cloud file storage for input CSVs and output files
-- Run retry on partial failure
-- CI/CD pipeline
+
+Already delivered and no longer Phase 2: run retry on partial failure
+(resume-from-checkpoint plus single/batch/excluded per-record re-enrich and
+browser re-crawl) and the CI pipeline (`.github/workflows/ci.yml` runs the
+deterministic suite).
+
+## 11. Concurrency Guarantees and Deployment Limits
+
+Durable state (status.json, reviews.json, refresh_status.json, the master
+practice registry, and the `MAX_CONCURRENT_RUNS` admission check) is protected
+against lost updates by advisory file locks (`locking.py`): every
+read-modify-write runs inside an OS lock on a sibling `.lock` file, with a
+bounded timeout that surfaces as a retryable 503. This holds across asyncio
+tasks, FastAPI threadpool threads, and multiple uvicorn workers **on one
+host**. It does NOT extend across hosts: advisory locks do not travel over
+rclone/Drive sync or networked filesystems, so the deployment stays
+single-host (any number of workers) until a real coordination layer replaces
+the filesystem store. Atomic temp-file + `os.replace()` writes remain in place
+for crash safety.

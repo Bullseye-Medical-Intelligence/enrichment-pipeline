@@ -34,21 +34,19 @@ copy .env.example .env
 Open `.env` in Notepad (or any text editor) and fill in these values:
 
 ```
-PIPELINE_API_KEY=        ← a long random string (kept in config; NOT used for login auth)
 PIPELINE_REPO_PATH=      ← full path to the enrichment folder (e.g. C:\users\rajiv\desktop\bemi\enrichment)
 OUTPUT_RUNS_PATH=        ← where run output goes (e.g. C:\users\rajiv\desktop\bemi\output\runs)
 UI_USERNAME=             ← your login name (e.g. rajiv)
 UI_PASSWORD=             ← your login password (choose anything secure)
-SESSION_SECRET_KEY=      ← another long random string (protects your session)
+SESSION_SECRET_KEY=      ← a long random string (protects your session)
 ```
 
-To generate random strings, run:
+To generate the random string, run:
 ```
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
-Use it for `SESSION_SECRET_KEY` (which signs your login session). Login itself is
-session-cookie based, using `UI_USERNAME` / `UI_PASSWORD`; `PIPELINE_API_KEY` is
-not used for authentication.
+Use it for `SESSION_SECRET_KEY` (which signs your login session). Login is
+session-cookie based, using `UI_USERNAME` / `UI_PASSWORD` — there is no API key.
 
 Also fill in your enrichment pipeline's `.env` in the parent folder:
 ```
@@ -197,12 +195,20 @@ All run output is in the folder you set as `OUTPUT_RUNS_PATH`. Each run creates 
 ```
 output/runs/
   RUN-20260527-143000/
-    input.csv                ← the CSV you uploaded
-    status.json              ← run status and counts
-    run_log.json             ← pipeline log with per-record error details
-    enriched_targets.json    ← enriched records (never modified after creation)
-    enriched_targets.csv     ← same data, flat CSV format
-    reviews.json             ← your analyst notes and overrides (safe to open/read)
+    input.csv                      ← the CSV you uploaded
+    project_config_snapshot.json   ← frozen project config this run used
+    icp_snapshot.json              ← frozen ICP profile this run used
+    status.json                    ← run status and counts
+    run_log.json                   ← pipeline log with per-record error details
+    enriched_targets.json          ← enriched records
+    enriched_targets.csv           ← same data, flat CSV format
+    step4_checkpoint.ndjson        ← per-record checkpoint (lets a failed run resume)
+    evidence/<record_id>/          ← Evidence Vault: the page text the crawler saw
+    reviews.json                   ← your analyst notes and overrides (safe to open/read)
+    refresh_status.json            ← per-record re-enrich job state (spinner data)
+    published_briefs.json          ← links for briefs you published (if any)
+    link_check_report.json         ← evidence link check results (if you ran one)
+    pipeline_stdout.log            ← pipeline output kept when a run fails
 ```
 
 ---

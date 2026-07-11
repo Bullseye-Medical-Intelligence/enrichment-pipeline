@@ -184,7 +184,7 @@ never in engine code (RULE 3).
 verbatim. Example: listed elective/cosmetic procedures (`reinforces` cash pay)
 imply cash pay even when "cash pay" never appears on the site. The inferred
 target earns partial fit credit and **skips its verification gate** — a clearly
-cash-pay practice is not parked on the watchlist over missing copy.
+cash-pay practice is not parked in Needs Verification over missing copy.
 `_apply_reinforcement` runs after signal validation, before scoring.
 
 ### Derived signal fields (output)

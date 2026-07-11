@@ -173,7 +173,8 @@ CSV with column headers matching the Bullseye canonical schema. Required column:
 All output is written to `./output/` (or your `--output-dir`).
 
 **`enriched_targets.json`** — the primary output. Full schema with all signal data,
-scores, evidence text, and sales angles. Import this file into the dashboard.
+scores, evidence text, and sales angles. The operator dashboard reads it directly
+from the shared runs directory (no import step).
 
 **`enriched_targets.csv`** — flat version of the same records, without nested signal
 detail. Useful for quick review in Excel or Google Sheets.
@@ -181,6 +182,13 @@ detail. Useful for quick review in Excel or Google Sheets.
 **`run_log.json`** — run metadata: record counts by outcome (excluded, needs_review,
 failed), list of per-record errors, and any warnings. Check this first when a run
 produces unexpected results.
+
+**`step4_checkpoint.ndjson`** — per-record signal-extraction checkpoint. A killed or
+crashed run resumes from it instead of re-spending on Claude.
+
+**`evidence/<record_id>/`** — the Evidence Vault: per-page crawl snapshots
+(`index.json` + `page-NN.txt`) proving what the crawler saw; also the text source
+for the post-run verification and re-extraction passes.
 
 > Output files are in `.gitignore` and will not be committed to git. Do not commit
 > real client data to this repository.

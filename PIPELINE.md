@@ -810,9 +810,10 @@ Optional flags:
 
 ```
 /output
-  enriched_targets.json        ← Import this into the dashboard
+  enriched_targets.json        ← Scored, tiered records (the contract output)
   enriched_targets.csv         ← Flat version for review
   run_log.json                 ← Run metadata and error summary
+  step4_checkpoint.ndjson      ← Per-record Step 4 checkpoint (crash resume)
   evidence/<record_id>/        ← Evidence Vault: per-page crawl snapshots
     index.json                 ←   url, fetched_at, sha256, chars, provenance
     page-NN.txt                ←   extracted text of one crawled page
@@ -847,7 +848,7 @@ All post-run CLIs follow the same pattern: load `enriched_targets.json`, process
 
 **`recrawl_run.py`** — re-crawls `source_confidence limited/failed` records with Playwright, then re-runs Steps 4, 6, 7. Fixes bot-blocked sites that the standard HTTP crawler could not read.
 
-**`reextract_run.py`** — re-runs Claude signal extraction (Step 4) on stored `_context_text` for each enriched record, using a supplied ICP. Immediately re-runs Steps 6-7 on the updated signals. Skips `not_enriched` records and records with no stored `_context_text`. Primary use case: new ICP signals added after a run — re-evaluate existing crawled content without re-crawling. LLM cost (Claude). Concurrent via `ThreadPoolExecutor` with `llm_concurrency` workers.
+**`reextract_run.py`** — re-runs Claude signal extraction (Step 4) on each enriched record's page text, using a supplied ICP. `_context_text` is stripped from `enriched_targets.json` at write time, so the pass **rehydrates page text from the Evidence Vault** (`output/evidence_writer.py::read_record_context_text`) before extracting. Immediately re-runs Steps 6-7 on the updated signals. Skips `not_enriched` records, records with no Evidence Vault snapshot, and `EXCLUDED` records (hard exclusions are preserved — their provenance is stripped from output and cannot be re-derived; see rescore_run.py's identical guard). Primary use case: new ICP signals added after a run — re-evaluate existing crawled content without re-crawling. LLM cost (Claude). Concurrent via `ThreadPoolExecutor` with `llm_concurrency` workers.
 
 **`suppress_run.py`** — re-checks all non-suppressed records against an updated customer suppression CSV (`load_suppression_list` / `check_suppression`). Newly matched records are marked EXCLUDED and `_customer_suppressed=True`; already-suppressed records are left unchanged. Only writes when at least one new match is found. Zero LLM cost.
 
@@ -901,13 +902,19 @@ in client deliverables.
 
 - [ ] Docker containerization for reproducible runs
 - [ ] Additional ingestion adapters (CRM export, Definitive, IQVIA, NPI-derived)
-- [ ] Backend job queue for dashboard-triggered enrichment
-- [ ] Pipeline monitoring UI in dashboard
-- [ ] Retry management for failed records without re-running full batch
-- [ ] Incremental enrichment (enrich only new records, skip already-enriched)
-- [ ] Parallel processing with async or multiprocessing
+- [ ] Backend job queue for dashboard-triggered enrichment (BackgroundTasks +
+      `MAX_CONCURRENT_RUNS` admission is the current approximation, not a queue)
+- [ ] Incremental enrichment (enrich only new records, skip already-enriched —
+      batch re-enrich of selected records exists; a diff-driven skip does not)
 - [ ] Persistent run history database
-- [ ] Automated prompt regression testing
+
+Delivered since this list was written (kept here so it is not rebuilt):
+run progress + monitoring UI (progress.json polling, per-record refresh
+status, preflight health banner), per-record retry without re-running the
+batch (single/batch/excluded re-enrich, resume-from-checkpoint, browser
+re-crawl), parallel processing (`io_concurrency` / `llm_concurrency`
+ThreadPoolExecutor pools), and automated prompt regression testing
+(`eval_signals.py` + `evals/` golden dataset, gated by `--check`).
 
 ---
 
