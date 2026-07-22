@@ -212,7 +212,10 @@ def _prepare_sales_record(rec: dict, review: dict) -> dict:
         "discovery_question": brief.get("discovery_question") or "",
         "hours_of_operation": brief.get("hours_of_operation") or "",
         "sales_angles": sales_angles,
-        "analyst_note": review.get("analyst_note") or "",
+        # Analyst-authored fields (analyst_note etc.) are deliberately NOT
+        # copied into template context: these reports are client-facing
+        # (client package ZIP + published briefs) and internal notes must
+        # never leak into them.
         "override_reason": review.get("override_reason") or "",
         "override_tier": review.get("override_tier") or "",
         "qc_status": review.get("qc_status") or "",
@@ -371,7 +374,7 @@ def _prepare_record(rec: dict, review: dict) -> dict:
         "signal_coverage": signal_coverage,
         "exclusion_risk": exclusion_risk,
         "exclusion_risk_pct": exclusion_risk_pct,
-        "analyst_note": review.get("analyst_note") or "",
+        # Analyst-authored fields deliberately omitted — client-facing report.
         "override_reason": review.get("override_reason") or "",
         "reviewed_by": review.get("reviewed_by") or "",
     }

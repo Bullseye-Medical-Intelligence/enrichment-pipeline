@@ -12,8 +12,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-import pytest
-
 _API_DIR = Path(__file__).resolve().parent.parent / "pipeline-api"
 sys.path.insert(0, str(_API_DIR))
 
@@ -23,7 +21,6 @@ os.environ.setdefault("UI_PASSWORD", "secret-pw")
 os.environ.setdefault("PIPELINE_REPO_PATH", str(Path(__file__).resolve().parent.parent))
 
 import client_exports  # noqa: E402
-import config  # noqa: E402
 from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
@@ -94,6 +91,20 @@ def test_package_contains_required_files(tmp_path):
     with zipfile.ZipFile(buf) as zf:
         names = set(zf.namelist())
     assert names == _EXPECTED_FILES
+
+
+def test_analyst_notes_never_in_client_report(tmp_path):
+    """Internal analyst notes must never render into client-facing HTML.
+
+    The fixture's approved Bullseye carries analyst_note "Confirmed independent."
+    — the client package's Bullseye_Target_Report.html must not contain it.
+    """
+    _build_run(tmp_path)
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    with zipfile.ZipFile(buf) as zf:
+        report_html = zf.read("Bullseye_Target_Report.html").decode("utf-8")
+    assert "Confirmed independent." not in report_html
+    assert "Analyst Note" not in report_html
 
 
 def test_package_excludes_internal_artifacts(tmp_path):
@@ -453,7 +464,6 @@ def test_client_package_route_404_for_missing_run():
 def _write_ingested_run(tmp_path, monkeypatch):
     """Write a minimal ingested run (pre-enrichment roster) and point the API at it."""
     import runs
-    import record_adapter
     import reviews
 
     runs_dir = tmp_path / "runs"
