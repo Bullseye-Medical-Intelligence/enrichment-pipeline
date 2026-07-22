@@ -114,6 +114,17 @@ def test_non_object_root_raises_load_error(tmp_path):
         reviews.get_reviews(_RUN_ID, tmp_path)
 
 
+def test_malformed_entry_raises_load_error(tmp_path):
+    """A non-object entry value fails closed like a non-object root — merging
+    over it could erase analyst work."""
+    (tmp_path / "reviews.json").write_text(
+        '{"T-good": {"qc_status": "approved"}, "T-bad": "just a string"}'
+    )
+    with pytest.raises(reviews.ReviewsLoadError) as exc:
+        reviews.get_reviews(_RUN_ID, tmp_path)
+    assert "T-bad" in str(exc.value)
+
+
 def test_unreadable_file_raises_load_error(run_dir, monkeypatch):
     def _boom(*a, **k):
         raise OSError("I/O error reading device")

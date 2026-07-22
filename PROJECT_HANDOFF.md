@@ -88,7 +88,7 @@ Scoring: `fit_signal_score` = share of achievable positive weight actually captu
 
 | Client | Product | Status |
 |--------|---------|--------|
-| Femasys | FemaSeed (intratubal insemination) | **Active** — national ICP v11 cartridge; Atlanta brief is the next deliverable |
+| Femasys | FemaSeed (intratubal insemination) | **Active** — national ICP cartridge (currently `obgyn-femasys-v12`); Atlanta brief is the next deliverable |
 | Ormco | Orthodontic (TBD) | **Pending** — sales rep expected to have direction by Tuesday |
 
 Only two client cartridges remain in the repo: `obgyn_femasys` and `ormco-spark`.
@@ -148,7 +148,7 @@ Static site on Hostinger shared hosting. FTP via port 21 (SFTP port 22 blocked f
 
 ## Immediate Next Steps
 
-1. **Femasys** — pull 20-30 Atlanta OBGYNs and run against the national v11 cartridge
+1. **Femasys** — pull 20-30 Atlanta OBGYNs and run against the national cartridge (currently `obgyn-femasys-v12`)
 2. **Ormco** — sales rep direction expected Tuesday; propose hypothesis ICP once product is clearer
 3. **Atlanta brief format** — CEO-facing Market Report layout (cover page, tier summary, top highlights) still needs to be built before external delivery. This is the one open design item.
 

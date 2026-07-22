@@ -24,6 +24,9 @@ OUTPUT_RUNS_PATH: Path = Path(os.environ.get("OUTPUT_RUNS_PATH", ""))
 # ---------------------------------------------------------------------------
 
 ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Optional: only the operator-triggered GPT verification pass uses this.
+OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
 # Default to the exact Python running this server (sys.executable) so the
 # spawned pipeline subprocess inherits the same venv — including Playwright and
 # its Chromium browser. A bare "python3" can resolve to a different interpreter

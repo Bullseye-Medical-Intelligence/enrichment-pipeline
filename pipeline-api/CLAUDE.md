@@ -155,7 +155,7 @@ to open a run directory and understand what happened.
   schema.py          ← Pydantic models for all request/response types
   config.py          ← environment variable loading, path constants; includes Hostinger SFTP/FTP settings; BUILD_VERSION/BUILD_DATE
   llm_pricing.py     ← the ONE home for LLM pricing constants (operator-maintained LAST_VERIFIED); cost-per-run estimate via estimate_run_cost() (averages past run token usage, falls back to defaults)
-  preflight.py       ← system health checks: ANTHROPIC_API_KEY, pipeline repo, output dir writability, ICP profiles, projects, session key; returns CheckResult NamedTuples; overall status = worst individual check
+  preflight.py       ← system health checks: ANTHROPIC_API_KEY, OPENAI_API_KEY (warn — verification pass only), pipeline repo, output dir writability, ICP profiles, projects, session key (error when missing/placeholder — login fails without it); placeholder values from .env.example count as not set; returns CheckResult NamedTuples; overall status = worst individual check
   ui.py              ← server-rendered HTML routes (session auth)
   requirements.txt
   .env.example
@@ -388,8 +388,20 @@ POST   /dashboard/{run_id}/rescore                Re-score with frozen ICP weigh
 POST   /dashboard/{run_id}/rescore-preview        Preview rescore tier transitions without writing (rescore_run.py --preview)
 POST   /dashboard/{run_id}/reextract              Re-run Claude signal extraction; page text rehydrated from the Evidence Vault (reextract_run.py); LLM cost
 POST   /dashboard/{run_id}/resuppress             Re-check all records against the project suppression list (suppress_run.py); no LLM
-POST   /dashboard/{run_id}/recrawl                Re-crawl all blocked/thin records with Playwright (recrawl_run.py)
 POST   /dashboard/{run_id}/bulk-review            Bulk-set QC status on selected records; body: record_ids[], action=accept|reject|reset. Writes reviews.json only
+
+(The former POST /dashboard/{run_id}/recrawl bulk route was removed: no UI
+referenced it, and the batch re-enrich path — "Retry All with Browser" /
+rerun-selected with use_playwright — covers the use case with review-preserving
+merges. recrawl_run.py remains as a CLI for operator-laptop headful re-crawls,
+with the same EXCLUDED-skip and fail-closed guards as reextract_run.py.)
+
+All post-run pass routes run their CLI in the threadpool while holding the
+run's post-run job lock (<run_dir>/.postrun.lock, 1s acquire): a double submit
+or overlapping pass gets a 409 instead of racing. Each CLI additionally
+refuses its final write if enriched_targets.json changed since it loaded
+(compare-and-replace under .run.lock via output/atomic_write.py), so a batch
+merge landing mid-pass is never clobbered.
 
 API (session-cookie auth, same as all routes; called by dashboard or automation):
 POST   /enrichment-runs/{run_id}/update-registry  Explicit registry update; body: selection_mode, selected_record_ids, options
@@ -522,7 +534,14 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   defined order admission → registry → per-run; acquisition has a bounded
   timeout that surfaces as a clear, retryable 503 (`LockTimeout` handler in
   `main.py`), and the atomic temp-file + `os.replace()` write stays in place
-  for crash safety. The guarantee is single-HOST (threads, tasks, and
+  for crash safety. One deliberate exception to the no-subprocess rule: the
+  post-run trigger routes hold a dedicated job lock
+  (`<run_dir>/.postrun.lock`) for the full CLI pass so a double submit gets a
+  fast 409 — only those routes contend for it, so nothing else can starve.
+  The post-run CLIs themselves guard their final whole-file write with a
+  fingerprint compare-and-replace under `.run.lock`
+  (`output/atomic_write.py`), and `delete_run` drains `.run.lock` before
+  removal with deletion refused while any refresh entry is still running. The guarantee is single-HOST (threads, tasks, and
   multi-worker uvicorn on one machine); advisory locks do not extend across
   hosts or rclone/Drive-synced copies — the deployment remains single-host.
   Deterministic barrier-based tests live in `tests/test_locking.py`.
@@ -562,7 +581,7 @@ host. Task queue / database / Redis remain out of scope until that ceiling is cr
   "target_geography": ["TX", "FL", "GA"],
   "icp_profile_id": "obgyn_femasys",
   "icp_profile_name": "OBGYN Femasys",
-  "icp_profile_version": "obgyn-femasys-v11",
+  "icp_profile_version": "obgyn-femasys-v12",
   "archived": false,
 
   "llm_input_tokens": 312000,

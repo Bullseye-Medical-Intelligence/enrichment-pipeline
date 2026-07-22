@@ -37,6 +37,15 @@ Lock files:
                                              enriched_targets.json merges)
   - registry:  <master_practice_registry.json>.lock
   - admission: <OUTPUT_RUNS_PATH>/.admission.lock  (MAX_CONCURRENT_RUNS check)
+  - post-run job: <run_dir>/.postrun.lock   (ui.py post-run triggers)
+
+Job locks are the one exception to the "never hold across subprocess work"
+rule: ui.py's post-run triggers hold .postrun.lock for the full CLI pass so a
+double submit gets a fast 409 instead of racing. Only post-run triggers
+contend for that file, so nothing else can starve on it. The repo-root CLIs
+additionally acquire .run.lock themselves for their final compare-and-replace
+write (see output/atomic_write.py — its lock filename must stay in sync with
+run_lock_path here).
 
 Windows is supported (start-bemi.bat): msvcrt.locking is used where fcntl is
 unavailable. Timeouts raise LockTimeout with an operator-facing message; the

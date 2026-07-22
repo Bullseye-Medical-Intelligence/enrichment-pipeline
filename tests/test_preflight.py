@@ -6,7 +6,6 @@ No I/O beyond the tmp_path fixture; no network calls.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 
@@ -15,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "pipeline-api")
 from preflight import (
     _check_anthropic_key,
     _check_icp_profiles,
+    _check_openai_key,
     _check_output_dir,
     _check_pipeline_repo,
     _check_projects,
@@ -150,9 +150,37 @@ class TestSessionKey:
         r = _check_session_key("supersecret")
         assert r.status == "ok"
 
-    def test_missing_key_is_warn(self):
+    def test_missing_key_is_error(self):
         r = _check_session_key("")
+        assert r.status == "error"
+
+    def test_placeholder_key_is_error(self):
+        r = _check_session_key("your-session-secret-key-here")
+        assert r.status == "error"
+
+
+class TestOpenAIKey:
+
+    def test_key_set_is_ok(self):
+        r = _check_openai_key("sk-proj-realkey123")
+        assert r.status == "ok"
+
+    def test_missing_key_is_warn(self):
+        r = _check_openai_key("")
         assert r.status == "warn"
+        assert "verification" in r.message.lower()
+
+    def test_placeholder_key_is_warn(self):
+        r = _check_openai_key("sk-...")
+        assert r.status == "warn"
+
+
+class TestPlaceholderDetection:
+
+    def test_anthropic_placeholder_is_error(self):
+        r = _check_anthropic_key("sk-ant-...")
+        assert r.status == "error"
+        assert "placeholder" in r.message.lower()
 
 
 class TestRunChecks:
@@ -187,6 +215,7 @@ class TestRunChecks:
             icp_profiles_path=profiles_dir,
             projects_path=projects_dir,
             session_secret_key="secret",
+            openai_api_key="sk-proj-realkey123",
         )
         assert result["status"] == "ok"
         assert all(c["status"] == "ok" for c in result["checks"])
@@ -213,9 +242,24 @@ class TestRunChecks:
             output_runs_path=runs_dir,
             icp_profiles_path=profiles_dir,
             projects_path=projects_dir,
-            session_secret_key="",       # warn only
+            session_secret_key="secret",
+            # openai_api_key omitted -> warn only
         )
         assert result["status"] == "warn"
+
+    def test_missing_session_key_escalates_to_error(self, tmp_path):
+        repo, runs_dir, profiles_dir, projects_dir = self._full_ok_setup(tmp_path)
+        result = run_checks(
+            anthropic_api_key="sk-ant-test",
+            pipeline_repo_path=repo,
+            pipeline_script="pipeline.py",
+            output_runs_path=runs_dir,
+            icp_profiles_path=profiles_dir,
+            projects_path=projects_dir,
+            session_secret_key="",
+            openai_api_key="sk-proj-realkey123",
+        )
+        assert result["status"] == "error"
 
     def test_result_has_checks_list(self, tmp_path):
         repo, runs_dir, profiles_dir, projects_dir = self._full_ok_setup(tmp_path)
@@ -229,6 +273,6 @@ class TestRunChecks:
             session_secret_key="s",
         )
         assert isinstance(result["checks"], list)
-        assert len(result["checks"]) == 6
+        assert len(result["checks"]) == 7
         for c in result["checks"]:
             assert {"check", "label", "status", "message"} <= c.keys()

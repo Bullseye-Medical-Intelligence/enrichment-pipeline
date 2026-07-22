@@ -63,16 +63,20 @@ def _load_run_config(run_dir: Path) -> dict:
     return {}
 
 
-def _load_records(run_dir: Path) -> tuple[list[dict], dict]:
+def _load_records(run_dir: Path) -> tuple[list[dict], dict, tuple | None]:
     """Load records from enriched_targets.json.
 
-    Returns (records, payload) where payload is the full file structure
-    (wrapper dict or plain list) needed for atomic rewrite.
+    Returns (records, payload, fingerprint) where payload is the full file
+    structure (wrapper dict or plain list) needed for atomic rewrite and
+    fingerprint identifies the loaded file version for the guarded final write.
     """
     targets_path = run_dir / "enriched_targets.json"
     if not targets_path.exists():
         sys.exit(f"enriched_targets.json not found in {run_dir}")
 
+    # Fingerprint before load: the final write is refused if the file changed
+    # while this pass ran (concurrent merge or another pass).
+    loaded_fp = stat_fingerprint(targets_path)
     with open(targets_path, "r", encoding="utf-8") as f:
         payload = json.load(f)
 
@@ -81,11 +85,13 @@ def _load_records(run_dir: Path) -> tuple[list[dict], dict]:
     else:
         records = payload
 
-    return records, payload
+    return records, payload, loaded_fp
 
 
-def _write_records_atomic(run_dir: Path, records: list[dict], payload) -> None:
-    """Write enriched_targets.json atomically (tmp file + os.replace)."""
+def _write_records_atomic(
+    run_dir: Path, records: list[dict], payload, loaded_fp: tuple | None
+) -> None:
+    """Write enriched_targets.json atomically, refusing on concurrent change."""
     targets_path = run_dir / "enriched_targets.json"
     if isinstance(payload, dict):
         payload["records"] = records
@@ -97,7 +103,7 @@ def _write_records_atomic(run_dir: Path, records: list[dict], payload) -> None:
     tmp = targets_path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, default=str)
-    os.replace(tmp, targets_path)
+    guarded_replace(run_dir, targets_path, tmp, loaded_fp)
 
 
 def _match_key(record: dict) -> tuple:
@@ -114,6 +120,13 @@ from enrichment.signal_extractor import extract_signals
 from enrichment.exclusion_checker import apply_exclusions
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, MIN_CONTEXT_CHARS
+from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
+from output.evidence_writer import write_record_evidence
+
+# Default page budget when the run config snapshot carries no
+# max_pages_per_practice — mirrors the standard crawl's depth so a re-crawl
+# never sees less of a site than the first pass did.
+DEFAULT_RECRAWL_MAX_PAGES = 20
 
 
 def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
@@ -130,11 +143,12 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     Returns {"recrawled": N, "improved": M, "still_blocked": K}.
     """
 
-    records, payload = _load_records(run_dir)
+    records, payload, loaded_fp = _load_records(run_dir)
     run_config = _load_run_config(run_dir)
 
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
     target_specialty = run_config.get("target_specialty", "")
+    max_pages = int(run_config.get("max_pages_per_practice") or DEFAULT_RECRAWL_MAX_PAGES)
     contact_strategy = ""  # loaded from icp_data if present; not in snapshot
 
     # Try to load contact_strategy from icp snapshot
@@ -146,21 +160,39 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
         except (json.JSONDecodeError, OSError):
             pass
 
-    blocked = [r for r in records if r.get("source_confidence") in _BLOCKED_CONFIDENCES]
+    # EXCLUDED records are never re-crawled: production output lacks the internal
+    # provenance (_customer_suppressed, _npi_taxonomy_exclusions) needed to
+    # re-derive their exclusions, so re-processing one could silently return it
+    # to a sellable tier. Same rule as reextract_run.py.
+    skipped_excluded = sum(
+        1 for r in records
+        if r.get("source_confidence") in _BLOCKED_CONFIDENCES
+        and r.get("exclusion_status") == "EXCLUDED"
+    )
+    blocked = [
+        r for r in records
+        if r.get("source_confidence") in _BLOCKED_CONFIDENCES
+        and r.get("exclusion_status") != "EXCLUDED"
+    ]
 
     if not blocked:
-        print(json.dumps({"recrawled": 0, "improved": 0, "still_blocked": 0,
-                          "message": "No blocked records found"}))
-        return {"recrawled": 0, "improved": 0, "still_blocked": 0}
+        summary = {"recrawled": 0, "improved": 0, "still_blocked": 0,
+                   "skipped_excluded": skipped_excluded,
+                   "message": "No blocked records found"}
+        print(json.dumps(summary))
+        return summary
 
     print(f"  Found {len(blocked)} blocked/thin records to re-crawl with Playwright...")
+    if skipped_excluded:
+        print(f"  Skipping {skipped_excluded} EXCLUDED record(s) — exclusions are preserved.")
 
     # Build a lookup from match key -> index in the full record list for merging
     key_to_index: dict[tuple, int] = {}
     for idx, record in enumerate(records):
         key_to_index[_match_key(record)] = idx
 
-    stats = {"recrawled": 0, "improved": 0, "still_blocked": 0}
+    stats = {"recrawled": 0, "improved": 0, "still_blocked": 0,
+             "skipped_excluded": skipped_excluded}
 
     for record in blocked:
         url = (record.get("website_url") or "").strip()
@@ -174,8 +206,9 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
         print(f"\n  [RECRAWL] {name} ({url})")
         stats["recrawled"] += 1
 
-        # Re-crawl with Playwright
-        result = crawl_with_playwright(url=url)
+        # Re-crawl with Playwright at the standard page budget — a re-crawl
+        # must never see less of a site than the first pass did.
+        result = crawl_with_playwright(url=url, max_pages=max_pages)
 
         if result.error or not result.context_text:
             print(f"    [FAIL] Re-crawl failed: {result.error or 'no content returned'}")
@@ -224,13 +257,19 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
             stats["still_blocked"] += 1
             continue
 
-        # Step 6: Exclusion check
-        try:
-            record = apply_exclusions(record, run_config)
-        except Exception as e:
-            print(f"    [WARN] Exclusion check error: {str(e)[:150]}")
-            record["exclusion_status"] = "CLEAR"
-            record["exclusion_reason"] = None
+        # Evidence Vault: persist the fresh pages now that extraction succeeded,
+        # so the archived snapshot matches the text the new signals were scored
+        # against. (Writing before extraction would desync vault and signals on
+        # an extraction failure, which reverts the record.)
+        if result.pages:
+            write_record_evidence(
+                run_dir, record.get("id", ""), result.pages, provenance="recrawl"
+            )
+
+        # Step 6: Exclusion check — fail closed. An error here aborts the whole
+        # pass before the final write (nothing is written), rather than forcing
+        # the record CLEAR and proceeding, which could un-exclude it.
+        record = apply_exclusions(record, run_config)
 
         # Step 7: Scoring validation
         record = validate_and_finalize(record)
@@ -257,8 +296,8 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
                         records[i] = record
                         break
 
-    # Atomic write
-    _write_records_atomic(run_dir, records, payload)
+    # Atomic write (refused if the file changed since load)
+    _write_records_atomic(run_dir, records, payload, loaded_fp)
 
     return stats
 
@@ -282,7 +321,10 @@ def main() -> None:
     icp_signals = _load_icp_signals(icp_path, run_dir)
 
     print(f"Running browser re-crawl pass on {run_dir.name}...")
-    stats = run_browser_recrawl_pass(run_dir, icp_signals)
+    try:
+        stats = run_browser_recrawl_pass(run_dir, icp_signals)
+    except ConcurrentRunChange as e:
+        sys.exit(str(e))
     print(json.dumps(stats))
 
 

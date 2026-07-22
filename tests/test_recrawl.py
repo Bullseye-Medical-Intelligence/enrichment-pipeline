@@ -168,7 +168,7 @@ class TestNoBlockedRecords:
         # File should not have been rewritten (mtime unchanged)
         # Note: on very fast systems mtime resolution may be 1s; we skip the
         # mtime check here but verify content is intact.
-        loaded, _ = _load_records(run_dir)
+        loaded, _, _ = _load_records(run_dir)
         assert len(loaded) == 2
         assert loaded[0]["id"] == "ok-1"
         assert loaded[1]["id"] == "ok-2"
@@ -208,7 +208,7 @@ class TestBlockedRecordRecrawledAndRescored:
         call_kwargs = mock_extract.call_args
         assert call_kwargs.kwargs.get("icp_signals") == _SAMPLE_ICP_SIGNALS
 
-        loaded, _ = _load_records(run_dir)
+        loaded, _, _ = _load_records(run_dir)
         assert len(loaded) == 1
         assert loaded[0]["source_confidence"] == "partial"
 
@@ -245,7 +245,7 @@ class TestStillBlockedAfterRecrawlNotRegressed:
         mock_extract.assert_not_called()
 
         # Original record must be unchanged in the file
-        loaded, _ = _load_records(run_dir)
+        loaded, _, _ = _load_records(run_dir)
         assert loaded[0]["bullseye_score"] == original_score
         assert loaded[0]["signals"] == original_signals
         assert loaded[0]["source_confidence"] == "failed"
@@ -272,7 +272,7 @@ class TestStillBlockedAfterRecrawlNotRegressed:
         assert stats["still_blocked"] == 1
         mock_extract.assert_not_called()
 
-        loaded, _ = _load_records(run_dir)
+        loaded, _, _ = _load_records(run_dir)
         assert loaded[0]["source_confidence"] == "limited"
 
 
@@ -328,7 +328,7 @@ class TestOnlyBlockedRecordsTouched:
         assert stats["recrawled"] == 1
         assert stats["improved"] == 1
 
-        loaded, _ = _load_records(run_dir)
+        loaded, _, _ = _load_records(run_dir)
         assert len(loaded) == 3
 
         # ok records must be byte-for-byte identical (same content)
@@ -365,7 +365,7 @@ class TestOnlyBlockedRecordsTouched:
         assert stats["still_blocked"] == 1
         mock_extract.assert_not_called()
 
-        loaded, _ = _load_records(run_dir)
+        loaded, _, _ = _load_records(run_dir)
         # ok record untouched
         assert loaded[0]["id"] == "ok-1"
         assert loaded[0]["target_tier"] == "Bullseye"
@@ -383,7 +383,9 @@ class TestAtomicWrite:
             json.dumps(payload), encoding="utf-8"
         )
 
-        _write_records_atomic(run_dir, records, payload)
+        from output.atomic_write import stat_fingerprint
+        fp = stat_fingerprint(run_dir / "enriched_targets.json")
+        _write_records_atomic(run_dir, records, payload, fp)
 
         # tmp file should be gone
         tmp = run_dir / "enriched_targets.tmp"
@@ -394,3 +396,195 @@ class TestAtomicWrite:
         loaded = json.loads(content)
         assert loaded["record_count"] == 1
         assert len(loaded["records"]) == 1
+
+
+class TestExcludedRecordsSkipped:
+    """EXCLUDED records are never re-crawled — exclusions are preserved."""
+
+    def test_excluded_blocked_record_not_recrawled(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        excluded = _blocked_record(1, confidence="limited")
+        excluded["exclusion_status"] = "EXCLUDED"
+        excluded["exclusion_reason"] = "Existing customer"
+        excluded["target_tier"] = "Excluded"
+        normal = _blocked_record(2, confidence="limited")
+        _write_targets(run_dir, [excluded, normal])
+
+        good_text = "We provide IUI services. " * 50
+        extraction_result = _make_extraction_result(
+            context_text=good_text, url="https://blocked2.com"
+        )
+        enriched = _make_enriched_record(normal)
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result) as mock_crawl,
+            patch("recrawl_run.extract_signals", return_value=enriched),
+            patch("recrawl_run.apply_exclusions", side_effect=lambda r, cfg: r),
+            patch("recrawl_run.validate_and_finalize", side_effect=lambda r: r),
+            patch("recrawl_run.strip_internal_fields", side_effect=lambda r: r),
+        ):
+            stats = run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        assert stats["skipped_excluded"] == 1
+        assert stats["recrawled"] == 1  # only the non-excluded record
+        assert mock_crawl.call_count == 1
+
+        loaded, _, _ = _load_records(run_dir)
+        by_id = {r["id"]: r for r in loaded}
+        assert by_id["blocked-1"]["exclusion_status"] == "EXCLUDED"
+        assert by_id["blocked-1"]["target_tier"] == "Excluded"
+        assert by_id["blocked-1"]["signals"] == []
+
+
+class TestPageBudget:
+    """The re-crawl uses the standard page budget, not the function default."""
+
+    def test_default_budget_is_20(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        _write_targets(run_dir, [_blocked_record(1)])
+        failed = _make_extraction_result(context_text="", error="blocked")
+
+        with patch("recrawl_run.crawl_with_playwright", return_value=failed) as mock_crawl:
+            run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        assert mock_crawl.call_args.kwargs.get("max_pages") == 20
+
+    def test_budget_from_config_snapshot(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        (run_dir / "project_config_snapshot.json").write_text(
+            json.dumps({"max_pages_per_practice": 12}), encoding="utf-8"
+        )
+        _write_targets(run_dir, [_blocked_record(1)])
+        failed = _make_extraction_result(context_text="", error="blocked")
+
+        with patch("recrawl_run.crawl_with_playwright", return_value=failed) as mock_crawl:
+            run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        assert mock_crawl.call_args.kwargs.get("max_pages") == 12
+
+
+class TestEvidenceVaultWrite:
+    """A successful re-crawl persists the fresh pages to the Evidence Vault."""
+
+    def test_vault_written_on_success(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+
+        good_text = "We provide IUI services. " * 50
+        extraction_result = _make_extraction_result(
+            context_text=good_text, url="https://blocked1.com"
+        )
+        extraction_result.pages = [
+            {"url": "https://blocked1.com", "text": good_text}
+        ]
+        enriched = _make_enriched_record(blocked)
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", return_value=enriched),
+            patch("recrawl_run.apply_exclusions", side_effect=lambda r, cfg: r),
+            patch("recrawl_run.validate_and_finalize", side_effect=lambda r: r),
+            patch("recrawl_run.strip_internal_fields", side_effect=lambda r: r),
+        ):
+            stats = run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        assert stats["improved"] == 1
+        evidence_dir = run_dir / "evidence" / "blocked-1"
+        assert evidence_dir.is_dir()
+        index = json.loads((evidence_dir / "index.json").read_text(encoding="utf-8"))
+        pages = index if isinstance(index, list) else index.get("pages", [])
+        assert pages and pages[0]["provenance"] == "recrawl"
+
+    def test_vault_not_written_when_extraction_fails(self, tmp_path):
+        """Extraction failure reverts the record — the vault must keep matching it."""
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+
+        good_text = "We provide IUI services. " * 50
+        extraction_result = _make_extraction_result(
+            context_text=good_text, url="https://blocked1.com"
+        )
+        extraction_result.pages = [{"url": "https://blocked1.com", "text": good_text}]
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", side_effect=RuntimeError("LLM down")),
+        ):
+            stats = run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        assert stats["still_blocked"] == 1
+        assert not (run_dir / "evidence" / "blocked-1").exists()
+
+
+class TestExclusionFailClosed:
+    """An exclusion-check error aborts the pass — never forces CLEAR."""
+
+    def test_apply_exclusions_error_aborts_whole_pass(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+        before = (run_dir / "enriched_targets.json").read_bytes()
+
+        good_text = "We provide IUI services. " * 50
+        extraction_result = _make_extraction_result(
+            context_text=good_text, url="https://blocked1.com"
+        )
+        enriched = _make_enriched_record(blocked)
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", return_value=enriched),
+            patch("recrawl_run.apply_exclusions", side_effect=RuntimeError("bad rule")),
+        ):
+            import pytest
+            with pytest.raises(RuntimeError):
+                run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        # Nothing was written
+        assert (run_dir / "enriched_targets.json").read_bytes() == before
+
+
+class TestConcurrentWriteGuard:
+    """A concurrent rewrite of enriched_targets.json refuses the pass write."""
+
+    def test_pass_write_refused_after_concurrent_merge(self, tmp_path):
+        from output.atomic_write import ConcurrentRunChange
+
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+        targets = run_dir / "enriched_targets.json"
+
+        good_text = "We provide IUI services. " * 50
+        extraction_result = _make_extraction_result(
+            context_text=good_text, url="https://blocked1.com"
+        )
+        enriched = _make_enriched_record(blocked)
+
+        def _extract_and_merge(**kwargs):
+            # Simulate a batch merge landing while the pass is mid-LLM.
+            merged = {"run_id": run_dir.name, "records": [
+                {**blocked, "practice_name": "Merged Elsewhere"}
+            ], "record_count": 1}
+            tmp = run_dir / "merge.tmp"
+            tmp.write_text(json.dumps(merged), encoding="utf-8")
+            import os as _os
+            _os.replace(tmp, targets)
+            return enriched
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", side_effect=_extract_and_merge),
+            patch("recrawl_run.apply_exclusions", side_effect=lambda r, cfg: r),
+            patch("recrawl_run.validate_and_finalize", side_effect=lambda r: r),
+            patch("recrawl_run.strip_internal_fields", side_effect=lambda r: r),
+        ):
+            import pytest
+            with pytest.raises(ConcurrentRunChange):
+                run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        # The merge's data survived; the stale pass wrote nothing.
+        final = json.loads(targets.read_text(encoding="utf-8"))
+        assert final["records"][0]["practice_name"] == "Merged Elsewhere"

@@ -95,6 +95,19 @@ def get_reviews(run_id: str, run_directory: Path) -> dict[str, dict]:
         raise ReviewsLoadError(
             reviews_path, f"root is {type(data).__name__}, expected an object"
         )
+    for record_id, entry in data.items():
+        if not isinstance(entry, dict):
+            # A malformed entry means the file is damaged; merging or saving
+            # over it could erase analyst work — same fail-closed contract as
+            # the root check.
+            logger.error(
+                "reviews.json for run %s has a malformed entry %r (%s)",
+                run_id, record_id, type(entry).__name__,
+            )
+            raise ReviewsLoadError(
+                reviews_path,
+                f"entry {record_id!r} is {type(entry).__name__}, expected an object",
+            )
     return data
 
 

@@ -121,8 +121,19 @@ def load_registry(path: Path) -> dict:
             f"Registry file at {path} is not a valid registry object. "
             "Update aborted to protect platform memory — no changes were written."
         )
-    if not isinstance(data.get("entries"), dict):
+    entries = data.get("entries")
+    if entries is None:
+        # Absent key on an otherwise-valid registry object: legacy/bootstrap
+        # shape, safe to treat as empty.
         data["entries"] = {}
+    elif not isinstance(entries, dict):
+        # Present but wrong type means the file is damaged. Defaulting to {}
+        # here would let the next save overwrite the registry from empty state.
+        raise RegistryLoadError(
+            f"Registry file at {path} has a malformed 'entries' section "
+            f"({type(entries).__name__}, expected an object). "
+            "Update aborted to protect platform memory — no changes were written."
+        )
     return data
 
 

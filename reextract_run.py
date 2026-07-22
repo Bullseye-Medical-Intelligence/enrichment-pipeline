@@ -42,6 +42,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
+
 # Load .env from pipeline-api/ when running from repo root
 _env_path = Path(__file__).parent / "pipeline-api" / ".env"
 if _env_path.exists():
@@ -158,6 +160,9 @@ def run_reextract_pass(
     if not targets_path.exists():
         raise FileNotFoundError(f"enriched_targets.json not found in {run_dir}")
 
+    # Fingerprint before load: the final write is refused if the file changed
+    # while this pass ran (concurrent merge or another pass).
+    loaded_fp = stat_fingerprint(targets_path)
     raw = json.loads(targets_path.read_text(encoding="utf-8"))
     if isinstance(raw, dict):
         wrapper = raw
@@ -217,7 +222,7 @@ def run_reextract_pass(
         output = records
 
     tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp_path, targets_path)
+    guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
 
     return {
         "processed": len(eligible_indices),
@@ -306,7 +311,10 @@ def main() -> None:
     llm_concurrency = args.concurrency or run_config.get("llm_concurrency", 3)
 
     print(f"Re-extracting signals for {run_dir.name}…")
-    stats = run_reextract_pass(run_dir, icp_signals, run_config, icp_data, llm_concurrency)
+    try:
+        stats = run_reextract_pass(run_dir, icp_signals, run_config, icp_data, llm_concurrency)
+    except ConcurrentRunChange as e:
+        sys.exit(str(e))
     print(json.dumps(stats))
 
 

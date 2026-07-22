@@ -440,6 +440,28 @@ def test_load_registry_raises_on_corrupt_file(tmp_path):
         registry_update.load_registry(reg)
 
 
+def test_load_registry_raises_on_malformed_entries(tmp_path):
+    """A present-but-wrong-typed 'entries' fails closed — defaulting to {} would
+    let the next save overwrite the registry from empty state."""
+    reg = tmp_path / "master_practice_registry.json"
+    for bad_entries in ('[]', '"entries-as-string"', '42'):
+        reg.write_text(
+            '{"version": 1, "updated_at": "", "entry_count": 5, "entries": %s}' % bad_entries,
+            encoding="utf-8",
+        )
+        before = reg.read_bytes()
+        with pytest.raises(registry_update.RegistryLoadError):
+            registry_update.load_registry(reg)
+        assert reg.read_bytes() == before  # file untouched
+
+
+def test_load_registry_tolerates_absent_entries_key(tmp_path):
+    """An otherwise-valid object with no 'entries' key is legacy/bootstrap shape."""
+    reg = tmp_path / "master_practice_registry.json"
+    reg.write_text('{"version": 1, "updated_at": ""}', encoding="utf-8")
+    assert registry_update.load_registry(reg)["entries"] == {}
+
+
 # ---------------------------------------------------------------------------
 # Place-ID-only identity (consistent with priority-1 matching)
 # ---------------------------------------------------------------------------

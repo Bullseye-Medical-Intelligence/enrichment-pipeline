@@ -239,6 +239,11 @@ def delete_run(run_id: str) -> None:
     status = get_run(run_id)
     if status and status.status in ("pending", "running"):
         raise ValueError(f"Cannot delete an active run (status: {status.status}).")
+    # Drain any in-flight state transaction before removal. The lock is
+    # released before rmtree because Windows cannot delete a file that is
+    # still locked open.
+    with locking.run_lock(directory):
+        pass
     shutil.rmtree(directory)
     logger.info("Deleted run directory: %s", directory)
 

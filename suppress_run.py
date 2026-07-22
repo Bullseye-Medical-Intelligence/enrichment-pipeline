@@ -22,6 +22,8 @@ import os
 import sys
 from pathlib import Path
 
+from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
+
 # Load .env from pipeline-api/ when running from repo root
 _env_path = Path(__file__).parent / "pipeline-api" / ".env"
 if _env_path.exists():
@@ -74,6 +76,9 @@ def run_suppress_pass(
     if suppression_list.is_empty:
         raise ValueError(f"Suppression list at {suppression_path} is empty or unreadable")
 
+    # Fingerprint before load: the final write is refused if the file changed
+    # while this pass ran (concurrent merge or another pass).
+    loaded_fp = stat_fingerprint(targets_path)
     raw = json.loads(targets_path.read_text(encoding="utf-8"))
     if isinstance(raw, dict):
         wrapper = raw
@@ -120,7 +125,7 @@ def run_suppress_pass(
         else:
             output = clean
         tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp_path, targets_path)
+        guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
 
     return {
         "newly_suppressed": newly_suppressed,
@@ -206,7 +211,10 @@ def main() -> None:
         return
 
     print(f"Re-checking suppression for {run_dir.name}…")
-    stats = run_suppress_pass(run_dir, suppression_path)
+    try:
+        stats = run_suppress_pass(run_dir, suppression_path)
+    except ConcurrentRunChange as e:
+        sys.exit(str(e))
     print(json.dumps(stats))
 
 

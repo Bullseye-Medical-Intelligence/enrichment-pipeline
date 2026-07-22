@@ -47,9 +47,13 @@ def main() -> None:
     icp_signals = icp_data.get("signals") or icp_data.get("icp_signals") or []
 
     from enrichment.verifier import run_verification_pass
+    from output.atomic_write import ConcurrentRunChange
 
     print(f"Running verification pass on {run_dir.name}…")
-    stats = run_verification_pass(run_dir, icp_signals)
+    try:
+        stats = run_verification_pass(run_dir, icp_signals)
+    except ConcurrentRunChange as e:
+        sys.exit(str(e))
     print(json.dumps(stats))
 
 

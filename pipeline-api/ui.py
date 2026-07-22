@@ -12,6 +12,7 @@ import logging
 import re
 import socket
 import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -944,6 +945,7 @@ async def preflight_check(
         icp_profiles_path=config.ICP_PROFILES_PATH,
         projects_path=config.PROJECTS_PATH,
         session_secret_key=config.SESSION_SECRET_KEY,
+        openai_api_key=config.OPENAI_API_KEY,
     )
     return JSONResponse(result)
 
@@ -958,6 +960,7 @@ def _run_preflight() -> dict:
         icp_profiles_path=config.ICP_PROFILES_PATH,
         projects_path=config.PROJECTS_PATH,
         session_secret_key=config.SESSION_SECRET_KEY,
+        openai_api_key=config.OPENAI_API_KEY,
     )
 
 
@@ -1108,6 +1111,29 @@ async def run_compare(
     )
 
 
+def _refresh_running_error(run_id: str) -> str | None:
+    """Reason string when an in-place refresh is still running on the run.
+
+    Uses runner.load_refresh_status, which reports monitor-abandoned 'running'
+    entries as failed after the staleness window — a dead monitor can never
+    block deletion forever.
+    """
+    directory = runs.run_dir(run_id)
+    if not directory.exists():
+        return None
+    refresh = runner.load_refresh_status(directory)
+    running = sum(
+        1 for entry in refresh.values()
+        if isinstance(entry, dict) and entry.get("state") == "running"
+    )
+    if running:
+        return (
+            f"Run '{run_id}' has {running} record(s) mid-refresh — "
+            "wait for the refresh to finish before deleting."
+        )
+    return None
+
+
 @router.post("/dashboard/{run_id}/delete", response_class=HTMLResponse)
 async def delete_run_route(
     run_id: str,
@@ -1116,7 +1142,10 @@ async def delete_run_route(
 ):
     """Permanently delete a run and all its files. Blocked for active runs."""
     try:
-        runs.delete_run(run_id)
+        busy = _refresh_running_error(run_id)
+        if busy:
+            raise ValueError(busy)
+        await run_in_threadpool(runs.delete_run, run_id)
     except ValueError as exc:
         all_runs = runs.list_runs()
         return _render("runs.html", username=username, runs=all_runs,
@@ -1167,7 +1196,10 @@ async def bulk_delete_runs_route(
     errors = []
     for run_id in run_ids:
         try:
-            runs.delete_run(run_id)
+            busy = _refresh_running_error(run_id)
+            if busy:
+                raise ValueError(busy)
+            await run_in_threadpool(runs.delete_run, run_id)
         except ValueError as exc:
             errors.append(str(exc))
     if errors:
@@ -2571,6 +2603,30 @@ async def registry_update_action(
     )
 
 
+_POSTRUN_LOCK_FILENAME = ".postrun.lock"
+_POSTRUN_BUSY_DETAIL = (
+    "Another post-run pass is already running on this run — "
+    "wait for it to finish, then retry."
+)
+
+
+def _run_postrun_cli(run_directory: Path, cmd: list[str], timeout: int):
+    """Build the threadpool work item for a post-run CLI invocation.
+
+    Holds the run's post-run job lock for the full subprocess duration so a
+    double submit or an overlapping pass gets a fast 409 (LockTimeout) instead
+    of racing the same enriched_targets.json. Job locks are exempt from the
+    state-lock "never hold across subprocess work" rule in locking.py: only
+    post-run triggers contend for this file, and serializing whole passes is
+    the point. The CLIs' own write guard (output/atomic_write.py) separately
+    protects against batch re-enrichment merges landing mid-pass.
+    """
+    def _work():
+        with locking.file_lock(run_directory / _POSTRUN_LOCK_FILENAME, timeout=1.0):
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return _work
+
+
 @router.post("/dashboard/{run_id}/verify", response_class=HTMLResponse)
 async def trigger_verification(
     request: Request,
@@ -2590,14 +2646,15 @@ async def trigger_verification(
     if not icp_path.exists():
         raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
 
-    import subprocess, sys, json as _json
+    import json as _json
     repo_root = Path(__file__).parent.parent
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "verify_run.py"),
-         "--run-dir", str(run_directory),
-         "--icp", str(icp_path)],
-        capture_output=True, text=True, timeout=600,
-    )
+    cmd = [sys.executable, str(repo_root / "verify_run.py"),
+           "--run-dir", str(run_directory),
+           "--icp", str(icp_path)]
+    try:
+        result = await run_in_threadpool(_run_postrun_cli(run_directory, cmd, 600))
+    except locking.LockTimeout:
+        raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Verification failed: {result.stderr[:300]}")
 
@@ -2641,14 +2698,14 @@ async def trigger_rescore(
     if not icp_path.exists():
         raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
 
-    import subprocess, sys
     repo_root = Path(__file__).parent.parent
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "rescore_run.py"),
-         "--run-dir", str(run_directory),
-         "--icp", str(icp_path)],
-        capture_output=True, text=True, timeout=120,
-    )
+    cmd = [sys.executable, str(repo_root / "rescore_run.py"),
+           "--run-dir", str(run_directory),
+           "--icp", str(icp_path)]
+    try:
+        result = await run_in_threadpool(_run_postrun_cli(run_directory, cmd, 120))
+    except locking.LockTimeout:
+        raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Re-scoring failed: {result.stderr[:300]}")
 
@@ -2680,15 +2737,16 @@ async def trigger_rescore_preview(
     if not icp_path.exists():
         raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
 
-    import subprocess, sys, json as _json
+    import json as _json
     repo_root = Path(__file__).parent.parent
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "rescore_run.py"),
-         "--run-dir", str(run_directory),
-         "--icp", str(icp_path),
-         "--preview"],
-        capture_output=True, text=True, timeout=120,
-    )
+    cmd = [sys.executable, str(repo_root / "rescore_run.py"),
+           "--run-dir", str(run_directory),
+           "--icp", str(icp_path),
+           "--preview"]
+    try:
+        result = await run_in_threadpool(_run_postrun_cli(run_directory, cmd, 120))
+    except locking.LockTimeout:
+        raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Rescore preview failed: {result.stderr[:300]}")
 
@@ -2755,14 +2813,15 @@ async def trigger_resuppress(
             detail=f"Suppression list not found at configured path: {suppression_path}",
         )
 
-    import subprocess, sys, json as _json
+    import json as _json
     repo_root = Path(__file__).parent.parent
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "suppress_run.py"),
-         "--run-dir", str(run_directory),
-         "--suppression", str(suppression_path)],
-        capture_output=True, text=True, timeout=60,
-    )
+    cmd = [sys.executable, str(repo_root / "suppress_run.py"),
+           "--run-dir", str(run_directory),
+           "--suppression", str(suppression_path)]
+    try:
+        result = await run_in_threadpool(_run_postrun_cli(run_directory, cmd, 60))
+    except locking.LockTimeout:
+        raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Suppression re-check failed: {result.stderr[:300]}")
 
@@ -2806,14 +2865,14 @@ async def trigger_reextract(
     if not icp_path.exists():
         raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
 
-    import subprocess, sys
     repo_root = Path(__file__).parent.parent
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "reextract_run.py"),
-         "--run-dir", str(run_directory),
-         "--icp", str(icp_path)],
-        capture_output=True, text=True, timeout=600,
-    )
+    cmd = [sys.executable, str(repo_root / "reextract_run.py"),
+           "--run-dir", str(run_directory),
+           "--icp", str(icp_path)]
+    try:
+        result = await run_in_threadpool(_run_postrun_cli(run_directory, cmd, 600))
+    except locking.LockTimeout:
+        raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Re-extraction failed: {result.stderr[:300]}")
 
@@ -2862,61 +2921,6 @@ async def rerun_selected(
     notice = (
         f"{method.capitalize()} {count} {noun} in the background — "
         "reload in a few minutes to see updated tiers and signals."
-    )
-    return RedirectResponse(
-        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
-        status_code=303,
-    )
-
-
-@router.post("/dashboard/{run_id}/recrawl", response_class=HTMLResponse)
-async def trigger_recrawl(
-    request: Request,
-    run_id: str,
-    username: str = Depends(auth.require_session),
-):
-    """Trigger the post-run browser re-crawl pass on a completed run.
-
-    Shells out to recrawl_run.py which re-crawls blocked/thin records
-    (source_confidence limited or failed) with Playwright, then re-runs
-    signal extraction, exclusion check, and scoring on improved records.
-    Writes results back atomically and redirects to the run dashboard.
-    """
-    run_directory = runs.run_dir(run_id)
-    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
-        raise HTTPException(status_code=404, detail="Run not found")
-
-    status = runs.get_run(run_id)
-    if status is None or status.status != "complete":
-        raise HTTPException(status_code=400, detail="Browser re-crawl requires a completed run")
-
-    import subprocess, sys, json as _json
-    repo_root = Path(__file__).parent.parent
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "recrawl_run.py"),
-         "--run-dir", str(run_directory)],
-        capture_output=True, text=True, timeout=900,
-    )
-    if result.returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Browser re-crawl failed: {result.stderr[:300]}",
-        )
-
-    # Parse the stats from the last JSON line in stdout
-    stats = {}
-    for line in reversed(result.stdout.strip().splitlines()):
-        try:
-            stats = _json.loads(line)
-            break
-        except Exception:
-            continue
-
-    improved = stats.get("improved", 0)
-    still_blocked = stats.get("still_blocked", 0)
-    notice = (
-        f"Browser re-crawl complete: {improved} record(s) improved, "
-        f"{still_blocked} still blocked."
     )
     return RedirectResponse(
         url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",

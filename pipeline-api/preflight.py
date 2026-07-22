@@ -20,13 +20,44 @@ class CheckResult(NamedTuple):
     message: str
 
 
+# Values copied verbatim from a .env.example count as NOT configured. The
+# trailing-"..." check catches truncated example keys (sk-ant-..., sk-...);
+# real keys never end with a literal ellipsis.
+_PLACEHOLDER_VALUES = frozenset({"your-session-secret-key-here", "changeme"})
+
+
+def _is_configured(value: str) -> bool:
+    """True when a secret is set to something other than an example placeholder."""
+    value = (value or "").strip()
+    if not value:
+        return False
+    if value in _PLACEHOLDER_VALUES:
+        return False
+    return not value.endswith("...")
+
+
 def _check_anthropic_key(anthropic_api_key: str) -> CheckResult:
     """Verify ANTHROPIC_API_KEY is set (required for signal extraction)."""
-    if anthropic_api_key:
+    if _is_configured(anthropic_api_key):
         return CheckResult("anthropic_api_key", "Anthropic API Key", "ok", "Set")
+    if (anthropic_api_key or "").strip():
+        return CheckResult(
+            "anthropic_api_key", "Anthropic API Key", "error",
+            "Set to the .env.example placeholder -- replace it with a real key",
+        )
     return CheckResult(
         "anthropic_api_key", "Anthropic API Key", "error",
         "Not set -- ANTHROPIC_API_KEY is required for signal extraction (Step 4)",
+    )
+
+
+def _check_openai_key(openai_api_key: str) -> CheckResult:
+    """Verify OPENAI_API_KEY is set (optional -- GPT verification pass only)."""
+    if _is_configured(openai_api_key):
+        return CheckResult("openai_api_key", "OpenAI API Key", "ok", "Set")
+    return CheckResult(
+        "openai_api_key", "OpenAI API Key", "warn",
+        "Not set -- the post-run GPT verification pass is unavailable without it",
     )
 
 
@@ -124,12 +155,14 @@ def _check_projects(projects_path: Path) -> CheckResult:
 
 
 def _check_session_key(session_secret_key: str) -> CheckResult:
-    """Verify SESSION_SECRET_KEY is set for production cookie security."""
-    if session_secret_key:
+    """Verify SESSION_SECRET_KEY is usable -- login fails outright without it."""
+    if _is_configured(session_secret_key):
         return CheckResult("session_key", "Session Secret Key", "ok", "Set")
     return CheckResult(
-        "session_key", "Session Secret Key", "warn",
-        "SESSION_SECRET_KEY not set -- session cookies are less secure without it",
+        "session_key", "Session Secret Key", "error",
+        "SESSION_SECRET_KEY missing or set to the example placeholder -- "
+        "login cannot issue session cookies without it. Generate one with: "
+        "python -c \"import secrets; print(secrets.token_urlsafe(32))\"",
     )
 
 
@@ -141,6 +174,7 @@ def run_checks(
     icp_profiles_path: Path,
     projects_path: Path,
     session_secret_key: str,
+    openai_api_key: str = "",
 ) -> dict:
     """Run all preflight checks and return a summary dict.
 
@@ -149,6 +183,7 @@ def run_checks(
     """
     checks = [
         _check_anthropic_key(anthropic_api_key),
+        _check_openai_key(openai_api_key),
         _check_pipeline_repo(pipeline_repo_path, pipeline_script),
         _check_output_dir(output_runs_path),
         _check_icp_profiles(icp_profiles_path),

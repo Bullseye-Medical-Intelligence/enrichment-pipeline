@@ -562,3 +562,37 @@ def test_merge_without_scratch_evidence_keeps_source_snapshot(run_store):
     assert result.ok
     # No new capture — the original snapshot survives untouched.
     assert (run_dir / "evidence" / "T-A" / "page-01.txt").read_text(encoding="utf-8") == "Old page text."
+
+
+class TestRefreshStatusCorruption:
+    """Damaged refresh_status.json is preserved as a sidecar, never merged with."""
+
+    def test_corrupt_file_preserved_as_sidecar(self, tmp_path):
+        run_dir = tmp_path / "RUN-20260722-130000"
+        run_dir.mkdir()
+        path = run_dir / "refresh_status.json"
+        path.write_text("{ this is not json", encoding="utf-8")
+
+        runner.mark_refresh_running(run_dir, ["T-1"], kind="recrawl")
+
+        sidecar = run_dir / "refresh_status.json.corrupt"
+        assert sidecar.exists()
+        assert sidecar.read_text(encoding="utf-8") == "{ this is not json"
+        fresh = json.loads(path.read_text(encoding="utf-8"))
+        assert fresh["T-1"]["state"] == "running"
+
+    def test_non_dict_root_read_returns_empty(self, tmp_path):
+        run_dir = tmp_path / "RUN-20260722-130001"
+        run_dir.mkdir()
+        (run_dir / "refresh_status.json").write_text('["a", "list"]', encoding="utf-8")
+        assert runner.load_refresh_status(run_dir) == {}
+
+    def test_non_dict_entries_skipped_on_read(self, tmp_path):
+        run_dir = tmp_path / "RUN-20260722-130002"
+        run_dir.mkdir()
+        (run_dir / "refresh_status.json").write_text(
+            json.dumps({"T-1": {"state": "done"}, "T-2": "garbage"}), encoding="utf-8"
+        )
+        loaded = runner.load_refresh_status(run_dir)
+        assert "T-1" in loaded
+        assert "T-2" not in loaded

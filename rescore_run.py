@@ -23,6 +23,8 @@ import os
 import sys
 from pathlib import Path
 
+from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
+
 # Load .env from pipeline-api/ when running from repo root
 _env_path = Path(__file__).parent / "pipeline-api" / ".env"
 if _env_path.exists():
@@ -129,6 +131,9 @@ def run_rescore_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     if not targets_path.exists():
         raise FileNotFoundError(f"enriched_targets.json not found in {run_dir}")
 
+    # Fingerprint before load: the final write is refused if the file changed
+    # while this pass ran (concurrent merge or another pass).
+    loaded_fp = stat_fingerprint(targets_path)
     raw = json.loads(targets_path.read_text(encoding="utf-8"))
     if isinstance(raw, dict):
         wrapper = raw
@@ -190,7 +195,7 @@ def run_rescore_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
         output = updated_records
 
     tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp_path, targets_path)
+    guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
 
     return {"rescored": rescored, "tier_changes": tier_changes}
 
@@ -289,7 +294,10 @@ def main() -> None:
         stats = run_rescore_preview(run_dir, icp_signals)
     else:
         print(f"Re-scoring run {run_dir.name} with {len(icp_signals)} ICP signals...")
-        stats = run_rescore_pass(run_dir, icp_signals)
+        try:
+            stats = run_rescore_pass(run_dir, icp_signals)
+        except ConcurrentRunChange as e:
+            sys.exit(str(e))
     print(json.dumps(stats))
 
 

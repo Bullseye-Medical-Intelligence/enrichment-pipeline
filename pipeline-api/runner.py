@@ -562,9 +562,27 @@ def _mark_refresh(run_directory: Path, record_ids, state: str,
     """
     path = run_directory / REFRESH_STATUS_FILENAME
     with locking.run_lock(run_directory):
-        try:
-            current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        except (ValueError, OSError):
+        current: dict = {}
+        if path.exists():
+            try:
+                current = json.loads(path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                # Damaged progress file: preserve the bytes for forensics
+                # instead of silently overwriting, then start fresh. Refresh
+                # status is reconstructible progress state, not work product,
+                # so failing the whole merge stamp over it would be the worse
+                # trade.
+                corrupt = path.with_name(path.name + ".corrupt")
+                try:
+                    path.replace(corrupt)
+                    logger.warning(
+                        "refresh_status.json was unreadable; preserved as %s",
+                        corrupt.name,
+                    )
+                except OSError:
+                    logger.warning("refresh_status.json was unreadable and could not be preserved")
+                current = {}
+        if not isinstance(current, dict):
             current = {}
         now = datetime.now(timezone.utc).isoformat()
         for rid in record_ids:
@@ -611,6 +629,12 @@ def load_refresh_status(run_directory: Path) -> dict:
         current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except (ValueError, OSError):
         return {}
+    if not isinstance(current, dict):
+        return {}
+    # Tolerate structurally-wrong entries read-only (hand-edited file): a GET
+    # route must render, not 500. The writer path preserves damaged files as a
+    # .corrupt sidecar instead of merging with them.
+    current = {k: v for k, v in current.items() if isinstance(v, dict)}
     stale_before = datetime.now(timezone.utc) - timedelta(minutes=REFRESH_STALE_MINUTES)
     for entry in current.values():
         if entry.get("state") != "running":

@@ -33,6 +33,7 @@ from pathlib import Path
 import openai
 from dotenv import load_dotenv
 
+from output.atomic_write import guarded_replace, stat_fingerprint
 from output.evidence_writer import read_record_context_text
 
 load_dotenv()
@@ -337,6 +338,9 @@ def run_verification_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     if not targets_path.exists():
         raise FileNotFoundError(f"enriched_targets.json not found in {run_dir}")
 
+    # Fingerprint before load: the final write is refused if the file changed
+    # while this pass ran (concurrent merge or another pass).
+    loaded_fp = stat_fingerprint(targets_path)
     with open(targets_path, "r", encoding="utf-8") as f:
         payload = json.load(f)
 
@@ -397,6 +401,6 @@ def run_verification_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     tmp = targets_path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, default=str)
-    os.replace(tmp, targets_path)
+    guarded_replace(run_dir, targets_path, tmp, loaded_fp)
 
     return stats
