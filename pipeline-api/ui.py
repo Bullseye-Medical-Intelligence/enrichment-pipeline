@@ -2709,6 +2709,9 @@ async def trigger_rescore(
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Re-scoring failed: {result.stderr[:300]}")
 
+    # The pass rewrote tiers; refresh the run-level counts it does not own.
+    await run_in_threadpool(runner.refresh_run_counts, run_id)
+
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
 
@@ -2825,6 +2828,9 @@ async def trigger_resuppress(
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Suppression re-check failed: {result.stderr[:300]}")
 
+    # Newly suppressed records move to Excluded; refresh the run-level counts.
+    await run_in_threadpool(runner.refresh_run_counts, run_id)
+
     stats = {}
     for line in reversed(result.stdout.strip().splitlines()):
         try:
@@ -2865,6 +2871,7 @@ async def trigger_reextract(
     if not icp_path.exists():
         raise HTTPException(status_code=400, detail="ICP snapshot not found for this run")
 
+    import json as _json
     repo_root = Path(__file__).parent.parent
     cmd = [sys.executable, str(repo_root / "reextract_run.py"),
            "--run-dir", str(run_directory),
@@ -2875,6 +2882,25 @@ async def trigger_reextract(
         raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Re-extraction failed: {result.stderr[:300]}")
+
+    # The pass rewrote signals, scores, and tiers; refresh the run-level counts.
+    await run_in_threadpool(runner.refresh_run_counts, run_id)
+
+    # Fold this pass's Claude spend into the run's reported cost.
+    stats = {}
+    for line in reversed(result.stdout.strip().splitlines()):
+        try:
+            stats = _json.loads(line)
+            break
+        except Exception:
+            continue
+    if stats.get("llm_call_count"):
+        await run_in_threadpool(
+            runner.add_llm_usage, run_id,
+            stats.get("llm_input_tokens", 0),
+            stats.get("llm_output_tokens", 0),
+            stats.get("llm_call_count", 0),
+        )
 
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
@@ -3147,6 +3173,10 @@ async def save_review(
         saved = reviews.save_review(run_id, record_id, edit, username, run_directory)
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
+
+    # An override moves the record's displayed tier, which the run list counts.
+    # Refresh so the list and the run it links to never disagree.
+    await run_in_threadpool(runner.refresh_run_counts, run_id)
 
     return JSONResponse(content={"ok": True, "review": saved})
 

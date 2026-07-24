@@ -389,10 +389,14 @@ def test_manual_content_rejects_all_empty(run_store):
 
 def test_recompute_counts_from_records():
     recs = [
-        {"target_tier": "Bullseye", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
-        {"target_tier": "Contender", "exclusion_status": "CLEAR", "enrichment_status": "complete"},
-        {"target_tier": "Excluded", "exclusion_status": "EXCLUDED", "enrichment_status": "complete"},
-        {"target_tier": "Needs Verification", "exclusion_status": "CLEAR", "enrichment_status": "failed"},
+        {"id": "T-1", "target_tier": "Bullseye", "bullseye_score": 92,
+         "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+        {"id": "T-2", "target_tier": "Contender", "bullseye_score": 65,
+         "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+        {"id": "T-3", "target_tier": "Excluded", "bullseye_score": 20,
+         "exclusion_status": "EXCLUDED", "enrichment_status": "complete"},
+        {"id": "T-4", "target_tier": "Needs Verification", "bullseye_score": 70,
+         "exclusion_status": "CLEAR", "enrichment_status": "failed"},
     ]
     counts = runner._recompute_counts_from_records(recs)
     assert counts["bullseye_count"] == 1
@@ -400,6 +404,31 @@ def test_recompute_counts_from_records():
     assert counts["needs_verification_count"] == 1
     assert counts["excluded_count"] == 1
     assert counts["error_count"] == 1
+
+
+def test_recompute_counts_applies_analyst_override():
+    """Counts follow the tier an operator sees, so the run list agrees with the
+    run it links to."""
+    recs = [
+        {"id": "T-1", "target_tier": "Contender", "bullseye_score": 65,
+         "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+    ]
+    reviews_map = {"T-1": {"override_tier": "Bullseye", "override_reason": "confirmed"}}
+    counts = runner._recompute_counts_from_records(recs, reviews_map)
+    assert counts["bullseye_count"] == 1
+    assert counts["contender_count"] == 0
+
+
+def test_recompute_counts_applies_low_score_normalization():
+    """A Contender under the Manual Review threshold already displays as Manual
+    Review on the results page; the counts must not disagree with it."""
+    recs = [
+        {"id": "T-1", "target_tier": "Contender", "bullseye_score": 30,
+         "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+    ]
+    counts = runner._recompute_counts_from_records(recs)
+    assert counts["contender_count"] == 0
+    assert counts["manual_review_count"] == 1
 
 
 def test_monitor_marks_failed_when_log_missing(run_store):

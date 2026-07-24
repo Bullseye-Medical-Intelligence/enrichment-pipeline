@@ -209,6 +209,19 @@ def run_reextract_pass(
                     "new_score": new_score,
                 })
 
+    # Sum this pass's Claude spend before internal fields are stripped. Only the
+    # records re-extracted just now carry _llm_usage (it never survives to
+    # output), so this is exactly the pass's own cost. The caller adds it to the
+    # run's totals — without it, re-extracting a run spends real budget that
+    # never appears in the reported cost.
+    llm_usage = {
+        "llm_input_tokens": sum(
+            (r.get("_llm_usage") or {}).get("input_tokens", 0) for r in records),
+        "llm_output_tokens": sum(
+            (r.get("_llm_usage") or {}).get("output_tokens", 0) for r in records),
+        "llm_call_count": sum(1 for r in records if r.get("_llm_usage")),
+    }
+
     # Strip internal (_-prefixed) fields — including the rehydrated _context_text
     # and any re-extraction bookkeeping — so the written output keeps its contract.
     from enrichment.scorer import strip_internal_fields
@@ -229,6 +242,7 @@ def run_reextract_pass(
         "skipped": len(records) - len(eligible_indices),
         "skipped_excluded": skipped_excluded,
         "tier_changes": tier_changes,
+        **llm_usage,
     }
 
 

@@ -722,12 +722,16 @@ def _build_call_brief(signals: list[dict], scores: dict, record: dict,
     if not top_evidence:
         generated = {"hours_of_operation": generated.get("hours_of_operation", "")}
 
-    # missing_to_verify: unconfirmed required signals not covered by inference
-    # (mirrors the verification gate in exclusion_checker._assign_tier).
+    # missing_to_verify: unconfirmed required signals not covered by inference.
+    # Mirrors the not_found -> "Needs Verification" caps in
+    # exclusion_checker._assign_tier, which fire on EITHER flag. required_for_bullseye
+    # must be included: it supersedes verification_required (a must-have signal
+    # needs only that flag), so filtering on verification_required alone left a
+    # record capped at Needs Verification showing a rep nothing to verify.
     missing_to_verify = [
         s.get("signal_label", "")
         for s in signals
-        if s.get("verification_required")
+        if (s.get("verification_required") or s.get("required_for_bullseye"))
         and s.get("signal_state") == "not_found"
         and not s.get("state_inferred")
     ]

@@ -1151,7 +1151,8 @@ async def _monitor_batch_reenrich(
                 logger.error("Re-enrich stamp skipped for %s: %s", rid, e)
             _copy_recrawl_evidence(scratch_dir, source_dir, rid)
 
-        counts = _recompute_counts_from_records(records)
+        counts = _recompute_counts_from_records(
+            records, _reviews_for_counts(source_run_id, source_dir))
         runs.update_run_status(source_run_id, status="complete", **counts)
 
         mark_refresh_done(source_dir, merged_ids)
@@ -1238,22 +1239,105 @@ async def _run_inplace_update(
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
-def _recompute_counts_from_records(records: list[dict]) -> dict:
+def _recompute_counts_from_records(records: list[dict], all_reviews: dict | None = None) -> dict:
     """Derive status.json tier/exclusion counts from the records list itself.
 
     Keeps every count consistent with the authoritative enriched_targets.json
     after an in-place record swap, rather than the per-run run_log.json (which a
     single-record scratch run would not have updated for the whole run).
+
+    Counts the tier an operator actually sees (record_adapter.displayed_tier),
+    not the raw pipeline tier: that is what the results page, the Contact Queue,
+    and every client export already count, and it folds in analyst overrides
+    plus the retroactive tier normalizations applied to old frozen runs. Counting
+    target_tier here instead left the run list disagreeing with the run it links to.
     """
+    reviews_map = all_reviews or {}
+    tiers = [record_adapter.effective_tier(r, reviews_map) for r in records]
     return {
-        "bullseye_count": sum(1 for r in records if r.get("target_tier") == "Bullseye"),
-        "needs_verification_count": sum(
-            1 for r in records if r.get("target_tier") == "Needs Verification"),
-        "contender_count": sum(1 for r in records if r.get("target_tier") == "Contender"),
-        "manual_review_count": sum(1 for r in records if r.get("target_tier") == "Manual Review"),
-        "excluded_count": sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED"),
+        "bullseye_count": sum(1 for t in tiers if t == "Bullseye"),
+        "needs_verification_count": sum(1 for t in tiers if t == "Needs Verification"),
+        "contender_count": sum(1 for t in tiers if t == "Contender"),
+        "manual_review_count": sum(1 for t in tiers if t == "Manual Review"),
+        "excluded_count": sum(1 for t in tiers if t == "Excluded"),
         "error_count": sum(1 for r in records if r.get("enrichment_status") == "failed"),
     }
+
+
+def add_llm_usage(run_id: str, input_tokens: int, output_tokens: int, call_count: int) -> None:
+    """Add a post-run pass's Claude spend to the run's reported token totals.
+
+    The pipeline stamps llm_* once at completion; a later re-extraction spends
+    real budget on the same model, so the reported cost must grow with it or it
+    understates by the size of every pass an operator runs.
+
+    Only same-model (Claude) spend belongs here — llm_pricing prices these
+    totals at PRICED_MODEL rates, so folding in another provider's tokens would
+    trade an undercount for a miscount. Read-modify-write is safe because the
+    post-run job lock serializes the only writers of these fields.
+
+    A run predating token capture (llm_call_count is None) is left untouched:
+    showing one pass's tokens as the run total would read as the whole cost,
+    which is more misleading than the honest "not captured" state.
+    """
+    if call_count <= 0:
+        return
+    status = runs.get_run(run_id)
+    if status is None or status.llm_call_count is None:
+        return
+    runs.update_run_status(
+        run_id,
+        llm_input_tokens=(status.llm_input_tokens or 0) + input_tokens,
+        llm_output_tokens=(status.llm_output_tokens or 0) + output_tokens,
+        llm_call_count=status.llm_call_count + call_count,
+    )
+
+
+def _reviews_for_counts(run_id: str, run_directory: Path) -> dict:
+    """The run's review overlay for counting, or {} when it cannot be read.
+
+    Counting must never abort a merge that already spent LLM budget; a damaged
+    overlay fails loudly on the read paths instead.
+    """
+    try:
+        return reviews.get_reviews(run_id, run_directory)
+    except reviews.ReviewsLoadError as exc:
+        logger.error("Counts for %s ignoring damaged review overlay: %s", run_id, exc)
+        return {}
+
+
+def refresh_run_counts(run_id: str) -> dict:
+    """Recompute a run's status.json tier counts from its current records + reviews.
+
+    Post-run passes rewrite enriched_targets.json wholesale, and analyst overrides
+    change the displayed tier, but neither owns run state — so the run list, main
+    menu, and compare picker kept rendering pre-change counts while the results
+    page recomputed fresh ones. Callers invoke this after any action that can move
+    a record between tiers, so every surface reports the same numbers.
+
+    Returns the counts written, or {} when there is nothing to read.
+    """
+    run_directory = runs.run_dir(run_id)
+    enriched_path = run_directory / reviews.ENRICHED_TARGETS_FILENAME
+    if not enriched_path.exists():
+        return {}
+    try:
+        payload = json.loads(enriched_path.read_text(encoding="utf-8"))
+        records = record_adapter.normalize_records_payload(payload)
+    except (ValueError, OSError) as exc:
+        logger.error("Count refresh skipped for %s — unreadable output: %s", run_id, exc)
+        return {}
+    try:
+        all_reviews = reviews.get_reviews(run_id, run_directory)
+    except reviews.ReviewsLoadError as exc:
+        # Counts are derived display state, and a damaged overlay already fails
+        # loudly on every read path. Falling back to pipeline tiers keeps the
+        # counts fresh rather than frozen at a pre-pass value.
+        logger.error("Count refresh for %s ignoring damaged review overlay: %s", run_id, exc)
+        all_reviews = {}
+    counts = _recompute_counts_from_records(records, all_reviews)
+    runs.update_run_status(run_id, **counts)
+    return counts
 
 
 _EVIDENCE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
@@ -1409,7 +1493,8 @@ def _merge_recrawled_record(
 
         # Recompute counts from the merged file. records_output is unchanged
         # (one record replaced one record), so it is preserved as-is.
-        counts = _recompute_counts_from_records(records)
+        counts = _recompute_counts_from_records(
+            records, _reviews_for_counts(source_run_id, source_dir))
         runs.update_run_status(source_run_id, status="complete", **counts)
 
         tier = updated.get("target_tier")

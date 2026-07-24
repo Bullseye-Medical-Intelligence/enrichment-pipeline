@@ -214,14 +214,16 @@ class TestStep4Checkpoint:
         persisted failures) is ignored on load, so a resume re-attempts it instead
         of freezing it as completed. complete and needs_review rows are kept."""
         import json as _json
+        fingerprint = "test-fingerprint"
         path = tmp_path / "step4_checkpoint.ndjson"
         path.write_text(
-            _json.dumps({"id": "T-1", "enrichment_status": "complete"}) + "\n"
+            _json.dumps({"_checkpoint_fingerprint": fingerprint}) + "\n"
+            + _json.dumps({"id": "T-1", "enrichment_status": "complete"}) + "\n"
             + _json.dumps({"id": "T-2", "enrichment_status": "failed"}) + "\n"
             + _json.dumps({"id": "T-3", "enrichment_status": "needs_review"}) + "\n",
             encoding="utf-8",
         )
-        loaded = _load_step4_checkpoint(str(tmp_path))
+        loaded = _load_step4_checkpoint(str(tmp_path), fingerprint)
         assert set(loaded) == {"T-1", "T-3"}
 
 
@@ -1523,6 +1525,30 @@ class TestCallBrief:
         ]
         brief = _build_call_brief(signals, {"fit_signal_score": 40}, {}, {})
         assert brief["missing_to_verify"] == ["Cash pay visible"]
+
+    def test_missing_to_verify_includes_required_for_bullseye(self):
+        """required_for_bullseye supersedes verification_required, so a must-have
+        signal flagged with it alone still caps the tier at Needs Verification —
+        the rep must see what to verify."""
+        sig = self._sig("S-must", "not_found", "Must-have service", 30)
+        sig["required_for_bullseye"] = True
+        brief = _build_call_brief([sig], {"fit_signal_score": 40}, {}, {})
+        assert brief["missing_to_verify"] == ["Must-have service"]
+
+    def test_missing_to_verify_skips_inferred_required_for_bullseye(self):
+        """Reinforcement suppresses the tier cap, so it suppresses the ask too."""
+        sig = self._sig("S-must", "not_found", "Must-have service", 30, inferred=True)
+        sig["required_for_bullseye"] = True
+        brief = _build_call_brief([sig], {"fit_signal_score": 40}, {}, {})
+        assert brief["missing_to_verify"] == []
+
+    def test_missing_to_verify_skips_confirmed_absent_must_have(self):
+        """A confirmed 'no' is a known absence (caps at Contender), not an open
+        question — it belongs in disqualifier risk, not the verify list."""
+        sig = self._sig("S-must", "no", "Must-have service", 30)
+        sig["required_for_bullseye"] = True
+        brief = _build_call_brief([sig], {"fit_signal_score": 40}, {}, {})
+        assert brief["missing_to_verify"] == []
 
     def test_inferred_signal_not_flagged_to_verify(self):
         signals = [

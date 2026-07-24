@@ -130,10 +130,18 @@ matching more signals does not mean a higher score.
 
 ### Rep call brief (`signal_extractor.py::_build_call_brief`)
 Every record carries a `call_brief` object. Grounded fields are **derived from the
-signals** (no extra LLM call): `top_evidence`, `missing_to_verify` (mirrors the
-verification gate), `disqualifier_risk`, and `why_contact`. Four fields come from
+signals** (no extra LLM call): `top_evidence`, `missing_to_verify`,
+`disqualifier_risk`, and `why_contact`. Four fields come from
 the LLM: `opening_line`, `likely_objection`, `discovery_question`, and
 `hours_of_operation` (office hours stated on the website, or empty string).
+
+`missing_to_verify` mirrors the `not_found` → `"Needs Verification"` caps in
+`exclusion_checker._assign_tier`, which fire on **either** `verification_required`
+**or** `required_for_bullseye` (not inferred). Both flags must stay in that filter:
+`required_for_bullseye` supersedes `verification_required`, so a must-have signal
+carrying only that flag would otherwise cap a record at Needs Verification while
+showing the rep nothing to verify. A confirmed `"no"` is a known absence (it caps
+at Contender) and belongs in `disqualifier_risk`, not here.
 
 **Integrity gate:** when `top_evidence` is empty (no signals survived as confirmed
 "yes"), all four LLM prep lines are cleared to `""`. The top-level `sales_angle`
@@ -301,6 +309,14 @@ let scoring and signals decide instead. The `type` column is optional on import.
   resumes from where it stopped instead of re-spending on Claude. A corrupted
   final line (process killed mid-write) is skipped and that record re-processed.
   Per-record append is intentional crash-recovery; do not batch it.
+  The checkpoint is **scoped to its inputs and deleted on success**: its first
+  line stamps a fingerprint of the config + ICP (by content) and the input CSV,
+  and a checkpoint whose fingerprint does not match the current run is discarded
+  rather than reused. Both guards matter because record ids are deterministic
+  content hashes and `--output-dir` defaults to a fixed `./output`: without them,
+  editing the ICP and re-running the same command restored the previous run's
+  signals — scored against the OLD weights, with zero Claude calls — and
+  presented it as a fresh run.
 - **Web extraction errors surface**: `_fetch_html` returns `(html, url, error)`;
   the error reason flows into `ExtractionResult` and the run log. Never discard it.
 

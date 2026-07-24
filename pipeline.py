@@ -23,6 +23,7 @@ Steps:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -112,9 +113,39 @@ def _deduplicate_records(records: list[dict]) -> tuple[list[dict], int]:
 _checkpoint_lock = threading.Lock()
 
 
+def _checkpoint_path(output_dir: str) -> Path:
+    """Path to the Step 4 crash-recovery checkpoint for this output directory."""
+    return Path(output_dir) / "step4_checkpoint.ndjson"
+
+
+def _checkpoint_fingerprint(input_file: str, config_path: str, icp_path: str) -> str:
+    """Identify the inputs a checkpoint's records were produced from.
+
+    Record ids are deterministic content hashes, so without this a later run in
+    the same output directory would match every id and silently restore the
+    previous run's signals — scored against the OLD ICP weights, with no Claude
+    calls made. The ICP and config are hashed by content (an edited weight or
+    flag must invalidate); the input CSV by identity + size + mtime, which is
+    enough to catch a different or re-exported list without re-reading it.
+    """
+    h = hashlib.sha256()
+    for path in (config_path, icp_path):
+        try:
+            h.update(Path(path).read_bytes())
+        except OSError:
+            h.update(b"<unreadable>")
+        h.update(b"\x00")
+    try:
+        st = os.stat(input_file)
+        h.update(f"{Path(input_file).name}|{st.st_size}|{st.st_mtime_ns}".encode())
+    except OSError:
+        h.update(b"<no-input>")
+    return h.hexdigest()[:16]
+
+
 def _write_step4_checkpoint(output_dir: str, record: dict) -> None:
     """Append a completed Step 4 record to the NDJSON checkpoint file (best-effort, thread-safe)."""
-    path = Path(output_dir) / "step4_checkpoint.ndjson"
+    path = _checkpoint_path(output_dir)
     with _checkpoint_lock:
         try:
             with open(path, "a", encoding="utf-8") as f:
@@ -123,16 +154,63 @@ def _write_step4_checkpoint(output_dir: str, record: dict) -> None:
             pass  # Non-fatal: worst case is re-processing this record on resume
 
 
-def _load_step4_checkpoint(output_dir: str) -> dict:
-    """Return {record_id: record_dict} for all records already in the checkpoint.
+def _init_step4_checkpoint(output_dir: str, fingerprint: str) -> None:
+    """Start a fresh checkpoint stamped with the inputs it belongs to."""
+    path = _checkpoint_path(output_dir)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"_checkpoint_fingerprint": fingerprint}) + "\n")
+    except OSError:
+        pass  # Non-fatal: the run proceeds without resume capability
 
-    Handles a corrupted final line (process killed mid-write) by skipping bad JSON.
+
+def _clear_step4_checkpoint(output_dir: str) -> None:
+    """Delete the checkpoint. Called on successful completion.
+
+    The checkpoint exists only to resume a killed run; once the run has written
+    its output it is stale state that a later run must never inherit.
     """
-    path = Path(output_dir) / "step4_checkpoint.ndjson"
+    try:
+        _checkpoint_path(output_dir).unlink()
+    except OSError:
+        pass
+
+
+def _load_step4_checkpoint(output_dir: str, fingerprint: str) -> dict:
+    """Return {record_id: record_dict} for records already processed for THESE inputs.
+
+    A checkpoint whose fingerprint does not match the current input/config/ICP
+    belongs to a different run: it is discarded (and the file removed, so new
+    appends never mix two runs' records). Handles a corrupted final line
+    (process killed mid-write) by skipping bad JSON.
+    """
+    path = _checkpoint_path(output_dir)
     if not path.exists():
         return {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    stamped = ""
+    if lines:
+        try:
+            head = json.loads(lines[0])
+            if isinstance(head, dict) and "_checkpoint_fingerprint" in head:
+                stamped = head["_checkpoint_fingerprint"]
+                lines = lines[1:]
+        except json.JSONDecodeError:
+            pass
+    if stamped != fingerprint:
+        # Different inputs (or an unstamped checkpoint from an older version).
+        # Reusing it would restore signals scored against a different ICP.
+        print("  Discarding a checkpoint written for different inputs "
+              "(config, ICP, or input file changed) — re-extracting from scratch.")
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return {}
+
     completed: dict = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in lines:
         try:
             rec = json.loads(line)
             # Skip failed rows on load too, not just on write. A failed record is not
@@ -780,9 +858,12 @@ def run_pipeline(input_file: str, source_type: str,
     print("STEP 4: SIGNAL EXTRACTION (Claude)")
     print(f"{'-'*40}")
 
-    checkpoint = _load_step4_checkpoint(output_dir)
+    checkpoint_fingerprint = _checkpoint_fingerprint(input_file, config_path, icp_path)
+    checkpoint = _load_step4_checkpoint(output_dir, checkpoint_fingerprint)
     if checkpoint:
         print(f"  Resuming from checkpoint: {len(checkpoint)} records already processed.")
+    else:
+        _init_step4_checkpoint(output_dir, checkpoint_fingerprint)
 
     # Restore checkpoint records; collect only unprocessed records for the thread pool
     to_process = []
@@ -949,6 +1030,11 @@ def run_pipeline(input_file: str, source_type: str,
         output_dir=output_dir,
         llm_usage=llm_usage_totals,
     )
+
+    # The run's output is written — the crash-recovery checkpoint has served its
+    # purpose. Removing it here stops a later run in this output directory from
+    # inheriting these records (see _checkpoint_fingerprint).
+    _clear_step4_checkpoint(output_dir)
 
     elapsed = time.time() - start_time
 

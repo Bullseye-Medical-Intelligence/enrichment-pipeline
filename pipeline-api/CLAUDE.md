@@ -254,6 +254,20 @@ persist to `link_check_report.json` in the run directory (audit trail; written
 atomically). Report-only: no record is mutated based on results. Never runs
 automatically on completion.
 
+**Run-level counts are derived, never stale.** `status.json`'s tier counts are
+written at completion, but post-run passes rewrite `enriched_targets.json` and
+analyst overrides change the displayed tier — neither owns run state. Any action
+that can move a record between tiers calls `runner.refresh_run_counts(run_id)`
+(rescore, re-extract, re-suppress, and the review-save route; verification writes
+only an additive `verification` object and never changes a tier, so it does not).
+Counts are computed with `record_adapter.effective_tier` — the tier the operator
+actually sees, folding in analyst overrides and the retroactive normalizations
+(`Watchlist`→`Contender`, low-score `Contender`→`Manual Review`) — because that is
+what the results page, Contact Queue, and client exports already count. Counting
+raw `target_tier` here is what left the run list disagreeing with the run it links
+to. `_recompute_counts_from_records` takes the review overlay for the same reason;
+a damaged overlay degrades to pipeline tiers rather than freezing the counts.
+
 **Cost per run**: the pipeline captures Claude token usage into run_log.json
 (`llm_input_tokens`, `llm_output_tokens`, `llm_call_count`); the monitor copies
 the fields into status.json on completion. The results page shows an estimated
@@ -261,6 +275,20 @@ cost computed from `llm_pricing.py` (the single home for rates, with an
 operator-maintained `LAST_VERIFIED` date shown as "estimate — rates as of").
 Runs predating capture show "cost data not captured for this run" — never zero.
 No per-record cost fields exist.
+
+Post-run passes that spend on the **same model** add their usage to those totals
+via `runner.add_llm_usage` (the re-extract route does this from the CLI's stdout
+summary). Without it, re-extracting a 500-record run spent 500 fresh Claude calls
+that never moved the reported cost, so the figure understated by the size of every
+pass an operator ran. A run predating token capture is deliberately left
+uncaptured rather than showing one pass's tokens as if they were the run total.
+
+**Not yet counted — GPT verification spend.** `llm_pricing` prices everything at
+`PRICED_MODEL` (Claude) rates, so folding the verification pass's OpenAI tokens
+into the same fields would trade an undercount for a miscount. Pricing it needs an
+operator-maintained GPT rate plus separate token fields; until then, verification
+spend is absent from the cost figure. Do not "fix" this by adding its tokens to
+`llm_input_tokens`.
 
 **Site Blocked — Needs Re-crawl section**: a dedicated table section (below the main scored table, above Excluded) for records where `source_confidence in ("limited", "failed")`. These records are removed from the main scored table entirely — they were never scored or scored on too little text to trust, so showing them alongside Bullseyes and Contenders was misleading. A "thin crawl" (a successful fetch returning under `THIN_CRAWL_CHARS` of text, set in `extraction/web_extractor.py`) is now labelled `"limited"` so JS-gated sites that returned only boilerplate land here for a browser re-crawl instead of being silently scored as having no signals. The section header shows a count badge and a "Retry All with Browser" button that fires `POST /runs/{run_id}/retry-with-browser`. `stats.blocked` tracks this count (replaces the former `stats.thin_context`). Blocked records are excluded from tier stats and from Pending Review — they need a re-crawl, not a QC sign-off.
 
@@ -753,6 +781,28 @@ The operator UI has an optional dark theme: same design system, dark neutrals.
 - Cloud file storage
 - Run retry on partial failure
 - CI/CD pipeline
+
+## Known Performance Debt (Audited, Deliberately Deferred)
+
+Both were confirmed by audit and deferred as non-critical: neither produces wrong
+data, and both are contained. Fix when the trigger below fires, not before.
+
+**Admission check scans the whole run archive.** Every run creation calls
+`runs.count_active_runs()` → `list_runs(max_runs=None, include_archived=True)`,
+which reads and JSON-parses *every* `status.json` including archived runs — inside
+the global admission lock (`runner.py`, 4 call sites). Only `pending`/`running`
+matter, a tiny subset. Cost grows with total run history, and it serializes: at a
+few hundred runs every upload and "Enrich All" waits on a full-archive scan. The
+full scan is load-bearing (a stuck run older than the display page must still count
+toward the cap — see the `list_runs` docstring), so the fix is a cheaper active-run
+lookup, not pagination. **Trigger: the runs directory passing a few hundred entries,
+or operators reporting slow starts.**
+
+**Dashboard stats one filesystem entry per record.** `ui._records_with_evidence`
+calls `.exists()` per record, so a 1,000-record run costs 1,000 stat syscalls per
+page load where a single `iterdir()` of `<run_dir>/evidence/` yields the same set.
+Most visible on the rclone/Drive-synced storage this deployment uses.
+**Trigger: routine runs above ~500 records, or a slow results page.**
 
 ## Deferred Roadmap Items (Blocked on External Inputs)
 
