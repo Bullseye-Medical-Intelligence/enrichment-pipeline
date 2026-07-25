@@ -128,57 +128,6 @@ to open a run directory and understand what happened.
 
 ---
 
-## File Structure
-
-```
-/BEMI-pipeline-api
-  main.py            ← FastAPI app, route registration, startup
-  auth.py            ← session-cookie validation dependency (require_session); constant-time UI password check
-  reviews.py         ← analyst review overlay (reviews.json): read/write, override/QC, bulk approve, stamp re-enriched
-  record_adapter.py  ← record field normalization, displayed/effective tier, confidence band, phone format
-  narrative_generator.py ← ICP builder only: LLM hypothesis pre-fill (generate_hypothesis)
-  signal_generator.py    ← ICP builder only: LLM signal-draft generation from a product brief
-  crawl_compressor.py    ← ICP builder only: LLM compression of sample crawl text (Stage 1 of generate)
-  discovery_runs.py  ← Market Radar discovery run management + JSON API router (/discovery-runs)
-  registry_update.py ← explicit registry upsert with change_history; /enrichment-runs/.../update-registry
-  practice_matching.py ← multi-key registry match (place_id > domain > phone > name+address)
-  reports/pdf_report.py ← Bullseye cards + executive report HTML renderers (self-contained HTML)
-  runner.py          ← subprocess management, pipeline invocation
-  runs.py            ← run state: create/read/update/list via status.json
-  projects.py        ← project config storage: create/read/update/list/validate
-  icp_profiles.py    ← ICP profile listing/loading from disk
-  exports.py         ← filtered CSV exports (approved / excluded)
-  client_exports.py  ← client deliverable ZIP (5 files: Bullseye report, Sales Handoff, 3 CSVs)
-  brief_publisher.py ← publish HTML briefs to Hostinger via SFTP/FTP; manages published_briefs.json per run
-  sales_export.py    ← Sales Brief + internal Sales Handoff HTML generation
-  validator.py       ← pre-flight CSV validation
-  schema.py          ← Pydantic models for all request/response types
-  config.py          ← environment variable loading, path constants; includes Hostinger SFTP/FTP settings; BUILD_VERSION/BUILD_DATE
-  llm_pricing.py     ← the ONE home for LLM pricing constants (operator-maintained LAST_VERIFIED); cost-per-run estimate via estimate_run_cost() (averages past run token usage, falls back to defaults)
-  preflight.py       ← system health checks: ANTHROPIC_API_KEY, OPENAI_API_KEY (warn — verification pass only), pipeline repo, output dir writability, ICP profiles, projects, session key (error when missing/placeholder — login fails without it); placeholder values from .env.example count as not set; returns CheckResult NamedTuples; overall status = worst individual check
-  ui.py              ← server-rendered HTML routes (session auth)
-  requirements.txt
-  .env.example
-  .gitignore
-  README.md
-  CLAUDE.md          ← this file
-
-/output/                       ← shared with pipeline (lives outside this repo)
-  projects/{project_id}/
-    project_config.json        ← client config + ICP reference (== run config)
-  icp_profiles/{icp_id}.json   ← signal checklist (operator-authored JSON)
-  runs/{run_id}/
-    input.csv
-    project_config_snapshot.json   ← frozen --config for this run
-    icp_snapshot.json              ← frozen --icp for this run
-    status.json
-    run_log.json
-    enriched_targets.json
-    published_briefs.json          ← per-run record of published brief URLs (storage_path, public_url, etc.)
-```
-
----
-
 ## UI Architecture Decision (Permanent)
 
 The server-rendered HTML UI (ui.py + templates/) is the production internal operator tool.
@@ -353,87 +302,9 @@ Never iterate `data` directly — it will iterate dict keys, not records.
 
 ## Locked API Surface
 
-Session-auth HTML UI (ui.py):
-```
-GET    /login                                    Login form
-POST   /login                                    Validate credentials, set cookie
-GET    /logout                                   Clear session
-GET    /                                         Main menu
-GET    /projects                                 List projects
-GET    /projects/new                             Create-project form
-POST   /projects                                 Create a project
-GET    /projects/{project_id}                    Project detail
-GET    /icp-profiles                             List loaded ICP profiles
-GET    /dashboard                                Run list (with system health banner)
-GET    /dashboard/compare                        Side-by-side tier comparison between two completed runs
-GET    /dashboard/{run_id}                       Results + inline review
-GET    /dashboard/{run_id}/queue                 Contact Queue (rep call sheet, sorted by priority)
-GET    /dashboard/{run_id}/confirm-queue         Analyst confirm queue (Bullseye + Contender pending review)
-POST   /dashboard/{run_id}/confirm-queue/bulk-approve  Bulk-approve pending Bullseyes; body: confidence_filter=all|high
-GET    /dashboard/{run_id}/evidence/{record_id}  Evidence Vault snapshot viewer (?url= picks the page, ?q= highlights the quote)
-GET    /dashboard/{run_id}/cartridge             Read-only Cartridge view: the frozen config + ICP snapshot the run used
-GET    /dashboard/{run_id}/link-check            Evidence link check report (flagged URLs only)
-POST   /runs/{run_id}/check-links                Run the evidence link check (manual trigger; complete runs only)
-GET    /runs/{run_id}/download/json              Full enriched_targets.json download
-GET    /runs/{run_id}/download/csv               Full enriched_targets.csv download
-GET    /runs/{run_id}/download/manifest          Internal run manifest JSON (not in client package)
-GET    /runs/{run_id}/export/approved            Filtered CSV: approved, non-excluded
-GET    /runs/{run_id}/export/excluded            Filtered CSV: excluded records
-GET    /runs/{run_id}/client-package             Client deliverable ZIP (complete runs; requires all Bullseye reviewed)
-GET    /runs/{run_id}/download/sales-brief       Prospect-facing methodology brief (select 1 Bullseye, 1 Contender, 1 Excluded via query params)
-GET    /runs/{run_id}/enrich-estimate            JSON cost estimate for enriching an ingested run (reads token history from past runs)
-GET    /runs/{run_id}/refresh-status             Per-record in-place refresh state (running/done/failed) from refresh_status.json
-POST   /runs/{run_id}/publish/{brief_type}       Publish brief HTML to Hostinger; saves URL to published_briefs.json
-                                                   brief_type: sales-handoff | sales-brief | executive-report | bullseye-report
-                                                   sales-brief requires: ?bullseye_id=&contender_id=&excluded_id=
-                                                   Republish overwrites the existing file in place so the shared URL never changes
-POST   /runs/{run_id}/records/{record_id}/recrawl          Re-crawl one record with headless browser; updates the record in place
-POST   /runs/{run_id}/records/{record_id}/manual-content   Enrich one record from operator-pasted/uploaded page content; updates in place
-POST   /api/ui/runs                              Create run from browser upload
-POST   /api/ui/reviews/{run_id}/{record_id}      Save review edit
-POST   /icp-profiles/simulate                     Dry-run score preview (no LLM, no crawl); shells out to simulate_icp.py
-GET    /preflight                                 JSON system health check (API keys, pipeline repo, output dir, ICP profiles, projects, session key)
-
-Market Radar (Discovery) — operator HTML routes (ui.py):
-GET    /discovery                                 Discovery landing — upload form + recent runs list
-POST   /discovery/upload                          Upload Outscraper CSV → create discovery run → redirect to results
-GET    /discovery/runs/{run_id}                   Discovery results page — summary cards + classified record table + send actions
-POST   /discovery/runs/{run_id}/send              Send selected / new / changed records → create ingested enrichment run
-
-Market Radar (Discovery) — JSON API router (discovery_runs.py; session-cookie auth):
-POST   /discovery-runs                            Create a discovery run (JSON)
-GET    /discovery-runs/{run_id}                   Discovery run status/summary (JSON)
-GET    /discovery-runs/{run_id}/results           Classified records (JSON)
-POST   /discovery-runs/{run_id}/send-to-enrichment  Send selected records → create ingested enrichment run (JSON)
-
-Registry Update routes (explicit operator action only):
-GET    /dashboard/{run_id}/registry-update        Registry update form for a completed enrichment run
-POST   /dashboard/{run_id}/registry-update        Execute registry update → show inserted/updated/rejected summary
-
-Post-run pass routes (complete runs only; each shells out to a CLI at repo root):
-POST   /dashboard/{run_id}/verify                 GPT verification pass on Needs Verification records (verify_run.py)
-POST   /dashboard/{run_id}/rescore                Re-score with frozen ICP weights — Steps 6-7 only, no LLM (rescore_run.py)
-POST   /dashboard/{run_id}/rescore-preview        Preview rescore tier transitions without writing (rescore_run.py --preview)
-POST   /dashboard/{run_id}/reextract              Re-run Claude signal extraction; page text rehydrated from the Evidence Vault (reextract_run.py); LLM cost
-POST   /dashboard/{run_id}/resuppress             Re-check all records against the project suppression list (suppress_run.py); no LLM
-POST   /dashboard/{run_id}/bulk-review            Bulk-set QC status on selected records; body: record_ids[], action=accept|reject|reset. Writes reviews.json only
-
-(The former POST /dashboard/{run_id}/recrawl bulk route was removed: no UI
-referenced it, and the batch re-enrich path — "Retry All with Browser" /
-rerun-selected with use_playwright — covers the use case with review-preserving
-merges. recrawl_run.py remains as a CLI for operator-laptop headful re-crawls,
-with the same EXCLUDED-skip and fail-closed guards as reextract_run.py.)
-
-All post-run pass routes run their CLI in the threadpool while holding the
-run's post-run job lock (<run_dir>/.postrun.lock, 1s acquire): a double submit
-or overlapping pass gets a 409 instead of racing. Each CLI additionally
-refuses its final write if enriched_targets.json changed since it loaded
-(compare-and-replace under .run.lock via output/atomic_write.py), so a batch
-merge landing mid-pass is never clobbered.
-
-API (session-cookie auth, same as all routes; called by dashboard or automation):
-POST   /enrichment-runs/{run_id}/update-registry  Explicit registry update; body: selection_mode, selected_record_ids, options
-```
+The live surface is whatever the routers declare — grep the `@router` decorators
+in `ui.py`, `discovery_runs.py`, and `registry_update.py`. What matters here is
+the boundary, not the inventory:
 
 Phase 2 additions (do not build now):
 - `POST /runs/{run_id}/cancel`
@@ -581,53 +452,8 @@ host. Task queue / database / Redis remain out of scope until that ceiling is cr
 
 ## Locked status.json Schema
 
-```json
-{
-  "run_id": "RUN-20260527-143000",
-  "project_id": "P-001",
-  "source_type": "outscraper",
-  "input_filename": "femasys-florida-2026-05-27.csv",
-  "status": "pending|running|complete|failed",
-  "created_at": "2026-05-27T14:30:00Z",
-  "completed_at": "2026-05-27T14:52:00Z",
-  "operator": "Rajiv",
-  "output_path": "/output/runs/RUN-20260527-143000/enriched_targets.json",
-  "records_input": 50,
-  "records_output": 47,
-  "bullseye_count": 12,
-  "needs_verification_count": 3,
-  "contender_count": 28,
-  "manual_review_count": 4,
-  "excluded_count": 7,
-  "error_count": 3,
-  "pipeline_version": "v1.0",
-  "error_summary": "",
-
-  "client_name": "Femasys",
-  "product_name": "FemaSeed",
-  "target_specialty": "OBGYN",
-  "target_geography": ["TX", "FL", "GA"],
-  "icp_profile_id": "obgyn_femasys",
-  "icp_profile_name": "OBGYN Femasys",
-  "icp_profile_version": "obgyn-femasys-v12",
-  "archived": false,
-
-  "llm_input_tokens": 312000,
-  "llm_output_tokens": 41000,
-  "llm_call_count": 47,
-
-  "run_type": "enrichment",
-  "source_discovery_run_id": null,
-  "source_discovery_selection_count": null,
-  "source_discovery_selection_mode": null,
-
-  "registry_updated_at": null,
-  "registry_update_count": null,
-  "registry_update_log_path": null
-}
-```
-
-The canonical model is `schema.py::RunStatus`. All fields after `error_summary`
+The canonical model is `schema.py::RunStatus` — read the field list there rather
+than mirroring it here. All fields after `error_summary`
 are optional with defaults so status.json files written before those layers
 existed still load. `llm_*` token fields are `null` (not `0`) for runs predating
 token capture. `run_type` is `"enrichment"` for normal runs; discovery runs write
@@ -814,64 +640,3 @@ These three items were scoped and deliberately deferred — do not begin without
 
 **Genericity Validation** — blocked by a second client with a structurally different specialty and product. Shape: run end-to-end with a non-OBGYN ICP, identify and fix any hidden specialty assumptions in signal prompts, ICP builder defaults, or exclusion rules. The codebase is designed to be generic (RULE 3 in `CLAUDE.md`); this validates it holds.
 
-<!-- Decision 2026-06-24: Adopted Verification Gates anti-fabrication policy. Trigger-based, not confidence-based. Quarantined from style/build-freeze rules — this is a truthfulness contract, not a preference. -->
-
-## Verification Gates — Anti-Fabrication Policy
-
-These gates are **trigger-based, not confidence-based**. The gate fires on the category of action or claim, even when the claim sounds obvious, familiar, or highly confident. Memory, prior sessions, summaries, and unstated assumptions are not sources.
-
-### GATE 0 — Destructive Actions
-Any action that may delete, overwrite, drop, publish, send, charge, expose, or materially alter data triggers this gate — including deleting/overwriting files, dropping tables, running migrations, modifying production config, sending emails/messages, publishing content, changing permissions, bulk updates, mutating API calls, and commands using `--force`, `--delete`, `--overwrite`, `rm`, `drop`, `truncate`, or `reset`.
-
-Rule: Use the safest path before execution.
-1. Prefer dry-run, preview, diff, backup, or staged output.
-2. If risk remains, ask for explicit confirmation.
-3. Never perform destructive actions silently.
-
-### GATE 1 — File State
-Any claim about what a file, repo, dataset, config, spreadsheet, document, or database currently contains triggers this gate — values, rows, columns, formulas, filenames, code, config, structure, schemas, whether something exists/is missing/changed.
-
-Rule: Inspect the relevant source in the current session before making the claim. For large sources, use targeted inspection (search, grep, file tree, line ranges, sampled rows, schema before full data, diffs) rather than blind full reads. If the source can't be inspected:
-> Not verified — I could not inspect the source in this session.
-
-Then do not describe its contents as fact.
-
-### GATE 2 — External Behavior
-Any claim about how a library, API, platform, tool, product, model, pricing page, marketplace, or external system behaves triggers this gate — limits, syntax, pricing, defaults, auth, permissions, compatibility, supported/deprecated features, version differences, current behavior, whether something can or cannot be done. Time-sensitive or version-like language (latest, current, now supports, as of 2026, v2, 4.6, SDK/API/model version names) always triggers it.
-
-Rule: Check current official documentation or a current primary source when available, and verify at least one of: page date, version number, API version, release-note date, changelog entry, official support article, or version-matched source docs.
-> Source checked, but version/date is unclear. (if no clear date/version)
-> Not verified against current docs — based on available context only. (if docs can't be checked)
-
-Do not present external behavior as fact unless checked this session.
-
-### GATE 3 — Execution and State Mutation
-Any claim that an action succeeded, changed something, ran correctly, passed, failed, exported, uploaded, synced, or fixed an issue triggers this gate — tests passed, build succeeded, file created/updated, export worked, formulas correct, links work, issue fixed, migration/import completed, "this will run."
-
-Rule: Only make the claim if the action was actually performed and verified this session (exit code, test/command output, file-existence check, diff, exported-file inspection, DB query, log review, API response, reopened output file). Do not convert an intended action into a completed result.
-> Untested — I have not run or validated this. (if not performed)
-> Attempted, but not independently verified. (if attempted, unverified)
-
-### GATE 4 — Source Labeling
-For factual claims in a build, sales-facing, client-facing, research, financial, legal, technical, or operational context, the source must be recoverable. A factual claim must be one of:
-1. Quoted/cited from a named source inspected this session.
-2. Returned by a search, fetch, tool, API call, or DB query this session.
-3. Produced by an actual test, command, calculation, or validation this session.
-4. Explicitly labeled as inference:
-   > Inference from [source/context] — not independently verified.
-
-When a fact isn't in context and can't be retrieved:
-> Not in context — the specific source to check would be [source].
-
-Do not bridge gaps with plausible filler. An unsourced factual claim is a defect, not a draft.
-
-### High-Signal Trigger Words
-These often hide a verifiable state, source, or execution claim — check whether a gate applies before using them in a factual context: contains, shows, passed, failed, created, updated, deleted, exported, synced, imported, fixed, verified.
-
-### Scope
-Applies to: file/code/repo/database state, test and execution results, signal weights and scoring, architecture decisions, API/tool/platform behavior, pricing/limits/compatibility/version behavior, prospect- or client-facing deliverables, and anything shipped, cited, sold, implemented, or relied upon operationally.
-
-Out of scope: casual brainstorming, clearly labeled opinion, creative writing, rough ideation. Gating everything trains both user and model to ignore the gates.
-
-### Enforcement
-If a gate is violated, name it ("Gate 1 violation — I described the file from memory without inspecting it"), then correct the answer. The correction is cheap. Silent fabrication is what costs.
