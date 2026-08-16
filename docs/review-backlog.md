@@ -23,8 +23,8 @@ either traced by the reviewing agent with quoted code, or independently re-check
 Nothing here is speculative. Items marked **(regression)** were introduced by those
 four commits; the rest are pre-existing issues those commits exposed or contradict.
 
-One review lens (Python language pitfalls) was cut short by an infrastructure
-limit; its retry results, if any, extend this list.
+All ten lenses completed (the language-pitfalls lens on retry — its two findings
+are items 14 and 15).
 
 Sibling document: `docs/data-boundary-model.md` (client/project data-boundary
 architecture — separate decision track).
@@ -163,6 +163,38 @@ hand-coupled to `.env.example` text with no test tying them together — rewordi
 the example silently reverts the check. **Fix:** accurate message per branch
 (empty vs placeholder); add a test iterating `.env.example` values asserting
 `_is_configured` is False for each.
+
+## P2 — tenth-lens findings, found after the resolution pass [OPEN]
+
+These two arrived from the review's final (retried) lens after the P1/P2
+resolution pass above ran; both re-verified as still present at the merge.
+
+### 14. `UnicodeDecodeError` escapes the ReviewsLoadError contract (regression-adjacent)
+`pipeline-api/reviews.py` — `get_reviews` converts damage to `ReviewsLoadError` via
+`except (json.JSONDecodeError, OSError)`, but invalid UTF-8 bytes in reviews.json
+raise `UnicodeDecodeError` during the stream decode — verified empirically: it is
+neither a `JSONDecodeError` nor an `OSError`, so it escapes raw. Every downstream
+`except ReviewsLoadError` (including the new fail-soft `_reviews_for_counts` /
+`refresh_run_counts`) misses it: a batch re-enrich whose merge already persisted
+then crashes in counting — `_monitor_batch_reenrich`'s blanket handler logs "run
+left untouched" (false), marks every merged record failed, and the operator
+re-runs, double-spending Claude. Plausible trigger: the ReviewsLoadError recovery
+message itself tells operators to hand-repair the JSON — a Windows editor saving
+cp1252 produces exactly these bytes. **Fix:** add `UnicodeDecodeError` (or
+`ValueError`) to the catch tuple in `get_reviews`; add a test with invalid-UTF-8
+bytes.
+
+### 15. Checkpoint fingerprint omits crawl-mode inputs (regression-adjacent)
+`pipeline.py::_checkpoint_fingerprint(input_file, config_path, icp_path)` — the
+fingerprint scopes the Step 4 checkpoint to config + ICP + input CSV but not to
+`use_playwright`, `auto_browser_retry`, or `manual_content_path`, which change the
+page text signals are extracted from. The natural operator flow — a thin
+HTTP-crawl run is killed, then re-run with `--playwright` "to do it properly" —
+matches the fingerprint, restores the thin-crawl records from checkpoint, discards
+the fresh Chromium crawl for them, and reports the browser run as having found
+nothing new, with zero Claude calls. **Fix:** fold the three crawl-mode values
+into the fingerprint hash; test that adding `--playwright` invalidates a
+checkpoint written without it.
 
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
