@@ -377,6 +377,15 @@ calls) to this script — it must remain stateless and fast.
 
 ---
 
+## Open Findings
+
+`docs/review-backlog.md` carries the verified, ranked open findings from the latest
+adversarial code review (P1 regressions first), and `docs/data-boundary-model.md`
+the client/project data-boundary analysis awaiting business decisions. Consult both
+before starting remediation work — do not rediscover them.
+
+---
+
 ## Testing
 
 ```

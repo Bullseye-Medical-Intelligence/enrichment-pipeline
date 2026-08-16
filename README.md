@@ -43,6 +43,40 @@ budget and never mutates the registry. See
 [`docs/operator_market_radar_workflow.md`](docs/operator_market_radar_workflow.md)
 and [`docs/discovery_architecture.md`](docs/discovery_architecture.md).
 
+### The platform around this CLI
+
+This repo contains the whole platform, in two layers that share one filesystem:
+
+```
+Operator browser ──▶ pipeline-api/  (FastAPI, server-rendered HTML, session auth)
+                         │  subprocess + shared /output/runs/<run_id>/
+                         ▼
+                     pipeline.py    (this CLI — all enrichment/scoring logic)
+```
+
+- **The CLI owns every scoring, signal, tier, and exclusion decision.** The API is
+  a process manager and review UI; it never re-implements pipeline logic
+  (`pipeline-api/CLAUDE.md`, RULE 1-3).
+- **Operator workflow:** create a project (client config + ICP profile) → upload a
+  CSV → *ingest* (roster only, no spend) → review the roster → *Enrich All* →
+  analyst QC in the dashboard (tier overrides, notes, signal overrides — stored as
+  an additive `reviews.json` overlay, never touching pipeline output) → client
+  package export (ZIP) and published briefs.
+- **Post-run passes** (operator-triggered, on a completed run): GPT verification,
+  re-score (new weights, no LLM), re-extract (Claude, no re-crawl — page text
+  rehydrated from the Evidence Vault), suppression re-check, and per-record /
+  batch browser re-crawls that merge in place. Passes are serialized per run and
+  refuse to clobber concurrent writes.
+- **Master Practice Registry** (`master_practice_registry.json`): the platform's
+  only cross-run memory — written **only** by the explicit "Update Registry"
+  action, never automatically. Market Radar classifies uploads against it
+  read-only. If no one clicks the button, the platform has no memory of a
+  practice. See `docs/registry_lifecycle.md` and `docs/data-boundary-model.md`
+  for its current limits (no client scoping) and the proposed target model.
+- **State is files.** No database, no queue, no cache — JSON on disk with atomic
+  writes and advisory locks, single-host by design (~10 operators, ≤1000-record
+  batches). Scale-out is a documented deferred item, not an accident.
+
 ---
 
 ## 2. Setup
@@ -184,7 +218,10 @@ failed), list of per-record errors, and any warnings. Check this first when a ru
 produces unexpected results.
 
 **`step4_checkpoint.ndjson`** — per-record signal-extraction checkpoint. A killed or
-crashed run resumes from it instead of re-spending on Claude.
+crashed run resumes from it instead of re-spending on Claude. It is scoped to its
+inputs (first line stamps a fingerprint of the config + ICP + input CSV) and deleted
+on successful completion — a checkpoint from different inputs, or from a finished
+run, is never reused, so editing the ICP and re-running always re-extracts.
 
 **`evidence/<record_id>/`** — the Evidence Vault: per-page crawl snapshots
 (`index.json` + `page-NN.txt`) proving what the crawler saw; also the text source
@@ -288,6 +325,27 @@ request.
   Bot-gated / JS-heavy sites are handled by headless Chromium (Playwright) via
   `--playwright` (whole run) or `--auto-browser-retry` (re-crawl only the blocked
   subset). See CLAUDE.md "The 8 Steps" for the auto browser-retry flow.
+
+---
+
+## 10. Documentation Map
+
+Where the platform's knowledge lives, and what each file is authoritative for:
+
+| Document | Authoritative for |
+|---|---|
+| [`CLAUDE.md`](CLAUDE.md) | Working guide for the pipeline engine: the 8 steps, scoring model, ICP signal fields, tier ladder, concurrency/checkpointing rules, anti-fabrication policy |
+| [`PIPELINE.md`](PIPELINE.md) | **The output schema contract** — every field of `enriched_targets.json` and per-step contracts. Schema changes update this file and the validator together |
+| [`pipeline-api/CLAUDE.md`](pipeline-api/CLAUDE.md) | Working guide for the operator API: absolute rules, locked tech stack, UI architecture, locking model, known performance debt, deferred roadmap |
+| [`pipeline-api/RUNBOOK.md`](pipeline-api/RUNBOOK.md) | Deploying and operating the API |
+| [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) | Engagement state: clients, cartridge history, next deliverables |
+| [`docs/operator-sop.md`](docs/operator-sop.md) | Operator standard procedure for running an engagement |
+| [`docs/operator_market_radar_workflow.md`](docs/operator_market_radar_workflow.md) / [`docs/discovery_architecture.md`](docs/discovery_architecture.md) | Market Radar: operator workflow and internals |
+| [`docs/registry_lifecycle.md`](docs/registry_lifecycle.md) | Master Practice Registry: when it changes and by whom |
+| [`docs/data-boundary-model.md`](docs/data-boundary-model.md) | Client/project data-boundary analysis: confirmed contamination risks, proposed client-scoping model, open business decisions |
+| [`docs/review-backlog.md`](docs/review-backlog.md) | Verified open findings from the latest code review — ranked, with fix directions |
+| [`evals/README.md`](evals/README.md) / [`evals/LABELING_SOP.md`](evals/LABELING_SOP.md) | Signal-extraction eval harness and golden-dataset labeling procedure |
+| [`docs/bmi-product-brief.md`](docs/bmi-product-brief.md) | Product framing for the business side |
 
 ---
 

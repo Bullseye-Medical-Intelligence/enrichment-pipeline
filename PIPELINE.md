@@ -430,7 +430,11 @@ signal tiering fields"; they default to off/empty when the ICP omits them.
 **call_brief:** A rep preparation object, always present. Grounded fields are
 derived from the signals (no LLM): `top_evidence` (highest-weight confirmed
 signals with their evidence + source_url), `missing_to_verify` (unconfirmed
-`verification_required` signals not covered by inference), `disqualifier_risk`
+required signals not covered by inference — any signal flagged
+`verification_required` **or** `required_for_bullseye` that is `not_found` and not
+`state_inferred`, mirroring the Needs Verification caps in
+`exclusion_checker._assign_tier`; a confirmed `"no"` is a known absence and lands
+in `disqualifier_risk` instead), `disqualifier_risk`
 (confirmed friction or `cap_tier` signals), and `why_contact` (one-liner from the
 top confirmed signals + fit). Extracted fields come from the LLM reading the
 website text: `opening_line`, `likely_objection`, `discovery_question`,
