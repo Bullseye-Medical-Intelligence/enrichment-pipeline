@@ -115,6 +115,35 @@ class TestCompletionCountsMatchRefresh:
         assert completion["contender_count"] == 0
 
 
+class TestBlockedRecordsOutsideTierCounts:
+    """Site-blocked records must not inflate manual_review_count.
+
+    The results page diverts source_confidence limited/failed records to its
+    own 'Site Blocked' bucket outside the tier stats; the run-list counts must
+    agree instead of disagreeing by the size of the blocked set.
+    """
+
+    def test_blocked_record_not_counted_as_manual_review(self, run_env):
+        blocked = _record("T-1", "Manual Review", score=0)
+        blocked["source_confidence"] = "limited"
+        genuine = _record("T-2", "Manual Review", score=30)
+        genuine["source_confidence"] = "complete"
+        _write_records(run_env, [blocked, genuine, _record("T-3", "Bullseye")])
+
+        counts = runner.refresh_run_counts(_RUN_ID)
+        assert counts["manual_review_count"] == 1   # only the genuine one
+        assert counts["bullseye_count"] == 1
+
+    def test_blocked_excluded_record_still_counts_excluded(self, run_env):
+        rec = _record("T-1", "Excluded", exclusion="EXCLUDED")
+        rec["source_confidence"] = "failed"
+        _write_records(run_env, [rec])
+
+        counts = runner.refresh_run_counts(_RUN_ID)
+        assert counts["excluded_count"] == 1
+        assert counts["manual_review_count"] == 0
+
+
 class TestRefreshRunCounts:
 
     def test_refresh_replaces_stale_counts(self, run_env):

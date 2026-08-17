@@ -1253,7 +1253,17 @@ def _recompute_counts_from_records(records: list[dict], all_reviews: dict | None
     target_tier here instead left the run list disagreeing with the run it links to.
     """
     reviews_map = all_reviews or {}
-    tiers = [record_adapter.effective_tier(r, reviews_map) for r in records]
+    tiers = []
+    for r in records:
+        tier = record_adapter.effective_tier(r, reviews_map)
+        # Mirror ui._calculate_stats: site-blocked records (limited/failed
+        # crawl, not excluded) live in the dashboard's "Site Blocked" bucket,
+        # OUTSIDE the tier stats — they need a re-crawl, not a tier. Counting
+        # them as Manual Review left the run list disagreeing with the results
+        # page by the size of the blocked set.
+        if r.get("source_confidence") in ("limited", "failed") and tier != "Excluded":
+            continue
+        tiers.append(tier)
     return {
         "bullseye_count": sum(1 for t in tiers if t == "Bullseye"),
         "needs_verification_count": sum(1 for t in tiers if t == "Needs Verification"),

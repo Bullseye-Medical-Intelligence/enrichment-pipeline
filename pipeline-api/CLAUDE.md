@@ -216,6 +216,9 @@ what the results page, Contact Queue, and client exports already count. Counting
 raw `target_tier` here is what left the run list disagreeing with the run it links
 to. `_recompute_counts_from_records` takes the review overlay for the same reason;
 a damaged overlay degrades to pipeline tiers rather than freezing the counts.
+Site-blocked records (`source_confidence` limited/failed, not excluded) are left
+out of the tier counts entirely, mirroring the results page's separate "Site
+Blocked" bucket — they need a re-crawl, not a tier.
 
 **Cost per run**: the pipeline captures Claude token usage into run_log.json
 (`llm_input_tokens`, `llm_output_tokens`, `llm_call_count`); the monitor copies
