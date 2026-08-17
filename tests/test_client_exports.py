@@ -107,6 +107,45 @@ def test_analyst_notes_never_in_client_report(tmp_path):
     assert "Analyst Note" not in report_html
 
 
+def test_analyst_note_renders_in_internal_sales_handoff(tmp_path):
+    """The INTERNAL Sales Handoff (operator download) must show analyst notes.
+
+    Regression: the client-facing leak fix stripped analyst_note from both
+    report-context builders, silently blanking notes in the internal handoff.
+    """
+    import sales_export
+    _build_run(tmp_path)
+    html = sales_export.build_sales_handoff(
+        "RUN-20260527-143000-aaaa", tmp_path, _status()
+    ).decode("utf-8")
+    assert "Confirmed independent." in html
+
+
+def test_note_only_review_not_shown_as_pending_in_internal_handoff(tmp_path):
+    """A review whose only content is a note must render the note, not 'Pending review'."""
+    import sales_export
+    _build_run(tmp_path)
+    reviews_map = {
+        "T-1": {"override_tier": None, "override_reason": None, "qc_status": "",
+                "analyst_note": "Call after 2pm only.", "reviewed_by": "t",
+                "reviewed_at": "now"},
+    }
+    (tmp_path / "reviews.json").write_text(json.dumps(reviews_map))
+    html = sales_export.build_sales_handoff(
+        "RUN-20260527-143000-aaaa", tmp_path, _status()
+    ).decode("utf-8")
+    assert "Call after 2pm only." in html
+
+
+def test_analyst_note_never_in_client_sales_handoff(tmp_path):
+    """The client package's Sales_Handoff.html must NOT contain analyst notes."""
+    _build_run(tmp_path)
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    with zipfile.ZipFile(buf) as zf:
+        handoff_html = zf.read("Sales_Handoff.html").decode("utf-8")
+    assert "Confirmed independent." not in handoff_html
+
+
 def test_package_excludes_internal_artifacts(tmp_path):
     _build_run(tmp_path)
     buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())

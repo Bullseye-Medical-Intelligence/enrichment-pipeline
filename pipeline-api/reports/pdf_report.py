@@ -212,10 +212,10 @@ def _prepare_sales_record(rec: dict, review: dict) -> dict:
         "discovery_question": brief.get("discovery_question") or "",
         "hours_of_operation": brief.get("hours_of_operation") or "",
         "sales_angles": sales_angles,
-        # Analyst-authored fields (analyst_note etc.) are deliberately NOT
-        # copied into template context: these reports are client-facing
-        # (client package ZIP + published briefs) and internal notes must
-        # never leak into them.
+        # Internal-only report (operator download route): analyst_note belongs
+        # here. The client-facing builders (_prepare_record, handoff_renderer)
+        # must never carry it.
+        "analyst_note": review.get("analyst_note") or "",
         "override_reason": review.get("override_reason") or "",
         "override_tier": review.get("override_tier") or "",
         "qc_status": review.get("qc_status") or "",
