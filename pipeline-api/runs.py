@@ -135,6 +135,35 @@ def update_run_status(run_id: str, **fields) -> RunStatus:
     return updated
 
 
+def add_llm_usage(run_id: str, input_tokens: int, output_tokens: int, call_count: int) -> None:
+    """Atomically add a post-run pass's Claude spend to the run's token totals.
+
+    The whole read-modify-write runs under the per-run lock: two concurrent
+    bookings (e.g. a batch re-enrich merge finishing while a re-extract route
+    books its own pass) must never read the same totals and drop an increment.
+
+    Only same-model (Claude) spend belongs here — llm_pricing prices these
+    totals at PRICED_MODEL rates, so folding in another provider's tokens
+    would trade an undercount for a miscount.
+
+    A run predating token capture (llm_call_count is None) is left untouched:
+    showing one pass's tokens as the run total would read as the whole cost,
+    which is more misleading than the honest "not captured" state.
+    """
+    if call_count <= 0:
+        return
+    with locking.run_lock(run_dir(run_id)):
+        current = get_run(run_id)
+        if current is None or current.llm_call_count is None:
+            return
+        updated = current.model_copy(update={
+            "llm_input_tokens": (current.llm_input_tokens or 0) + input_tokens,
+            "llm_output_tokens": (current.llm_output_tokens or 0) + output_tokens,
+            "llm_call_count": current.llm_call_count + call_count,
+        })
+        _write_status(run_id, updated)
+
+
 def list_runs(
     max_runs: int | None = MAX_RUNS_RETURNED,
     include_archived: bool = False,

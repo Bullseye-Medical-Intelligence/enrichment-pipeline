@@ -240,3 +240,111 @@ class TestAddLlmUsage:
         runner.add_llm_usage(_RUN_ID, 500, 100, 5)
         assert runs.get_run(_RUN_ID).llm_call_count is None
         assert runs.get_run(_RUN_ID).llm_input_tokens is None
+
+    def test_concurrent_bookings_lose_nothing(self, run_env):
+        """Two passes booking at once must not drop an increment — the whole
+        read-modify-write is atomic under the run lock."""
+        import threading
+        # A stored llm_call_count of 0 means "captured, nothing yet" — only a
+        # zero call_count ARGUMENT no-ops a booking.
+        runs.update_run_status(
+            _RUN_ID, llm_input_tokens=0, llm_output_tokens=0, llm_call_count=0)
+        n = 25
+
+        def _book():
+            for _ in range(n):
+                runner.add_llm_usage(_RUN_ID, 10, 1, 1)
+
+        threads = [threading.Thread(target=_book) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        s = runs.get_run(_RUN_ID)
+        assert s.llm_call_count == 2 * n
+        assert s.llm_input_tokens == 2 * n * 10
+        assert s.llm_output_tokens == 2 * n
+
+
+class TestMergePathsBookUsage:
+    """The in-place merge paths must book their scratch run's Claude spend.
+
+    Regression: only the re-extract route booked usage; batch re-enrich,
+    retry-with-browser, per-record re-crawl, and manual-content merges made
+    fresh Claude calls whose usage never reached the run totals.
+    """
+
+    def _prime_tokens(self):
+        runs.update_run_status(
+            _RUN_ID, llm_input_tokens=1000, llm_output_tokens=100, llm_call_count=2)
+
+    def _scratch(self, run_env, records, usage=True):
+        scratch = run_env / ".recrawl_test"
+        scratch.mkdir()
+        (scratch / "enriched_targets.json").write_text(
+            json.dumps({"run_id": "scratch", "records": records}), encoding="utf-8")
+        log = {"run_id": "scratch", "records_output": len(records),
+               "records_excluded": 0, "records_failed": 0}
+        if usage:
+            log.update({"llm_input_tokens": 500, "llm_output_tokens": 50,
+                        "llm_call_count": 1})
+        (scratch / "run_log.json").write_text(json.dumps(log), encoding="utf-8")
+        return scratch
+
+    def test_batch_reenrich_merge_books_usage(self, run_env):
+        import asyncio
+
+        class _FakeProcess:
+            returncode = 0
+
+            def communicate(self):
+                return (b"", b"")
+
+        self._prime_tokens()
+        _write_records(run_env, [_record("T-1", "Contender")])
+        scratch = self._scratch(run_env, [_record("T-1", "Bullseye")])
+
+        asyncio.run(runner._monitor_batch_reenrich(
+            _RUN_ID, scratch, ["T-1"], _FakeProcess()))
+
+        s = runs.get_run(_RUN_ID)
+        assert s.llm_input_tokens == 1500
+        assert s.llm_output_tokens == 150
+        assert s.llm_call_count == 3
+
+    def test_single_record_merge_books_usage_even_when_refused(self, run_env):
+        """A blocked re-crawl over good data keeps the record but the spend
+        still happened — it must be booked."""
+        self._prime_tokens()
+        good = _record("T-1", "Bullseye")
+        good["source_confidence"] = "complete"
+        _write_records(run_env, [good])
+        blocked_result = _record("T-1", "Manual Review")
+        blocked_result["source_confidence"] = "failed"
+        scratch = self._scratch(run_env, [blocked_result])
+
+        result = runner._merge_recrawled_record(_RUN_ID, scratch, "T-1", "re-crawl")
+
+        assert result.ok is False           # merge refused by data-loss guard
+        s = runs.get_run(_RUN_ID)
+        assert s.llm_call_count == 3        # spend booked anyway
+        assert s.llm_input_tokens == 1500
+
+    def test_scratch_without_usage_books_nothing(self, run_env):
+        import asyncio
+
+        class _FakeProcess:
+            returncode = 0
+
+            def communicate(self):
+                return (b"", b"")
+
+        self._prime_tokens()
+        _write_records(run_env, [_record("T-1", "Contender")])
+        scratch = self._scratch(run_env, [_record("T-1", "Bullseye")], usage=False)
+
+        asyncio.run(runner._monitor_batch_reenrich(
+            _RUN_ID, scratch, ["T-1"], _FakeProcess()))
+
+        s = runs.get_run(_RUN_ID)
+        assert s.llm_call_count == 2        # unchanged

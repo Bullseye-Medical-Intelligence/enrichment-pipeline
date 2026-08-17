@@ -1103,6 +1103,11 @@ async def _monitor_batch_reenrich(
             mark_refresh_failed(source_dir, record_ids, f"Pipeline output invalid: {failure}")
             return
 
+        # Book the scratch run's Claude spend into the source run's totals
+        # before merging — the spend is real even if part of the merge is
+        # later refused by the data-loss guard.
+        add_llm_usage(source_run_id, *_scratch_llm_usage(scratch_dir))
+
         with open(scratch_dir / "enriched_targets.json", "r", encoding="utf-8") as f:
             new_records = record_adapter.normalize_records_payload(json.load(f))
         new_by_id = {record_adapter.get_record_id(r): r for r in new_records}
@@ -1277,29 +1282,32 @@ def _recompute_counts_from_records(records: list[dict], all_reviews: dict | None
 def add_llm_usage(run_id: str, input_tokens: int, output_tokens: int, call_count: int) -> None:
     """Add a post-run pass's Claude spend to the run's reported token totals.
 
-    The pipeline stamps llm_* once at completion; a later re-extraction spends
-    real budget on the same model, so the reported cost must grow with it or it
-    understates by the size of every pass an operator runs.
-
-    Only same-model (Claude) spend belongs here — llm_pricing prices these
-    totals at PRICED_MODEL rates, so folding in another provider's tokens would
-    trade an undercount for a miscount. Read-modify-write is safe because the
-    post-run job lock serializes the only writers of these fields.
-
-    A run predating token capture (llm_call_count is None) is left untouched:
-    showing one pass's tokens as the run total would read as the whole cost,
-    which is more misleading than the honest "not captured" state.
+    The pipeline stamps llm_* once at completion; a later pass spends real
+    budget on the same model, so the reported cost must grow with it or it
+    understates by the size of every pass an operator runs. Delegates to
+    runs.add_llm_usage, which makes the increment atomic under the run lock.
     """
-    if call_count <= 0:
-        return
-    status = runs.get_run(run_id)
-    if status is None or status.llm_call_count is None:
-        return
-    runs.update_run_status(
-        run_id,
-        llm_input_tokens=(status.llm_input_tokens or 0) + input_tokens,
-        llm_output_tokens=(status.llm_output_tokens or 0) + output_tokens,
-        llm_call_count=status.llm_call_count + call_count,
+    runs.add_llm_usage(run_id, input_tokens, output_tokens, call_count)
+
+
+def _scratch_llm_usage(scratch_dir: Path) -> tuple[int, int, int]:
+    """A scratch run's Claude usage from its run_log.json; zeros when absent.
+
+    The in-place merge paths (batch re-enrich, retry-with-browser, per-record
+    re-crawl, manual content) each spawn a real pipeline run whose run_log.json
+    carries exact token usage — the merge choke point is where it gets booked
+    into the source run's totals.
+    """
+    try:
+        log = json.loads((scratch_dir / "run_log.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0, 0, 0
+    if not isinstance(log, dict):
+        return 0, 0, 0
+    return (
+        int(log.get("llm_input_tokens") or 0),
+        int(log.get("llm_output_tokens") or 0),
+        int(log.get("llm_call_count") or 0),
     )
 
 
@@ -1412,6 +1420,10 @@ def _merge_recrawled_record(
             message=f"The {kind} produced no usable output ({failure}). "
                     "The record was left unchanged.",
         )
+
+    # Book the scratch run's Claude spend before merging — the spend is real
+    # even when the merge is later refused (blocked re-crawl over good data).
+    add_llm_usage(source_run_id, *_scratch_llm_usage(scratch_dir))
 
     try:
         with open(scratch_dir / "enriched_targets.json", "r", encoding="utf-8") as f:
