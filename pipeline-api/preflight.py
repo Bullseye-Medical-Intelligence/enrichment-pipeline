@@ -154,15 +154,33 @@ def _check_projects(projects_path: Path) -> CheckResult:
     )
 
 
+_GENERATE_KEY_HINT = (
+    "Generate one with: "
+    "python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+)
+
+
 def _check_session_key(session_secret_key: str) -> CheckResult:
-    """Verify SESSION_SECRET_KEY is usable -- login fails outright without it."""
+    """Verify SESSION_SECRET_KEY is usable, with an accurate message per state.
+
+    auth.py refuses only an EMPTY key; a placeholder value signs cookies just
+    fine — the problem there is a guessable shared signing key (forgeable
+    sessions), not broken login. The message must not claim a working
+    subsystem is broken.
+    """
     if _is_configured(session_secret_key):
         return CheckResult("session_key", "Session Secret Key", "ok", "Set")
+    if (session_secret_key or "").strip():
+        return CheckResult(
+            "session_key", "Session Secret Key", "error",
+            "Set to the .env.example placeholder -- login works, but the "
+            "signing key is public/guessable, so session cookies are "
+            f"forgeable. {_GENERATE_KEY_HINT}",
+        )
     return CheckResult(
         "session_key", "Session Secret Key", "error",
-        "SESSION_SECRET_KEY missing or set to the example placeholder -- "
-        "login cannot issue session cookies without it. Generate one with: "
-        "python -c \"import secrets; print(secrets.token_urlsafe(32))\"",
+        "SESSION_SECRET_KEY is not set -- login cannot issue session cookies "
+        f"without it. {_GENERATE_KEY_HINT}",
     )
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "pipeline-api"))
 
@@ -157,6 +158,56 @@ class TestSessionKey:
     def test_placeholder_key_is_error(self):
         r = _check_session_key("your-session-secret-key-here")
         assert r.status == "error"
+
+    def test_empty_key_message_says_login_broken(self):
+        r = _check_session_key("")
+        assert "cannot issue session cookies" in r.message
+
+    def test_placeholder_message_does_not_claim_login_broken(self):
+        """auth.py refuses only an EMPTY key — with a placeholder, login works
+        (insecurely). The banner must not assert a working subsystem is broken."""
+        r = _check_session_key("your-session-secret-key-here")
+        assert "cannot issue session cookies" not in r.message
+        assert "placeholder" in r.message
+        assert "forgeable" in r.message
+
+
+class TestEnvExamplePlaceholdersStayUnconfigured:
+    """Tie the placeholder blocklist to the actual .env.example text.
+
+    _PLACEHOLDER_VALUES is hand-coupled to the example files; rewording an
+    example value would silently revert the preflight check. This test reads
+    both example files and asserts every checked secret's example value still
+    reads as not-configured.
+    """
+
+    _CHECKED_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SESSION_SECRET_KEY")
+
+    def _example_values(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        found = []
+        for env_file in (repo_root / ".env.example",
+                         repo_root / "pipeline-api" / ".env.example"):
+            if not env_file.exists():
+                continue
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key.strip() in self._CHECKED_KEYS:
+                    found.append((env_file.name, key.strip(), value.strip()))
+        return found
+
+    def test_every_example_secret_reads_unconfigured(self):
+        from preflight import _is_configured
+        values = self._example_values()
+        assert values, "no checked secrets found in the .env.example files"
+        for filename, key, value in values:
+            assert not _is_configured(value), (
+                f"{key}={value!r} in {filename} passes _is_configured — "
+                "update preflight._PLACEHOLDER_VALUES to match the example file"
+            )
 
 
 class TestOpenAIKey:
