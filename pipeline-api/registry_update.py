@@ -74,11 +74,21 @@ ENRICHED_FILENAME = "enriched_targets.json"
 SELECTION_MODES: frozenset[str] = frozenset({"bullseye_only", "clear_only", "all_reviewable"})
 
 # Identity/contact fields whose change is "meaningful" and recorded in
-# change_history. Score/tier fields change every run and are tracked as current
-# values only, so idempotency stays meaningful.
+# change_history.
 HISTORY_FIELDS: tuple[str, ...] = (
     "practice_name", "website_url", "phone",
     "address_full", "address_city", "address_state", "address_zip", "specialty",
+)
+
+# Per-client COMMERCIAL fields that must never live on the shared registry
+# entry (docs/data-boundary-model.md C-1, decided fix-only 2026-08-17): tier,
+# score, and exclusion are one client's read on a practice, so two clients
+# whose runs resolve to the same practice silently clobbered each other's
+# values on every update, with no attribution and no history. The registry is
+# identity + provenance only; updates strip these from legacy entries and
+# prune_registry.py removes them wholesale.
+COMMERCIAL_ENTRY_FIELDS: tuple[str, ...] = (
+    "current_tier", "bullseye_score", "exclusion_status", "enrichment_status",
 )
 
 
@@ -230,19 +240,19 @@ def _rejection_reason(
     fields: dict,
     *,
     include_needs_review: bool,
-    include_excluded: bool,
 ) -> Optional[str]:
     """Return a rejection reason for a record, or None if it is eligible.
 
-    Rules applied to every candidate (explicit or mode-selected): failed records
-    are always rejected; EXCLUDED needs include_excluded; needs_review needs
+    Rules applied to every candidate (explicit or mode-selected): failed and
+    EXCLUDED records are always rejected (the include_excluded bypass was
+    closed outright — docs/data-boundary-model.md C-2); needs_review needs
     include_needs_review; records missing identity are always rejected.
     """
     enrichment_status = rec.get("enrichment_status") or ""
     if enrichment_status == "failed":
         return "enrichment_status is 'failed'"
-    if (rec.get("exclusion_status") or "") == "EXCLUDED" and not include_excluded:
-        return "record is EXCLUDED (set include_excluded to override)"
+    if (rec.get("exclusion_status") or "") == "EXCLUDED":
+        return "record is EXCLUDED — excluded records never enter the registry"
     if enrichment_status == "needs_review" and not include_needs_review:
         return "record is needs_review (set include_needs_review to override)"
     if not _has_min_identity(fields):
@@ -298,10 +308,6 @@ def _new_entry(
         "last_discovery_run_id": discovery_run_id,
         "last_enrichment_run_id": run_id,
         "last_reviewed_at": now,
-        "current_tier": rec.get("target_tier") or "",
-        "bullseye_score": rec.get("bullseye_score") or 0,
-        "exclusion_status": rec.get("exclusion_status") or "",
-        "enrichment_status": rec.get("enrichment_status") or "",
         "source_pipeline_version": rec.get("source_pipeline_version") or "",
         "evidence_path": evidence_path,
         "change_history": [],
@@ -362,10 +368,10 @@ def _apply_update(
     entry["last_seen_at"] = now
     entry["last_enrichment_run_id"] = run_id
     entry["last_reviewed_at"] = now
-    entry["current_tier"] = rec.get("target_tier") or entry.get("current_tier", "")
-    entry["bullseye_score"] = rec.get("bullseye_score", entry.get("bullseye_score", 0))
-    entry["exclusion_status"] = rec.get("exclusion_status") or entry.get("exclusion_status", "")
-    entry["enrichment_status"] = rec.get("enrichment_status") or entry.get("enrichment_status", "")
+    # Converge legacy entries toward identity-only: any commercial field a
+    # pre-prune entry still carries is removed on touch (see COMMERCIAL_ENTRY_FIELDS).
+    for stale_field in COMMERCIAL_ENTRY_FIELDS:
+        entry.pop(stale_field, None)
     if rec.get("source_pipeline_version"):
         entry["source_pipeline_version"] = rec["source_pipeline_version"]
     if discovery_run_id:
@@ -409,7 +415,6 @@ def update_registry_from_run(
     selected_record_ids: Optional[list] = None,
     selection_mode: Optional[str] = None,
     include_needs_review: bool = False,
-    include_excluded: bool = False,
     require_source_discovery_run_id: bool = False,
 ) -> dict:
     """Apply an enrichment run's selected records to the master registry.
@@ -471,7 +476,6 @@ def update_registry_from_run(
             reason = _rejection_reason(
                 rec, fields,
                 include_needs_review=include_needs_review,
-                include_excluded=include_excluded,
             )
             if reason:
                 rejected.append({"record_id": rid, "reason": reason})
@@ -507,7 +511,6 @@ def update_registry_from_run(
         "selection_mode": selection_mode or "",
         "selected_record_ids": selected_record_ids or [],
         "include_needs_review": include_needs_review,
-        "include_excluded": include_excluded,
         "registry_update_count": update_count,
         "inserted": inserted,
         "updated": updated,
@@ -613,10 +616,17 @@ async def update_registry_route(
     """Push selected enrichment records into the master practice registry.
 
     Body: {selected_record_ids? | selection_mode?, include_needs_review?,
-    include_excluded?, require_source_discovery_run_id?}.
+    require_source_discovery_run_id?}.
     """
     if not isinstance(payload, dict):
         return JSONResponse(status_code=400, content={"detail": "JSON body required."})
+    if payload.get("include_excluded"):
+        # Refuse loudly rather than silently ignoring a flag that used to widen
+        # scope: this bypass is closed (docs/data-boundary-model.md C-2).
+        return JSONResponse(status_code=400, content={
+            "detail": "include_excluded is no longer supported — excluded "
+                      "records never enter the registry.",
+        })
     try:
         result = await _run_update(run_id, payload)
     except LookupError as exc:
@@ -637,7 +647,6 @@ async def _run_update(run_id: str, payload: dict) -> dict:
         selected_record_ids=payload.get("selected_record_ids"),
         selection_mode=payload.get("selection_mode"),
         include_needs_review=bool(payload.get("include_needs_review", False)),
-        include_excluded=bool(payload.get("include_excluded", False)),
         require_source_discovery_run_id=bool(
             payload.get("require_source_discovery_run_id", False)
         ),

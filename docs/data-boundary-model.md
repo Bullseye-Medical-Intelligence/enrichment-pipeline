@@ -2,9 +2,16 @@
 
 **Scope:** Bullseye Medical Intelligence, `enrichment-pipeline` repository.
 **Method:** Read-only architecture analysis (2026-07). Six parallel investigations of
-the actual codebase, each claim traced to a specific file and line. This document
-records the findings and the proposed target model; **none of the proposed changes
-have been implemented** — Section H's business decisions gate the work.
+the actual codebase, each claim traced to a specific file and line.
+
+**Status (2026-08-17): Section H decided — fix-only implemented.** The registry
+safety fix is live: the shared registry is identity + provenance only
+(commercial fields never written, stripped from legacy entries on touch, and
+removable wholesale via `pipeline-api/prune_registry.py`, which takes the
+Phase 0 backup itself), the C-2 `include_excluded` bypass is closed, and
+shared-ICP edits warn (C-3). The ClientPracticeRelationship capability upgrade
+(Section D's right-hand box, Phases 1–3/5) was deliberately **not** built — see
+the decisions recorded in Section H.
 
 ---
 
@@ -99,7 +106,7 @@ artifact · `AUDIT` operator metadata · `AMBIGUOUS` requires a policy decision.
 
 ## C. Contamination scenarios, ranked by confirmed severity
 
-### 1. [CONFIRMED · ACTIVE · SILENT] Registry tier/score cross-client clobber
+### 1. [RESOLVED 2026-08-17 — fields removed] Registry tier/score cross-client clobber
 Any two clients whose runs resolve to the same practice — matched purely on
 `google_place_id` / domain / phone / name+address, properties of the practice, not
 the engagement — silently overwrite each other's `current_tier`, `bullseye_score`,
@@ -113,12 +120,12 @@ read those keys"*, not *"this code cannot reach them"* — a landmine that deton
 with the first registry browser, outcome-correlation view, or "we already know this
 practice" panel.
 
-### 2. [CONFIRMED · DORMANT] Suppressed/excluded records can reach the registry via an unbuttoned path
+### 2. [RESOLVED 2026-08-17 — bypass closed, API returns 400] Suppressed/excluded records could reach the registry via an unbuttoned path
 Requires `include_excluded=True`, which the only UI form hardcodes to `False`;
 reachable only via the raw JSON API. Even then only the bare EXCLUDED flag crosses —
 never the reason text. Worth closing outright; no legitimate current use exists.
 
-### 3. [STRUCTURAL] ICP profile sharing is fully unrestricted, with no warning
+### 3. [MITIGATED 2026-08-17 — warn on save/import] ICP profile sharing was fully unrestricted, with no warning
 Nothing prevents, or even logs, two projects with different `client_name` values
 referencing the same `icp_profile_id`. An operator adjusting one signal weight for a
 new engagement can silently re-score every other project pointed at that file.
@@ -241,7 +248,15 @@ Mostly additive; the one place data cannot be safely recovered is named plainly.
 
 ## G. Product claims
 
-**May claim after implementation:** per-client tracking of scoring/tier/exclusion/
+**With fix-only implemented (2026-08-17), may claim:** no client's
+scoring/tier/exclusion read on a practice can be silently overwritten by
+another client's engagement — because the shared registry stores no such
+read at all; a client's commercial intelligence lives only in its own runs'
+immutable output. **May NOT claim (fix-only):** per-client tracking across
+runs, Market Radar "known to you", or per-client ICP ownership — those are
+the unbuilt capability upgrade below.
+
+**May claim after the full upgrade's implementation:** per-client tracking of scoring/tier/exclusion/
 suppression/sales intelligence that cannot be silently overwritten by another
 client's engagement; practice identity maintained once without exposing which other
 clients evaluated it; Market Radar distinguishing "new to the platform" vs "new to
@@ -257,21 +272,43 @@ absent — re-crawling per engagement is the right call).
 
 ---
 
-## H. Open business-policy decisions
+## H. Business-policy decisions — DECIDED 2026-08-17 (operator: Rajiv)
 
-1. **Who owns the one-time `client_name → client_id` reconciliation** (needs a named
-   owner before Phase 1)?
-2. **Shared-ICP edits: block or warn?** (Recommendation: warn.)
-3. **Fix-only, or fix + ClientPracticeRelationship capability upgrade?** The leak
-   closes by deleting four fields; everything past that is deliberate scope.
-4. **May two Bullseye clients pursue the same practice simultaneously?** The model
-   supports either; decide on purpose.
-5. **Should suppression/customer status become durable across runs?** Proposed as an
-   improvement; confirm it's wanted.
+1. **Who owns the one-time `client_name → client_id` reconciliation?**
+   **Moot until an upgrade is scheduled.** Fix-only (decision 3) never runs
+   Phase 1, so no reconciliation happens and no owner is needed. If the
+   capability upgrade is ever green-lit, name the owner then — do not start
+   Phase 1 without one.
+2. **Shared-ICP edits: block or warn?** **Warn** (as recommended).
+   Implemented: saving or importing over a profile referenced by 2+ live
+   projects logs and surfaces a banner naming those projects
+   (`projects.projects_referencing_icp`, `ui._shared_icp_warning`). Past runs
+   are safe either way — they keep their frozen ICP snapshot.
+3. **Fix-only, or fix + ClientPracticeRelationship?** **Fix-only.**
+   Implemented: the four commercial fields are gone from the registry write
+   path, stripped from legacy entries on touch, and prunable wholesale via
+   `pipeline-api/prune_registry.py` (which writes the Phase 0 backup first;
+   `--preview` supported; idempotent). The upgrade remains available later;
+   nothing here forecloses it. Rationale: closing the confirmed leak is small
+   and reversible, while the upgrade builds migration-heavy per-client memory
+   before a second client exists to need it.
+4. **May two Bullseye clients pursue the same practice simultaneously?**
+   **Yes — allowed.** No tooling constraint; engagement overlap is a
+   sales-ops/contract matter. Constraint for future features (registry
+   browser, merge UI, outcome views): they must not assume exclusivity, and
+   nothing in the product warns on overlap today.
+5. **Should suppression/customer status become durable across runs?**
+   **Deferred.** Suppression stays re-derived from the project-owned CSV per
+   run — correct and client-scoped by construction. Durable status belongs
+   inside ClientPracticeRelationship if that is ever built; a standalone
+   store would recreate the shared-file mistake this fix removes.
 
 ---
 
 ## Confirmation
 
-This document describes analysis and a proposal. As of its writing, no code, schema,
-JSON file, or runtime data has been modified in service of it.
+This document originally described analysis and a proposal with nothing
+implemented. As of 2026-08-17 the Section H decisions above are made and the
+fix-only scope is implemented (registry identity-only + C-2 bypass closed +
+shared-ICP warning); the Section D capability upgrade and migration Phases 1-3/5
+remain unbuilt by decision.

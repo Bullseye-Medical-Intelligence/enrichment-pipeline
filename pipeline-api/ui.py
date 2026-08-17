@@ -601,6 +601,30 @@ def icp_simulate(payload: dict, username: str = Depends(auth.require_session)):
     )
 
 
+def _shared_icp_warning(icp_profile_id: str) -> str:
+    """Warning text when a saved profile is referenced by 2+ live projects.
+
+    Q2 decision (docs/data-boundary-model.md §H, 2026-08-17): warn, don't
+    block. Past runs are safe either way — they keep their frozen ICP
+    snapshot — but every FUTURE run of the other projects will score against
+    the edited weights. Returns "" when at most one project references it.
+    """
+    referencing = projects.projects_referencing_icp(icp_profile_id)
+    if len(referencing) < 2:
+        return ""
+    logger.warning(
+        "Shared ICP profile %r saved; referenced by %d projects: %s",
+        icp_profile_id, len(referencing), ", ".join(referencing),
+    )
+    return (
+        f"'{icp_profile_id}' is shared by {len(referencing)} projects "
+        f"({', '.join(referencing)}). This edit changes scoring for all of "
+        "their future runs — past runs keep their frozen snapshot. If that "
+        "was not intended, import the previous version under a new icp_id "
+        "for the other projects."
+    )
+
+
 @router.post("/icp-profiles/save")
 async def icp_save(
     request: Request,
@@ -676,6 +700,12 @@ async def icp_save(
             product_url=product_url,
             specialty=specialty,
         )
+    shared_warning = _shared_icp_warning(icp_id.strip()) if is_edit else ""
+    if shared_warning:
+        return RedirectResponse(
+            f"/icp-profiles?shared_warning={urllib.parse.quote(shared_warning)}",
+            status_code=303,
+        )
     return RedirectResponse("/icp-profiles", status_code=303)
 
 
@@ -683,6 +713,7 @@ async def icp_save(
 async def icp_profiles_page(
     request: Request,
     import_error: str = "",
+    shared_warning: str = "",
     username: str = Depends(auth.require_session),
 ):
     """List the ICP profiles available on disk."""
@@ -691,6 +722,7 @@ async def icp_profiles_page(
         username=username,
         profiles=icp_profiles.list_icp_profiles(),
         import_error=import_error,
+        shared_warning=shared_warning[:500],
     )
 
 
@@ -818,6 +850,12 @@ async def icp_import(
             status_code=303,
         )
 
+    shared_warning = _shared_icp_warning(str(data.get("icp_id") or ""))
+    if shared_warning:
+        return RedirectResponse(
+            f"/icp-profiles?shared_warning={urllib.parse.quote(shared_warning)}",
+            status_code=303,
+        )
     return RedirectResponse("/icp-profiles", status_code=303)
 
 
@@ -2593,7 +2631,6 @@ async def registry_update_action(
             run_id,
             selection_mode="all_reviewable",
             include_needs_review=False,
-            include_excluded=False,
         )
     except (LookupError, ValueError, registry_update.RegistryLoadError) as exc:
         return _render(

@@ -107,11 +107,13 @@ def test_insert_new_bullseye_clear_record(client):
     assert reg["entry_count"] == 1
     entry = next(iter(reg["entries"].values()))
     assert entry["practice_name"] == "Alpha Women's Health"
-    assert entry["current_tier"] == "Bullseye"
-    assert entry["exclusion_status"] == "CLEAR"
     assert entry["last_enrichment_run_id"] == "RUN-20260615-100000-aaaa"
     assert "practice_registry_id" in entry
     assert entry["change_history"] == []
+    # Identity-only registry (data-boundary C-1, fix-only): one client's tier,
+    # score, and exclusion read must never live on the shared entry.
+    for field in registry_update.COMMERCIAL_ENTRY_FIELDS:
+        assert field not in entry, field
 
 
 def test_google_place_id_stored_in_registry_entry(client):
@@ -198,16 +200,57 @@ def test_excluded_rejected_by_default(client):
     assert not registry_update.registry_path().exists()  # nothing written
 
 
-def test_include_excluded_allows_explicit_update(client):
+def test_include_excluded_flag_refused_loudly(client):
+    """The include_excluded bypass is closed outright (data-boundary C-2):
+    passing it is a 400, not a silently ignored flag."""
     c, runs_dir = client
     rec = _record("T-1", exclusion_status="EXCLUDED", target_tier="Excluded")
     _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa", [rec])
     r = _update(c, "RUN-20260615-100000-aaaa",
                 selected_record_ids=["T-1"], include_excluded=True)
+    assert r.status_code == 400
+    assert "no longer supported" in r.json()["detail"]
+    assert not registry_update.registry_path().exists()  # nothing written
+
+
+def test_update_strips_legacy_commercial_fields(client):
+    """Touching a pre-prune entry converges it to identity-only."""
+    c, runs_dir = client
+    _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa", [_record("T-1")])
+    # Seed a legacy registry entry (same domain → priority match) still
+    # carrying the four commercial fields.
+    legacy_entry = {
+        "practice_registry_id": "legacy1",
+        "google_place_id": "", "website_domain": "alpha-clinic.com",
+        "phone_digits": "4045551000", "name_normalized": "alpha womens health",
+        "address_normalized": "atlanta ga 30301", "npi": "",
+        "practice_name": "Alpha Women's Health",
+        "website_url": "https://alpha-clinic.com", "phone": "(404) 555-1000",
+        "address_full": "Atlanta, GA 30301", "address_city": "Atlanta",
+        "address_state": "GA", "address_zip": "30301", "specialty": "OBGYN",
+        "first_seen_at": "2026-06-01T00:00:00+00:00",
+        "last_seen_at": "2026-06-01T00:00:00+00:00",
+        "current_tier": "Contender", "bullseye_score": 61,
+        "exclusion_status": "CLEAR", "enrichment_status": "complete",
+        "change_history": [{"field": "phone", "old": "x", "new": "(404) 555-1000",
+                            "changed_at": "2026-06-01T00:00:00+00:00",
+                            "enrichment_run_id": "RUN-OLD"}],
+    }
+    registry_update.registry_path().parent.mkdir(parents=True, exist_ok=True)
+    registry_update.registry_path().write_text(json.dumps({
+        "version": "1", "updated_at": "", "entry_count": 1,
+        "entries": {"legacy1": legacy_entry},
+    }), encoding="utf-8")
+
+    r = _update(c, "RUN-20260615-100000-aaaa", selection_mode="bullseye_only")
     assert r.status_code == 200
-    assert r.json()["registry_update_count"] == 1
-    entry = next(iter(_load_registry(runs_dir)["entries"].values()))
-    assert entry["exclusion_status"] == "EXCLUDED"
+    assert r.json()["updated_count"] == 1
+    entry = _load_registry(runs_dir)["entries"]["legacy1"]
+    for field in registry_update.COMMERCIAL_ENTRY_FIELDS:
+        assert field not in entry, field
+    # Identity and history survive the strip.
+    assert entry["practice_name"] == "Alpha Women's Health"
+    assert entry["change_history"][0]["enrichment_run_id"] == "RUN-OLD"
 
 
 def test_needs_review_rejected_by_default(client):
@@ -232,9 +275,9 @@ def test_failed_record_always_rejected(client):
     c, runs_dir = client
     rec = _record("T-1", enrichment_status="failed")
     _seed_enrichment_run(runs_dir, "RUN-20260615-100000-aaaa", [rec])
-    # Even with both override flags, failed is rejected.
+    # Even with the needs_review override flag, failed is rejected.
     r = _update(c, "RUN-20260615-100000-aaaa", selected_record_ids=["T-1"],
-                include_excluded=True, include_needs_review=True)
+                include_needs_review=True)
     assert r.json()["registry_update_count"] == 0
     assert any("failed" in x["reason"] for x in r.json()["rejected"])
 

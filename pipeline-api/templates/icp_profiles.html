@@ -16,6 +16,9 @@
 {% if import_error %}
 <div class="alert alert-error">{{ import_error }}</div>
 {% endif %}
+{% if shared_warning %}
+<div class="alert alert-warning">{{ shared_warning }}</div>
+{% endif %}
 
 <div class="card upload-card" style="margin-bottom:24px;">
   <p class="eyebrow">Import ICP Profile</p>

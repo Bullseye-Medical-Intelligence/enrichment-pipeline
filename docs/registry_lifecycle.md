@@ -78,8 +78,19 @@ Display / contact: `practice_name`, `website_url`, `phone`, `address_full`,
 
 Provenance / state: `first_seen_at`, `last_seen_at`, `first_discovery_run_id`,
 `last_discovery_run_id`, `last_enrichment_run_id`, `last_reviewed_at`,
-`current_tier`, `bullseye_score`, `exclusion_status`, `enrichment_status`,
 `source_pipeline_version`, `evidence_path`, `change_history[]`.
+
+**The registry is identity + provenance ONLY.** The per-client commercial
+fields it once carried (`current_tier`, `bullseye_score`, `exclusion_status`,
+`enrichment_status`) were removed by the data-boundary fix
+(`docs/data-boundary-model.md` C-1, decided fix-only 2026-08-17): any two
+clients whose runs resolved to the same practice silently clobbered each
+other's values, with no attribution. `registry_update.py` never writes them,
+strips them from legacy entries on touch, and
+`pipeline-api/prune_registry.py` removes them wholesale (with a Phase 0
+backup). A client's tier/score for a practice lives only in that run's
+`enriched_targets.json`. EXCLUDED records never enter the registry — the
+former `include_excluded` API bypass is closed (C-2).
 
 ## `google_place_id` on the enrichment path
 

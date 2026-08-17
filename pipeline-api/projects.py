@@ -188,6 +188,19 @@ def list_projects() -> list[dict]:
     return projects
 
 
+def projects_referencing_icp(icp_profile_id: str) -> list[str]:
+    """Project ids whose config references the given ICP profile.
+
+    Backs the shared-ICP edit warning (docs/data-boundary-model.md, Section H
+    decision 2026-08-17: warn, don't block): an edit to a profile referenced by
+    more than one live project re-scores every FUTURE run of those projects.
+    """
+    return sorted(
+        p["project_id"] for p in list_projects()
+        if p.get("icp_profile_id") == icp_profile_id and p.get("project_id")
+    )
+
+
 def create_project(project_data: dict) -> dict:
     """
     Create a new project directory and write its project_config.json.
