@@ -128,6 +128,21 @@ def test_stale_running_reported_failed(tmp_path):
     assert json.loads(path.read_text())["T-1"]["state"] == "running"
 
 
+def test_non_string_started_at_degrades_not_500(tmp_path):
+    """A null or numeric started_at (hand-edit / partial write) must be treated
+    like an unparseable timestamp — reported failed — not raise TypeError."""
+    runner.mark_refresh_running(tmp_path, ["T-1", "T-2"], "re-enrich")
+    path = tmp_path / runner.REFRESH_STATUS_FILENAME
+    data = json.loads(path.read_text())
+    data["T-1"]["started_at"] = None
+    data["T-2"]["started_at"] = 1234567890
+    path.write_text(json.dumps(data))
+
+    loaded = runner.load_refresh_status(tmp_path)
+    assert loaded["T-1"]["state"] == "failed"
+    assert loaded["T-2"]["state"] == "failed"
+
+
 # ---------------------------------------------------------------------------
 # Batch monitor: nonzero exit surfaces per-record failure
 # ---------------------------------------------------------------------------

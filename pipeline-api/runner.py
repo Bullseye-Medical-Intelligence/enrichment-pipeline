@@ -641,7 +641,9 @@ def load_refresh_status(run_directory: Path) -> dict:
             continue
         try:
             started = datetime.fromisoformat(entry.get("started_at", ""))
-        except ValueError:
+        except (ValueError, TypeError):
+            # TypeError: a hand-edited/partially-written entry with a null or
+            # numeric started_at — must degrade like unparseable, not 500.
             started = None
         # A naive timestamp (hand-edited file, older writer) cannot be compared
         # against the tz-aware cutoff — treat it as UTC rather than 500 the GET
