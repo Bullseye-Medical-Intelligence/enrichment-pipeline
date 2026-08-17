@@ -195,6 +195,20 @@ a Jinja global). Signals sharing a label roll up to the strongest state
 (yes > inferred > no > not_found). Generic and RULE-3-compliant — no client/signal
 names in code; other clients opt in by adding `column_label` to their seed profile.
 
+**Evidence Anchor Audit**: manual, pre-delivery audit that every
+directly-observed `"yes"` signal's `evidence_text` on Bullseye/Contender
+(client-shipped tier) records still matches the archived Evidence Vault text —
+the mechanical hallucination tripwire for Contenders, the one shipped tier
+with no mandatory analyst sign-off. The API builds the work-list
+(override-aware `displayed_tier`; inferred and operator-overridden signals
+excluded) and shells out to the pipeline's `audit_anchors.py` via subprocess.
+Zero LLM, zero network. Results persist to `anchor_audit_report.json` (atomic;
+records without a vault snapshot report `not_auditable`, never a silent pass).
+Report-only: no record is mutated, the `verification` object is never touched,
+and the promote/hold/disqualify vocabulary is deliberately not reused. Never
+runs automatically on completion. Routes: `POST /runs/{run_id}/check-anchors`,
+`GET /dashboard/{run_id}/anchor-audit`; triggered from the Audit ▾ dropdown.
+
 **Evidence Link Checker**: manual, pre-delivery audit that evidence source URLs
 in Bullseye/Contender (client-shipped tier) records still resolve. The API
 collects signal `source_url`s and shells out to the pipeline's `check_links.py`

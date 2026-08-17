@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Evidence Anchor Audit — {{ run_id }} — BEMI{% endblock %}
+{% block content %}
+<div style="max-width:980px;margin:0 auto;padding:24px 16px;">
+
+  <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">Evidence Anchor Audit</div>
+  <h1 style="font-family:'Instrument Serif',serif;font-size:30px;font-weight:400;margin:0 0 4px;">Anchor Audit Report</h1>
+  <p class="text-muted" style="margin:0 0 20px;font-size:13px;">Confirms every confirmed-yes signal's evidence quote on Bullseye and Contender records still appears verbatim in the archived crawl text. Report only — no record is changed; a failed anchor means the quote needs operator review before shipping. Inferred and operator-overridden signals are not audited.</p>
+
+  {% if not report %}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:28px 24px;text-align:center;">
+    <p style="font-size:15px;margin:0 0 6px;">No anchor audit has been run yet.</p>
+    <p class="text-muted" style="font-size:13px;margin:0 0 16px;">Run it before shipping a deliverable — it is free and takes seconds.</p>
+    <form method="post" action="/runs/{{ run_id }}/check-anchors" style="display:inline;">
+      <button type="submit" class="btn btn-submit">Audit Evidence Anchors</button>
+    </form>
+  </div>
+  {% else %}
+
+  <div style="background:var(--ink);color:var(--surface);border-radius:10px;padding:16px 22px;margin-bottom:18px;font-size:13px;">
+    <strong>{{ report.records_audited }}</strong> records &nbsp;·&nbsp;
+    <strong>{{ report.signals_audited }}</strong> signals audited &nbsp;·&nbsp;
+    <strong style="color:{{ '#ffb4a2' if report.signals_failed else '#6ee7a8' }};">{{ report.signals_failed }}</strong> failed
+    {% if report.records_not_auditable %}
+    &nbsp;·&nbsp;<strong style="color:#ffb4a2;">{{ report.records_not_auditable }}</strong> not auditable (no vault snapshot)
+    {% endif %}
+    {% if report.skipped_overrides %}
+    &nbsp;·&nbsp;<span style="color:rgba(247,246,244,0.45);">{{ report.skipped_overrides }} overridden signal(s) skipped</span>
+    {% endif %}
+    <span style="color:rgba(247,246,244,0.45);margin-left:10px;">audited {{ report.audited_at[:16] | replace("T", " ") }}</span>
+  </div>
+
+  {% if flagged_rows %}
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px;background:var(--white);border:1px solid var(--border);">
+    <thead>
+      <tr style="border-bottom:2px solid var(--border);text-align:left;">
+        <th style="padding:8px 12px;">Account</th>
+        <th style="padding:8px 12px;">Tier</th>
+        <th style="padding:8px 12px;">Problem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in flagged_rows %}
+      <tr style="border-bottom:1px solid #f0eeea;">
+        <td style="padding:7px 12px;">{{ row.practice_name }}</td>
+        <td style="padding:7px 12px;">{{ row.tier }}</td>
+        <td style="padding:7px 12px;">
+          {% if row.status == "not_auditable" %}
+          <span class="badge" style="background:#b45309;color:var(--white);">NOT AUDITABLE</span>
+          No Evidence Vault snapshot for this record — enriched before capture existed, or the snapshot was lost. Re-crawl to make it auditable.
+          {% else %}
+          {% for failure in row.failures %}
+          <div style="margin-bottom:4px;">
+            <span class="badge" style="background:#b91c1c;color:var(--white);">{{ "NO QUOTE" if failure.classification == "no_evidence_text" else "NOT ANCHORED" }}</span>
+            {{ failure.signal_label }}
+            <a href="/dashboard/{{ run_id }}/evidence/{{ row.record_id }}" style="margin-left:6px;font-size:11.5px;">view snapshot</a>
+          </div>
+          {% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert alert-success"><strong>Every audited evidence quote anchors to the archived crawl text.</strong> Nothing flagged.</div>
+  {% endif %}
+
+  <form method="post" action="/runs/{{ run_id }}/check-anchors" style="margin-top:18px;display:inline-block;">
+    <button type="submit" class="btn btn-secondary">Re-run Audit</button>
+  </form>
+  {% endif %}
+
+  <div style="margin-top:20px;">
+    <a href="/dashboard/{{ run_id }}" class="btn btn-secondary">← Back to Run</a>
+  </div>
+</div>
+{% endblock %}

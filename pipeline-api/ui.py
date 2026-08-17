@@ -1602,6 +1602,180 @@ def check_links_route(run_id: str, username: str = Depends(auth.require_session)
     return RedirectResponse(url=f"/dashboard/{run_id}/link-check", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Evidence Anchor Audit — report-only, zero LLM. Mechanically confirms every
+# directly-observed "yes" signal's evidence_text on client-shipped-tier
+# records still matches the archived Evidence Vault text. Shells out to the
+# pipeline's audit_anchors.py (same pattern as check_links.py); persists the
+# report to anchor_audit_report.json. Catches fabricated or drifted quotes on
+# Contenders — the one shipped tier with no mandatory analyst sign-off.
+# ---------------------------------------------------------------------------
+
+_ANCHOR_AUDIT_REPORT_FILENAME = "anchor_audit_report.json"
+_ANCHOR_AUDIT_TIMEOUT_SECONDS = 120
+
+
+def _build_anchor_worklist(records: list[dict]) -> tuple[list[dict], int]:
+    """Work-list of directly-observed "yes" signals on client-shipped tiers.
+
+    Returns (worklist, skipped_overrides). Excluded by design: inferred
+    signals (their evidence lives on the reinforcing signal) and operator
+    signal overrides (override evidence is operator-authored, not crawler
+    text — anchoring it would always false-fail).
+    """
+    worklist = []
+    skipped_overrides = 0
+    for r in records:
+        if r.get("displayed_tier") not in _LINK_CHECK_TIERS:
+            continue
+        signal_ids = []
+        for sig in r.get("signals") or []:
+            if sig.get("signal_state") != "yes" or sig.get("state_inferred"):
+                continue
+            if sig.get("is_override"):
+                skipped_overrides += 1
+                continue
+            if sig.get("signal_id"):
+                signal_ids.append(sig["signal_id"])
+        if signal_ids:
+            worklist.append({
+                "record_id": record_adapter.get_record_id(r),
+                "practice_name": r.get("practice_name", ""),
+                "tier": r.get("displayed_tier", ""),
+                "signal_ids": signal_ids,
+            })
+    return worklist, skipped_overrides
+
+
+def _read_anchor_audit_report(run_directory: Path) -> dict | None:
+    """Load a run's persisted anchor audit report, or None if absent/malformed."""
+    path = run_directory / _ANCHOR_AUDIT_REPORT_FILENAME
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _build_anchor_audit_report(worklist: list[dict], results: list[dict]) -> dict:
+    """Join audit classifications back onto the work-list's display fields."""
+    by_id = {r["record_id"]: r for r in results}
+    rows = []
+    audited_signals = 0
+    failed_signals = 0
+    not_auditable = 0
+    for item in worklist:
+        result = by_id.get(item["record_id"], {})
+        status = result.get("status", "not_auditable")
+        signals = result.get("signals", [])
+        if status == "not_auditable":
+            not_auditable += 1
+        audited_signals += len(signals)
+        failed_signals += sum(
+            1 for s in signals if s.get("classification") != "anchored")
+        rows.append({
+            "record_id": item["record_id"],
+            "practice_name": item["practice_name"],
+            "tier": item["tier"],
+            "status": status,
+            "signals": signals,
+        })
+    return {
+        "audited_at": datetime.now().astimezone().isoformat(),
+        "records_audited": len(worklist),
+        "signals_audited": audited_signals,
+        "signals_failed": failed_signals,
+        "records_not_auditable": not_auditable,
+        "results": rows,
+    }
+
+
+@router.post("/runs/{run_id}/check-anchors")
+def check_anchors_route(run_id: str, username: str = Depends(auth.require_session)):
+    """Run the evidence anchor audit for a completed run (manual trigger only).
+
+    Sync def so the subprocess executes in FastAPI's threadpool. Report-only:
+    no record is mutated and the `verification` object is never touched.
+    """
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if status.status != "complete":
+        raise HTTPException(status_code=409, detail="Run is not complete")
+
+    run_directory = runs.run_dir(run_id)
+    merged_records, _ = _load_merged_records(run_id, status)
+    worklist, skipped_overrides = _build_anchor_worklist(merged_records)
+
+    results: list[dict] = []
+    if worklist:
+        cli_input = {"records": [
+            {"record_id": w["record_id"], "signal_ids": w["signal_ids"]}
+            for w in worklist
+        ]}
+        try:
+            proc = subprocess.run(
+                [config.PYTHON_EXECUTABLE,
+                 str(config.PIPELINE_REPO_PATH / "audit_anchors.py"),
+                 "--run-dir", str(run_directory)],
+                input=json.dumps(cli_input).encode("utf-8"),
+                capture_output=True,
+                cwd=str(config.PIPELINE_REPO_PATH),
+                timeout=_ANCHOR_AUDIT_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail="Anchor audit timed out")
+        if proc.returncode != 0:
+            logger.error("Anchor audit exited %d: %.500s",
+                         proc.returncode, proc.stderr.decode("utf-8", "replace"))
+            raise HTTPException(status_code=500, detail="Anchor audit failed")
+        try:
+            results = json.loads(proc.stdout.decode("utf-8")).get("results", [])
+        except json.JSONDecodeError:
+            logger.error("Anchor audit returned non-JSON: %.300s", proc.stdout[:300])
+            raise HTTPException(status_code=500, detail="Bad anchor audit output")
+
+    report = _build_anchor_audit_report(worklist, results)
+    report["skipped_overrides"] = skipped_overrides
+    reviews._atomic_write(run_directory / _ANCHOR_AUDIT_REPORT_FILENAME, report)
+    logger.info(
+        "Anchor audit for run %s: %d records, %d signals, %d failed by '%s'",
+        run_id, report["records_audited"], report["signals_audited"],
+        report["signals_failed"], username,
+    )
+    return RedirectResponse(url=f"/dashboard/{run_id}/anchor-audit", status_code=303)
+
+
+@router.get("/dashboard/{run_id}/anchor-audit", response_class=HTMLResponse)
+async def anchor_audit_page(
+    request: Request,
+    run_id: str,
+    username: str = Depends(auth.require_session),
+):
+    """Render the persisted evidence anchor audit report for a run."""
+    status = runs.get_run(run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    report = _read_anchor_audit_report(runs.run_dir(run_id))
+    flagged_rows = []
+    for row in (report or {}).get("results", []):
+        if row.get("status") == "all_anchored":
+            continue
+        failures = [s for s in row.get("signals", [])
+                    if s.get("classification") != "anchored"]
+        flagged_rows.append({**row, "failures": failures})
+    return _render(
+        "anchor_audit.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        report=report,
+        flagged_rows=flagged_rows,
+    )
+
+
 @router.get("/dashboard/{run_id}/link-check", response_class=HTMLResponse)
 async def link_check_page(
     request: Request,

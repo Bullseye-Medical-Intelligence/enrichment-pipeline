@@ -856,6 +856,23 @@ All post-run CLIs follow the same pattern: load `enriched_targets.json`, process
 
 **`suppress_run.py`** — re-checks all non-suppressed records against an updated customer suppression CSV (`load_suppression_list` / `check_suppression`). Newly matched records are marked EXCLUDED and `_customer_suppressed=True`; already-suppressed records are left unchanged. Only writes when at least one new match is found. Zero LLM cost.
 
+### audit_anchors.py (evidence anchor audit CLI)
+
+`audit_anchors.py` (repo root) mechanically confirms that "yes" signals'
+`evidence_text` still appears verbatim (normalized whitespace + case — the
+same `_anchor_check` the verification pass uses) in the record's Evidence
+Vault pages. Zero LLM, zero network. stdin
+`{"records": [{"record_id", "signal_ids": [...]}]}` → stdout
+`{"results": [{record_id, status: all_anchored|has_failures|not_auditable,
+signals: [{signal_id, classification: anchored|not_anchored|no_evidence_text,
+page, page_url}]}]}`. Matching runs against each archived page file in full
+(never the budget-capped combined context), so a quote on a later page cannot
+false-fail on truncation. Records without a vault snapshot report
+`not_auditable`, never a silent pass. Tier and override eligibility live in
+the API (it builds the work-list); called via subprocess (same pattern as
+check_links.py). Report-only — writes nothing and never touches signals or
+the `verification` object.
+
 ### check_links.py (evidence link checker CLI)
 
 `check_links.py` (repo root) verifies evidence source URLs still resolve:
