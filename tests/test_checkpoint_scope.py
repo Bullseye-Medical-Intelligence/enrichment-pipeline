@@ -135,6 +135,55 @@ class TestCheckpointReuse:
     def test_missing_checkpoint_is_empty(self, tmp_path):
         assert _load_step4_checkpoint(str(tmp_path), "anyfp") == {}
 
+    def test_truncated_multibyte_tail_tolerated(self, tmp_path):
+        """A kill mid-append inside a multibyte character must not make every
+        resume crash with UnicodeDecodeError — only the torn line is dropped."""
+        csv, cfg, icp = _inputs(tmp_path)
+        fp = _checkpoint_fingerprint(csv, cfg, icp)
+        _init_step4_checkpoint(str(tmp_path), fp)
+        _write_step4_checkpoint(str(tmp_path), {"id": "T-1", "enrichment_status": "complete"})
+        torn = json.dumps(
+            {"id": "T-2", "practice_name": "Café Médical", "enrichment_status": "complete"},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        cut = torn.rfind("é".encode("utf-8")) + 1  # ends after the first byte of a 2-byte char
+        with open(_checkpoint_path(str(tmp_path)), "ab") as f:
+            f.write(torn[:cut])
+        assert set(_load_step4_checkpoint(str(tmp_path), fp)) == {"T-1"}
+
+    def test_stale_writer_cannot_append_under_new_stamp(self, tmp_path):
+        """A still-running older process must not append its records under a
+        newer run's re-stamped header (shared ./output default)."""
+        csv, cfg, icp = _inputs(tmp_path)
+        fp_old = _checkpoint_fingerprint(csv, cfg, icp)
+        _init_step4_checkpoint(str(tmp_path), fp_old)
+        # A second run edits the ICP and re-stamps the shared checkpoint.
+        Path(icp).write_text(
+            json.dumps({"signals": [{"signal_id": "S-1", "positive_weight": 99}]}),
+            encoding="utf-8",
+        )
+        fp_new = _checkpoint_fingerprint(csv, cfg, icp)
+        _init_step4_checkpoint(str(tmp_path), fp_new)
+
+        _write_step4_checkpoint(
+            str(tmp_path), {"id": "T-old", "enrichment_status": "complete"}, fp_old)
+        _write_step4_checkpoint(
+            str(tmp_path), {"id": "T-new", "enrichment_status": "complete"}, fp_new)
+
+        assert set(_load_step4_checkpoint(str(tmp_path), fp_new)) == {"T-new"}
+
+    def test_unstamped_discard_message_names_version_not_inputs(self, tmp_path, capsys):
+        """The one-time pre-upgrade discard must not blame the operator's inputs."""
+        csv, cfg, icp = _inputs(tmp_path)
+        _checkpoint_path(str(tmp_path)).write_text(
+            json.dumps({"id": "T-1", "enrichment_status": "complete"}) + "\n",
+            encoding="utf-8",
+        )
+        assert _load_step4_checkpoint(str(tmp_path), _checkpoint_fingerprint(csv, cfg, icp)) == {}
+        out = capsys.readouterr().out
+        assert "older pipeline version" in out
+        assert "input file changed" not in out
+
 
 class TestCleanup:
 

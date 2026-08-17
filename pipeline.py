@@ -143,15 +143,33 @@ def _checkpoint_fingerprint(input_file: str, config_path: str, icp_path: str) ->
     return h.hexdigest()[:16]
 
 
-def _write_step4_checkpoint(output_dir: str, record: dict) -> None:
-    """Append a completed Step 4 record to the NDJSON checkpoint file (best-effort, thread-safe)."""
+def _write_step4_checkpoint(output_dir: str, record: dict, fingerprint: str = "") -> None:
+    """Append a completed Step 4 record to the NDJSON checkpoint file (best-effort, thread-safe).
+
+    When a fingerprint is supplied, the append is skipped unless the file's
+    header still carries it: with the fixed ./output default, a still-running
+    older process could otherwise append its old-ICP records under a newer
+    run's re-stamped header, mixing two runs' records in one checkpoint.
+    """
     path = _checkpoint_path(output_dir)
     with _checkpoint_lock:
         try:
+            if fingerprint and _read_checkpoint_stamp(path) != fingerprint:
+                return  # another run owns this checkpoint now
             with open(path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except OSError:
             pass  # Non-fatal: worst case is re-processing this record on resume
+
+
+def _read_checkpoint_stamp(path: Path) -> str:
+    """The fingerprint stamped on a checkpoint's first line, or "" when absent."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            head = json.loads(f.readline())
+        return head.get("_checkpoint_fingerprint", "") if isinstance(head, dict) else ""
+    except (OSError, json.JSONDecodeError):
+        return ""
 
 
 def _init_step4_checkpoint(output_dir: str, fingerprint: str) -> None:
@@ -187,7 +205,16 @@ def _load_step4_checkpoint(output_dir: str, fingerprint: str) -> dict:
     path = _checkpoint_path(output_dir)
     if not path.exists():
         return {}
-    lines = path.read_text(encoding="utf-8").splitlines()
+    raw = path.read_bytes()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        # A process killed mid-append can truncate inside a multibyte
+        # character. Decode leniently so only the torn tail line fails JSON
+        # parse below (and is re-processed) instead of resume crashing with
+        # UnicodeDecodeError on every retry.
+        text = raw.decode("utf-8", errors="replace")
+    lines = text.splitlines()
 
     stamped = ""
     if lines:
@@ -199,10 +226,18 @@ def _load_step4_checkpoint(output_dir: str, fingerprint: str) -> dict:
         except json.JSONDecodeError:
             pass
     if stamped != fingerprint:
-        # Different inputs (or an unstamped checkpoint from an older version).
-        # Reusing it would restore signals scored against a different ICP.
-        print("  Discarding a checkpoint written for different inputs "
-              "(config, ICP, or input file changed) — re-extracting from scratch.")
+        # Reusing a mismatched checkpoint would restore signals scored against
+        # a different ICP. Name the actual reason: an unstamped file is a
+        # pre-upgrade checkpoint (resume cannot verify what produced it), not
+        # evidence the operator changed anything.
+        if stamped:
+            print("  Discarding a checkpoint written for different inputs "
+                  "(config, ICP, or input file changed) — re-extracting from scratch.")
+        else:
+            print("  Discarding a checkpoint from an older pipeline version "
+                  "(no input fingerprint recorded, so resume cannot verify it matches "
+                  "this run) — re-extracting from scratch. This happens once after "
+                  "upgrading.")
         try:
             path.unlink()
         except OSError:
@@ -951,7 +986,7 @@ def run_pipeline(input_file: str, source_type: str,
             # transient failure (rate-limit exhaustion, an API error) should be
             # re-attempted on resume, not frozen as failed and skipped forever.
             if record.get("enrichment_status") != "failed":
-                _write_step4_checkpoint(output_dir, record)
+                _write_step4_checkpoint(output_dir, record, checkpoint_fingerprint)
 
     # Verification (Step 5) runs as a separate post-run pass via verify_run.py.
 
