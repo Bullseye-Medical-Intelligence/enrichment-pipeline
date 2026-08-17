@@ -340,6 +340,7 @@ Where the platform's knowledge lives, and what each file is authoritative for:
 | [`pipeline-api/RUNBOOK.md`](pipeline-api/RUNBOOK.md) | Deploying and operating the API |
 | [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) | Engagement state: clients, cartridge history, next deliverables |
 | [`docs/operator-sop.md`](docs/operator-sop.md) | Operator standard procedure for running an engagement |
+| [`docs/client-onboarding-form.md`](docs/client-onboarding-form.md) | Client onboarding form: what a client provides to build their cartridge, plus the operator-only answer→cartridge mapping (client-ready Word copy alongside as `Bullseye_Client_Onboarding_Form.docx`) |
 | [`docs/operator_market_radar_workflow.md`](docs/operator_market_radar_workflow.md) / [`docs/discovery_architecture.md`](docs/discovery_architecture.md) | Market Radar: operator workflow and internals |
 | [`docs/registry_lifecycle.md`](docs/registry_lifecycle.md) | Master Practice Registry: when it changes and by whom |
 | [`docs/data-boundary-model.md`](docs/data-boundary-model.md) | Client/project data-boundary analysis: confirmed contamination risks, proposed client-scoping model, open business decisions |
