@@ -23,7 +23,7 @@ import os
 import sys
 from pathlib import Path
 
-from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
+from output.atomic_write import ConcurrentRunChange, guarded_staged_write, stat_fingerprint
 
 # Load .env from pipeline-api/ when running from repo root
 _env_path = Path(__file__).parent / "pipeline-api" / ".env"
@@ -186,16 +186,17 @@ def run_rescore_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     from enrichment.scorer import strip_internal_fields
     updated_records = [strip_internal_fields(r) for r in updated_records]
 
-    # Atomic write: write to a .tmp file then os.replace() for crash safety.
-    tmp_path = targets_path.with_suffix(".json.tmp")
     if wrapper is not None:
         wrapper["records"] = updated_records
         output = wrapper
     else:
         output = updated_records
 
-    tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
-    guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
+    # Staged to a unique temp file, installed only if the run is unchanged.
+    guarded_staged_write(
+        run_dir, targets_path, loaded_fp,
+        lambda f: json.dump(output, f, indent=2, ensure_ascii=False),
+    )
 
     return {"rescored": rescored, "tier_changes": tier_changes}
 

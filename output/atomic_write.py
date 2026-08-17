@@ -116,26 +116,58 @@ def guarded_replace(
     targets_path: Path,
     tmp_path: Path,
     loaded_fingerprint: Optional[tuple],
+    timeout: float = _LOCK_TIMEOUT_SECONDS,
 ) -> None:
     """os.replace(tmp_path -> targets_path) only if the file is unchanged.
 
     Under the run-state lock, compares the current fingerprint against the one
-    captured when the pass loaded the file. On mismatch the tmp file is
-    removed and ConcurrentRunChange is raised — the concurrent writer's data
-    wins and the pass reports it wrote nothing.
+    captured when the pass loaded the file. On mismatch ConcurrentRunChange is
+    raised — the concurrent writer's data wins and the pass reports it wrote
+    nothing. The tmp file is removed on EVERY failure path (mismatch, lock
+    timeout, deleted run dir), never left behind.
     """
-    with run_state_lock(run_directory):
-        if stat_fingerprint(targets_path) != loaded_fingerprint:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise ConcurrentRunChange(
-                f"{Path(targets_path).name} changed while this pass was running "
-                "(a concurrent merge or another pass wrote it). Nothing was "
-                "written — re-run the pass against the current data."
-            )
-        os.replace(tmp_path, targets_path)
+    try:
+        with run_state_lock(run_directory, timeout=timeout):
+            if stat_fingerprint(targets_path) != loaded_fingerprint:
+                raise ConcurrentRunChange(
+                    f"{Path(targets_path).name} changed while this pass was running "
+                    "(a concurrent merge or another pass wrote it). Nothing was "
+                    "written — re-run the pass against the current data."
+                )
+            os.replace(tmp_path, targets_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def guarded_staged_write(
+    run_directory: Path,
+    targets_path: Path,
+    loaded_fingerprint: Optional[tuple],
+    write_fn: Callable[[object], None],
+) -> None:
+    """Stage content to a UNIQUE temp file in run_directory, then guarded_replace.
+
+    mkstemp gives every pass its own staging file: with a shared fixed tmp name
+    (the old `.json.tmp`), two concurrent passes could interleave so that pass A
+    installed pass B's bytes under A's fingerprint check. write_fn receives an
+    open text file handle; the temp file is removed on any failure.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=run_directory, prefix=".pass_", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            write_fn(f)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    guarded_replace(run_directory, targets_path, tmp, loaded_fingerprint)
 
 
 def atomic_write(path: Path, write_fn: Callable[[object], None], *, newline: str = "") -> None:

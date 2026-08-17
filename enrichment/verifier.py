@@ -33,7 +33,7 @@ from pathlib import Path
 import openai
 from dotenv import load_dotenv
 
-from output.atomic_write import guarded_replace, stat_fingerprint
+from output.atomic_write import guarded_staged_write, stat_fingerprint
 from output.evidence_writer import read_record_context_text
 
 load_dotenv()
@@ -398,9 +398,9 @@ def run_verification_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     else:
         out = records
 
-    tmp = targets_path.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(out, f, indent=2, default=str)
-    guarded_replace(run_dir, targets_path, tmp, loaded_fp)
+    guarded_staged_write(
+        run_dir, targets_path, loaded_fp,
+        lambda f: json.dump(out, f, indent=2, default=str),
+    )
 
     return stats

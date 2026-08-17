@@ -43,7 +43,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
+from output.atomic_write import ConcurrentRunChange, guarded_staged_write, stat_fingerprint
 
 # Load .env from pipeline-api/ when running from repo root
 _env_path = Path(__file__).parent / "pipeline-api" / ".env"
@@ -245,16 +245,17 @@ def run_reextract_pass(
     from enrichment.scorer import strip_internal_fields
     records = [strip_internal_fields(r) for r in records]
 
-    tmp_path = targets_path.with_suffix(".json.tmp")
     if wrapper is not None:
         wrapper["records"] = records
         output = wrapper
     else:
         output = records
 
-    tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
     try:
-        guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
+        guarded_staged_write(
+            run_dir, targets_path, loaded_fp,
+            lambda f: json.dump(output, f, indent=2, ensure_ascii=False),
+        )
     except ConcurrentRunChange as e:
         # The write was refused (concurrent merge landed mid-pass) but the
         # Claude spend already happened. Return a refusal summary carrying the
