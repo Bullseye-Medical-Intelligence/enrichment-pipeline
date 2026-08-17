@@ -36,6 +36,7 @@ Reads credentials from pipeline-api/.env (ANTHROPIC_API_KEY, CLAUDE_MODEL).
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -189,15 +190,32 @@ def run_reextract_pass(
     old_tiers = {i: records[i].get("target_tier", "") for i in eligible_indices}
     old_scores = {i: records[i].get("bullseye_score", 0) for i in eligible_indices}
     tier_changes: list[dict] = []
+    failures: list[dict] = []
 
-    def _process(idx: int) -> int:
-        _reextract_record(records[idx], icp_signals, run_config, contact_strategy)
-        return idx
+    def _process(idx: int) -> tuple[int, str]:
+        # Per-record isolation, like pipeline Step 4: one Anthropic error must
+        # not abort the whole pass after real spend on every other record. A
+        # failed record is restored to its pre-pass state — re-extraction is a
+        # re-adjudication, so an error must not blank previously good data
+        # (the record's tier/exclusion fields were reset before extraction).
+        original = copy.deepcopy(records[idx])
+        try:
+            _reextract_record(records[idx], icp_signals, run_config, contact_strategy)
+            return idx, ""
+        except Exception as e:
+            records[idx] = original
+            return idx, str(e)[:200]
 
     with ThreadPoolExecutor(max_workers=llm_concurrency) as pool:
         futures = {pool.submit(_process, i): i for i in eligible_indices}
         for future in as_completed(futures):
-            idx = future.result()
+            idx, error = future.result()
+            if error:
+                failures.append({
+                    "practice_name": records[idx].get("practice_name", ""),
+                    "error": error,
+                })
+                continue
             new_tier = records[idx].get("target_tier", "")
             new_score = records[idx].get("bullseye_score", 0)
             if old_tiers[idx] != new_tier or old_scores[idx] != new_score:
@@ -246,7 +264,9 @@ def run_reextract_pass(
         return {
             "refused": True,
             "error": str(e),
-            "processed": len(eligible_indices),
+            "processed": len(eligible_indices) - len(failures),
+            "failed": len(failures),
+            "failures": failures[:20],
             "skipped": len(records) - len(eligible_indices),
             "skipped_excluded": skipped_excluded,
             "tier_changes": [],
@@ -254,7 +274,9 @@ def run_reextract_pass(
         }
 
     return {
-        "processed": len(eligible_indices),
+        "processed": len(eligible_indices) - len(failures),
+        "failed": len(failures),
+        "failures": failures[:20],
         "skipped": len(records) - len(eligible_indices),
         "skipped_excluded": skipped_excluded,
         "tier_changes": tier_changes,

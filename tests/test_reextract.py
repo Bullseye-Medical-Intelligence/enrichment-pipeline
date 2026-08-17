@@ -367,6 +367,72 @@ class TestReextractPass:
 # _load_run_config and _load_icp_data helpers
 # ---------------------------------------------------------------------------
 
+class TestPerRecordErrorIsolation:
+    """One failing record must not abort the pass or blank its own data.
+
+    Regression: an Anthropic 429 from any worker re-raised out of
+    future.result(), aborting the whole pass after real spend on every other
+    record and writing nothing.
+    """
+
+    def _setup(self, tmp_path, monkeypatch, fail_names):
+        import enrichment.exclusion_checker as ec
+        import enrichment.scorer as sc
+        import enrichment.signal_extractor as se
+        monkeypatch.setattr(ec, "apply_exclusions", _fake_apply_exclusions)
+        monkeypatch.setattr(sc, "validate_and_finalize", _fake_validate_and_finalize)
+
+        def _sometimes_failing(record, icp_signals, context_text, run_id, **kwargs):
+            if record.get("practice_name") in fail_names:
+                raise RuntimeError("overloaded_error: Anthropic API overloaded")
+            return _fake_extract(record, icp_signals, context_text, run_id, **kwargs)
+
+        monkeypatch.setattr(se, "extract_signals", _sometimes_failing)
+
+    def test_other_records_still_processed_and_written(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch, fail_names={"Clinic B"})
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, [
+            _make_record(practice_name="Clinic A"),
+            _make_record(practice_name="Clinic B"),
+        ])
+
+        stats = run_reextract_pass(run_dir, [], {}, {}, llm_concurrency=1)
+
+        assert stats["processed"] == 1
+        assert stats["failed"] == 1
+        assert stats["failures"][0]["practice_name"] == "Clinic B"
+        assert "overloaded" in stats["failures"][0]["error"]
+        # The successful record's update was written.
+        written = json.loads(
+            (run_dir / "enriched_targets.json").read_text(encoding="utf-8"))
+        by_name = {r["practice_name"]: r for r in written["records"]}
+        assert by_name["Clinic A"]["target_tier"] == "Bullseye"
+
+    def test_failed_record_keeps_pre_pass_state(self, tmp_path, monkeypatch):
+        """The failing record's tier/exclusion fields were reset before the LLM
+        call — a failure must restore them, not persist the blanked record."""
+        self._setup(tmp_path, monkeypatch, fail_names={"Clinic B"})
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, [
+            _make_record(practice_name="Clinic A"),
+            _make_record(practice_name="Clinic B", target_tier="Contender",
+                         bullseye_score=55),
+        ])
+
+        run_reextract_pass(run_dir, [], {}, {}, llm_concurrency=1)
+
+        written = json.loads(
+            (run_dir / "enriched_targets.json").read_text(encoding="utf-8"))
+        failed_rec = next(r for r in written["records"]
+                          if r["practice_name"] == "Clinic B")
+        assert failed_rec["target_tier"] == "Contender"      # not blanked
+        assert failed_rec["bullseye_score"] == 55
+        assert failed_rec["exclusion_status"] == "CLEAR"
+
+
 class TestRefusedWriteReportsUsage:
     """A pass whose final write is refused still reports its Claude spend.
 
