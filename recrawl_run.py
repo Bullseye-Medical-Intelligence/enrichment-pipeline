@@ -18,7 +18,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 # Load .env from the repo root when running from here
@@ -106,6 +108,27 @@ def _write_records_atomic(
     guarded_replace(run_dir, targets_path, tmp, loaded_fp)
 
 
+def _commit_staged_evidence(staging_root: Path, run_dir: Path) -> None:
+    """Move staged evidence snapshots into the run's Evidence Vault (newest wins).
+
+    Called only after the guarded enriched_targets.json write succeeded, so the
+    vault is replaced together with the signals that quote it — never for a pass
+    that aborted or was refused.
+    """
+    staged = staging_root / EVIDENCE_DIRNAME
+    if not staged.is_dir():
+        return
+    dest_root = run_dir / EVIDENCE_DIRNAME
+    dest_root.mkdir(exist_ok=True)
+    for record_dir in staged.iterdir():
+        if not record_dir.is_dir():
+            continue
+        dest = dest_root / record_dir.name
+        if dest.exists():
+            shutil.rmtree(dest)
+        record_dir.rename(dest)
+
+
 def _match_key(record: dict) -> tuple:
     """Return a stable key for matching a recrawled record back to the full list."""
     return (
@@ -121,7 +144,7 @@ from enrichment.exclusion_checker import apply_exclusions
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, MIN_CONTEXT_CHARS
 from output.atomic_write import ConcurrentRunChange, guarded_replace, stat_fingerprint
-from output.evidence_writer import write_record_evidence
+from output.evidence_writer import EVIDENCE_DIRNAME, write_record_evidence
 
 # Default page budget when the run config snapshot carries no
 # max_pages_per_practice — mirrors the standard crawl's depth so a re-crawl
@@ -194,110 +217,119 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     stats = {"recrawled": 0, "improved": 0, "still_blocked": 0,
              "skipped_excluded": skipped_excluded}
 
-    for record in blocked:
-        url = (record.get("website_url") or "").strip()
-        name = record.get("practice_name", "Unknown")
+    # Evidence snapshots are STAGED here and committed only after the guarded
+    # final write succeeds. Replacing the real vault per record mid-loop would
+    # desync it from the stored signals whenever the pass aborts afterwards
+    # (fail-closed exclusion check, concurrent-change refusal): old signals
+    # quoting old pages would be anchor-checked against new page text.
+    staging_root = Path(tempfile.mkdtemp(dir=run_dir, prefix=".evidence_staging_"))
+    try:
+        for record in blocked:
+            url = (record.get("website_url") or "").strip()
+            name = record.get("practice_name", "Unknown")
 
-        if not url:
-            print(f"  [SKIP] {name} — no website URL")
-            stats["still_blocked"] += 1
-            continue
+            if not url:
+                print(f"  [SKIP] {name} — no website URL")
+                stats["still_blocked"] += 1
+                continue
 
-        print(f"\n  [RECRAWL] {name} ({url})")
-        stats["recrawled"] += 1
+            print(f"\n  [RECRAWL] {name} ({url})")
+            stats["recrawled"] += 1
 
-        # Re-crawl with Playwright at the standard page budget — a re-crawl
-        # must never see less of a site than the first pass did.
-        result = crawl_with_playwright(url=url, max_pages=max_pages)
+            # Re-crawl with Playwright at the standard page budget — a re-crawl
+            # must never see less of a site than the first pass did.
+            result = crawl_with_playwright(url=url, max_pages=max_pages)
 
-        if result.error or not result.context_text:
-            print(f"    [FAIL] Re-crawl failed: {result.error or 'no content returned'}")
-            stats["still_blocked"] += 1
-            continue
+            if result.error or not result.context_text:
+                print(f"    [FAIL] Re-crawl failed: {result.error or 'no content returned'}")
+                stats["still_blocked"] += 1
+                continue
 
-        if len(result.context_text) < MIN_CONTEXT_CHARS:
-            print(f"    [THIN] Re-crawl returned only {len(result.context_text)} chars — still blocked")
-            stats["still_blocked"] += 1
-            continue
+            if len(result.context_text) < MIN_CONTEXT_CHARS:
+                print(f"    [THIN] Re-crawl returned only {len(result.context_text)} chars — still blocked")
+                stats["still_blocked"] += 1
+                continue
 
-        # Re-crawl succeeded — update crawl fields
-        print(f"    [OK] Re-crawl returned {len(result.context_text)} chars")
-        original_confidence = record.get("source_confidence")
-        record["_context_text"] = result.context_text
-        record["_pages_crawled"] = result.pages_crawled
-        record["_evidence_pages"] = result.pages or []
-        record["source_confidence"] = "partial"
-        # Use the resolved final URL if it differs
-        if result.url and result.url != url:
-            record["website_url"] = result.url
+            # Re-crawl succeeded — update crawl fields
+            print(f"    [OK] Re-crawl returned {len(result.context_text)} chars")
+            original_confidence = record.get("source_confidence")
+            record["_context_text"] = result.context_text
+            record["_pages_crawled"] = result.pages_crawled
+            record["_evidence_pages"] = result.pages or []
+            record["source_confidence"] = "partial"
+            # Use the resolved final URL if it differs
+            if result.url and result.url != url:
+                record["website_url"] = result.url
 
-        # Step 4: Signal extraction (Claude)
-        run_id = record.get("enrichment_run_id") or (
-            payload.get("run_id") if isinstance(payload, dict) else ""
-        ) or "recrawl"
+            # Step 4: Signal extraction (Claude)
+            run_id = record.get("enrichment_run_id") or (
+                payload.get("run_id") if isinstance(payload, dict) else ""
+            ) or "recrawl"
 
-        try:
-            record = extract_signals(
-                record=record,
-                icp_signals=icp_signals,
-                context_text=result.context_text,
-                run_id=run_id,
-                bullseye_min_score=bullseye_min,
-                target_specialty=target_specialty,
-                contact_strategy=contact_strategy,
-            )
-        except Exception as e:
-            print(f"    [FAIL] Signal extraction failed: {str(e)[:150]}")
-            # Revert the crawl mutations so this record stays in its original blocked
-            # state (retryable) instead of being written with a leaked _context_text
-            # and a flipped source_confidence that removes it from the re-crawl set.
-            for k in ("_context_text", "_pages_crawled", "_evidence_pages"):
-                record.pop(k, None)
-            record["source_confidence"] = original_confidence
-            stats["still_blocked"] += 1
-            continue
+            try:
+                record = extract_signals(
+                    record=record,
+                    icp_signals=icp_signals,
+                    context_text=result.context_text,
+                    run_id=run_id,
+                    bullseye_min_score=bullseye_min,
+                    target_specialty=target_specialty,
+                    contact_strategy=contact_strategy,
+                )
+            except Exception as e:
+                print(f"    [FAIL] Signal extraction failed: {str(e)[:150]}")
+                # Revert the crawl mutations so this record stays in its original blocked
+                # state (retryable) instead of being written with a leaked _context_text
+                # and a flipped source_confidence that removes it from the re-crawl set.
+                for k in ("_context_text", "_pages_crawled", "_evidence_pages"):
+                    record.pop(k, None)
+                record["source_confidence"] = original_confidence
+                stats["still_blocked"] += 1
+                continue
 
-        # Evidence Vault: persist the fresh pages now that extraction succeeded,
-        # so the archived snapshot matches the text the new signals were scored
-        # against. (Writing before extraction would desync vault and signals on
-        # an extraction failure, which reverts the record.)
-        if result.pages:
-            write_record_evidence(
-                run_dir, record.get("id", ""), result.pages, provenance="recrawl"
-            )
+            # Stage the fresh pages now that extraction succeeded; the staged
+            # snapshot is committed to the real vault only with the final write,
+            # so vault and signals always change together.
+            if result.pages:
+                write_record_evidence(
+                    staging_root, record.get("id", ""), result.pages, provenance="recrawl"
+                )
 
-        # Step 6: Exclusion check — fail closed. An error here aborts the whole
-        # pass before the final write (nothing is written), rather than forcing
-        # the record CLEAR and proceeding, which could un-exclude it.
-        record = apply_exclusions(record, run_config)
+            # Step 6: Exclusion check — fail closed. An error here aborts the whole
+            # pass before the final write (nothing is written), rather than forcing
+            # the record CLEAR and proceeding, which could un-exclude it.
+            record = apply_exclusions(record, run_config)
 
-        # Step 7: Scoring validation
-        record = validate_and_finalize(record)
+            # Step 7: Scoring validation
+            record = validate_and_finalize(record)
 
-        # Strip internal fields before writing back (matching pipeline output convention)
-        record = strip_internal_fields(record)
+            # Strip internal fields before writing back (matching pipeline output convention)
+            record = strip_internal_fields(record)
 
-        tier = record.get("target_tier", "")
-        score = record.get("bullseye_score", 0)
-        print(f"    [RESULT] Tier: {tier} | Score: {score}")
-        stats["improved"] += 1
+            tier = record.get("target_tier", "")
+            score = record.get("bullseye_score", 0)
+            print(f"    [RESULT] Tier: {tier} | Score: {score}")
+            stats["improved"] += 1
 
-        # Merge back into the full record list by stable key
-        key = _match_key(record)
-        idx = key_to_index.get(key)
-        if idx is not None:
-            records[idx] = record
-        else:
-            # Fallback: match by id alone
-            record_id = (record.get("id") or "").strip()
-            if record_id:
-                for i, r in enumerate(records):
-                    if (r.get("id") or "").strip() == record_id:
-                        records[i] = record
-                        break
+            # Merge back into the full record list by stable key
+            key = _match_key(record)
+            idx = key_to_index.get(key)
+            if idx is not None:
+                records[idx] = record
+            else:
+                # Fallback: match by id alone
+                record_id = (record.get("id") or "").strip()
+                if record_id:
+                    for i, r in enumerate(records):
+                        if (r.get("id") or "").strip() == record_id:
+                            records[i] = record
+                            break
 
-    # Atomic write (refused if the file changed since load)
-    _write_records_atomic(run_dir, records, payload, loaded_fp)
+        # Atomic write (refused if the file changed since load)
+        _write_records_atomic(run_dir, records, payload, loaded_fp)
+        _commit_staged_evidence(staging_root, run_dir)
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
 
     return stats
 

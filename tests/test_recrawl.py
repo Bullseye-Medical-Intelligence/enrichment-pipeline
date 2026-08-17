@@ -518,6 +518,134 @@ class TestEvidenceVaultWrite:
         assert not (run_dir / "evidence" / "blocked-1").exists()
 
 
+def _seed_old_vault(run_dir: Path, record_id: str) -> str:
+    """Write a pre-existing vault snapshot for the record; returns its page text."""
+    from output.evidence_writer import write_record_evidence
+    old_text = "Original page text the stored signals quote. " * 20
+    write_record_evidence(
+        run_dir, record_id, [{"url": "https://blocked1.com", "text": old_text}],
+        provenance="crawl",
+    )
+    return old_text
+
+
+def _no_staging_leftover(run_dir: Path) -> bool:
+    """True when no .evidence_staging_* directory remains in the run dir."""
+    return not list(run_dir.glob(".evidence_staging_*"))
+
+
+class TestVaultStaysInSyncOnAbort:
+    """An aborted pass must leave the Evidence Vault exactly as it found it.
+
+    Regression: vault snapshots were replaced per record mid-loop while the
+    signals write was a single guarded write at the end — an abort after the
+    replacement left old signals quoting old pages paired with new vault text.
+    """
+
+    def test_vault_untouched_when_exclusion_check_aborts(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+        old_text = _seed_old_vault(run_dir, "blocked-1")
+
+        new_text = "Completely different page text after the re-crawl. " * 20
+        extraction_result = _make_extraction_result(
+            context_text=new_text, url="https://blocked1.com"
+        )
+        extraction_result.pages = [{"url": "https://blocked1.com", "text": new_text}]
+        enriched = _make_enriched_record(blocked)
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", return_value=enriched),
+            patch("recrawl_run.apply_exclusions", side_effect=RuntimeError("bad rule")),
+        ):
+            import pytest
+            with pytest.raises(RuntimeError):
+                run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        page = (run_dir / "evidence" / "blocked-1" / "page-01.txt").read_text(encoding="utf-8")
+        assert page == old_text
+        index = json.loads(
+            (run_dir / "evidence" / "blocked-1" / "index.json").read_text(encoding="utf-8")
+        )
+        assert index[0]["provenance"] == "crawl"
+        assert _no_staging_leftover(run_dir)
+
+    def test_vault_untouched_when_final_write_refused(self, tmp_path):
+        from output.atomic_write import ConcurrentRunChange
+
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+        targets = run_dir / "enriched_targets.json"
+        old_text = _seed_old_vault(run_dir, "blocked-1")
+
+        new_text = "Completely different page text after the re-crawl. " * 20
+        extraction_result = _make_extraction_result(
+            context_text=new_text, url="https://blocked1.com"
+        )
+        extraction_result.pages = [{"url": "https://blocked1.com", "text": new_text}]
+        enriched = _make_enriched_record(blocked)
+
+        def _extract_and_merge(**kwargs):
+            merged = {"run_id": run_dir.name, "records": [
+                {**blocked, "practice_name": "Merged Elsewhere"}
+            ], "record_count": 1}
+            tmp = run_dir / "merge.tmp"
+            tmp.write_text(json.dumps(merged), encoding="utf-8")
+            import os as _os
+            _os.replace(tmp, targets)
+            return enriched
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", side_effect=_extract_and_merge),
+            patch("recrawl_run.apply_exclusions", side_effect=lambda r, cfg: r),
+            patch("recrawl_run.validate_and_finalize", side_effect=lambda r: r),
+            patch("recrawl_run.strip_internal_fields", side_effect=lambda r: r),
+        ):
+            import pytest
+            with pytest.raises(ConcurrentRunChange):
+                run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        page = (run_dir / "evidence" / "blocked-1" / "page-01.txt").read_text(encoding="utf-8")
+        assert page == old_text
+        assert _no_staging_leftover(run_dir)
+
+    def test_vault_committed_after_successful_write(self, tmp_path):
+        """The success path still replaces the old snapshot (newest capture wins)."""
+        run_dir = _make_run_dir(tmp_path)
+        blocked = _blocked_record(1, confidence="limited")
+        _write_targets(run_dir, [blocked])
+        _seed_old_vault(run_dir, "blocked-1")
+
+        new_text = "Completely different page text after the re-crawl. " * 20
+        extraction_result = _make_extraction_result(
+            context_text=new_text, url="https://blocked1.com"
+        )
+        extraction_result.pages = [{"url": "https://blocked1.com", "text": new_text}]
+        enriched = _make_enriched_record(blocked)
+
+        with (
+            patch("recrawl_run.crawl_with_playwright", return_value=extraction_result),
+            patch("recrawl_run.extract_signals", return_value=enriched),
+            patch("recrawl_run.apply_exclusions", side_effect=lambda r, cfg: r),
+            patch("recrawl_run.validate_and_finalize", side_effect=lambda r: r),
+            patch("recrawl_run.strip_internal_fields", side_effect=lambda r: r),
+        ):
+            stats = run_browser_recrawl_pass(run_dir, _SAMPLE_ICP_SIGNALS)
+
+        assert stats["improved"] == 1
+        page = (run_dir / "evidence" / "blocked-1" / "page-01.txt").read_text(encoding="utf-8")
+        assert page == new_text
+        index = json.loads(
+            (run_dir / "evidence" / "blocked-1" / "index.json").read_text(encoding="utf-8")
+        )
+        assert index[0]["provenance"] == "recrawl"
+        assert _no_staging_leftover(run_dir)
+
+
 class TestExclusionFailClosed:
     """An exclusion-check error aborts the pass — never forces CLEAR."""
 
