@@ -1,6 +1,22 @@
-# Review Backlog — Verified Open Findings
+# Review Backlog — Verified Findings
 
-**Status:** open. Found by a ten-lens adversarial code review of the branch diff
+**Status: P1-1 through P2-13 RESOLVED** (2026-08-17, one commit per finding,
+each re-verified against the tree before fixing, each with regression tests
+pinning the failure scenario — commits `6f2df64`..`99ed5eb`). The P1/P2 items
+below are kept for their analysis value; **only the P3 debt section and the
+"Previously deferred" section remain open.**
+
+Resolution notes that refine the original findings:
+- **P1-5** was the flagged product call: viewing surfaces (results page,
+  Contact Queue, confirm queue, compare) now degrade per damaged entry with a
+  visible banner (`reviews.get_reviews_lenient`); write paths and
+  client-shipping paths stay fail-closed on `get_reviews`.
+- **P2-11** added `output/atomic_write.py::guarded_staged_write` (per-pass
+  `mkstemp` staging) and all five CLIs route through it.
+- **P2-8** moved the usage increment into `runs.add_llm_usage` under the run
+  lock; both merge monitors book scratch-run usage from `run_log.json`.
+
+Originally found by a ten-lens adversarial code review of the branch diff
 `origin/main...claude/keen-sagan-hhpl3y` (commits `57c7ebd`, `4fb3ec7`, `83a9bf3`,
 `b41a3ec`), 2026-07-26. Every item below was verified against the actual tree —
 either traced by the reviewing agent with quoted code, or independently re-checked.
@@ -15,7 +31,7 @@ architecture — separate decision track).
 
 ---
 
-## P1 — wrong data or lost work, reachable in normal operation
+## P1 — wrong data or lost work, reachable in normal operation [ALL RESOLVED]
 
 ### 1. Internal Sales Handoff silently lost analyst notes (regression)
 `pipeline-api/reports/pdf_report.py` — the analyst-note leak fix (`4fb3ec7`)
@@ -75,7 +91,7 @@ correct; read paths are a product call: keep hard-fail (visible damage) or degra
 per-entry with a visible warning. Decide deliberately — currently one `null` entry
 takes down the client package.
 
-## P2 — wrong numbers on screens, contract mismatches
+## P2 — wrong numbers on screens, contract mismatches [ALL RESOLVED]
 
 ### 6. Two count writers, two semantics — completion vs refresh
 `pipeline-api/runner.py::_read_completion_counts` still counts **raw
@@ -148,7 +164,7 @@ the example silently reverts the check. **Fix:** accurate message per branch
 (empty vs placeholder); add a test iterating `.env.example` values asserting
 `_is_configured` is False for each.
 
-## P3 — technical debt (grouped; fix opportunistically)
+## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,
   LockTimeout→409, returncode→500, count-refresh, and a 4×-copied

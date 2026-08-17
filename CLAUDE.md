@@ -379,10 +379,13 @@ calls) to this script — it must remain stateless and fast.
 
 ## Open Findings
 
-`docs/review-backlog.md` carries the verified, ranked open findings from the latest
-adversarial code review (P1 regressions first), and `docs/data-boundary-model.md`
-the client/project data-boundary analysis awaiting business decisions. Consult both
-before starting remediation work — do not rediscover them.
+`docs/review-backlog.md` carries the verified, ranked findings from the latest
+adversarial code review — **P1-1 through P2-13 are resolved** (2026-08-17, one
+commit per finding with pinning tests); only its P3 debt items (fix
+opportunistically, when already editing that file) and previously-deferred items
+remain open. `docs/data-boundary-model.md` holds the client/project data-boundary
+analysis awaiting business decisions. Consult both before starting remediation
+work — do not rediscover them.
 
 ---
 
