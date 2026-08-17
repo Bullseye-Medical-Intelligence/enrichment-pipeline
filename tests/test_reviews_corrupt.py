@@ -199,12 +199,78 @@ def test_bulk_review_route_409(client, run_dir):
     _assert_untouched(run_dir)
 
 
-def test_dashboard_read_view_surfaces_damage_not_empty_state(client, run_dir):
-    """A corrupt overlay must not render as a healthy 'no reviews' dashboard."""
+def test_dashboard_read_view_degrades_with_visible_warning(client, run_dir):
+    """Deliberate call (review backlog P1-5): the results page RENDERS on a
+    damaged overlay — records show as unreviewed — with a visible error banner,
+    so the operator can see the run in order to repair the file. Never a
+    healthy-looking 'no reviews' state, and never a run-wide 409 either."""
     r = client.get(f"/dashboard/{_RUN_ID}")
-    assert r.status_code == 409
+    assert r.status_code == 200
     assert "could not be read" in r.text
+    assert "NOT lost" in r.text
     _assert_untouched(run_dir)
+
+
+def test_dashboard_drops_only_damaged_entries(client, run_dir):
+    """Per-entry damage: valid entries still render, damaged ones show as
+    unreviewed, and the banner names the damaged record."""
+    (run_dir / "enriched_targets.json").write_text(json.dumps(
+        {"run_id": _RUN_ID, "records": [_record("T-1"), _record("T-2")]}))
+    (run_dir / "reviews.json").write_text(json.dumps({
+        "T-1": dict(_PRIOR_OVERLAY["T-1"]),
+        "T-2": None,
+    }))
+    r = client.get(f"/dashboard/{_RUN_ID}")
+    assert r.status_code == 200
+    assert "damaged" in r.text and "T-2" in r.text     # banner names the entry
+    assert "confirmed by phone" in r.text              # valid entry still shown
+
+
+def test_client_package_still_fails_closed_on_corrupt_overlay(client, run_dir):
+    """Shipping surfaces keep the hard 409: a degraded QC overlay must never
+    silently decide what reaches a client."""
+    r = client.get(f"/runs/{_RUN_ID}/client-package")
+    assert r.status_code == 409
+    assert "could not be read" in r.json()["detail"]
+    _assert_untouched(run_dir)
+
+
+# ---------------------------------------------------------------------------
+# get_reviews_lenient contract
+# ---------------------------------------------------------------------------
+
+def test_lenient_clean_overlay_no_warning(tmp_path):
+    (tmp_path / "reviews.json").write_text(json.dumps(_PRIOR_OVERLAY))
+    loaded, warning = reviews.get_reviews_lenient(_RUN_ID, tmp_path)
+    assert loaded == _PRIOR_OVERLAY
+    assert warning == ""
+
+
+def test_lenient_missing_file_no_warning(tmp_path):
+    assert reviews.get_reviews_lenient(_RUN_ID, tmp_path) == ({}, "")
+
+
+def test_lenient_corrupt_file_degrades_with_warning(run_dir):
+    loaded, warning = reviews.get_reviews_lenient(_RUN_ID, run_dir)
+    assert loaded == {}
+    assert "could not be read" in warning
+    _assert_untouched(run_dir)
+
+
+def test_lenient_non_object_root_degrades_with_warning(tmp_path):
+    (tmp_path / "reviews.json").write_text('["not", "a", "dict"]')
+    loaded, warning = reviews.get_reviews_lenient(_RUN_ID, tmp_path)
+    assert loaded == {}
+    assert "wrong structure" in warning
+
+
+def test_lenient_keeps_valid_entries_names_damaged(tmp_path):
+    (tmp_path / "reviews.json").write_text(
+        '{"T-good": {"qc_status": "approved"}, "T-bad": "just a string"}'
+    )
+    loaded, warning = reviews.get_reviews_lenient(_RUN_ID, tmp_path)
+    assert loaded == {"T-good": {"qc_status": "approved"}}
+    assert "T-bad" in warning and "1 damaged entry" in warning
 
 
 # ---------------------------------------------------------------------------

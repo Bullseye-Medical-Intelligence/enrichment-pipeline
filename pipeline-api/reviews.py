@@ -74,9 +74,10 @@ def get_reviews(run_id: str, run_directory: Path) -> dict[str, dict]:
         ReviewsLoadError: the file exists but is malformed, unreadable, or its
         root is not an object. Fail-closed by design — returning {} here let a
         subsequent save atomically replace the file with only the entry being
-        touched, silently erasing all prior analyst work. Write paths abort
-        before mutating anything; read paths surface the damage instead of
-        rendering a misleading "no reviews" state.
+        touched, silently erasing all prior analyst work. Write paths and
+        client-shipping paths abort before mutating or exporting anything;
+        operator VIEWING surfaces use get_reviews_lenient instead, which
+        degrades per entry with a visible warning.
     """
     reviews_path = run_directory / REVIEWS_FILENAME
     if not reviews_path.exists():
@@ -109,6 +110,58 @@ def get_reviews(run_id: str, run_directory: Path) -> dict[str, dict]:
                 f"entry {record_id!r} is {type(entry).__name__}, expected an object",
             )
     return data
+
+
+def get_reviews_lenient(run_id: str, run_directory: Path) -> tuple[dict[str, dict], str]:
+    """Read the overlay for DISPLAY surfaces, degrading instead of raising.
+
+    Deliberate product split (review backlog P1-5): operator VIEW surfaces
+    (results page, Contact Queue, confirm queue, compare) must stay usable when
+    reviews.json is damaged — otherwise the operator cannot even see the run to
+    repair it. Damaged entries are dropped (those records render as unreviewed)
+    and whole-file damage degrades to an empty overlay; either case returns a
+    non-empty operator-facing warning for a visible banner. The damaged file is
+    never modified.
+
+    WRITE paths and client-shipping paths (save/bulk-approve, CSV exports,
+    client package, brief publishing, handoff download) must keep using
+    get_reviews: fail-closed there is what prevents a save from erasing analyst
+    work and a damaged QC overlay from shipping a rejected record.
+
+    Returns (reviews, warning) — warning is "" when the overlay is clean.
+    """
+    try:
+        return get_reviews(run_id, run_directory), ""
+    except ReviewsLoadError:
+        pass
+
+    reviews_path = run_directory / REVIEWS_FILENAME
+    repair_hint = (
+        "Analyst work is NOT lost — repair or restore reviews.json; saving "
+        "reviews and client exports stay blocked until it is repaired."
+    )
+    try:
+        with open(reviews_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        return {}, (
+            f"The analyst review file could not be read ({e}). "
+            f"All records are shown as unreviewed. {repair_hint}"
+        )
+    if not isinstance(data, dict):
+        return {}, (
+            f"The analyst review file has the wrong structure (root is "
+            f"{type(data).__name__}, expected an object). All records are "
+            f"shown as unreviewed. {repair_hint}"
+        )
+    valid = {k: v for k, v in data.items() if isinstance(v, dict)}
+    damaged = [str(k) for k, v in data.items() if not isinstance(v, dict)]
+    shown = ", ".join(damaged[:5]) + ("…" if len(damaged) > 5 else "")
+    noun = "entry" if len(damaged) == 1 else "entries"
+    return valid, (
+        f"The analyst review file has {len(damaged)} damaged {noun} ({shown}); "
+        f"those records are shown as unreviewed. {repair_hint}"
+    )
 
 
 def get_review(run_id: str, record_id: str, run_directory: Path) -> dict:

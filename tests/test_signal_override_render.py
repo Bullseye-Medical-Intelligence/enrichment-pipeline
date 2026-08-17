@@ -126,7 +126,7 @@ def test_override_not_found_to_yes(run_dir):
     _write_run(run_dir, _reviews_with_override(
         "S-ICP-007", "yes", "https://acme.example.com/financing", "not_found"))
 
-    merged = ui._load_merged_records(_RUN_ID, _COMPLETE)
+    merged, _ = ui._load_merged_records(_RUN_ID, _COMPLETE)
     sig = _signals_by_id(merged[0])["S-ICP-007"]
     assert sig["signal_state"] == "yes"          # now FOUND
     assert sig["is_override"] is True
@@ -147,7 +147,7 @@ def test_override_yes_to_no(run_dir):
     _write_run(run_dir, _reviews_with_override(
         "S-ICP-001", "no", "https://acme.example.com/closed", "yes"))
 
-    merged = ui._load_merged_records(_RUN_ID, _COMPLETE)
+    merged, _ = ui._load_merged_records(_RUN_ID, _COMPLETE)
     sig = _signals_by_id(merged[0])["S-ICP-001"]
     assert sig["signal_state"] == "no"
     assert sig["is_override"] is True
@@ -168,7 +168,7 @@ def test_override_yes_to_no(run_dir):
 
 def test_no_overrides_signals_unchanged(run_dir):
     _write_run(run_dir, {})  # empty reviews map: no overrides
-    merged = ui._load_merged_records(_RUN_ID, _COMPLETE)
+    merged, _ = ui._load_merged_records(_RUN_ID, _COMPLETE)
     assert merged[0]["signals"] == _record()["signals"]
     for s in merged[0]["signals"]:
         assert "is_override" not in s
@@ -186,7 +186,7 @@ def test_tier_and_signal_overlay_coexist(run_dir):
     )
     _write_run(run_dir, reviews_map)
 
-    merged = ui._load_merged_records(_RUN_ID, _COMPLETE)
+    merged, _ = ui._load_merged_records(_RUN_ID, _COMPLETE)
     rec = merged[0]
     # Tier overlay intact.
     assert rec["displayed_tier"] == "Bullseye"
@@ -208,7 +208,7 @@ def test_badge_only_on_overridden_signal(run_dir):
     _write_run(run_dir, _reviews_with_override(
         "S-ICP-007", "yes", "https://acme.example.com/pay", "not_found"))
 
-    merged = ui._load_merged_records(_RUN_ID, _COMPLETE)
+    merged, _ = ui._load_merged_records(_RUN_ID, _COMPLETE)
     by_id = _signals_by_id(merged[0])
     assert by_id["S-ICP-007"].get("is_override") is True
     assert "is_override" not in by_id["S-ICP-001"]  # crawl-confirmed, untouched
@@ -245,7 +245,7 @@ def test_enriched_targets_untouched_by_render(run_dir):
 def test_zero_overrides_full_passthrough(run_dir):
     # No reviews.json at all (the most common case).
     _write_run(run_dir, reviews_map=None)
-    merged = ui._load_merged_records(_RUN_ID, _COMPLETE)
+    merged, _ = ui._load_merged_records(_RUN_ID, _COMPLETE)
     # apply_signal_overrides is a pure pass-through here: signals deep-equal raw,
     # no is_override flag introduced anywhere.
     assert merged[0]["signals"] == _record()["signals"]

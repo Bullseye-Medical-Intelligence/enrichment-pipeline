@@ -994,7 +994,9 @@ def _compare_runs(run_id_a: str, run_id_b: str) -> list[dict]:
         with open(path, "r", encoding="utf-8") as f:
             payload = _json.load(f)
         recs = record_adapter.normalize_records_payload(payload)
-        all_rev = reviews.get_reviews(run_id, rd)
+        # View-only comparison: degrade on a damaged overlay (damaged entries
+        # compare as unreviewed) instead of 409ing the whole page.
+        all_rev, _ = reviews.get_reviews_lenient(run_id, rd)
         return {
             (
                 (r.get("practice_name") or "").lower().strip(),
@@ -1213,22 +1215,26 @@ async def bulk_delete_runs_route(
 # Results / review dashboard
 # ---------------------------------------------------------------------------
 
-def _load_merged_records(run_id: str, status) -> list[dict]:
+def _load_merged_records(run_id: str, status) -> tuple[list[dict], str]:
     """Load a run's records merged with their review overlay.
 
-    Each record gains record_id, review, and displayed_tier. Returns an empty
-    list unless the run is 'complete' (enriched) or 'ingested' (roster loaded,
-    not yet enriched) — both have a written enriched_targets.json to render.
+    Each record gains record_id, review, and displayed_tier. Returns
+    (merged, reviews_warning): an empty list unless the run is 'complete'
+    (enriched) or 'ingested' (roster loaded, not yet enriched) — both have a
+    written enriched_targets.json to render. reviews_warning is non-empty when
+    reviews.json is damaged: viewing surfaces degrade (damaged entries render
+    as unreviewed) and must show the warning; write paths stay fail-closed in
+    reviews.py.
     """
     if status.status not in ("complete", "ingested"):
-        return []
+        return [], ""
     run_directory = runs.run_dir(run_id)
     results_path = run_directory / "enriched_targets.json"
     if not results_path.exists():
-        return []
+        return [], ""
     with open(results_path, "r", encoding="utf-8") as f:
         raw_records = record_adapter.normalize_records_payload(json.load(f))
-    all_reviews = reviews.get_reviews(run_id, run_directory)
+    all_reviews, reviews_warning = reviews.get_reviews_lenient(run_id, run_directory)
     refresh_map = runner.load_refresh_status(run_directory)
     merged = []
     for record in raw_records:
@@ -1257,7 +1263,7 @@ def _load_merged_records(run_id: str, status) -> list[dict]:
             # display-only, from <run_dir>/refresh_status.json.
             "refresh": refresh_map.get(record_id),
         })
-    return merged
+    return merged, reviews_warning
 
 
 def _signal_columns(status) -> list[dict]:
@@ -1319,7 +1325,7 @@ async def results_page(
     if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
 
-    merged_records = _load_merged_records(run_id, status)
+    merged_records, reviews_warning = _load_merged_records(run_id, status)
 
     stats = _calculate_stats(merged_records)
     project_context = _build_project_context(run_id)
@@ -1333,6 +1339,10 @@ async def results_page(
     if notice:
         flash_type = notice_type if notice_type in ("info", "error") else "info"
         flash = {"type": flash_type, "message": notice[:300]}
+    if reviews_warning:
+        # A damaged overlay outranks a transient notice: the operator must see
+        # why records render as unreviewed and what stays blocked.
+        flash = {"type": "error", "message": reviews_warning}
 
     run_directory = runs.run_dir(run_id)
     published_briefs = brief_publisher.get_published_briefs(run_directory)
@@ -1520,7 +1530,7 @@ def check_links_route(run_id: str, username: str = Depends(auth.require_session)
     if status.status != "complete":
         raise HTTPException(status_code=409, detail="Run is not complete")
 
-    merged_records = _load_merged_records(run_id, status)
+    merged_records, _ = _load_merged_records(run_id, status)
     links = _collect_evidence_links(merged_records)
     unique_urls = sorted({link["url"] for link in links})
 
@@ -1722,7 +1732,7 @@ async def contact_queue_page(
     if status is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
 
-    merged_records = _load_merged_records(run_id, status)
+    merged_records, reviews_warning = _load_merged_records(run_id, status)
     for record in merged_records:
         review = record["review"]
         record["contact_priority"] = record_adapter.contact_priority(record, review)
@@ -1757,6 +1767,8 @@ async def contact_queue_page(
         signal_columns=_signal_columns(status),
         project_context=project_context,
         show_all=show_all,
+        flash=({"type": "error", "message": reviews_warning}
+               if reviews_warning else None),
     )
 
 
@@ -2983,7 +2995,9 @@ async def confirm_queue(
         payload = _json.load(f)
     raw_records = payload.get("records", payload) if isinstance(payload, dict) else payload
 
-    all_reviews = reviews.get_reviews(run_id, run_directory)
+    # Viewing surface: degrade on a damaged overlay (damaged entries show as
+    # unreviewed) with a visible banner; bulk-approve stays fail-closed.
+    all_reviews, reviews_warning = reviews.get_reviews_lenient(run_id, run_directory)
     status = runs.get_run(run_id)
 
     pending_bullseyes = []
@@ -3011,6 +3025,8 @@ async def confirm_queue(
         held_count=held,
         disqualified_count=disqualified,
         notice=notice,
+        flash=({"type": "error", "message": reviews_warning}
+               if reviews_warning else None),
     )
 
 
@@ -3444,7 +3460,9 @@ def _brief_stale(run_id: str, run_directory: Path, brief_type: str) -> bool:
         published_at = datetime.fromisoformat(published_at_str)
     except ValueError:
         return False
-    all_reviews = reviews.get_reviews(run_id, run_directory)
+    # Display-only staleness dot: degrade over the valid entries of a damaged
+    # overlay — the results page it renders on already shows the warning banner.
+    all_reviews, _ = reviews.get_reviews_lenient(run_id, run_directory)
     for entry in all_reviews.values():
         reviewed_str = (entry or {}).get("reviewed_at") or ""
         if not reviewed_str:
