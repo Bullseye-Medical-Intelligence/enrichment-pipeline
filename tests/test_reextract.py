@@ -367,6 +367,52 @@ class TestReextractPass:
 # _load_run_config and _load_icp_data helpers
 # ---------------------------------------------------------------------------
 
+class TestRefusedWriteReportsUsage:
+    """A pass whose final write is refused still reports its Claude spend.
+
+    Regression: on ConcurrentRunChange the CLI sys.exit'd before printing its
+    stats line and the route booked usage only on returncode 0 — a refused
+    500-record re-extract burned real Claude calls recorded nowhere.
+    """
+
+    def test_refused_pass_returns_usage_summary(self, tmp_path, monkeypatch):
+        import enrichment.exclusion_checker as ec
+        import enrichment.scorer as sc
+        import enrichment.signal_extractor as se
+        monkeypatch.setattr(ec, "apply_exclusions", _fake_apply_exclusions)
+        monkeypatch.setattr(sc, "validate_and_finalize", _fake_validate_and_finalize)
+
+        run_dir = tmp_path / "RUN-20260101-120000"
+        run_dir.mkdir()
+        _write_targets(run_dir, [_make_record(practice_name="Clinic A")])
+        targets = run_dir / "enriched_targets.json"
+
+        def _extract_and_merge(record, icp_signals, context_text, run_id, **kwargs):
+            # Simulate a batch merge landing while the pass is mid-LLM.
+            merged = {"run_id": "RUN-20260101-120000", "records": [
+                {**_make_record(), "practice_name": "Merged Elsewhere"}
+            ]}
+            tmp = run_dir / "merge.tmp"
+            tmp.write_text(json.dumps(merged), encoding="utf-8")
+            os.replace(tmp, targets)
+            _fake_extract(record, icp_signals, context_text, run_id, **kwargs)
+            record["_llm_usage"] = {"input_tokens": 1200, "output_tokens": 80}
+            return record
+
+        monkeypatch.setattr(se, "extract_signals", _extract_and_merge)
+
+        stats = run_reextract_pass(run_dir, [], {}, {}, llm_concurrency=1)
+
+        assert stats["refused"] is True
+        assert stats["error"]
+        assert stats["llm_call_count"] == 1
+        assert stats["llm_input_tokens"] == 1200
+        assert stats["llm_output_tokens"] == 80
+        # The concurrent merge's data survived; the stale pass wrote nothing.
+        final = json.loads(targets.read_text(encoding="utf-8"))
+        assert final["records"][0]["practice_name"] == "Merged Elsewhere"
+
+
 class TestLoaders:
 
     def test_load_run_config_returns_empty_when_missing(self, tmp_path):

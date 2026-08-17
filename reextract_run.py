@@ -235,7 +235,23 @@ def run_reextract_pass(
         output = records
 
     tmp_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
-    guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
+    try:
+        guarded_replace(run_dir, targets_path, tmp_path, loaded_fp)
+    except ConcurrentRunChange as e:
+        # The write was refused (concurrent merge landed mid-pass) but the
+        # Claude spend already happened. Return a refusal summary carrying the
+        # usage so main() still prints it and the API books the cost — exiting
+        # before the stats line made a refused 500-record pass vanish from the
+        # run's reported spend entirely.
+        return {
+            "refused": True,
+            "error": str(e),
+            "processed": len(eligible_indices),
+            "skipped": len(records) - len(eligible_indices),
+            "skipped_excluded": skipped_excluded,
+            "tier_changes": [],
+            **llm_usage,
+        }
 
     return {
         "processed": len(eligible_indices),
@@ -329,7 +345,11 @@ def main() -> None:
         stats = run_reextract_pass(run_dir, icp_signals, run_config, icp_data, llm_concurrency)
     except ConcurrentRunChange as e:
         sys.exit(str(e))
+    # Always print the stats line — on a refusal it carries the pass's real
+    # Claude usage, which the API books even though the pass failed.
     print(json.dumps(stats))
+    if stats.get("refused"):
+        sys.exit(stats.get("error") or "write refused: run changed during the pass")
 
 
 if __name__ == "__main__":

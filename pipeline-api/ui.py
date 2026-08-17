@@ -2880,20 +2880,19 @@ async def trigger_reextract(
         result = await run_in_threadpool(_run_postrun_cli(run_directory, cmd, 600))
     except locking.LockTimeout:
         raise HTTPException(status_code=409, detail=_POSTRUN_BUSY_DETAIL)
-    if result.returncode != 0:
-        raise HTTPException(status_code=500, detail=f"Re-extraction failed: {result.stderr[:300]}")
 
-    # The pass rewrote signals, scores, and tiers; refresh the run-level counts.
-    await run_in_threadpool(runner.refresh_run_counts, run_id)
-
-    # Fold this pass's Claude spend into the run's reported cost.
+    # Fold this pass's Claude spend into the run's reported cost BEFORE the
+    # failure check: a refused pass (concurrent merge landed mid-pass) exits
+    # non-zero but still prints its stats line, and its spend was real.
     stats = {}
     for line in reversed(result.stdout.strip().splitlines()):
         try:
-            stats = _json.loads(line)
-            break
+            parsed = _json.loads(line)
         except Exception:
             continue
+        if isinstance(parsed, dict):
+            stats = parsed
+            break
     if stats.get("llm_call_count"):
         await run_in_threadpool(
             runner.add_llm_usage, run_id,
@@ -2901,6 +2900,12 @@ async def trigger_reextract(
             stats.get("llm_output_tokens", 0),
             stats.get("llm_call_count", 0),
         )
+
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Re-extraction failed: {result.stderr[:300]}")
+
+    # The pass rewrote signals, scores, and tiers; refresh the run-level counts.
+    await run_in_threadpool(runner.refresh_run_counts, run_id)
 
     return RedirectResponse(url=f"/dashboard/{run_id}", status_code=303)
 
