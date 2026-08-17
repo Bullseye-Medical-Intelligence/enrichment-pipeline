@@ -69,6 +69,52 @@ def _write_reviews(run_dir, reviews_map):
     (run_dir / "reviews.json").write_text(json.dumps(reviews_map), encoding="utf-8")
 
 
+class TestCompletionCountsMatchRefresh:
+    """Completion and refresh must count with identical semantics.
+
+    Regression: _read_completion_counts counted raw target_tier while
+    refresh_run_counts counted effective_tier — a fresh run's counts silently
+    flipped the first time any refresh-triggering action ran.
+    """
+
+    def test_completion_equals_refresh_on_legacy_and_low_score_tiers(self, run_env):
+        _write_records(run_env, [
+            _record("T-1", "Bullseye", score=92),
+            _record("T-2", "Watchlist", score=80),      # legacy alias → Contender
+            _record("T-3", "Contender", score=30),      # low score → Manual Review
+            _record("T-4", "Excluded", exclusion="EXCLUDED"),
+        ])
+        (run_env / "run_log.json").write_text(json.dumps({
+            "records_output": 4, "records_excluded": 1, "records_failed": 0,
+        }), encoding="utf-8")
+
+        completion = runner._read_completion_counts(_RUN_ID)
+        refreshed = runner.refresh_run_counts(_RUN_ID)
+
+        for key in ("bullseye_count", "needs_verification_count",
+                    "contender_count", "manual_review_count", "excluded_count"):
+            assert completion[key] == refreshed[key], key
+        assert completion["bullseye_count"] == 1
+        assert completion["contender_count"] == 1      # Watchlist normalized
+        assert completion["manual_review_count"] == 1  # low-score Contender
+        assert completion["excluded_count"] == 1
+
+    def test_completion_counts_follow_existing_override(self, run_env):
+        """A re-run over a reviewed run counts overrides at completion too."""
+        _write_records(run_env, [_record("T-1", "Contender", score=80)])
+        _write_reviews(run_env, {
+            "T-1": {"override_tier": "Bullseye",
+                    "override_reason": "confirmed by call", "qc_status": "approved"},
+        })
+        (run_env / "run_log.json").write_text(json.dumps({
+            "records_output": 1, "records_excluded": 0, "records_failed": 0,
+        }), encoding="utf-8")
+
+        completion = runner._read_completion_counts(_RUN_ID)
+        assert completion["bullseye_count"] == 1
+        assert completion["contender_count"] == 0
+
+
 class TestRefreshRunCounts:
 
     def test_refresh_replaces_stale_counts(self, run_env):

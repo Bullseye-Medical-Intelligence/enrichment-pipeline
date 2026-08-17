@@ -1666,22 +1666,19 @@ def _read_completion_counts(run_id: str) -> dict:
         try:
             with open(results_path, "r", encoding="utf-8") as f:
                 records = record_adapter.normalize_records_payload(json.load(f))
-            counts["bullseye_count"] = sum(
-                1 for r in records if r.get("target_tier") == "Bullseye"
-            )
-            counts["needs_verification_count"] = sum(
-                1 for r in records if r.get("target_tier") == "Needs Verification"
-            )
-            counts["contender_count"] = sum(
-                1 for r in records if r.get("target_tier") == "Contender"
-            )
-            counts["manual_review_count"] = sum(
-                1 for r in records if r.get("target_tier") == "Manual Review"
-            )
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(
                 "Could not parse enriched_targets.json for run %s: %s", run_id, e
             )
+        else:
+            # Same semantics as refresh_run_counts — count the tier the
+            # operator sees (effective_tier: overrides + retroactive
+            # normalizations), through the same helper. Counting raw
+            # target_tier here meant a fresh run's counts silently flipped the
+            # first time any refresh-triggering action ran.
+            counts.update(_recompute_counts_from_records(
+                records, _reviews_for_counts(run_id, directory)
+            ))
     else:
         logger.warning("enriched_targets.json missing for run %s", run_id)
 
