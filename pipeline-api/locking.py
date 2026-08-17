@@ -110,7 +110,8 @@ class LockTimeout(RuntimeError):
 
 
 @contextmanager
-def file_lock(lock_path: Path, timeout: float = DEFAULT_TIMEOUT_SECONDS):
+def file_lock(lock_path: Path, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+              create_parent: bool = True):
     """Hold an exclusive advisory lock on lock_path for the duration of the block.
 
     Opens a fresh descriptor per acquisition (required: flock is per open file
@@ -118,8 +119,14 @@ def file_lock(lock_path: Path, timeout: float = DEFAULT_TIMEOUT_SECONDS):
     "hold" the lock). Polls non-blocking until timeout, then raises
     LockTimeout. The lock file itself is an empty sibling artifact and is left
     in place (deleting it would race other waiters).
+
+    create_parent=False makes a missing parent directory raise
+    FileNotFoundError instead of being recreated — required for per-run locks,
+    where recreating the parent would resurrect a deleted run directory as a
+    ghost containing only lock files.
     """
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    if create_parent:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
     try:
         deadline = time.monotonic() + timeout
@@ -135,14 +142,28 @@ def file_lock(lock_path: Path, timeout: float = DEFAULT_TIMEOUT_SECONDS):
         os.close(fd)
 
 
+POSTRUN_LOCK_FILENAME = ".postrun.lock"
+
+
 def run_lock_path(run_directory: Path) -> Path:
     """The per-run lock file guarding a run's mutable JSON state."""
     return run_directory / ".run.lock"
 
 
+def postrun_lock_path(run_directory: Path) -> Path:
+    """The per-run job lock a post-run CLI pass holds for its full duration."""
+    return run_directory / POSTRUN_LOCK_FILENAME
+
+
 @contextmanager
 def run_lock(run_directory: Path, timeout: float = DEFAULT_TIMEOUT_SECONDS):
     """Per-run state lock: status.json, reviews.json, refresh_status.json, and
-    in-place enriched_targets.json merges for one run share this lock."""
-    with file_lock(run_lock_path(run_directory), timeout=timeout):
+    in-place enriched_targets.json merges for one run share this lock.
+
+    A deleted run directory raises FileNotFoundError rather than being
+    recreated (create_parent=False) — state must never be written into a
+    ghost of a removed run.
+    """
+    with file_lock(run_lock_path(run_directory), timeout=timeout,
+                   create_parent=False):
         yield

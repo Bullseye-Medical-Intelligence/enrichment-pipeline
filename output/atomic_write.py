@@ -83,7 +83,16 @@ def run_state_lock(run_directory: Path, timeout: float = _LOCK_TIMEOUT_SECONDS):
     mid-transaction on this run and the pass should not write.
     """
     lock_path = Path(run_directory) / RUN_LOCK_FILENAME
-    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    except FileNotFoundError:
+        # The run directory was deleted while the pass ran. Refuse cleanly —
+        # the CLIs already handle ConcurrentRunChange as "wrote nothing" —
+        # instead of dying on an uncaught traceback after full LLM spend.
+        raise ConcurrentRunChange(
+            f"Run directory {Path(run_directory).name} no longer exists "
+            "(deleted while this pass was running). Nothing was written."
+        )
     try:
         deadline = time.monotonic() + timeout
         while not _try_lock(fd):

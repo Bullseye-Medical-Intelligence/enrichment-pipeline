@@ -2603,7 +2603,7 @@ async def registry_update_action(
     )
 
 
-_POSTRUN_LOCK_FILENAME = ".postrun.lock"
+_POSTRUN_LOCK_FILENAME = locking.POSTRUN_LOCK_FILENAME
 _POSTRUN_BUSY_DETAIL = (
     "Another post-run pass is already running on this run — "
     "wait for it to finish, then retry."

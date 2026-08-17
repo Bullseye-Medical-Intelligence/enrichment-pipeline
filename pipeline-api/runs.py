@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 # Accepts current IDs (RUN-YYYYMMDD-HHMMSS-xxxx) and legacy suffix-less ones.
 _RUN_ID_PATTERN = re.compile(r"^RUN-\d{8}-\d{6}(?:-[a-f0-9]{4})?$")
 
+# How long delete_run waits to drain an in-flight state transaction before
+# refusing. Short: contended sections are millisecond-scale JSON writes.
+_DELETE_DRAIN_TIMEOUT_SECONDS = 5.0
+
 
 def is_valid_run_id(run_id: str) -> bool:
     """Return True if run_id matches the canonical RUN-ID format."""
@@ -239,12 +243,40 @@ def delete_run(run_id: str) -> None:
     status = get_run(run_id)
     if status and status.status in ("pending", "running"):
         raise ValueError(f"Cannot delete an active run (status: {status.status}).")
+    # A post-run pass (verify/rescore/re-extract/re-crawl/suppress) holds
+    # .postrun.lock for its full CLI duration and writes no refresh entries —
+    # probe it non-blocking so deletion cannot rmtree the directory from under
+    # a running pass.
+    try:
+        with locking.file_lock(locking.postrun_lock_path(directory), timeout=0.0,
+                               create_parent=False):
+            pass
+    except locking.LockTimeout:
+        raise ValueError(
+            f"Run '{run_id}' has a post-run pass in progress — "
+            "wait for it to finish before deleting."
+        )
     # Drain any in-flight state transaction before removal. The lock is
     # released before rmtree because Windows cannot delete a file that is
-    # still locked open.
-    with locking.run_lock(directory):
-        pass
-    shutil.rmtree(directory)
+    # still locked open. A timeout surfaces as a per-run refusal (ValueError)
+    # so a bulk delete skips the busy run instead of aborting with a 503.
+    try:
+        with locking.run_lock(directory, timeout=_DELETE_DRAIN_TIMEOUT_SECONDS):
+            pass
+    except locking.LockTimeout:
+        raise ValueError(
+            f"Run '{run_id}' is busy with another operation — "
+            "retry the delete in a moment."
+        )
+    try:
+        shutil.rmtree(directory)
+    except OSError as exc:
+        # A concurrent writer recreating files mid-removal (ENOTEMPTY) or a
+        # transient filesystem error: refuse cleanly instead of a 500.
+        raise ValueError(
+            f"Could not fully delete run '{run_id}' ({exc.__class__.__name__}) — "
+            "retry the delete in a moment."
+        ) from exc
     logger.info("Deleted run directory: %s", directory)
 
 
