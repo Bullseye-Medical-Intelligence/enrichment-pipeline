@@ -3,8 +3,9 @@
 **Status: P1-1 through P2-13 RESOLVED** (2026-08-17, one commit per finding,
 each re-verified against the tree before fixing, each with regression tests
 pinning the failure scenario — commits `6f2df64`..`99ed5eb`). The P1/P2 items
-below are kept for their analysis value; **only the P3 debt section and the
-"Previously deferred" section remain open.**
+below are kept for their analysis value. **Still open: items 14-15 (tenth-lens
+findings that arrived after the resolution pass), the P3 debt section, and the
+"Previously deferred" section.**
 
 Resolution notes that refine the original findings:
 - **P1-5** was the flagged product call: viewing surfaces (results page,
