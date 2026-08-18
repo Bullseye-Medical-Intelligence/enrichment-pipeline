@@ -162,7 +162,7 @@ python pipeline.py --input data/manual_list.csv --source manual \
 | Flag | Default | What it does |
 |---|---|---|
 | `--input` | (required) | Path to input CSV file |
-| `--source` | (required) | `outscraper` or `manual` |
+| `--source` | (required) | `outscraper`, `apify_places`, or `manual` |
 | `--output-dir` | `./output` | Where to write output files |
 | `--config` | `config/run_config.json` | Run configuration file |
 | `--icp` | `config/icp_checklist.json` | ICP signal definitions |
@@ -193,6 +193,21 @@ Export from Outscraper with at minimum these columns:
 | `type` | Business category (used for specialty matching) |
 
 Optional: `full_address`, `npi`. Missing optional fields are skipped without error.
+
+### Apify Google Places export (`--source apify_places`)
+
+Export from Apify's "Google Places crawler" actor (flattened CSV). Only these
+columns are read — the hundreds of `additionalInfo/*` columns are ignored:
+
+| Column | What it contains |
+|---|---|
+| `title` | Practice name (required) |
+| `website` | Practice website URL — the `url` column is the Google Maps link and is **never** used as the website |
+| `phone` / `phoneUnformatted` | Phone (formatted preferred, unformatted fallback) |
+| `city`, `state`, `postalCode` | Location; full state names ("California") are normalized to 2-letter codes |
+| `categoryName` (fallback `categories/0`) | Business category, used for specialty matching |
+| `placeId` | Google Place ID (registry priority-1 match key) |
+| `permanentlyClosed` | Rows marked `true` are dropped on import (with a printed count); `temporarilyClosed` practices are kept |
 
 ### Manual CSV (`--source manual`)
 

@@ -19,7 +19,8 @@ the user explicitly asks for more detail.
 ## What This Repo Is
 
 The **enrichment pipeline**: a Python CLI (`pipeline.py`) that turns a raw
-prospect list (Outscraper or manual CSV) into scored, tiered, sales-ready
+prospect list (Outscraper, Apify Google Places, or manual CSV) into scored,
+tiered, sales-ready
 account intelligence. It runs 8 steps, calls Claude for signal extraction and
 GPT for verification, and writes immutable JSON/CSV output plus a run log.
 

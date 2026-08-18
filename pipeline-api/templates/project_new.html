@@ -93,11 +93,24 @@
       <summary>Advanced settings (defaults are fine for most runs)</summary>
 
       <div class="form-group">
-        <label for="active_exclusion_rules">Active Exclusion Rules</label>
-        <input type="text" id="active_exclusion_rules" name="active_exclusion_rules"
-               value="{{ form.active_exclusion_rules | default('') }}"
-               placeholder="Comma-separated. Blank = sensible defaults.">
-        <p class="form-hint">e.g. hospital_owned, health_system_affiliated, wrong_specialty, outside_geography</p>
+        <label>Active Exclusion Rules</label>
+        <input type="hidden" name="exclusion_rules_submitted" value="1">
+        {% set checked_rules = form.active_exclusion_rules or [] %}
+        <div class="exclusion-rule-checks">
+          {% for rule in configurable_exclusion_rules %}
+          <label class="check-item" style="display:block; font-weight:normal; margin:2px 0;">
+            <input type="checkbox" name="active_exclusion_rules" value="{{ rule }}"
+                   {% if rule in checked_rules %}checked{% endif %}>
+            {{ rule.replace('_', ' ') | title }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="form-hint">
+          Uncheck a rule to keep those practices in scope for this project — an
+          empty selection is honored (no rules silently re-applied). Structural
+          rules always apply and are not listed here:
+          {{ hard_exclusion_rules | map('replace', '_', ' ') | join(', ') }}.
+        </p>
       </div>
 
       <div class="form-group">
@@ -162,10 +175,16 @@
     var filled = false;
     var specInput = document.getElementById('target_specialty');
     var geoInput  = document.getElementById('target_geography');
-    var exclInput = document.getElementById('active_exclusion_rules');
     if (specInput && specialty)      { specInput.value  = specialty;      filled = true; }
     if (geoInput)                    { geoInput.value   = geography;      if (geography) filled = true; }
-    if (exclInput && exclusionRules) { exclInput.value  = exclusionRules; filled = true; }
+    var exclBoxes = document.querySelectorAll('input[name="active_exclusion_rules"]');
+    if (exclBoxes.length && exclusionRules) {
+      var wanted = exclusionRules.split(',').map(function (s) { return s.trim(); });
+      exclBoxes.forEach(function (box) {
+        box.checked = wanted.indexOf(box.value) !== -1;
+      });
+      filled = true;
+    }
     document.getElementById('icp-autofill-hint').style.display = filled ? '' : 'none';
   });
   {% if form.icp_profile_id %}

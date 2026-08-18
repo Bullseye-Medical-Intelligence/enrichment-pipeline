@@ -81,6 +81,8 @@ _jinja_env.filters["clean_angles"] = _clean_angles
 # Resolve a record's state for an ICP signal column (see record_adapter and the
 # ICP signal `column_label`); used by results.html and contact_queue.html.
 _jinja_env.globals["signal_column_state"] = record_adapter.signal_column_state
+_jinja_env.globals["configurable_exclusion_rules"] = config.CONFIGURABLE_EXCLUSION_RULE_NAMES
+_jinja_env.globals["hard_exclusion_rules"] = config.HARD_EXCLUSION_RULE_NAMES
 
 
 def _render(name: str, status_code: int = 200, **context) -> HTMLResponse:
@@ -151,12 +153,16 @@ async def projects_page(request: Request, username: str = Depends(auth.require_s
 @router.get("/projects/new", response_class=HTMLResponse)
 async def new_project_page(request: Request, username: str = Depends(auth.require_session)):
     """Render the create-project form with the available ICP profiles."""
+    default_checked = [
+        r for r in config.DEFAULT_EXCLUSION_RULES
+        if r in config.CONFIGURABLE_EXCLUSION_RULE_NAMES
+    ]
     return _render(
         "project_new.html",
         username=username,
         icp_profiles=icp_profiles.list_icp_profiles(),
         error=None,
-        form={},
+        form={"active_exclusion_rules": default_checked},
     )
 
 
@@ -170,7 +176,8 @@ async def create_project_submit(
     icp_profile_id: str = Form(...),
     client_website: str = Form(""),
     product_name: str = Form(""),
-    active_exclusion_rules: str = Form(""),
+    active_exclusion_rules: list[str] = Form([]),
+    exclusion_rules_submitted: str = Form(""),
     subpage_keywords: str = Form(""),
     bullseye_min_score: str = Form(""),
     max_pages_per_practice: str = Form(""),
@@ -189,6 +196,7 @@ async def create_project_submit(
         "target_specialty": target_specialty, "target_geography": target_geography,
         "icp_profile_id": icp_profile_id, "client_website": client_website,
         "product_name": product_name, "active_exclusion_rules": active_exclusion_rules,
+        "exclusion_rules_submitted": exclusion_rules_submitted,
         "subpage_keywords": subpage_keywords, "bullseye_min_score": bullseye_min_score,
         "max_pages_per_practice": max_pages_per_practice,
         "request_timeout_seconds": request_timeout_seconds,
@@ -240,7 +248,8 @@ async def project_update_submit(
     icp_profile_id: str = Form(...),
     client_website: str = Form(""),
     product_name: str = Form(""),
-    active_exclusion_rules: str = Form(""),
+    active_exclusion_rules: list[str] = Form([]),
+    exclusion_rules_submitted: str = Form(""),
     subpage_keywords: str = Form(""),
     bullseye_min_score: str = Form(""),
     max_pages_per_practice: str = Form(""),
@@ -256,6 +265,7 @@ async def project_update_submit(
         "target_specialty": target_specialty, "target_geography": target_geography,
         "icp_profile_id": icp_profile_id, "client_website": client_website,
         "product_name": product_name, "active_exclusion_rules": active_exclusion_rules,
+        "exclusion_rules_submitted": exclusion_rules_submitted,
         "subpage_keywords": subpage_keywords, "bullseye_min_score": bullseye_min_score,
         "max_pages_per_practice": max_pages_per_practice,
         "request_timeout_seconds": request_timeout_seconds,
@@ -3592,8 +3602,20 @@ def _parse_project_form(form: dict, created_by: str | None = None) -> dict:
     }
     if created_by is not None:
         data["created_by"] = created_by
-    if form.get("active_exclusion_rules", "").strip():
-        data["active_exclusion_rules"] = _csv_list(form.get("active_exclusion_rules"))
+    # Checkbox group semantics: when the form declared the field (hidden
+    # exclusion_rules_submitted marker), the selection is authoritative — an
+    # EMPTY selection means "no configurable rules", not "use defaults". The
+    # legacy behavior (blank field falls back to defaults) is kept only for
+    # callers that never presented the field.
+    rules_value = form.get("active_exclusion_rules")
+    if isinstance(rules_value, list):
+        rules = [r.strip() for r in rules_value if r and r.strip()]
+    else:
+        rules = _csv_list(rules_value or "")
+    if (form.get("exclusion_rules_submitted") or "").strip():
+        data["active_exclusion_rules"] = rules
+    elif rules:
+        data["active_exclusion_rules"] = rules
     if form.get("subpage_keywords", "").strip():
         data["subpage_keywords"] = _csv_list(form.get("subpage_keywords"))
     for field in (
@@ -3623,7 +3645,8 @@ def _project_to_form(project: dict) -> dict:
         "target_specialty": project.get("target_specialty", ""),
         "target_geography": _join(project.get("target_geography")),
         "icp_profile_id": project.get("icp_profile_id", ""),
-        "active_exclusion_rules": _join(project.get("active_exclusion_rules")),
+        # Kept as a LIST: the form renders checkboxes and tests membership.
+        "active_exclusion_rules": list(project.get("active_exclusion_rules") or []),
         "subpage_keywords": _join(project.get("subpage_keywords")),
         "bullseye_min_score": str(project.get("bullseye_min_score", "")),
         "max_pages_per_practice": str(project.get("max_pages_per_practice", "")),

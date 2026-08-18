@@ -107,19 +107,25 @@ DEFAULT_EXCLUSION_RULES: tuple[str, ...] = (
 # All exclusion rule names recognised by the pipeline engine.
 # Kept in sync with enrichment/exclusion_checker.py::ALL_KNOWN_EXCLUSION_RULES.
 # Defined here to avoid importing enrichment internals into pipeline-api.
-ALL_KNOWN_EXCLUSION_RULE_NAMES: frozenset[str] = frozenset({
-    # Hard rules (always active)
+# Hard rules fire unconditionally in the engine; only configurable rules are
+# gated on a project's active_exclusion_rules — the project form's checkboxes
+# therefore cover exactly the configurable set.
+HARD_EXCLUSION_RULE_NAMES: tuple[str, ...] = (
     "wrong_specialty",
     "outside_geography",
     "practice_closed",
     "academic_medical_center",
-    # Configurable rules (active when listed in active_exclusion_rules)
+)
+CONFIGURABLE_EXCLUSION_RULE_NAMES: tuple[str, ...] = (
     "hospital_owned",
     "health_system_affiliated",
     "no_web_presence",
     "competitor_conflict",
     "no_relevant_service_line",
-})
+)
+ALL_KNOWN_EXCLUSION_RULE_NAMES: frozenset[str] = frozenset(
+    HARD_EXCLUSION_RULE_NAMES + CONFIGURABLE_EXCLUSION_RULE_NAMES
+)
 DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
     "services",
     "providers",
@@ -130,7 +136,7 @@ DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
     "contact",
 )
 
-VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})
+VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual", "apify_places"})
 
 OUTSCRAPER_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {"name", "phone"}
@@ -139,10 +145,15 @@ OUTSCRAPER_URL_COLUMNS: frozenset[str] = frozenset({
     "site", "website", "website_url", "url", "web", "web_url", "website_address",
 })
 MANUAL_REQUIRED_COLUMNS: frozenset[str] = frozenset({"practice_name"})
+# Apify "Google Places crawler" flattened export: the practice name column is
+# `title`; the website column is `website` (its `url` is the Google Maps link,
+# so it is deliberately NOT treated as a URL column for this source).
+APIFY_PLACES_REQUIRED_COLUMNS: frozenset[str] = frozenset({"title"})
 
 REQUIRED_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {
     "outscraper": OUTSCRAPER_REQUIRED_COLUMNS,
     "manual": MANUAL_REQUIRED_COLUMNS,
+    "apify_places": APIFY_PLACES_REQUIRED_COLUMNS,
 }
 
 VALID_RUN_STATUSES: frozenset[str] = frozenset(

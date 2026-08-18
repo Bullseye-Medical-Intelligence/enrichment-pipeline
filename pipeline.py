@@ -7,6 +7,7 @@ Orchestrates all 8 pipeline steps per PIPELINE.md spec.
 
 Usage:
     python pipeline.py --input data/outscraper_export.csv --source outscraper
+    python pipeline.py --input data/apify_places_export.csv --source apify_places
     python pipeline.py --input data/manual_list.csv --source manual
     python pipeline.py --input data/export.csv --source outscraper --dry-run
     python pipeline.py --input data/export.csv --source outscraper --limit 10
@@ -42,6 +43,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
+from ingestion.apify_places_adapter import load_apify_places_csv
 from ingestion import npi_lookup
 from ingestion.customer_suppression import load_suppression_list, check_suppression
 from extraction.url_validator import batch_validate_urls
@@ -566,7 +568,7 @@ def run_pipeline(input_file: str, source_type: str,
 
     Args:
         input_file: Path to input CSV file.
-        source_type: "outscraper" or "manual".
+        source_type: "outscraper", "manual", or "apify_places".
         output_dir: Directory for output files.
         config_path: Path to run_config.json.
         icp_path: Path to icp_checklist.json.
@@ -646,8 +648,13 @@ def run_pipeline(input_file: str, source_type: str,
         raw_records = load_outscraper_csv(input_file)
     elif source_type == "manual":
         raw_records = load_manual_csv(input_file)
+    elif source_type == "apify_places":
+        raw_records = load_apify_places_csv(input_file)
     else:
-        raise ValueError(f"Unknown source type: '{source_type}'. Use 'outscraper' or 'manual'.")
+        raise ValueError(
+            f"Unknown source type: '{source_type}'. "
+            "Use 'outscraper', 'manual', or 'apify_places'."
+        )
 
     records_input_total = len(raw_records)
 
@@ -1138,7 +1145,7 @@ Examples:
     parser.add_argument(
         "--source", "-s",
         required=True,
-        choices=["outscraper", "manual"],
+        choices=["outscraper", "manual", "apify_places"],
         help="Input source type: 'outscraper' or 'manual'",
     )
     parser.add_argument(

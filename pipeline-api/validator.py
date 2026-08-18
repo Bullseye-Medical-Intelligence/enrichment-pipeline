@@ -187,7 +187,7 @@ _FUZZY_MAX_ROWS = 500   # skip fuzzy pass on very large files to stay fast
 
 def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> dict:
     """Summarize a parsed CSV: importable count, duplicates, and similar-name pairs."""
-    name_cols = ("name", "practice_name")
+    name_cols = ("name", "practice_name", "title")  # title = Apify Places
     url_cols = tuple(OUTSCRAPER_URL_COLUMNS)
     state_cols = ("state", "address_state")
 

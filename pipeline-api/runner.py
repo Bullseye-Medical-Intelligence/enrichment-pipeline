@@ -94,7 +94,7 @@ def spawn_pipeline(
     Args:
         run_id: Run identifier for logging.
         input_path: Absolute path to the saved input.csv.
-        source_type: 'outscraper' or 'manual'.
+        source_type: 'outscraper', 'manual', or 'apify_places'.
         run_dir: Absolute path to the run output directory.
         config_path: Absolute path to the project_config snapshot.
         icp_path: Absolute path to the ICP profile snapshot.
