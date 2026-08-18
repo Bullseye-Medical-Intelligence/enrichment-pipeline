@@ -117,8 +117,20 @@ def _parse_csv(text: str) -> tuple[list[dict], list[str]]:
     """
     try:
         reader = csv.DictReader(io.StringIO(text))
+        fieldnames_raw = list(reader.fieldnames or [])
+        # A single mega-column whose header contains a likely delimiter means
+        # the file was saved semicolon- or tab-separated (a common Excel
+        # regional re-save). Re-parse with that delimiter instead of failing
+        # every column check with an unhelpful "missing columns" error.
+        if len(fieldnames_raw) == 1:
+            header = fieldnames_raw[0] or ""
+            for delimiter in (";", "\t"):
+                if delimiter in header:
+                    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+                    fieldnames_raw = list(reader.fieldnames or [])
+                    break
         rows = list(reader)
-        fieldnames = [c.strip().lower() for c in (reader.fieldnames or [])]
+        fieldnames = [c.strip().lower() for c in fieldnames_raw]
         return rows, fieldnames
     except csv.Error as e:
         raise ValueError(f"File is not valid CSV: {e}")
@@ -141,9 +153,19 @@ def _validate_columns(fieldnames: list[str], source_type: str) -> None:
     actual = set(fieldnames)
     missing = required - actual
     if missing:
+        # Show what WAS in the header: a wrong-file, wrong-export, or
+        # re-saved-with-a-different-delimiter upload is instantly diagnosable
+        # from the found-column list, and undiagnosable without it.
+        seen = [c for c in fieldnames if c][:8]
+        more = len([c for c in fieldnames if c]) - len(seen)
+        found = ", ".join(seen) if seen else "(no columns parsed)"
+        suffix = f" … and {more} more" if more > 0 else ""
         raise ValueError(
             f"CSV is missing required columns for source '{source_type}': "
-            f"{sorted(missing)}"
+            f"{sorted(missing)}. Columns found in the uploaded file: {found}{suffix}. "
+            "If these look wrong, the file was likely re-saved with a different "
+            "delimiter/encoding or exported with different fields — upload the "
+            "original export file."
         )
     if source_type == "outscraper" and not (OUTSCRAPER_URL_COLUMNS & actual):
         accepted = ", ".join(sorted(OUTSCRAPER_URL_COLUMNS))

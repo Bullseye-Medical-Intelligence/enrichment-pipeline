@@ -89,3 +89,42 @@ def test_summary_raises_on_empty_csv():
     content = _csv(_HEADER)  # header only, no data rows
     with pytest.raises(ValueError):
         validator.preflight_summary(content, "outscraper")
+
+
+class TestUploadDiagnostics:
+    """Delimiter recovery and self-diagnosing missing-column errors."""
+
+    def _apify_header(self, delim=","):
+        cols = ["title", "address", "city", "state", "postalCode", "phone",
+                "website", "url", "categoryName", "placeId", "permanentlyClosed"]
+        row = ["Acme Clinic", "1 Main St", "Sacramento", "California", "95823",
+               "(916) 555-0100", "https://acme.example.com", "https://maps.example",
+               "Mental health clinic", "ChIJx", "false"]
+        return (delim.join(cols) + "\n" + delim.join(row) + "\n").encode("utf-8")
+
+    def test_semicolon_resave_recovered(self):
+        """An Excel regional re-save (semicolon-delimited) parses instead of
+        failing every column check."""
+        summary = validator.preflight_summary(self._apify_header(";"), "apify_places")
+        assert summary["importable"] == 1
+
+    def test_tab_delimited_recovered(self):
+        summary = validator.preflight_summary(self._apify_header("\t"), "apify_places")
+        assert summary["importable"] == 1
+
+    def test_missing_column_error_lists_found_columns(self):
+        """The error names what WAS in the header so a wrong-file upload is
+        diagnosable from the message alone."""
+        content = b"name,phone,site\nAcme,555,https://a.example\n"
+        try:
+            validator.preflight_summary(content, "apify_places")
+            assert False, "expected ValueError"
+        except ValueError as e:
+            msg = str(e)
+            assert "title" in msg
+            assert "Columns found in the uploaded file" in msg
+            assert "name, phone, site" in msg
+
+    def test_comma_files_unaffected(self):
+        summary = validator.preflight_summary(self._apify_header(","), "apify_places")
+        assert summary["importable"] == 1
