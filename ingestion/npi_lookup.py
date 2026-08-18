@@ -253,8 +253,15 @@ def _match_record(record: dict, taxonomy_rules: list[dict] | None = None) -> dic
     return {**_EMPTY_NPI_FIELDS, "npi_match_confidence": CONFIDENCE_AMBIGUOUS}
 
 
-def enrich_records(records: list[dict], run_config: dict) -> list[dict]:
+def enrich_records(records: list[dict], run_config: dict,
+                   progress_callback=None) -> list[dict]:
     """Populate NPI fields on all records via the NPPES public API.
+
+    progress_callback: optional fn(completed, total) invoked as each record's
+    lookup finishes (from the collection thread), for live run-progress
+    reporting. Best-effort — a callback error never breaks enrichment. Without
+    it, this network-bound step (one NPPES request per record, throttled)
+    reports no progress for its entire duration.
 
     Parallel execution bounded by _MAX_NPI_WORKERS (cap irrespective of
     io_concurrency — NPPES is a public service, not our infrastructure).
@@ -285,6 +292,8 @@ def enrich_records(records: list[dict], run_config: dict) -> list[dict]:
         time.sleep(_REQUEST_DELAY_SECONDS)
 
     workers = min(_MAX_NPI_WORKERS, len(records))
+    completed = 0
+    total = len(records)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(_enrich_one, r): r for r in records}
         for future in as_completed(futures):
@@ -294,6 +303,12 @@ def enrich_records(records: list[dict], run_config: dict) -> list[dict]:
                 rec = futures[future]
                 logger.warning("NPI future error for %s: %s", rec.get("id"), exc)
                 rec.update(dict(_EMPTY_NPI_FIELDS))
+            completed += 1
+            if progress_callback is not None:
+                try:
+                    progress_callback(completed, total)
+                except Exception:
+                    pass  # progress reporting is best-effort, never break enrichment
 
     confident = sum(
         1 for r in records if r.get("npi_match_confidence") == CONFIDENCE_CONFIDENT

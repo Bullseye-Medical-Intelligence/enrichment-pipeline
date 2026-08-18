@@ -16,7 +16,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -1355,6 +1355,49 @@ def _signal_columns(status) -> list[dict]:
     return columns
 
 
+def _format_duration(seconds: float) -> str:
+    """Render a duration as a compact human string ("4m 20s", "45s", "1h 12m")."""
+    seconds = int(max(seconds, 0))
+    if seconds >= 3600:
+        return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
+    if seconds >= 60:
+        return f"{seconds // 60}m {seconds % 60}s"
+    return f"{seconds}s"
+
+
+def _enrich_progress(progress: dict | None) -> dict | None:
+    """Add within-step rate and ETA display fields to a progress payload.
+
+    Derived from step_started_at + records_done, so a long network-bound step
+    (NPI enrichment, crawling, Claude extraction) shows movement and a finish
+    estimate instead of a frozen step label with a run-elapsed clock. Purely
+    display-side; any parse problem leaves the payload as read. The rate needs
+    a few records and seconds of signal before it is shown, so early estimates
+    never whipsaw.
+    """
+    if not progress:
+        return progress
+    try:
+        done = int(progress.get("records_done") or 0)
+        total = int(progress.get("records_total") or 0)
+        started_raw = progress.get("step_started_at") or ""
+        if done <= 2 or total <= 0 or not started_raw:
+            return progress
+        started = datetime.fromisoformat(started_raw)
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+        if elapsed < 5:
+            return progress
+        rate = done / elapsed  # records per second
+        progress["rate_display"] = f"{rate * 60:.1f}/min"
+        if total > done and rate > 0:
+            progress["eta_display"] = _format_duration((total - done) / rate)
+    except (ValueError, TypeError):
+        pass
+    return progress
+
+
 @router.get("/dashboard/{run_id}", response_class=HTMLResponse)
 async def results_page(
     request: Request,
@@ -1378,6 +1421,7 @@ async def results_page(
     stats = _calculate_stats(merged_records)
     project_context = _build_project_context(run_id)
     progress = runs.read_progress(run_id) if status.status in ("running", "pending") else None
+    progress = _enrich_progress(progress)
     readiness = _compute_readiness(merged_records) if status.status == "complete" else None
 
     has_checkpoint = runs.has_step4_checkpoint(run_id)

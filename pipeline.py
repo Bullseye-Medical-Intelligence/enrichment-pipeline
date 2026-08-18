@@ -264,16 +264,32 @@ def _load_step4_checkpoint(output_dir: str, fingerprint: str) -> dict:
     return completed
 
 
+# Tracks when the CURRENT step began so the UI can compute a within-step rate
+# and ETA. Written only from the step-collection threads (one at a time), so a
+# plain module dict suffices.
+_progress_step_state: dict = {"key": None, "started_at": None}
+
+
 def _write_progress(output_dir: str, step_num: int, step_name: str,
                      records_done: int = 0, records_total: int = 0) -> None:
-    """Write current step to progress.json so the UI can poll it."""
+    """Write current step to progress.json so the UI can poll it.
+
+    Stamps step_started_at when the (step_num, step_name) pair changes, so a
+    reader can derive records/minute and time remaining for the running step —
+    elapsed-since-run-start alone says nothing about a long step's progress.
+    """
     path = Path(output_dir) / "progress.json"
+    step_key = (step_num, step_name)
+    if _progress_step_state["key"] != step_key:
+        _progress_step_state["key"] = step_key
+        _progress_step_state["started_at"] = datetime.now(timezone.utc).isoformat()
     data = {
         "step_num": step_num,
         "step_name": step_name,
         "step_total": 8,
         "records_done": records_done,
         "records_total": records_total,
+        "step_started_at": _progress_step_state["started_at"],
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -707,11 +723,14 @@ def run_pipeline(input_file: str, source_type: str,
     # fields. Skip when npi_enrichment_enabled is explicitly False in run_config.
     # -------------------------------------------------------------------------
     if run_config.get("npi_enrichment_enabled", True):
-        _write_progress(output_dir, 1, "NPI enrichment")
+        _write_progress(output_dir, 1, "NPI enrichment", 0, len(records))
         print(f"\n{'-'*40}")
         print("STEP 1b: NPI ENRICHMENT (NPPES registry lookup)")
         print(f"{'-'*40}")
-        npi_lookup.enrich_records(records, run_config)
+        npi_lookup.enrich_records(
+            records, run_config,
+            progress_callback=_step_progress(output_dir, 1, "NPI enrichment"),
+        )
 
     # -------------------------------------------------------------------------
     # STEP 1c: CUSTOMER SUPPRESSION
