@@ -1,0 +1,68 @@
+{
+  "version": "neurolief-v1-draft",
+  "version_note": "v1 DRAFT from the client onboarding form (2026-08) — pending signal-by-signal review call; the form came back partially filled, so several choices below are operator judgment flagged in CARTRIDGE_NOTES.md. Client's stated must-haves: interventional psych therapies (named as THE primary qualifier), cash pay, commercial insurance accepted. PRIMARY gate: interventional_psych_offered (weight 50, required_for_bullseye + required_for_contender + floor_tier Contender) — unconfirmed routes to Manual Review per the primary-qualifier rule; confirmed floors the record at Contender. SECOND must-have: cash_pay_visible (25, required_for_bullseye). commercial_insurance_accepted (15) is deliberately softened to verification_required (not a Bullseye must-have) because interventional practices routinely accept commercial insurance without listing payers — double-gating payment would contradict the client's 'too early to rule out models' guidance. MODALITY confirmations add depth toward Bullseye and align with the client's competitive note that TMS/Spravato/ECT/VNS presence HELPS (category awareness): tms_offered (15), spravato_or_esketamine_offered (15), ketamine_therapy_offered (12, reinforces cash_pay_visible — infusion therapy is predominantly patient-pay, the classic rarely-printed cash-pay proxy), depression_treatment_focus (8, client: 'depression is co-morbid'). NO negative or exclude_if_yes signals in this draft — the client explicitly declined hard disqualifiers and red flags ('we need to be open; this is a prescription device'). Max positive weight 140; the two must-haves alone give ~54 fit (Contender via floor); must-haves + insurance + two modalities clear the 80-point Bullseye line. All signals three-state (yes/no/not_found) with word-for-word textual anchoring; a yes without evidence_text + source_url is downgraded by the sourcing gate.",
+  "contact_strategy": "Ask for the physician-owner or lead psychiatrist first. At larger practices or clinics with an established TMS / interventional program, ask instead for the practice manager or clinical director who runs that program — the client notes larger groups are often manager-driven.",
+  "competitive_brands": [
+    "TMS (NeuroStar, BrainsWay, MagVenture)",
+    "Spravato / esketamine",
+    "ECT",
+    "VNS"
+  ],
+  "signals": [
+    {
+      "signal_id": "interventional_psych_offered",
+      "signal_label": "Interventional psychiatric therapies offered",
+      "prompt_instruction": "Does the website show, word-for-word, that the practice itself offers interventional or device-based psychiatric treatment? Answer \"yes\" ONLY when one or more of these terms appears verbatim as a service THIS practice provides: \"TMS\", \"transcranial magnetic stimulation\", \"rTMS\", \"deep TMS\", \"Spravato\", \"esketamine\", \"ketamine\", \"ECT\", \"electroconvulsive therapy\", \"VNS\", \"vagus nerve stimulation\", \"interventional psychiatry\", or \"neuromodulation\". A referral-out statement, an educational or blog page about these treatments, or a provider bio mentioning training in them is NOT \"yes\". Answer \"no\" ONLY when the site explicitly states it does not offer these treatments or offers therapy/counseling only with medication management explicitly excluded. Otherwise answer \"not_found\". Quote the exact matched phrase in evidence_text and put the page URL it came from in source_url.",
+      "positive_weight": 50,
+      "required_for_bullseye": true,
+      "required_for_contender": true,
+      "floor_tier": "Contender",
+      "column_label": "Interventional"
+    },
+    {
+      "signal_id": "cash_pay_visible",
+      "signal_label": "Cash-pay / self-pay visible",
+      "prompt_instruction": "Does the website show, word-for-word, that the practice supports cash-pay / self-pay or patient-paid services? Answer \"yes\" ONLY when one or more of these terms appears verbatim in a services, pricing, billing, or patient-information context: \"cash pay\", \"cash-pay\", \"self pay\", \"self-pay\", \"out of pocket\", \"out-of-pocket\", \"private pay\", \"membership\", \"concierge\", \"package pricing\", \"fee schedule\", \"financing\", \"CareCredit\", or \"payment plans\". Answer \"no\" ONLY when the page explicitly states only insurance is accepted or that self-pay is not available. Otherwise answer \"not_found\". Do NOT infer from the mere presence of services; the term must appear word-for-word. Quote the exact matched phrase in evidence_text and put the page URL in source_url.",
+      "positive_weight": 25,
+      "required_for_bullseye": true,
+      "column_label": "Cash Pay"
+    },
+    {
+      "signal_id": "commercial_insurance_accepted",
+      "signal_label": "Commercial insurance accepted",
+      "prompt_instruction": "Does the website show, word-for-word, that the practice accepts commercial insurance? Answer \"yes\" ONLY when the site names commercial payers or in-network language verbatim, e.g. \"we accept insurance\", \"in-network\", \"PPO\", \"Aetna\", \"Cigna\", \"Blue Cross\", \"Blue Shield\", \"UnitedHealthcare\", \"Anthem\", or \"Optum\", in a billing/insurance/patient-information context. Answer \"no\" ONLY when the site explicitly states it does not accept insurance or is out-of-network only / self-pay only. Otherwise answer \"not_found\". Quote the exact matched phrase in evidence_text and put the page URL in source_url.",
+      "positive_weight": 15,
+      "verification_required": true,
+      "column_label": "Insurance"
+    },
+    {
+      "signal_id": "tms_offered",
+      "signal_label": "TMS offered in-house",
+      "prompt_instruction": "Does the website show, word-for-word, that THIS practice offers TMS? Answer \"yes\" ONLY when one of these appears verbatim as an in-house service: \"TMS\", \"transcranial magnetic stimulation\", \"rTMS\", \"deep TMS\", \"NeuroStar\", \"BrainsWay\", or \"MagVenture\". A referral-out statement or educational mention is NOT \"yes\". Answer \"no\" ONLY when the site explicitly states TMS is not offered. Otherwise answer \"not_found\". Quote the exact matched phrase in evidence_text and put the page URL in source_url.",
+      "positive_weight": 15,
+      "column_label": "TMS"
+    },
+    {
+      "signal_id": "spravato_or_esketamine_offered",
+      "signal_label": "Spravato / esketamine offered",
+      "prompt_instruction": "Does the website show, word-for-word, that THIS practice administers Spravato or esketamine? Answer \"yes\" ONLY when \"Spravato\" or \"esketamine\" appears verbatim as an in-office service (REMS-certified treatment center language also counts). A referral-out statement or educational mention is NOT \"yes\". Answer \"no\" ONLY when the site explicitly states it is not offered. Otherwise answer \"not_found\". Quote the exact matched phrase in evidence_text and put the page URL in source_url.",
+      "positive_weight": 15,
+      "column_label": "Spravato"
+    },
+    {
+      "signal_id": "ketamine_therapy_offered",
+      "signal_label": "Ketamine therapy offered",
+      "prompt_instruction": "Does the website show, word-for-word, that THIS practice provides ketamine treatment? Answer \"yes\" ONLY when one of these appears verbatim as an in-house service: \"ketamine\", \"ketamine infusion\", \"ketamine-assisted therapy\", or \"IV ketamine\". A referral-out statement or educational mention is NOT \"yes\". Answer \"no\" ONLY when the site explicitly states it is not offered. Otherwise answer \"not_found\". Quote the exact matched phrase in evidence_text and put the page URL in source_url.",
+      "positive_weight": 12,
+      "reinforces": "cash_pay_visible",
+      "column_label": "Ketamine"
+    },
+    {
+      "signal_id": "depression_treatment_focus",
+      "signal_label": "Depression treatment focus",
+      "prompt_instruction": "Does the website show, word-for-word, that the practice treats depression as a named clinical focus? Answer \"yes\" ONLY when one of these appears verbatim in a conditions-treated or services context: \"depression\", \"major depressive disorder\", \"MDD\", \"treatment-resistant depression\", \"TRD\", or \"mood disorders\". A blog post or educational article alone is NOT \"yes\". Answer \"no\" ONLY when the site explicitly excludes mood disorders from its scope. Otherwise answer \"not_found\". Quote the exact matched phrase in evidence_text and put the page URL in source_url.",
+      "positive_weight": 8,
+      "column_label": "Depression"
+    }
+  ]
+}
