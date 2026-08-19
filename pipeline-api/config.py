@@ -104,6 +104,52 @@ DEFAULT_EXCLUSION_RULES: tuple[str, ...] = (
     "health_system_affiliated",
 )
 
+# Exclusion rules an operator can switch OFF per project. The engine applies
+# these only when listed in active_exclusion_rules
+# (enrichment/exclusion_checker.py::CONFIGURABLE_EXCLUSION_RULES).
+CONFIGURABLE_EXCLUSION_RULE_NAMES: tuple[str, ...] = (
+    "hospital_owned",
+    "health_system_affiliated",
+    "no_web_presence",
+    "competitor_conflict",
+    "no_relevant_service_line",
+)
+
+# Rules the engine ALWAYS applies when triggered, regardless of configuration
+# (enrichment/exclusion_checker.py::HARD_EXCLUSION_RULES). The project form
+# shows these as locked so it never offers a switch that does nothing.
+HARD_EXCLUSION_RULE_NAMES: tuple[str, ...] = (
+    "wrong_specialty",
+    "outside_geography",
+    "practice_closed",
+    "academic_medical_center",
+)
+
+# Operator-facing copy for the project form's exclusion-rule picker.
+EXCLUSION_RULE_LABELS: dict[str, str] = {
+    "hospital_owned": "Hospital owned",
+    "health_system_affiliated": "Health-system affiliated",
+    "no_web_presence": "No web presence",
+    "competitor_conflict": "Competitor conflict",
+    "no_relevant_service_line": "No relevant service line",
+    "wrong_specialty": "Wrong specialty",
+    "outside_geography": "Outside geography",
+    "practice_closed": "Practice closed",
+    "academic_medical_center": "Academic medical center",
+}
+
+EXCLUSION_RULE_DESCRIPTIONS: dict[str, str] = {
+    "hospital_owned": "Exclude practices owned by a hospital.",
+    "health_system_affiliated": "Exclude practices branded as part of a health system.",
+    "no_web_presence": "Exclude practices with no reachable website (nothing to score).",
+    "competitor_conflict": "Exclude practices running a competing program.",
+    "no_relevant_service_line": "Exclude practices with no relevant service line.",
+    "wrong_specialty": "Always on. Fires only when a practice's specialty is known and does not match Target Specialty — clear that field to stop it.",
+    "outside_geography": "Always on. Fires only when Target Geography is set — leave it empty for a nationwide run.",
+    "practice_closed": "Always on. Fires when the site says the practice has closed.",
+    "academic_medical_center": "Always on. Fires when the site identifies an academic medical center.",
+}
+
 # All exclusion rule names recognised by the pipeline engine.
 # Kept in sync with enrichment/exclusion_checker.py::ALL_KNOWN_EXCLUSION_RULES.
 # Defined here to avoid importing enrichment internals into pipeline-api.
@@ -130,7 +176,7 @@ DEFAULT_SUBPAGE_KEYWORDS: tuple[str, ...] = (
     "contact",
 )
 
-VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "manual"})
+VALID_SOURCE_TYPES: frozenset[str] = frozenset({"outscraper", "google_places", "manual"})
 
 OUTSCRAPER_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {"name", "phone"}
@@ -140,8 +186,18 @@ OUTSCRAPER_URL_COLUMNS: frozenset[str] = frozenset({
 })
 MANUAL_REQUIRED_COLUMNS: frozenset[str] = frozenset({"practice_name"})
 
+# Google Places / Google Maps place-listing exports (Apify crawler-google-places
+# and compatible tools). These carry hundreds of flattened detail columns, so
+# nothing is required by exact name; instead one column from each of the two
+# alternative sets below must be present. Kept in sync with
+# ingestion/google_places_adapter.py.
+GOOGLE_PLACES_REQUIRED_COLUMNS: frozenset[str] = frozenset()
+GOOGLE_PLACES_NAME_COLUMNS: frozenset[str] = frozenset({"title", "name", "placename"})
+GOOGLE_PLACES_URL_COLUMNS: frozenset[str] = frozenset({"website", "site", "website_url", "domain"})
+
 REQUIRED_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {
     "outscraper": OUTSCRAPER_REQUIRED_COLUMNS,
+    "google_places": GOOGLE_PLACES_REQUIRED_COLUMNS,
     "manual": MANUAL_REQUIRED_COLUMNS,
 }
 

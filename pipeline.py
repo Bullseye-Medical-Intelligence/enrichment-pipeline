@@ -40,6 +40,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Module imports
 # ---------------------------------------------------------------------------
+from ingestion.google_places_adapter import load_google_places_csv
 from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
 from ingestion import npi_lookup
@@ -566,7 +567,7 @@ def run_pipeline(input_file: str, source_type: str,
 
     Args:
         input_file: Path to input CSV file.
-        source_type: "outscraper" or "manual".
+        source_type: "outscraper", "google_places", or "manual".
         output_dir: Directory for output files.
         config_path: Path to run_config.json.
         icp_path: Path to icp_checklist.json.
@@ -644,10 +645,15 @@ def run_pipeline(input_file: str, source_type: str,
 
     if source_type == "outscraper":
         raw_records = load_outscraper_csv(input_file)
+    elif source_type == "google_places":
+        raw_records = load_google_places_csv(input_file)
     elif source_type == "manual":
         raw_records = load_manual_csv(input_file)
     else:
-        raise ValueError(f"Unknown source type: '{source_type}'. Use 'outscraper' or 'manual'.")
+        raise ValueError(
+            f"Unknown source type: '{source_type}'. "
+            "Use 'outscraper', 'google_places', or 'manual'."
+        )
 
     records_input_total = len(raw_records)
 
@@ -1138,8 +1144,9 @@ Examples:
     parser.add_argument(
         "--source", "-s",
         required=True,
-        choices=["outscraper", "manual"],
-        help="Input source type: 'outscraper' or 'manual'",
+        choices=["outscraper", "google_places", "manual"],
+        help="Input source type: 'outscraper', 'google_places' (Google Maps "
+             "place-listing export, e.g. Apify crawler-google-places), or 'manual'",
     )
     parser.add_argument(
         "--output-dir",

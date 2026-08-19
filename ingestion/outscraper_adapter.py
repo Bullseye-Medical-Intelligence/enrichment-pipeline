@@ -83,13 +83,22 @@ OUTSCRAPER_FIELD_MAP = {
     "website_address": "website_url",
 }
 
-# Specialty keywords for matching Outscraper "type" to canonical specialty
+# Specialty keywords for matching a source's category/type to a canonical
+# specialty. Matched at WORD BOUNDARIES (see infer_specialty): a bare substring
+# test made "neurologist" match Urology's "urol", silently mislabeling every
+# neurology practice — and, for a cartridge targeting neurology, structurally
+# excluding them as wrong_specialty before any crawl.
 SPECIALTY_KEYWORD_MAP = {
     "OBGYN": [
         "obgyn", "ob/gyn", "ob-gyn", "gynecolog", "obstetric",
         "women's health", "womens health", "women's care", "womens care",
         "reproductive",
     ],
+    "Psychiatry": ["psychiat"],
+    "Psychology": ["psycholog"],
+    "Neurology": ["neurolog"],
+    "Neurosurgery": ["neurosurg"],
+    "Mental Health": ["mental health", "behavioral health"],
     "Urology": ["urol"],
     "Dermatology": ["dermatol"],
     "Cardiology": ["cardiolog"],
@@ -158,7 +167,9 @@ def infer_specialty(type_raw: str, practice_name: str = "") -> str:
             continue
         for specialty, keywords in SPECIALTY_KEYWORD_MAP.items():
             for kw in keywords:
-                if kw in lower:
+                # Word-boundary match: a keyword must start a word, so "urol"
+                # matches "urologist" but never "neurologist".
+                if re.search(r"\b" + re.escape(kw), lower):
                     return specialty
     # 'type' present but unmatched: keep it as a titlecased label.
     if (type_raw or "").strip():

@@ -162,7 +162,7 @@ python pipeline.py --input data/manual_list.csv --source manual \
 | Flag | Default | What it does |
 |---|---|---|
 | `--input` | (required) | Path to input CSV file |
-| `--source` | (required) | `outscraper` or `manual` |
+| `--source` | (required) | `outscraper`, `google_places`, or `manual` |
 | `--output-dir` | `./output` | Where to write output files |
 | `--config` | `config/run_config.json` | Run configuration file |
 | `--icp` | `config/icp_checklist.json` | ICP signal definitions |
@@ -193,6 +193,26 @@ Export from Outscraper with at minimum these columns:
 | `type` | Business category (used for specialty matching) |
 
 Optional: `full_address`, `npi`. Missing optional fields are skipped without error.
+
+### Google Places export (`--source google_places`)
+
+A Google Maps place-listing scrape — Apify's `crawler-google-places` actor and
+compatible tools. Upload the file exactly as exported; its hundreds of extra
+columns (hours, reviews, amenities) are ignored.
+
+| Column | What it contains |
+|---|---|
+| `title` | Practice name (required) |
+| `website` | Practice website URL (required column; may be blank per row) |
+| `categoryName` / `categories/N` | Google category, used for specialty matching |
+| `address`, `street`, `city`, `state`, `postalCode` | Location; full state names are normalized to 2-letter codes |
+| `phone` | Phone number |
+| `placeId` | Google Place ID, kept as the priority-1 registry match key |
+| `permanentlyClosed` | Listings marked closed are skipped at ingest |
+
+The Google Maps link in the `url` column is never treated as the practice
+website — a listing whose only link is a maps URL is reported as having no
+website rather than sending the crawler to google.com.
 
 ### Manual CSV (`--source manual`)
 

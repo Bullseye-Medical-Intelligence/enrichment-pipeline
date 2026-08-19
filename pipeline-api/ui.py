@@ -157,6 +157,7 @@ async def new_project_page(request: Request, username: str = Depends(auth.requir
         icp_profiles=icp_profiles.list_icp_profiles(),
         error=None,
         form={},
+        exclusion_options=_exclusion_rule_options(None),
     )
 
 
@@ -171,6 +172,8 @@ async def create_project_submit(
     client_website: str = Form(""),
     product_name: str = Form(""),
     active_exclusion_rules: str = Form(""),
+    exclusion_rules: list[str] = Form([]),
+    exclusion_rules_present: str = Form(""),
     subpage_keywords: str = Form(""),
     bullseye_min_score: str = Form(""),
     max_pages_per_practice: str = Form(""),
@@ -189,6 +192,8 @@ async def create_project_submit(
         "target_specialty": target_specialty, "target_geography": target_geography,
         "icp_profile_id": icp_profile_id, "client_website": client_website,
         "product_name": product_name, "active_exclusion_rules": active_exclusion_rules,
+        "exclusion_rules": exclusion_rules,
+        "exclusion_rules_present": exclusion_rules_present,
         "subpage_keywords": subpage_keywords, "bullseye_min_score": bullseye_min_score,
         "max_pages_per_practice": max_pages_per_practice,
         "request_timeout_seconds": request_timeout_seconds,
@@ -206,6 +211,7 @@ async def create_project_submit(
             icp_profiles=icp_profiles.list_icp_profiles(),
             error=str(e),
             form=form,
+            exclusion_options=_exclusion_rule_options(_selected_exclusion_rules(form)),
         )
     return RedirectResponse(url=f"/projects/{project_data['project_id']}", status_code=303)
 
@@ -227,6 +233,8 @@ async def project_edit_page(
         icp_profiles=icp_profiles.list_icp_profiles(),
         error=None,
         form=_project_to_form(project),
+        exclusion_options=_exclusion_rule_options(
+            project.get("active_exclusion_rules") or []),
     )
 
 
@@ -241,6 +249,8 @@ async def project_update_submit(
     client_website: str = Form(""),
     product_name: str = Form(""),
     active_exclusion_rules: str = Form(""),
+    exclusion_rules: list[str] = Form([]),
+    exclusion_rules_present: str = Form(""),
     subpage_keywords: str = Form(""),
     bullseye_min_score: str = Form(""),
     max_pages_per_practice: str = Form(""),
@@ -256,6 +266,8 @@ async def project_update_submit(
         "target_specialty": target_specialty, "target_geography": target_geography,
         "icp_profile_id": icp_profile_id, "client_website": client_website,
         "product_name": product_name, "active_exclusion_rules": active_exclusion_rules,
+        "exclusion_rules": exclusion_rules,
+        "exclusion_rules_present": exclusion_rules_present,
         "subpage_keywords": subpage_keywords, "bullseye_min_score": bullseye_min_score,
         "max_pages_per_practice": max_pages_per_practice,
         "request_timeout_seconds": request_timeout_seconds,
@@ -277,6 +289,7 @@ async def project_update_submit(
             icp_profiles=icp_profiles.list_icp_profiles(),
             error=str(e),
             form=form,
+            exclusion_options=_exclusion_rule_options(_selected_exclusion_rules(form)),
         )
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
@@ -3592,7 +3605,11 @@ def _parse_project_form(form: dict, created_by: str | None = None) -> dict:
     }
     if created_by is not None:
         data["created_by"] = created_by
-    if form.get("active_exclusion_rules", "").strip():
+    picked = _selected_exclusion_rules(form)
+    if picked is not None:
+        data["active_exclusion_rules"] = picked
+    elif form.get("active_exclusion_rules", "").strip():
+        # Legacy/API path: comma-separated text still accepted.
         data["active_exclusion_rules"] = _csv_list(form.get("active_exclusion_rules"))
     if form.get("subpage_keywords", "").strip():
         data["subpage_keywords"] = _csv_list(form.get("subpage_keywords"))
@@ -3604,6 +3621,56 @@ def _parse_project_form(form: dict, created_by: str | None = None) -> dict:
         if parsed is not None:
             data[field] = parsed
     return data
+
+
+def _exclusion_rule_options(selected: list | None) -> dict:
+    """Build the project form's exclusion-rule picker state.
+
+    Returns {"configurable": [...], "hard": [...]}, each entry carrying name,
+    label, description and checked. Hard rules are listed separately and
+    rendered locked: the engine applies them whenever they trigger, so a
+    switch for them would be a control that does nothing.
+    """
+    chosen = set(selected if selected is not None else config.DEFAULT_EXCLUSION_RULES)
+    return {
+        "configurable": [
+            {
+                "name": name,
+                "label": config.EXCLUSION_RULE_LABELS.get(name, name),
+                "description": config.EXCLUSION_RULE_DESCRIPTIONS.get(name, ""),
+                "checked": name in chosen,
+            }
+            for name in config.CONFIGURABLE_EXCLUSION_RULE_NAMES
+        ],
+        "hard": [
+            {
+                "name": name,
+                "label": config.EXCLUSION_RULE_LABELS.get(name, name),
+                "description": config.EXCLUSION_RULE_DESCRIPTIONS.get(name, ""),
+                "checked": True,
+            }
+            for name in config.HARD_EXCLUSION_RULE_NAMES
+        ],
+    }
+
+
+def _selected_exclusion_rules(form: dict) -> list | None:
+    """Resolve the exclusion rules a submitted project form asks for.
+
+    Returns None when the form carries no rule selection at all (a JSON/API
+    caller or an older form), so the caller falls back to defaults. When the
+    picker WAS rendered, the hidden marker is present and an empty tick list
+    means exactly that: no configurable rules. Hard rules are always kept —
+    the engine applies them regardless, so storing them keeps the saved config
+    an honest description of the run.
+    """
+    if not form.get("exclusion_rules_present"):
+        return None
+    chosen = [
+        r for r in (form.get("exclusion_rules") or [])
+        if r in config.CONFIGURABLE_EXCLUSION_RULE_NAMES
+    ]
+    return list(config.HARD_EXCLUSION_RULE_NAMES) + chosen
 
 
 def _project_to_form(project: dict) -> dict:

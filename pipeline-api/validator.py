@@ -12,6 +12,8 @@ import logging
 from fastapi import UploadFile
 
 from config import (
+    GOOGLE_PLACES_NAME_COLUMNS,
+    GOOGLE_PLACES_URL_COLUMNS,
     MAX_CSV_ROWS,
     MAX_CSV_SIZE_BYTES,
     OUTSCRAPER_URL_COLUMNS,
@@ -151,6 +153,21 @@ def _validate_columns(fieldnames: list[str], source_type: str) -> None:
             f"CSV is missing a website URL column for source 'outscraper'. "
             f"Accepted column names: {accepted}."
         )
+    if source_type == "google_places":
+        # Place exports carry hundreds of columns under varying names, so the
+        # check is "one of each alternative set" rather than exact names.
+        if not (GOOGLE_PLACES_NAME_COLUMNS & actual):
+            accepted = ", ".join(sorted(GOOGLE_PLACES_NAME_COLUMNS))
+            raise ValueError(
+                "CSV is missing a practice name column for source "
+                f"'google_places'. Accepted column names: {accepted}."
+            )
+        if not (GOOGLE_PLACES_URL_COLUMNS & actual):
+            accepted = ", ".join(sorted(GOOGLE_PLACES_URL_COLUMNS))
+            raise ValueError(
+                "CSV is missing a website column for source 'google_places'. "
+                f"Accepted column names: {accepted}."
+            )
 
 
 def preflight_summary(content: bytes, source_type: str) -> dict:
@@ -187,8 +204,12 @@ _FUZZY_MAX_ROWS = 500   # skip fuzzy pass on very large files to stay fast
 
 def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> dict:
     """Summarize a parsed CSV: importable count, duplicates, and similar-name pairs."""
-    name_cols = ("name", "practice_name")
-    url_cols = tuple(OUTSCRAPER_URL_COLUMNS)
+    name_cols = ("name", "practice_name", "title")
+    # Ordered on purpose: a Google Places export carries BOTH a real `website`
+    # and a Google Maps `url` (unique per listing). Preferring the real site
+    # keeps duplicate detection meaningful; a set's arbitrary order did not.
+    url_cols = ("site", "website", "website_url", "web_url", "website_address",
+                "web", "url")
     state_cols = ("state", "address_state")
 
     seen_urls: dict[str, int] = {}          # url -> first_row number (1-based, header=1)
@@ -277,6 +298,23 @@ def _analyze_rows(rows: list[dict], fieldnames: list[str], source_type: str) -> 
             "No 'type' column found. Specialty is inferred from practice names "
             "where possible; unmatched practices are marked Unknown."
         )
+    if source_type == "google_places":
+        actual = set(fieldnames)
+        if not ({"categoryname", "category", "categories/0"} & actual):
+            warnings.append(
+                "No category column found. Specialty is inferred from practice "
+                "names where possible; unmatched practices are marked Unknown."
+            )
+        closed = sum(
+            1 for r in rows
+            if str(r.get("permanentlyClosed", r.get("permanentlyclosed", ""))).strip().lower()
+            in ("true", "1", "yes")
+        )
+        if closed:
+            warnings.append(
+                f"{closed} listing(s) are marked permanently closed and will be "
+                "skipped at ingest — they are not prospects."
+            )
 
     return {
         "row_count": len(rows),

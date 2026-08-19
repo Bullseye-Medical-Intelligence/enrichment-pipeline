@@ -75,10 +75,14 @@
       <label for="source_type">CSV Source</label>
       <select id="source_type" name="source_type" required>
         <option value="outscraper" selected>Outscraper export</option>
+        <option value="google_places">Google Places export (Apify / Google Maps scraper)</option>
         <option value="manual">Manual (Bullseye canonical format)</option>
       </select>
       <p class="form-hint">
         Choose <strong>Outscraper export</strong> if this came directly from Outscraper.
+        Choose <strong>Google Places export</strong> for a Google Maps place-listing
+        scrape (Apify crawler-google-places and compatible tools) — upload it as
+        exported, extra columns are ignored.
         Choose <strong>Manual</strong> only if the CSV is already in Bullseye's internal format.
       </p>
     </div>

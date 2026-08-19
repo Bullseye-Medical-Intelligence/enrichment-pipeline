@@ -208,6 +208,7 @@ The ingestion layer must remain replaceable. Future sources may include:
 ```
 /ingestion
   outscraper_adapter.py   ← maps Outscraper CSV → canonical schema
+  google_places_adapter.py ← Google Places / Apify place-listing CSV → canonical schema
   manual_adapter.py       ← passes through canonical CSVs already in schema format
   (future: crm_adapter.py, definitive_adapter.py, etc.)
 ```
@@ -562,6 +563,7 @@ Every pipeline run produces a `run_log.json` alongside the enriched targets file
 /enrichment-pipeline
   /ingestion
     outscraper_adapter.py   ← Outscraper CSV → canonical schema
+    google_places_adapter.py ← Google Places / Apify export → canonical schema
     manual_adapter.py       ← Pass-through for already-normalized CSVs
   /extraction
     web_extractor.py        ← requests + BeautifulSoup page text extraction

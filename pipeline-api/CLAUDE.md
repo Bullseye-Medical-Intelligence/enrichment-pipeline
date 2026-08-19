@@ -356,6 +356,18 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   generated signals before saving — the builder is a starting point, not a source
   of truth. `save_icp_profile()` in `icp_profiles.py` writes new profiles atomically.
 
+**Exclusion-rule picker on the project form**: `active_exclusion_rules` is a
+checkbox group, not free text. Only the engine's CONFIGURABLE rules are
+switchable (`config.CONFIGURABLE_EXCLUSION_RULE_NAMES`); the four HARD rules
+are rendered locked, because the engine applies them whenever they trigger and
+a switch for them would do nothing. A hidden `exclusion_rules_present` marker
+distinguishes "the picker was shown and nothing was ticked" (store zero
+configurable rules) from "no picker in this request" (JSON/API caller — fall
+back to defaults), which is what previously made it impossible to turn a rule
+off. Hard rules are always written into the stored list so the saved config
+still describes the run honestly. The legacy comma-separated
+`active_exclusion_rules` field is still accepted for API callers.
+
 **Score Simulator** (`/icp-profiles/simulate` POST, rendered in `icp_review.html`):
   A collapsible panel in the ICP review page lets operators set hypothetical signal
   states (Yes / Not Found / No) per signal and click "Run Simulation" to see the
