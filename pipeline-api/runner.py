@@ -554,7 +554,7 @@ REFRESH_STATUS_FILENAME = "refresh_status.json"
 
 
 def _mark_refresh(run_directory: Path, record_ids, state: str,
-                  kind: str = "", error: str = "") -> None:
+                  kind: str = "", error: str = "", job_dir: str = "") -> None:
     """Merge per-record refresh entries into refresh_status.json atomically.
 
     Runs under the per-run lock: two refresh jobs finishing together must not
@@ -594,17 +594,24 @@ def _mark_refresh(run_directory: Path, record_ids, state: str,
             if state == "running":
                 entry["started_at"] = now
                 entry["finished_at"] = ""
+                entry["job_dir"] = job_dir
             else:
                 entry["finished_at"] = now
+                entry.pop("job_dir", None)
             if state == "done":
                 entry["last_refreshed_at"] = now
             current[rid] = entry
         reviews._atomic_write(path, current)
 
 
-def mark_refresh_running(run_directory: Path, record_ids, kind: str) -> None:
-    """Record that an in-place refresh started for these records."""
-    _mark_refresh(run_directory, record_ids, "running", kind=kind)
+def mark_refresh_running(run_directory: Path, record_ids, kind: str,
+                         job_dir: str = "") -> None:
+    """Record that an in-place refresh started for these records.
+
+    job_dir names the job's scratch dir (basename only) so readers can use its
+    progress.json as a liveness heartbeat and live progress source.
+    """
+    _mark_refresh(run_directory, record_ids, "running", kind=kind, job_dir=job_dir)
 
 
 def mark_refresh_done(run_directory: Path, record_ids) -> None:
@@ -617,12 +624,77 @@ def mark_refresh_failed(run_directory: Path, record_ids, error: str) -> None:
     _mark_refresh(run_directory, record_ids, "failed", error=error)
 
 
+class RefreshInProgress(ValueError):
+    """A requested record already has a live in-place refresh running."""
+
+
+def _refresh_running_ids(run_directory: Path, record_ids) -> list[str]:
+    """Return the subset of record_ids whose refresh is live (running, not stale)."""
+    status_map = load_refresh_status(run_directory)
+    return [rid for rid in record_ids
+            if (status_map.get(rid) or {}).get("state") == "running"]
+
+
+def _read_job_progress(run_directory: Path, job_dir: str):
+    """Read a scratch job's progress.json; return (progress | None, heartbeat | None).
+
+    The heartbeat is the file's updated_at stamp (file mtime as fallback) —
+    proof the pipeline subprocess is still doing work. job_dir must be a bare
+    basename; anything path-like is refused so a hand-edited
+    refresh_status.json can never read outside the run directory.
+    """
+    if not job_dir or Path(job_dir).name != job_dir:
+        return None, None
+    path = run_directory / job_dir / "progress.json"
+    try:
+        raw = path.read_text(encoding="utf-8")
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return None, None
+    try:
+        progress = json.loads(raw)
+    except ValueError:
+        return None, mtime  # unreadable content is still proof of life
+    if not isinstance(progress, dict):
+        return None, mtime
+    heartbeat = mtime
+    try:
+        updated = datetime.fromisoformat(str(progress.get("updated_at") or ""))
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        heartbeat = max(heartbeat, updated)
+    except ValueError:
+        pass
+    return progress, heartbeat
+
+
+def _format_job_progress(progress: dict) -> str:
+    """One operator-facing line for a running job: 'Step 3/8 Web extraction · 14/38 records'."""
+    parts = []
+    step_num = progress.get("step_num")
+    step_name = str(progress.get("step_name") or "").strip()
+    if isinstance(step_num, int) and step_num > 0:
+        step_total = progress.get("step_total")
+        total_part = f"/{step_total}" if isinstance(step_total, int) and step_total > 0 else ""
+        parts.append(f"Step {step_num}{total_part}" + (f" {step_name}" if step_name else ""))
+    elif step_name:
+        parts.append(step_name)
+    done, total = progress.get("records_done"), progress.get("records_total")
+    if isinstance(total, int) and total > 0 and isinstance(done, int):
+        parts.append(f"{done}/{total} records")
+    return " · ".join(parts)
+
+
 def load_refresh_status(run_directory: Path) -> dict:
     """Read refresh_status.json, reporting stale 'running' entries as failed.
 
     Read-only: a monitor that died (server restart) or stalled past
     REFRESH_STALE_MINUTES is reported failed in the returned dict without
-    rewriting the file, so GET routes never mutate run state.
+    rewriting the file, so GET routes never mutate run state. Staleness is
+    measured from the job's last sign of life — the scratch progress.json
+    heartbeat when the entry carries a job_dir — not from started_at alone, so
+    a long-but-healthy browser batch is never falsely reported failed. Running
+    entries with readable progress also gain a `progress_display` line.
     """
     path = run_directory / REFRESH_STATUS_FILENAME
     try:
@@ -636,6 +708,7 @@ def load_refresh_status(run_directory: Path) -> dict:
     # .corrupt sidecar instead of merging with them.
     current = {k: v for k, v in current.items() if isinstance(v, dict)}
     stale_before = datetime.now(timezone.utc) - timedelta(minutes=REFRESH_STALE_MINUTES)
+    job_cache: dict = {}
     for entry in current.values():
         if entry.get("state") != "running":
             continue
@@ -650,10 +723,19 @@ def load_refresh_status(run_directory: Path) -> dict:
         # route. Every in-repo writer already stamps tz-aware UTC.
         if started is not None and started.tzinfo is None:
             started = started.replace(tzinfo=timezone.utc)
-        if started is None or started < stale_before:
+        job_dir = str(entry.get("job_dir") or "")
+        if job_dir not in job_cache:
+            job_cache[job_dir] = _read_job_progress(run_directory, job_dir)
+        progress, heartbeat = job_cache[job_dir]
+        last_alive = max((t for t in (started, heartbeat) if t is not None), default=None)
+        if last_alive is None or last_alive < stale_before:
             entry["state"] = "failed"
             entry["error"] = ("Job did not report completion — the server restarted "
                               "or the job stalled. Re-run the refresh.")
+        elif progress:
+            display = _format_job_progress(progress)
+            if display:
+                entry["progress_display"] = display
     return current
 
 
@@ -688,6 +770,13 @@ def _prepare_single_record_job(source_run_id: str, record_id: str):
     record = next((r for r in all_records if record_adapter.get_record_id(r) == record_id), None)
     if record is None:
         raise FileNotFoundError(f"Record '{record_id}' not found in run '{source_run_id}'")
+
+    # Double-submit guard: a record already mid-refresh must not get a second
+    # overlapping job — that doubles the crawl and Claude spend and races the merge.
+    if _refresh_running_ids(source_dir, [record_id]):
+        raise RefreshInProgress(
+            "This record is already mid re-enrich — wait for the running job to finish."
+        )
 
     config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
     icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
@@ -801,7 +890,7 @@ async def orchestrate_single_recrawl(
         "In-place browser re-crawl of record %s in run %s started by '%s' (url=%s)",
         record_id, source_run_id, operator, url,
     )
-    mark_refresh_running(source_dir, [record_id], "browser re-crawl")
+    mark_refresh_running(source_dir, [record_id], "browser re-crawl", job_dir=scratch_dir.name)
     # Shielded so a client disconnect (proxy timeout, tab closed) cannot cancel
     # the wait-and-merge mid-flight — the old path's finally-cleanup would delete
     # the scratch dir from under the still-running subprocess.
@@ -855,7 +944,7 @@ async def orchestrate_excluded_reenrich(
         "Excluded record re-enrich for %s in run %s started by '%s' (url=%s)",
         record_id, source_run_id, operator, url,
     )
-    mark_refresh_running(source_dir, [record_id], "excluded re-enrich")
+    mark_refresh_running(source_dir, [record_id], "excluded re-enrich", job_dir=scratch_dir.name)
     return await asyncio.shield(asyncio.ensure_future(_run_inplace_update(
         source_run_id, scratch_dir, record_id, process, "excluded re-enrich"
     )))
@@ -928,7 +1017,7 @@ async def orchestrate_manual_content_recrawl(
         "In-place manual-content enrich of record %s in run %s started by '%s' (%d page(s), %d bytes)",
         record_id, source_run_id, operator, len(usable), total_bytes,
     )
-    mark_refresh_running(source_dir, [record_id], "manual content")
+    mark_refresh_running(source_dir, [record_id], "manual content", job_dir=scratch_dir.name)
     return await asyncio.shield(asyncio.ensure_future(_run_inplace_update(
         source_run_id, scratch_dir, record_id, process, "manual content"
     )))
@@ -1009,6 +1098,15 @@ async def orchestrate_batch_reenrich(
     if not selected:
         raise ValueError("None of the requested record IDs were found in this run.")
 
+    # Double-submit guard: refuse to start a second batch over records whose
+    # refresh is still live — a re-click would double the crawl and Claude spend.
+    already = _refresh_running_ids(source_dir, sorted(id_set))
+    if already:
+        raise RefreshInProgress(
+            f"{len(already)} of the selected records {'is' if len(already) == 1 else 'are'} "
+            "already mid re-enrich — wait for the running job to finish before starting another."
+        )
+
     config_snapshot_src = source_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
     icp_snapshot_src = source_dir / ICP_SNAPSHOT_FILENAME
     if not config_snapshot_src.exists() or not icp_snapshot_src.exists():
@@ -1061,6 +1159,7 @@ async def orchestrate_batch_reenrich(
     mark_refresh_running(
         source_dir, list(id_set),
         "browser re-crawl" if use_playwright else "re-enrich",
+        job_dir=scratch_dir.name,
     )
     background_tasks.add_task(
         _monitor_batch_reenrich, source_run_id, scratch_dir, list(id_set), process

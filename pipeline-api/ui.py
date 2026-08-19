@@ -2146,6 +2146,16 @@ def _inplace_redirect(run_id: str, record_id: str, result) -> RedirectResponse:
     return RedirectResponse(url=f"/dashboard/{run_id}?{params}", status_code=303)
 
 
+def _refresh_busy_redirect(run_id: str, record_id: str, message: str) -> RedirectResponse:
+    """Flash a friendly notice when a refresh is refused because one is already running."""
+    params = urllib.parse.urlencode({
+        "scrollto": record_id,
+        "notice": message,
+        "notice_type": "error",
+    })
+    return RedirectResponse(url=f"/dashboard/{run_id}?{params}", status_code=303)
+
+
 @router.post("/runs/{run_id}/records/{record_id}/recrawl")
 async def recrawl_single_record(
     run_id: str,
@@ -2164,6 +2174,8 @@ async def recrawl_single_record(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except runner.RefreshInProgress as e:
+        return _refresh_busy_redirect(run_id, record_id, str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _inplace_redirect(run_id, record_id, result)
@@ -2193,6 +2205,8 @@ async def reenrich_excluded_record(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except runner.RefreshInProgress as e:
+        return _refresh_busy_redirect(run_id, record_id, str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _inplace_redirect(run_id, record_id, result)
@@ -2302,6 +2316,8 @@ async def manual_content_recrawl(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except runner.RefreshInProgress as e:
+        return _refresh_busy_redirect(run_id, record_id, str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _inplace_redirect(run_id, record_id, result)
@@ -2347,6 +2363,11 @@ async def retry_with_browser(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except runner.RefreshInProgress as e:
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice={urllib.parse.quote(str(e))}&notice_type=error",
+            status_code=303,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3221,6 +3242,11 @@ async def rerun_selected(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except runner.RefreshInProgress as e:
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice={urllib.parse.quote(str(e))}&notice_type=error",
+            status_code=303,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

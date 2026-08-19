@@ -117,6 +117,14 @@ document.addEventListener('DOMContentLoaded', function() {
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(map) {
         if (!map) return;
+        /* Live-update each running row's progress line (server-built text,
+           e.g. "Step 3/8 Web extraction · 14/38 records") without a reload. */
+        document.querySelectorAll('[data-refresh-progress]').forEach(function(node) {
+          var entry = map[node.getAttribute('data-refresh-progress')];
+          if (entry && entry.state === 'running') {
+            node.textContent = entry.progress_display ? ' ' + entry.progress_display : '';
+          }
+        });
         var running = Object.keys(map).some(function(k) {
           return map[k] && map[k].state === 'running';
         });

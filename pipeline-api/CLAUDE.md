@@ -266,16 +266,31 @@ spend is absent from the cost figure. Do not "fix" this by adding its tokens to
 re-crawl, manual content, excluded re-enrich, batch re-enrich) records per-record
 job state in `<run_dir>/refresh_status.json` (`runner.mark_refresh_running/done/
 failed`, written atomically): `state` running/done/failed, `kind`, `started_at`,
-`finished_at`, `error`, and a persisted `last_refreshed_at`. The dashboard renders
+`finished_at`, `error`, a persisted `last_refreshed_at`, and — while running —
+`job_dir`, the basename of the job's scratch dir. The dashboard renders
 a spinner while running, a green `↻` with the refresh timestamp on hover after
 success, and a red "⚠ refresh failed" with the error on hover after failure — a
 failed pipeline exit is never silent. `GET /runs/{run_id}/refresh-status` serves
-the map (stale `running` entries older than `REFRESH_STALE_MINUTES` are reported
-failed, read-only); rows mid-refresh carry `data-refreshing="1"` and app.js polls
-until no job is running, then reloads once. The single-record wait-and-merge is
-wrapped in `asyncio.shield` so a client disconnect or proxy timeout cannot cancel
-the job mid-flight (the old path's cleanup deleted the scratch dir from under the
-still-running subprocess).
+the map read-only; rows mid-refresh carry `data-refreshing="1"` and app.js polls
+until no job is running, then reloads once.
+
+**Liveness, progress, and the double-submit guard**: the scratch pipeline writes
+`progress.json` continuously, so `load_refresh_status` uses it as the job's
+heartbeat: a `running` entry is reported failed only when its **last sign of
+life** (heartbeat, else `started_at`) is older than `REFRESH_STALE_MINUTES` —
+a long-but-healthy browser batch is never falsely reported failed, while a dead
+job (server restart, hung subprocess) still goes stale one window after its last
+write. `job_dir` is basename-sanitized before any read (a hand-edited
+refresh_status.json cannot reach outside the run dir). Running entries with
+readable progress gain a server-built `progress_display` line ("Step 3/8 Web
+extraction · 14/38 records") rendered next to the spinner and live-updated by
+the app.js poller without a reload. Starting a refresh over a record whose
+refresh is still live raises `runner.RefreshInProgress` (all four orchestrate
+paths); the routes turn it into a notice redirect — a double click can never
+spawn an overlapping job and double the Claude spend. The single-record
+wait-and-merge is wrapped in `asyncio.shield` so a client disconnect or proxy
+timeout cannot cancel the job mid-flight (the old path's cleanup deleted the
+scratch dir from under the still-running subprocess).
 
 **Expand/Collapse All**: a toggle button above the results table
 (`toggleExpandAll` in app.js) expands or collapses every record's detail panel in

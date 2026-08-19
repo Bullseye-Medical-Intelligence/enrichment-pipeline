@@ -223,3 +223,151 @@ def test_toggle_expand_all_js_respects_filter():
     # Only visible (unfiltered) rows are toggled, and the label flips with state.
     assert "row.style.display === 'none'" in body
     assert "'Collapse All'" in body
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat staleness + live progress (job_dir -> scratch progress.json)
+# ---------------------------------------------------------------------------
+
+def _age_started_at(run_directory, rid, minutes):
+    path = run_directory / runner.REFRESH_STATUS_FILENAME
+    data = json.loads(path.read_text())
+    data[rid]["started_at"] = (
+        datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    ).isoformat()
+    path.write_text(json.dumps(data))
+
+
+def _write_job_progress(run_directory, job_dir, minutes_ago=0, **over):
+    """Write a scratch progress.json whose updated_at AND mtime are minutes_ago old."""
+    scratch = run_directory / job_dir
+    scratch.mkdir(parents=True, exist_ok=True)
+    stamp_dt = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    progress = {"step_num": 3, "step_name": "Web extraction", "step_total": 8,
+                "records_done": 14, "records_total": 38,
+                "updated_at": stamp_dt.isoformat()}
+    progress.update(over)
+    path = scratch / "progress.json"
+    path.write_text(json.dumps(progress))
+    os.utime(path, (stamp_dt.timestamp(), stamp_dt.timestamp()))
+
+
+def test_fresh_heartbeat_keeps_long_job_running(tmp_path):
+    """A batch older than the stale window whose scratch progress.json is still
+    being written must stay 'running' with a progress line — a healthy long
+    browser batch is never falsely reported failed."""
+    runner.mark_refresh_running(tmp_path, ["T-1"], "browser re-crawl", job_dir=".batch_ab12")
+    _age_started_at(tmp_path, "T-1", config.REFRESH_STALE_MINUTES + 30)
+    _write_job_progress(tmp_path, ".batch_ab12")
+    state = runner.load_refresh_status(tmp_path)["T-1"]
+    assert state["state"] == "running"
+    assert state["progress_display"] == "Step 3/8 Web extraction · 14/38 records"
+
+
+def test_dead_job_goes_stale_one_window_after_last_write(tmp_path):
+    """A job whose heartbeat stopped a full stale window ago reports failed."""
+    runner.mark_refresh_running(tmp_path, ["T-1"], "browser re-crawl", job_dir=".batch_ab12")
+    _age_started_at(tmp_path, "T-1", config.REFRESH_STALE_MINUTES + 30)
+    _write_job_progress(tmp_path, ".batch_ab12", minutes_ago=config.REFRESH_STALE_MINUTES + 10)
+    state = runner.load_refresh_status(tmp_path)["T-1"]
+    assert state["state"] == "failed"
+    assert "did not report completion" in state["error"]
+
+
+def test_job_dir_traversal_is_refused(tmp_path):
+    """A hand-edited path-like job_dir must not read outside the run dir — the
+    entry degrades to the started_at-only staleness check."""
+    runner.mark_refresh_running(tmp_path, ["T-1"], "re-enrich", job_dir="../../etc")
+    assert runner.load_refresh_status(tmp_path)["T-1"]["state"] == "running"
+    _age_started_at(tmp_path, "T-1", config.REFRESH_STALE_MINUTES + 5)
+    assert runner.load_refresh_status(tmp_path)["T-1"]["state"] == "failed"
+
+
+def test_progress_display_absent_without_job_progress(tmp_path):
+    runner.mark_refresh_running(tmp_path, ["T-1"], "re-enrich")
+    assert "progress_display" not in runner.load_refresh_status(tmp_path)["T-1"]
+
+
+def test_done_entry_drops_job_dir(tmp_path):
+    runner.mark_refresh_running(tmp_path, ["T-1"], "re-enrich", job_dir=".batch_x")
+    runner.mark_refresh_done(tmp_path, ["T-1"])
+    raw = json.loads((tmp_path / runner.REFRESH_STATUS_FILENAME).read_text())
+    assert "job_dir" not in raw["T-1"]
+
+
+def test_format_job_progress_tolerates_garbage():
+    assert runner._format_job_progress({}) == ""
+    assert runner._format_job_progress({"step_num": "x", "records_total": "n"}) == ""
+    assert runner._format_job_progress({"step_name": "Web extraction"}) == "Web extraction"
+
+
+def test_refresh_status_route_serves_progress_display(env):
+    _write_run(env, [_record("T-1")])
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl", job_dir=".batch_ab")
+    _write_job_progress(env, ".batch_ab")
+    r = _get(f"/runs/{_RUN_ID}/refresh-status")
+    assert r.json()["T-1"]["progress_display"] == "Step 3/8 Web extraction · 14/38 records"
+
+
+def test_dashboard_renders_progress_line(env):
+    _write_run(env, [_record("T-1")])
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl", job_dir=".batch_ab")
+    _write_job_progress(env, ".batch_ab")
+    r = _get(f"/dashboard/{_RUN_ID}")
+    assert r.status_code == 200
+    assert "Step 3/8 Web extraction · 14/38 records" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Double-submit guard
+# ---------------------------------------------------------------------------
+
+def test_batch_reenrich_refuses_overlapping_records(env):
+    _write_run(env, [_record("T-1")])
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl")
+    with pytest.raises(runner.RefreshInProgress):
+        asyncio.run(runner.orchestrate_batch_reenrich(
+            _RUN_ID, ["T-1"], "tester", None, use_playwright=True))
+
+
+def test_batch_guard_ignores_stale_running_entry(env, monkeypatch):
+    """A stale (dead) running entry must NOT block a new attempt."""
+    _write_run(env, [_record("T-1")])
+    (env / runner.PROJECT_CONFIG_SNAPSHOT_FILENAME).write_text(json.dumps({"client_name": "X"}))
+    (env / runner.ICP_SNAPSHOT_FILENAME).write_text(json.dumps({"signals": []}))
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl")
+    _age_started_at(env, "T-1", config.REFRESH_STALE_MINUTES + 5)
+
+    spawned = {}
+    monkeypatch.setattr(runner, "spawn_pipeline",
+                        lambda *a, **k: spawned.setdefault("process", _FakeProcess()))
+
+    class _CollectingBackground:
+        def add_task(self, *a, **k):
+            spawned["task"] = True
+
+    count = asyncio.run(runner.orchestrate_batch_reenrich(
+        _RUN_ID, ["T-1"], "tester", _CollectingBackground(), use_playwright=True))
+    assert count == 1
+    assert "process" in spawned and "task" in spawned
+
+
+def test_single_record_prepare_refuses_mid_refresh(env):
+    _write_run(env, [_record("T-1")])
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl")
+    with pytest.raises(runner.RefreshInProgress):
+        runner._prepare_single_record_job(_RUN_ID, "T-1")
+
+
+def test_rerun_selected_double_submit_redirects_with_notice(env):
+    _write_run(env, [_record("T-1")])
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl")
+    with TestClient(main.app) as c:
+        c.post("/login", data={"username": "tester", "password": "secret-pw"})
+        r = c.post(f"/dashboard/{_RUN_ID}/rerun-selected",
+                   data={"record_ids": "T-1", "use_playwright": "1"},
+                   follow_redirects=False)
+    assert r.status_code == 303
+    location = r.headers["location"]
+    assert "notice=" in location
+    assert "re-enrich" in location

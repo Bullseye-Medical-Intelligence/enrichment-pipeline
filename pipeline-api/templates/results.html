@@ -413,7 +413,7 @@
           <strong>{{ record.practice_name | default("—") }}</strong>
           {%- set _rf = record.refresh %}
           {%- if _rf and _rf.state == 'running' %}
-          <span class="spinner" title="{{ _rf.kind or 'Refresh' }} in progress…"></span>
+          <span class="spinner" title="{{ _rf.kind or 'Refresh' }} in progress…"></span><span class="text-muted small" data-refresh-progress="{{ rid }}">{% if _rf.progress_display %} {{ _rf.progress_display }}{% endif %}</span>
           {%- elif _rf and _rf.state == 'failed' %}
           <span class="refresh-flag refresh-failed" title="{{ _rf.error or 'Refresh failed' }}">⚠ refresh failed</span>
           {%- elif _rf and _rf.state == 'done' %}
