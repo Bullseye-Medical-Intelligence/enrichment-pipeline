@@ -353,3 +353,13 @@ def test_tablet_desktop_layout_rules_present():
     html = render_handoff(_make_run())
     assert "@media(min-width:860px)" in html
     assert "max-width:66ch" in html
+
+
+def test_search_box_present_with_filter_logic():
+    """The handoff carries a search input that filters cards client-side and a
+    no-match note; tier chips and search hide independently."""
+    html = render_handoff(_make_run())
+    assert 'id="acct-search"' in html
+    assert "function filterCards(" in html
+    assert 'id="nomatch"' in html
+    assert "applySectionVisibility" in html

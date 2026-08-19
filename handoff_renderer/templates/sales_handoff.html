@@ -55,8 +55,14 @@
   .pattern .pat-body{font-size:14px;line-height:1.55;color:#e8e5e1;}
   .pattern .pat-body b{font-weight:700;color:#fff;}
 
-  /* filter chips */
+  /* filter chips + search */
   .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
+  .search{flex:1 1 190px;min-width:160px;max-width:300px;font-family:'DM Sans',sans-serif;
+    font-size:12px;color:var(--warm);background:transparent;border:1px solid var(--line2);
+    border-radius:100px;padding:7px 14px;outline:none;-webkit-appearance:none;}
+  .search::placeholder{color:var(--mut);}
+  .search:focus{border-color:var(--acc);}
+  .nomatch{display:none;text-align:center;color:var(--mut);font-size:12.5px;padding:34px 0;}
   .chip{font-size:11px;font-weight:600;border:1px solid var(--line2);background:transparent;
     color:var(--mut);border-radius:100px;padding:7px 13px;cursor:pointer;
     touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.15);}
@@ -327,6 +333,8 @@
 {% endif %}
 
 <div class="controls">
+  <input type="search" id="acct-search" class="search" placeholder="Search practices&hellip;"
+         autocomplete="off" oninput="filterCards(this.value)">
   <span class="chip on" data-f="all">All {{ total }}</span>
   {% for section in sections %}<span class="chip" data-f="{{ section.tier_info.dot }}">{{ section.tier_info.section }} {{ section.accounts | length }}</span>{% endfor %}
   <button class="expandall" onclick="toggleAll()">Expand all</button>
@@ -470,6 +478,7 @@
 </div>
 {% endfor %}
 
+<p class="nomatch" id="nomatch">No practices match your search.</p>
 
 <div class="foot">
   Snapshot {{ run_date }} &middot; not live. &nbsp; <b>Built for field prioritization, not sales scripting.</b><br>
@@ -500,13 +509,39 @@
   document.querySelectorAll('.asummary a').forEach(function(link){
     link.addEventListener('click',function(e){e.stopPropagation();});
   });
+  /* Tier chips and the search box hide independently; a section shows only
+     when it passes BOTH the active chip and the current search. */
+  var tierFilter='all';
+  function applySectionVisibility(){
+    document.querySelectorAll('.tsection').forEach(function(s){
+      var tierOk=(tierFilter==='all'||s.dataset.tier===tierFilter);
+      s.style.display=(tierOk&&s.dataset.searchEmpty!=='1')?'block':'none';
+    });
+  }
+  function filterCards(q){
+    q=(q||'').trim().toLowerCase();
+    var any=false;
+    document.querySelectorAll('.tsection').forEach(function(s){
+      var visible=0;
+      s.querySelectorAll('.acct').forEach(function(a){
+        if(!a._searchtext)a._searchtext=a.textContent.toLowerCase();
+        var hit=!q||a._searchtext.indexOf(q)!==-1;
+        a.style.display=hit?'':'none';
+        if(hit)visible++;
+      });
+      s.dataset.searchEmpty=visible?'':'1';
+      if(visible)any=true;
+    });
+    applySectionVisibility();
+    document.getElementById('nomatch').style.display=(q&&!any)?'block':'none';
+  }
   document.querySelectorAll('.chip').forEach(function(c){
     function activate(e){
       if(e.type==='touchend')e.preventDefault();
       document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
       c.classList.add('on');
-      var f=c.dataset.f;
-      document.querySelectorAll('.tsection').forEach(function(s){s.style.display=(f==='all'||s.dataset.tier===f)?'block':'none';});
+      tierFilter=c.dataset.f;
+      applySectionVisibility();
     }
     c.addEventListener('click',activate);
     c.addEventListener('touchend',activate);
