@@ -908,7 +908,14 @@
 {% endif %}
 
 {# ── Records table ────────────────────────────────────────────────── #}
-<div style="display:flex; justify-content:flex-end; margin:0 0 6px;">
+{% set _refreshing = records | selectattr("refresh") | selectattr("refresh.state", "equalto", "running") | list %}
+<div style="display:flex; justify-content:flex-end; gap:8px; margin:0 0 6px;">
+  {% if _refreshing %}
+  <form method="post" action="/runs/{{ run_id }}/cancel-refresh" style="margin:0; margin-right:auto;"
+        onsubmit="return confirm('Stop the running re-crawl? Records still in flight are discarded and marked canceled — Claude spend already made is not recovered.');">
+    <button type="submit" class="btn btn-secondary btn-sm">Cancel Re-crawl ({{ _refreshing | length }})</button>
+  </form>
+  {% endif %}
   <button id="expand-all-btn" class="btn btn-secondary btn-sm" type="button"
           onclick="toggleExpandAll(this)">Expand All</button>
 </div>

@@ -2275,6 +2275,37 @@ async def refresh_status(run_id: str, username: str = Depends(auth.require_sessi
     return JSONResponse(content=runner.load_refresh_status(run_directory))
 
 
+@router.post("/runs/{run_id}/cancel-refresh")
+async def cancel_refresh(run_id: str, username: str = Depends(auth.require_session)):
+    """Stop the run's live background re-enrich/re-crawl jobs.
+
+    Signals each running batch job's process group and marks the outcome
+    "Canceled by operator" via the monitor. Records in flight are discarded
+    (the batch merges only on a clean exit), so the source run is never left
+    half-updated. This is the refresh-job cancel — the Phase 2 run-level
+    cancel for full enrichment runs remains unbuilt.
+    """
+    try:
+        run_directory = runs.run_dir(run_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    stopped = runner.cancel_running_refreshes(run_directory)
+    logger.info("Operator '%s' canceled %d refresh job(s) on run %s", username, stopped, run_id)
+    if stopped:
+        notice = (
+            f"Stop signal sent to {stopped} running job{'s' if stopped != 1 else ''} — "
+            "records in flight are discarded and will show as canceled."
+        )
+    else:
+        notice = "No cancellable background re-enrich job is running."
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice={urllib.parse.quote(notice)}",
+        status_code=303,
+    )
+
+
 @router.post("/runs/{run_id}/records/{record_id}/manual-content")
 async def manual_content_recrawl(
     run_id: str,

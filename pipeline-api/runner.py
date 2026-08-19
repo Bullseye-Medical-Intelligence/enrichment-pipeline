@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -118,12 +119,15 @@ def spawn_pipeline(
     logger.info("Spawning pipeline for run %s: %s", run_id, " ".join(cmd))
 
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    # Own process group (session) so a cancel can SIGTERM the pipeline AND its
+    # children (headless Chromium) in one signal instead of orphaning browsers.
     process = subprocess.Popen(
         cmd,
         cwd=str(PIPELINE_REPO_PATH),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
+        start_new_session=True,
     )
     return process
 
@@ -633,6 +637,48 @@ def _refresh_running_ids(run_directory: Path, record_ids) -> list[str]:
     status_map = load_refresh_status(run_directory)
     return [rid for rid in record_ids
             if (status_map.get(rid) or {}).get("state") == "running"]
+
+
+def cancel_running_refreshes(run_directory: Path) -> int:
+    """Ask every live in-place refresh job for a run to stop; return jobs signalled.
+
+    For each running entry's scratch job_dir: drop a `canceled` marker (so the
+    monitor reports "Canceled by operator" instead of a pipeline error) and
+    SIGTERM the recorded process group — the pipeline and its Chromium children
+    together (spawn_pipeline starts jobs in their own session). The monitor
+    still owns cleanup and the final refresh_status write; entries already
+    stale (dead job) are not signalled. Records in flight are discarded — the
+    batch merges only on a clean exit, so the source run is never half-updated.
+    """
+    status_map = load_refresh_status(run_directory)
+    job_dirs = {
+        str(entry.get("job_dir") or "")
+        for entry in status_map.values()
+        if entry.get("state") == "running"
+    }
+    signalled = 0
+    for job_dir in job_dirs:
+        if not job_dir or Path(job_dir).name != job_dir:
+            continue
+        scratch = run_directory / job_dir
+        try:
+            (scratch / "canceled").write_text("1", encoding="utf-8")
+        except OSError:
+            pass
+        try:
+            pid = int((scratch / "job.pid").read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            continue  # single-record jobs and pre-pid scratches: nothing to signal
+        try:
+            os.killpg(pid, signal.SIGTERM)
+            signalled += 1
+        except (ProcessLookupError, PermissionError):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                signalled += 1
+            except (ProcessLookupError, PermissionError):
+                pass  # already exited — the monitor will finish naturally
+    return signalled
 
 
 def _read_job_progress(run_directory: Path, job_dir: str):
@@ -1156,6 +1202,11 @@ async def orchestrate_batch_reenrich(
         "Batch re-enrich of %d records in run %s started by '%s' (browser=%s)",
         len(selected), source_run_id, operator, use_playwright,
     )
+    # The pid lets the cancel route SIGTERM this job's process group later.
+    try:
+        (scratch_dir / "job.pid").write_text(str(process.pid), encoding="utf-8")
+    except OSError:
+        pass  # cancel simply won't find this job; the run itself is unaffected
     mark_refresh_running(
         source_dir, list(id_set),
         "browser re-crawl" if use_playwright else "re-enrich",
@@ -1184,6 +1235,13 @@ async def _monitor_batch_reenrich(
     try:
         _, stderr_bytes = await loop.run_in_executor(None, process.communicate)
         if process.returncode != 0:
+            if (scratch_dir / "canceled").exists():
+                logger.info("Batch re-enrich of run %s canceled by operator.", source_run_id)
+                mark_refresh_failed(
+                    source_dir, record_ids,
+                    "Canceled by operator before completion — no records were changed.",
+                )
+                return
             error_text = stderr_bytes.decode("utf-8", errors="replace")[:2000]
             logger.error(
                 "Batch re-enrich of run %s failed (exit %d): %.500s",

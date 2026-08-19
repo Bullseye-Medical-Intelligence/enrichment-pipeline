@@ -292,6 +292,19 @@ wait-and-merge is wrapped in `asyncio.shield` so a client disconnect or proxy
 timeout cannot cancel the job mid-flight (the old path's cleanup deleted the
 scratch dir from under the still-running subprocess).
 
+**Canceling a background re-crawl**: `POST /runs/{run_id}/cancel-refresh`
+(the "Cancel Re-crawl (N)" button shown above the results table while rows
+are refreshing, behind a confirm). `runner.cancel_running_refreshes` drops a
+`canceled` marker in each live job's scratch dir and SIGTERMs its recorded
+process group — `spawn_pipeline` starts jobs in their own session
+(`start_new_session=True`) so the pipeline and its Chromium children die
+together instead of orphaning browsers. The monitor sees the marker and
+reports "Canceled by operator" rather than a pipeline error; records in
+flight are discarded (a batch merges only on a clean exit), so the source
+run is never half-updated. Stale (already-dead) entries are not signalled.
+This is the refresh-job cancel only — the Phase 2 run-level cancel for full
+enrichment runs remains unbuilt.
+
 **Expand/Collapse All**: a toggle button above the results table
 (`toggleExpandAll` in app.js) expands or collapses every record's detail panel in
 the current filtered view — rows hidden by an active filter are untouched. The

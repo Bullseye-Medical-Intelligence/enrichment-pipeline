@@ -149,6 +149,7 @@ def test_non_string_started_at_degrades_not_500(tmp_path):
 
 class _FakeProcess:
     returncode = 1
+    pid = 424242  # orchestrate writes job.pid from this; never signalled in tests
 
     def communicate(self):
         return b"", b"playwright: browser executable not found"
@@ -371,3 +372,60 @@ def test_rerun_selected_double_submit_redirects_with_notice(env):
     location = r.headers["location"]
     assert "notice=" in location
     assert "re-enrich" in location
+
+
+# ---------------------------------------------------------------------------
+# Cancel running refresh jobs
+# ---------------------------------------------------------------------------
+
+def test_cancel_signals_the_job_process_group(tmp_path):
+    """cancel_running_refreshes drops the canceled marker and SIGTERMs the
+    recorded process group; a live dummy process dies."""
+    import subprocess as sp
+    proc = sp.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                    start_new_session=True)
+    scratch = tmp_path / ".batch_kill"
+    scratch.mkdir()
+    (scratch / "job.pid").write_text(str(proc.pid))
+    runner.mark_refresh_running(tmp_path, ["T-1"], "browser re-crawl", job_dir=".batch_kill")
+    try:
+        assert runner.cancel_running_refreshes(tmp_path) == 1
+        assert (scratch / "canceled").exists()
+        assert proc.wait(timeout=10) != 0  # terminated, not a clean exit
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_cancel_with_no_running_jobs_is_a_noop(tmp_path):
+    assert runner.cancel_running_refreshes(tmp_path) == 0
+
+
+def test_monitor_reports_operator_cancel(env):
+    """A killed batch whose scratch carries the canceled marker reports
+    'Canceled by operator', not a pipeline error."""
+    _write_run(env, [_record("T-1")])
+    scratch = env / ".batch_c"
+    scratch.mkdir(parents=True)
+    (scratch / "canceled").write_text("1")
+    asyncio.run(runner._monitor_batch_reenrich(_RUN_ID, scratch, ["T-1"], _FakeProcess()))
+    state = runner.load_refresh_status(env)["T-1"]
+    assert state["state"] == "failed"
+    assert "Canceled by operator" in state["error"]
+
+
+def test_cancel_refresh_route_redirects_with_notice(env):
+    _write_run(env, [_record("T-1")])
+    with TestClient(main.app) as c:
+        c.post("/login", data={"username": "tester", "password": "secret-pw"})
+        r = c.post(f"/runs/{_RUN_ID}/cancel-refresh", follow_redirects=False)
+    assert r.status_code == 303
+    assert "No%20cancellable" in r.headers["location"]
+
+
+def test_dashboard_shows_cancel_button_when_refreshing(env):
+    _write_run(env, [_record("T-1")])
+    runner.mark_refresh_running(env, ["T-1"], "browser re-crawl", job_dir=".batch_x")
+    r = _get(f"/dashboard/{_RUN_ID}")
+    assert "Cancel Re-crawl (1)" in r.text
+    assert "cancel-refresh" in r.text
