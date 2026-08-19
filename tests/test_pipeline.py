@@ -226,6 +226,21 @@ class TestStep4Checkpoint:
         loaded = _load_step4_checkpoint(str(tmp_path), fingerprint)
         assert set(loaded) == {"T-1", "T-3"}
 
+    def test_fingerprint_scoped_by_crawl_mode(self, tmp_path):
+        """The same inputs re-run in a different crawl mode (e.g. --playwright
+        after an HTTP crawl) must produce a different fingerprint, so Step 4
+        re-extracts from the better page text instead of resuming from the
+        thin-crawl checkpoint. Same mode stays stable."""
+        from pipeline import _checkpoint_fingerprint
+        cfg = tmp_path / "config.json"; cfg.write_text("{}")
+        icp = tmp_path / "icp.json"; icp.write_text("{}")
+        inp = tmp_path / "input.csv"; inp.write_text("practice_name\nA\n")
+        base = _checkpoint_fingerprint(str(inp), str(cfg), str(icp), "pw=0|retry=0|manual=")
+        browser = _checkpoint_fingerprint(str(inp), str(cfg), str(icp), "pw=1|retry=0|manual=")
+        retry = _checkpoint_fingerprint(str(inp), str(cfg), str(icp), "pw=0|retry=1|manual=")
+        assert len({base, browser, retry}) == 3
+        assert base == _checkpoint_fingerprint(str(inp), str(cfg), str(icp), "pw=0|retry=0|manual=")
+
 
 # ---------------------------------------------------------------------------
 # Signal normalization

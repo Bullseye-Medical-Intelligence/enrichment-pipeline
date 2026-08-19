@@ -324,9 +324,11 @@ let scoring and signals decide instead. The `type` column is optional on import.
   final line (process killed mid-write) is skipped and that record re-processed.
   Per-record append is intentional crash-recovery; do not batch it.
   The checkpoint is **scoped to its inputs and deleted on success**: its first
-  line stamps a fingerprint of the config + ICP (by content) and the input CSV,
-  and a checkpoint whose fingerprint does not match the current run is discarded
-  rather than reused. Both guards matter because record ids are deterministic
+  line stamps a fingerprint of the config + ICP (by content), the input CSV,
+  and the crawl mode (`use_playwright` / `auto_browser_retry` / manual-content
+  file identities — re-running the same list with `--playwright` must
+  re-extract, not resume from thin HTTP-crawl results), and a checkpoint whose
+  fingerprint does not match the current run is discarded rather than reused. Both guards matter because record ids are deterministic
   content hashes and `--output-dir` defaults to a fixed `./output`: without them,
   editing the ICP and re-running the same command restored the previous run's
   signals — scored against the OLD weights, with zero Claude calls — and

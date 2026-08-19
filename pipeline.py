@@ -120,7 +120,8 @@ def _checkpoint_path(output_dir: str) -> Path:
     return Path(output_dir) / "step4_checkpoint.ndjson"
 
 
-def _checkpoint_fingerprint(input_file: str, config_path: str, icp_path: str) -> str:
+def _checkpoint_fingerprint(input_file: str, config_path: str, icp_path: str,
+                            crawl_mode: str = "") -> str:
     """Identify the inputs a checkpoint's records were produced from.
 
     Record ids are deterministic content hashes, so without this a later run in
@@ -129,6 +130,9 @@ def _checkpoint_fingerprint(input_file: str, config_path: str, icp_path: str) ->
     calls made. The ICP and config are hashed by content (an edited weight or
     flag must invalidate); the input CSV by identity + size + mtime, which is
     enough to catch a different or re-exported list without re-reading it.
+    crawl_mode captures how the page text was obtained (HTTP vs browser vs
+    manual content) — the same list re-run with --playwright must re-extract,
+    not resume from thin HTTP-crawl results.
     """
     h = hashlib.sha256()
     for path in (config_path, icp_path):
@@ -142,6 +146,7 @@ def _checkpoint_fingerprint(input_file: str, config_path: str, icp_path: str) ->
         h.update(f"{Path(input_file).name}|{st.st_size}|{st.st_mtime_ns}".encode())
     except OSError:
         h.update(b"<no-input>")
+    h.update(b"\x00" + crawl_mode.encode())
     return h.hexdigest()[:16]
 
 
@@ -919,7 +924,24 @@ def run_pipeline(input_file: str, source_type: str,
     print("STEP 4: SIGNAL EXTRACTION (Claude)")
     print(f"{'-'*40}")
 
-    checkpoint_fingerprint = _checkpoint_fingerprint(input_file, config_path, icp_path)
+    manual_sig = ""
+    if manual_content_path:
+        manual_parts = []
+        for p in manual_content_path:
+            try:
+                st = os.stat(p)
+                manual_parts.append(f"{Path(p).name}|{st.st_size}|{st.st_mtime_ns}")
+            except OSError:
+                manual_parts.append(f"{Path(p).name}|<unreadable>")
+        manual_sig = ";".join(manual_parts)
+    crawl_mode = (
+        f"pw={int(bool(use_playwright))}"
+        f"|retry={int(bool(auto_browser_retry))}"
+        f"|manual={manual_sig}"
+    )
+    checkpoint_fingerprint = _checkpoint_fingerprint(
+        input_file, config_path, icp_path, crawl_mode
+    )
     checkpoint = _load_step4_checkpoint(output_dir, checkpoint_fingerprint)
     if checkpoint:
         print(f"  Resuming from checkpoint: {len(checkpoint)} records already processed.")

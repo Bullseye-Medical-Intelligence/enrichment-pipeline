@@ -165,10 +165,12 @@ the example silently reverts the check. **Fix:** accurate message per branch
 (empty vs placeholder); add a test iterating `.env.example` values asserting
 `_is_configured` is False for each.
 
-## P2 — tenth-lens findings, found after the resolution pass [OPEN]
+## P2 — tenth-lens findings, found after the resolution pass
 
 These two arrived from the review's final (retried) lens after the P1/P2
 resolution pass above ran; both re-verified as still present at the merge.
+Item 15 RESOLVED 2026-08-19 (crawl-mode string folded into the fingerprint,
+pinning test in TestStep4Checkpoint). Item 14 remains OPEN.
 
 ### 14. `UnicodeDecodeError` escapes the ReviewsLoadError contract (regression-adjacent)
 `pipeline-api/reviews.py` — `get_reviews` converts damage to `ReviewsLoadError` via
@@ -185,7 +187,7 @@ cp1252 produces exactly these bytes. **Fix:** add `UnicodeDecodeError` (or
 `ValueError`) to the catch tuple in `get_reviews`; add a test with invalid-UTF-8
 bytes.
 
-### 15. Checkpoint fingerprint omits crawl-mode inputs (regression-adjacent)
+### 15. [RESOLVED 2026-08-19] Checkpoint fingerprint omits crawl-mode inputs (regression-adjacent)
 `pipeline.py::_checkpoint_fingerprint(input_file, config_path, icp_path)` — the
 fingerprint scopes the Step 4 checkpoint to config + ICP + input CSV but not to
 `use_playwright`, `auto_browser_retry`, or `manual_content_path`, which change the
