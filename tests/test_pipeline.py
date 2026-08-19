@@ -835,11 +835,13 @@ class TestTierAssignment:
                     "state_inferred": True}]
         assert _assign_tier(self._record_with_signals(signals), 95, 90) == "Bullseye"
 
-    def test_all_required_confirmed_below_score_threshold_is_contender(self):
-        """All must-haves confirmed but score below bullseye_min → Contender, not Bullseye.
+    def test_all_must_haves_confirmed_is_bullseye_below_score_threshold(self):
+        """Every required_for_bullseye signal confirmed "yes" defines Bullseye —
+        the score threshold no longer holds a fully-confirmed record down.
 
-        Bullseye requires BOTH the score threshold and confirmed must-haves; a
-        single confirmed must-have must never promote a weak-fit record.
+        Deliberate flip (2026-08-19): the ICP's must-have flags are the tier
+        definition; the score orders records within it and gates evidence
+        sufficiency via the Manual Review floor.
         """
         signals = [
             {"signal_id": "S-tms", "signal_state": "yes",
@@ -848,8 +850,54 @@ class TestTierAssignment:
              "required_for_bullseye": True, "cap_tier": ""},
         ]
         rec = self._record_with_signals(signals)
-        assert _assign_tier(rec, 73, 90) == "Contender"
-        assert "below the Bullseye threshold" in rec["tier_cap_reason"]
+        assert _assign_tier(rec, 73, 90) == "Bullseye"
+        assert rec["tier_cap_reason"] == ""
+
+    def test_inferred_must_have_does_not_promote_below_threshold(self):
+        """An inferred must-have never auto-promotes; direct confirmation is what
+        guarantees Bullseye (inference can still get there via the score path)."""
+        signals = [
+            {"signal_id": "S-tms", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": ""},
+            {"signal_id": "S-cash", "signal_state": "not_found",
+             "required_for_bullseye": True, "cap_tier": "", "state_inferred": True},
+        ]
+        assert _assign_tier(self._record_with_signals(signals), 73, 90) == "Contender"
+
+    def test_promotion_never_overrides_the_evidence_floor(self):
+        """All must-haves confirmed but the score is under the 50-point floor
+        (e.g. low-confidence yeses): a floor_tier keeps it callable at Contender,
+        but weak evidence never mints a Bullseye."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": "", "floor_tier": "Contender"},
+        ]
+        assert _assign_tier(self._record_with_signals(signals), 45, 90) == "Contender"
+
+    def test_promoted_record_still_capped_by_verification_required(self):
+        """Promotion clears the score bar, but an unrelated verification_required
+        signal still holds the record at Needs Verification — and the cap reason
+        names the gate, not a score shortfall."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": ""},
+            {"signal_id": "S-vol", "signal_state": "not_found",
+             "verification_required": True, "cap_tier": ""},
+        ]
+        rec = self._record_with_signals(signals)
+        assert _assign_tier(rec, 73, 90) == "Needs Verification"
+        assert "needs verification" in rec["tier_cap_reason"]
+        assert "below the Bullseye threshold" not in rec["tier_cap_reason"]
+
+    def test_promoted_record_still_capped_by_friction_cap_tier(self):
+        """A confirmed friction signal's cap_tier binds even when every must-have
+        is confirmed — promotion never outranks an explicit cap."""
+        signals = [
+            {"signal_id": "S-cash", "signal_state": "yes",
+             "required_for_bullseye": True, "cap_tier": ""},
+            {"signal_id": "S-hosp", "signal_state": "yes", "cap_tier": "Contender"},
+        ]
+        assert _assign_tier(self._record_with_signals(signals), 73, 90) == "Contender"
 
     def test_partial_required_confirmed_uses_score_threshold(self):
         """Some must-haves not confirmed → score threshold still applies (not all confirmed)."""

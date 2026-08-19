@@ -57,11 +57,14 @@ def _signal_name(sig: dict) -> str:
 
 
 def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
-    """Assign a CLEAR record's tier from its score, signal caps, and verification flags.
+    """Assign a CLEAR record's tier from its must-haves, score, caps, and verification flags.
 
-    Starts from the score-based tier, lets any "yes" signal with a cap_tier pull
-    the ceiling down, then applies the must-have gate (required_for_bullseye) and
-    the softer verification gate (verification_required).
+    Bullseye is defined by the must-haves: a record with every required_for_bullseye
+    signal confirmed "yes" starts at Bullseye regardless of the score threshold
+    (which remains the gate only for ICPs that define no must-haves). Any "yes"
+    signal with a cap_tier can still pull the ceiling down, as can the must-have
+    gate (required_for_bullseye) and the softer verification gate
+    (verification_required).
 
     A record with zero confirmed evidence (no "yes", nothing inferred) is not a
     fit verdict at all — it gets "Manual Review", a CLEAR non-call status, so a
@@ -107,11 +110,21 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
             )
             return "Manual Review"
 
-    # Bullseye requires BOTH the score threshold and the must-have gate below.
-    # Confirming the must-have signals alone never promotes a low-scoring record:
-    # with a single-must-have ICP, "lists the service" would otherwise make every
-    # marginal practice a Bullseye regardless of how weak the rest of its fit is.
-    rank = TIER_RANK["Bullseye"] if score >= bullseye_min else TIER_RANK["Contender"]
+    # Bullseye = every must-have confirmed present. The ICP's required_for_bullseye
+    # flags define the tier; the score orders records within it. Promotion requires
+    # direct "yes" on all must-haves — an inferred must-have never promotes (it can
+    # still reach Bullseye through the score path) — and never overrides the
+    # evidence floor above, so all-low-confidence evidence cannot mint the top tier.
+    # An ICP that defines no must-haves keeps the score threshold as the only gate.
+    # Caps below (cap_tier, verification_required, must-have gates) still pull a
+    # promoted record down.
+    must_haves = [s for s in signals if s.get("required_for_bullseye")]
+    promoted = (
+        bool(must_haves)
+        and all(s.get("signal_state") == "yes" for s in must_haves)
+        and score >= LOW_SCORE_MANUAL_REVIEW_THRESHOLD
+    )
+    rank = TIER_RANK["Bullseye"] if (promoted or score >= bullseye_min) else TIER_RANK["Contender"]
     # Apply floor guarantee: lift rank up to the floor minimum.
     if floor_rank > rank:
         rank = floor_rank
@@ -190,7 +203,9 @@ def _assign_tier(record: dict, score: int, bullseye_min: int) -> str:
     # to reverse-engineer why a record landed below Bullseye.
     if final_rank < TIER_RANK["Bullseye"]:
         reasons = [reason for _cap_rank, reason in sorted(caps, key=lambda c: c[0])]
-        if score < bullseye_min:
+        # A promoted record was not held down by its score — naming a score
+        # shortfall would misdirect the operator when a cap is what bound.
+        if score < bullseye_min and not promoted:
             reasons.append("Score is below the Bullseye threshold.")
         if reasons:
             record["tier_cap_reason"] = " ".join(reasons)

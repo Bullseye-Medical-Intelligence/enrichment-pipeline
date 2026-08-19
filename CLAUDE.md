@@ -187,7 +187,7 @@ never in engine code (RULE 3).
 | `not_found_weight` | number | Score delta when the signal is `not_found` (use negative to penalize an expected-but-absent signal). |
 | `no_weight` | number | Score delta when a positive-weight signal is confirmed `"no"` (use negative to penalize a confirmed-absent must-have). Default 0. |
 | `verification_required` | bool | When `not_found` (and not inferred), caps a would-be Bullseye at `"Needs Verification"`. |
-| `required_for_bullseye` | bool | Must-have gate. When the signal is **not** confirmed `"yes"` and **not** inferred: a confirmed `"no"` caps the tier at `"Contender"`; a `not_found` caps at `"Needs Verification"`. Supersedes `verification_required` (also covers the `not_found` case), so a must-have signal needs only this flag. |
+| `required_for_bullseye` | bool | The must-have definition of Bullseye. When **all** flagged signals are confirmed `"yes"` (not inferred), the record is promoted to Bullseye regardless of the score threshold (evidence floor and every cap still bind); `bullseye_min` remains the gate only for ICPs with no must-haves. When the signal is **not** confirmed `"yes"` and **not** inferred: a confirmed `"no"` caps the tier at `"Contender"`; a `not_found` caps at `"Needs Verification"`. Supersedes `verification_required` (also covers the `not_found` case), so a must-have signal needs only this flag. |
 | `required_for_contender` | bool | Qualifier gate, **stricter** than `required_for_bullseye`. When the signal is **not** confirmed `"yes"` and **not** inferred (`not_found` or confirmed `"no"`, no reinforcement), the record is routed to `"Manual Review"` regardless of score or any other confirmed signal — out of the call queue entirely. Where `required_for_bullseye` only *caps* the tier (record stays callable), this *disqualifies* it from every call tier until an operator confirms. Runs **after** reinforcement, so a proxy signal that infers the target suppresses the gate. Sets `tier_cap_reason` (e.g. "Cash pay / self-pay not confirmed (required to qualify)"). Use for a primary qualifier no call should proceed without. |
 | `cap_tier` | `"Contender"` \| `"Needs Verification"` | When the signal is `"yes"`, caps the tier at this ceiling regardless of score (e.g. confirmed hospital affiliation → `"Contender"`). |
 | `floor_tier` | `"Contender"` \| `"Needs Verification"` | When the signal is `"yes"`, guarantees the record reaches at least this tier, bypassing the low-score Manual Review gate. Use for a confirmed primary qualifier that always warrants a call even on a thin overall score (e.g. confirmed cash-pay → at least Contender). |
@@ -245,7 +245,12 @@ any stale `"Watchlist"` value to `"Contender"` so frozen snapshots still resolve
      `"yes"` signal carries a `floor_tier` guarantee.
    (Not-enriched roster rows from `--ingest-only` are exempt.) The steps below
    apply only to records that clear this gate.
-1. Start at `Bullseye` if `score >= bullseye_min`, else `Contender`.
+1. Start at `Bullseye` when **every** `required_for_bullseye` signal is confirmed
+   `"yes"` (direct confirmation only — an inferred must-have never promotes — and
+   the record cleared the evidence floor in step 0), or when
+   `score >= bullseye_min` (the only Bullseye gate for an ICP that defines no
+   must-haves). Otherwise start at `Contender`. Every cap below still pulls a
+   promoted record down.
 2. Any `"yes"` signal with a `cap_tier` pulls the ceiling down (`min`). A `"yes"`
    signal with a `floor_tier` lifts the minimum rank past the low-score
    Manual Review threshold (e.g. a confirmed cash-pay signal guarantees at least
@@ -260,12 +265,13 @@ any stale `"Watchlist"` value to `"Contender"` so frozen snapshots still resolve
    a proxy signal that infers the target suppresses it. Stricter than step 5.
 5. A `required_for_bullseye` signal that is **not** `"yes"` and **not** `state_inferred`
    caps the tier: confirmed `"no"` → `Contender`, `not_found` → `Needs Verification`.
-   This is how "Bullseye = all must-haves confirmed present" is enforced.
+   Together with the promotion in step 1, this enforces "Bullseye = all must-haves
+   confirmed present" in both directions.
 6. A `verification_required` signal that is `not_found` **and not** `state_inferred`
    caps a would-be Bullseye at `Needs Verification`.
 7. `cap_tier` constraints only ever pull down; `floor_tier` guarantees only ever
-   lift the low-score floor — neither can override the score-based Bullseye
-   threshold in step 1.
+   lift the low-score floor — neither can create a Bullseye on its own; the
+   must-have promotion or the score threshold in step 1 are the only entries.
 
 `"Excluded"` is never assigned here — it comes only from an exclusion rule (a
 structural/LLM trigger, or a signal flagged `exclude_if_yes` that is confirmed

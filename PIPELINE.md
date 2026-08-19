@@ -688,12 +688,19 @@ Each signal may also carry these optional fields (all default to off):
 - **`verification_required`** (bool, default `false`): when this signal is
   `not_found`, a would-be Bullseye is capped at `"Needs Verification"` so an
   analyst confirms it before the account ships.
-- **`required_for_bullseye`** (bool, default `false`): must-have gate. When the
-  signal is **not** confirmed `"yes"` and **not** inferred, the tier is capped: a
+- **`required_for_bullseye`** (bool, default `false`): the must-have definition
+  of Bullseye. When **every** signal carrying this flag is confirmed `"yes"`
+  (directly observed — an inferred must-have never promotes), the record is
+  promoted to Bullseye regardless of the score threshold; the 50-point evidence
+  floor and every cap (`cap_tier`, `verification_required`,
+  `required_for_contender`, blocked-site gate) still bind. When a flagged signal
+  is **not** confirmed `"yes"` and **not** inferred, the tier is capped: a
   confirmed `"no"` caps at `"Contender"`, a `not_found` caps at `"Needs
-  Verification"`. This is how "Bullseye means all must-have signals are confirmed
-  present" is enforced. Supersedes `verification_required` (it also covers the
-  `not_found` case), so a must-have signal needs only this flag.
+  Verification"`. Together these enforce "Bullseye means all must-have signals
+  are confirmed present" in both directions; `bullseye_min_score` remains the
+  Bullseye gate only for ICPs that define no must-have signals. Supersedes
+  `verification_required` (it also covers the `not_found` case), so a must-have
+  signal needs only this flag.
 - **`required_for_contender`** (bool, default `false`): qualifier gate. When the
   signal is **not** confirmed `"yes"` and **not** inferred (i.e. `not_found` or a
   confirmed `"no"`, with no reinforcement), the record is routed to

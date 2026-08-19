@@ -75,11 +75,12 @@ class TestFemasysV12Intent:
         data = json.loads(_ICP_PATH.read_text(encoding="utf-8"))
         assert data["version"] == "obgyn-femasys-v12"
 
-    def test_both_must_haves_alone_are_contender_not_bullseye(self):
-        # The secondary signals share the denominator, so the two must-haves alone
-        # capture ~71 fit -> blended ~79 -> a callable Contender, just shy of Bullseye.
+    def test_both_must_haves_alone_are_bullseye(self):
+        # Every must-have confirmed defines Bullseye. The two must-haves alone
+        # capture ~71 fit (secondaries share the denominator) — enough to clear
+        # the evidence floor, and the score threshold no longer holds them down.
         result = _run(["cash_pay_signal", "fertility_services"])
-        assert result["tier"] == "Contender"
+        assert result["tier"] == "Bullseye"
 
     def test_case1_cash_fertility_iui_is_bullseye(self):
         result = _run(["cash_pay_signal", "fertility_services", "iui_listed"])
