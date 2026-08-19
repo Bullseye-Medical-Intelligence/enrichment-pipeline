@@ -332,17 +332,21 @@ def test_hours_and_why_it_matters_open_with_the_card():
     run = _make_run(accounts=[_make_account(hours_of_operation="Mon-Fri 9-5")])
     html = render_handoff(run)
     assert html.count("<details open>") == 2  # Office Hours + Why It Matters
-    assert "<details>" not in html            # nothing left closed by default
+    # The only other details elements are the card wrappers themselves —
+    # no disclosure is left closed by default.
+    assert html.count("<details") == 2 + html.count('<details class="acct')
     assert "Office Hours" in html and "Why It Matters" in html
 
 
 def test_whole_card_is_the_expand_target():
-    """The expand handler binds to the whole card, not just the header; links
-    and disclosure summaries keep their native behavior."""
+    """Cards are native <details>: the whole collapsed card (header + preview)
+    is the <summary>, so expansion works on any tap with no JavaScript at all —
+    sandboxed previews and locked-down webviews included."""
     html = render_handoff(_make_run())
-    assert "querySelectorAll('.ahead')" not in html  # header-only binding is gone
-    assert "querySelectorAll('.acct').forEach(function(card)" in html
-    assert "if(t.tagName==='A'||t.tagName==='SUMMARY')return;" in html
+    assert '<details class="acct' in html
+    assert '<summary class="asummary">' in html
+    assert "querySelectorAll('.ahead')" not in html
+    assert "querySelectorAll('.acct').forEach(function(card)" not in html
 
 
 def test_tablet_desktop_layout_rules_present():

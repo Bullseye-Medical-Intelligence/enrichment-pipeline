@@ -75,13 +75,16 @@
   .tscount{font-size:12px;color:var(--mut);}
   .sect-note{font-size:11.5px;color:var(--mut);font-style:italic;margin-bottom:10px;padding-left:4px;}
 
-  /* account cards — the whole card is the expand/collapse target */
+  /* account cards render as native details elements; the summary (header +
+     preview) is the whole tap target, so expansion needs no JavaScript */
   .acct{border:1px solid var(--line);border-radius:10px;margin-bottom:9px;
-    overflow:hidden;background:var(--card);cursor:pointer;
-    -webkit-tap-highlight-color:rgba(200,75,47,0.08);}
+    overflow:hidden;background:var(--card);}
+  .asummary{display:block;list-style:none;cursor:pointer;
+    touch-action:manipulation;-webkit-tap-highlight-color:rgba(200,75,47,0.08);}
+  .asummary::-webkit-details-marker{display:none;}
+  .asummary::marker{content:"";}
   .acct.flagged{border-color:rgba(200,75,47,0.4);}
-  .acct.open{border-color:rgba(200,75,47,0.3);}
-  .acct.open .body{cursor:auto;}
+  .acct[open]{border-color:rgba(200,75,47,0.3);}
 
   /* collapsed card header: name block (left) + action block (right) */
   .ahead{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start;
@@ -134,11 +137,10 @@
   .seg span.on{background:var(--warm);}
   .conf-lbl{font-size:11px;font-weight:600;}
   .caret{color:var(--mut);font-size:11px;transition:transform .15s;}
-  .acct.open .caret{transform:rotate(90deg);}
+  .acct[open] .caret{transform:rotate(90deg);}
 
   /* expanded body */
-  .body{display:none;padding:4px 26px 24px;}
-  .acct.open .body{display:block;}
+  .body{padding:4px 26px 24px;}
   /* always-visible execution preview (hook + confirmed signals) above the body */
   .apreview{padding:0 26px 16px;}
   .fld{margin-top:22px;}
@@ -179,7 +181,7 @@
 
   /* excluded layout */
   .tsection[data-tier="e"] .acct{opacity:0.35;transition:opacity .2s;}
-  .tsection[data-tier="e"] .acct:hover,.tsection[data-tier="e"] .acct.open{opacity:0.72;}
+  .tsection[data-tier="e"] .acct:hover,.tsection[data-tier="e"] .acct[open]{opacity:0.72;}
   .twocol{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
   .exbadge{display:inline-block;margin-bottom:10px;padding:4px 12px;
     background:rgba(247,246,244,0.08);border:1px solid rgba(247,246,244,0.22);
@@ -227,8 +229,8 @@
     .body{padding:4px 26px 26px;}
     /* Bullseye / Contender bodies split into two columns; the verification,
        no-data, and excluded bodies stay single-column (short content). */
-    .tsection[data-tier="b"] .acct.open .body,
-    .tsection[data-tier="c"] .acct.open .body{
+    .tsection[data-tier="b"] .acct[open] .body,
+    .tsection[data-tier="c"] .acct[open] .body{
       display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
       column-gap:36px;align-items:start;}
   }
@@ -342,7 +344,11 @@
   {% endif %}
 
   {% for acct in section.accounts %}
-  <div class="acct{% if acct.has_flags %} flagged{% endif %}">
+  {# The card is a native <details>: the whole collapsed card (header + preview)
+     is its <summary>, so expansion works on any tap with no JavaScript at all —
+     sandboxed previews and locked-down webviews included. #}
+  <details class="acct{% if acct.has_flags %} flagged{% endif %}">
+    <summary class="asummary">
 
     {# collapsed card header: WHO am I calling (left) + the number to dial (right) #}
     <div class="ahead">
@@ -405,6 +411,7 @@
       {% endif %}
     </div>
     {% endif %}
+    </summary>
 
     {# expanded body #}
     <div class="body">
@@ -458,7 +465,7 @@
       {% endif %}
 
     </div>
-  </div>
+  </details>
   {% endfor %}
 </div>
 {% endfor %}
@@ -484,28 +491,14 @@
   }
   function toggleAll(){
     var accts=document.querySelectorAll('.acct');
-    var allOpen=[].every.call(accts,function(a){return a.classList.contains('open');});
-    accts.forEach(function(a){a.classList.toggle('open',!allOpen);});
+    var allOpen=[].every.call(accts,function(a){return a.open;});
+    accts.forEach(function(a){a.open=!allOpen;});
   }
-  /* Expand/collapse: the whole card is the click target. Links and the
-     disclosure summaries keep their native behavior; clicks inside an open
-     body never collapse the card (that would fight reading and copying);
-     an active text selection never toggles. */
-  document.querySelectorAll('.acct').forEach(function(card){
-    function toggle(e){
-      var t=e.target;
-      while(t&&t!==card){
-        if(t.tagName==='A'||t.tagName==='SUMMARY')return;
-        if(card.classList.contains('open')&&t.classList&&t.classList.contains('body'))return;
-        t=t.parentElement;
-      }
-      var sel=window.getSelection&&window.getSelection();
-      if(sel&&sel.type==='Range')return;
-      if(e.type==='touchend')e.preventDefault();
-      card.classList.toggle('open');
-    }
-    card.addEventListener('click',toggle);
-    card.addEventListener('touchend',toggle);
+  /* Card expansion itself is native details/summary — no JS involved.
+     Only guard: a tap on a link inside the summary (phone / website /
+     directions) must follow the link without also toggling the card. */
+  document.querySelectorAll('.asummary a').forEach(function(link){
+    link.addEventListener('click',function(e){e.stopPropagation();});
   });
   document.querySelectorAll('.chip').forEach(function(c){
     function activate(e){
