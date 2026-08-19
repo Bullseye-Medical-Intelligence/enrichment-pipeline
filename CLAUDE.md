@@ -360,7 +360,13 @@ let scoring and signals decide instead. The `type` column is optional on import.
   JS challenges far more reliably than headless — set it on a machine with a display
   (the operator's laptop). `PIPELINE_BROWSER_CHALLENGE_WAIT_MS` (default 25000) is how
   long the crawler patiently waits, nudging like a human, for a challenge timer to
-  clear before giving up. Both are read in `extraction/playwright_extractor.py`.
+  clear before giving up. `PIPELINE_BROWSER_PROXY` routes all browser-crawl traffic
+  through a proxy (`http://user:pass@gate.provider.com:7000` — the residential-proxy
+  vendor shape); bot protection fingerprints the crawler's IP as much as its browser,
+  so a residential proxy is the second lever after headful mode when re-crawls must
+  run from a server. A malformed value is ignored (crawl proceeds direct). All three
+  are read in `extraction/playwright_extractor.py`; the escalation ladder is
+  headful → residential proxy → per-record "Paste site content".
 
 ---
 

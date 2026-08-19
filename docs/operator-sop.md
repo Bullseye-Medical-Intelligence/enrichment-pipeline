@@ -165,6 +165,15 @@ in a dedicated **Site Blocked — Needs Re-crawl** section (not mixed into the s
 stubborn CAPTCHA-walled site, open the record and use **Paste site content** to supply the page
 text yourself. All re-crawls merge back into the **same run**.
 
+**Hard Cloudflare walls** have an escalation ladder: (1) run the re-crawl with
+`PIPELINE_BROWSER_HEADFUL=1` in `.env` on a machine with a display — a real
+Chrome window clears most "Just a moment" challenges headless cannot; (2) set
+`PIPELINE_BROWSER_PROXY` to a residential proxy URL so the crawl stops looking
+like a datacenter; (3) for the last stubborn site, use the record's **Paste
+site content** form. Decide whether to buy a proxy from the data: if the Site
+Blocked count stays above roughly 10-15% after a headful retry, it pays for
+itself.
+
 While a re-crawl runs, each affected row shows **live progress** next to its spinner
 ("Step 3/8 Web extraction · 14/38 records"). Browser batches are slow by design —
 minutes per site, tens of minutes for a batch — and stay visibly alive the whole

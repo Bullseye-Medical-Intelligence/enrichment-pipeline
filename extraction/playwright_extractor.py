@@ -13,6 +13,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 # Allow both `import playwright_extractor` (run from extraction/) and
 # `from extraction.playwright_extractor import ...` (run from repo root).
@@ -70,6 +71,39 @@ def _headful_requested() -> bool:
     return os.environ.get("PIPELINE_BROWSER_HEADFUL", "").strip().lower() in ("1", "true", "yes")
 
 
+def _proxy_settings_from_env() -> dict | None:
+    """Playwright proxy settings from PIPELINE_BROWSER_PROXY, or None.
+
+    Accepts a proxy URL with optional embedded credentials — the shape every
+    residential proxy vendor hands out, e.g.
+    http://user:pass@gate.provider.com:7000. Bot protection fingerprints the
+    crawler's network as much as its browser: datacenter server IPs get
+    challenged far more than residential ones, so routing the browser crawl
+    through a residential proxy is the second lever after headful mode.
+    Credentials are split out because Playwright takes them as separate
+    fields. A malformed value is ignored (the crawl proceeds direct) rather
+    than killing the run.
+    """
+    raw = os.environ.get("PIPELINE_BROWSER_PROXY", "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlsplit(raw if "://" in raw else "http://" + raw)
+        if not parsed.hostname:
+            return None
+        server = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            server += f":{parsed.port}"
+        settings = {"server": server}
+        if parsed.username:
+            settings["username"] = unquote(parsed.username)
+        if parsed.password:
+            settings["password"] = unquote(parsed.password)
+        return settings
+    except ValueError:
+        return None
+
+
 def launch_browser(pw):
     """Launch a browser, preferring the bundled Chromium.
 
@@ -80,15 +114,21 @@ def launch_browser(pw):
 
     When PIPELINE_BROWSER_HEADFUL is set, a headed window is tried first (best
     for bot challenges) and headless is the fallback if no display is available.
-    Stealth launch flags are always applied to quiet the automation fingerprint.
+    When PIPELINE_BROWSER_PROXY is set, all browser traffic routes through that
+    proxy. Stealth launch flags are always applied to quiet the automation
+    fingerprint.
     """
     headless_modes = [False, True] if _headful_requested() else [True]
     channels = [{}, {"channel": "chrome"}, {"channel": "msedge"}]
+    proxy = _proxy_settings_from_env()
+    proxy_opts = {"proxy": proxy} if proxy else {}
     last_error = None
     for headless in headless_modes:
         for opts in channels:
             try:
-                return pw.chromium.launch(headless=headless, args=_STEALTH_ARGS, **opts)
+                return pw.chromium.launch(
+                    headless=headless, args=_STEALTH_ARGS, **proxy_opts, **opts
+                )
             except Exception as e:  # try the next channel / mode
                 last_error = e
     raise last_error
