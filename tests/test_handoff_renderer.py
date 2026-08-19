@@ -334,3 +334,18 @@ def test_hours_and_why_it_matters_open_with_the_card():
     assert html.count("<details open>") == 2  # Office Hours + Why It Matters
     assert "<details>" not in html            # nothing left closed by default
     assert "Office Hours" in html and "Why It Matters" in html
+
+
+def test_whole_card_is_the_expand_target():
+    """The expand handler binds to the whole card, not just the header; links
+    and disclosure summaries keep their native behavior."""
+    html = render_handoff(_make_run())
+    assert "querySelectorAll('.ahead')" not in html  # header-only binding is gone
+    assert "querySelectorAll('.acct').forEach(function(card)" in html
+    assert "if(t.tagName==='A'||t.tagName==='SUMMARY')return;" in html
+
+
+def test_tablet_desktop_layout_rules_present():
+    html = render_handoff(_make_run())
+    assert "@media(min-width:860px)" in html
+    assert "max-width:66ch" in html

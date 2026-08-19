@@ -75,11 +75,13 @@
   .tscount{font-size:12px;color:var(--mut);}
   .sect-note{font-size:11.5px;color:var(--mut);font-style:italic;margin-bottom:10px;padding-left:4px;}
 
-  /* account cards */
+  /* account cards — the whole card is the expand/collapse target */
   .acct{border:1px solid var(--line);border-radius:10px;margin-bottom:9px;
-    overflow:hidden;background:var(--card);}
+    overflow:hidden;background:var(--card);cursor:pointer;
+    -webkit-tap-highlight-color:rgba(200,75,47,0.08);}
   .acct.flagged{border-color:rgba(200,75,47,0.4);}
   .acct.open{border-color:rgba(200,75,47,0.3);}
+  .acct.open .body{cursor:auto;}
 
   /* collapsed card header: name block (left) + action block (right) */
   .ahead{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start;
@@ -209,6 +211,26 @@
     .body{padding:4px 14px 20px;}
     .apreview{padding:0 14px 14px;}
     .aname{font-size:14.5px;}
+  }
+
+  /* Long-form text keeps a readable measure on wide screens */
+  .wedge,.landmine,.whylist li,.body-detail,.vstep,.exexcerpt{max-width:66ch;}
+
+  /* ── Tablet / desktop layout ─────────────────────────────── */
+  @media(min-width:860px){
+    body{padding:48px 40px 96px;}
+    .ahead{padding:20px 26px;}
+    .apreview{padding:0 26px 18px;display:grid;
+      grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:18px 34px;align-items:start;}
+    .apreview .fld{margin-top:0;}
+    .apreview .sig-groups{margin-top:0;}
+    .body{padding:4px 26px 26px;}
+    /* Bullseye / Contender bodies split into two columns; the verification,
+       no-data, and excluded bodies stay single-column (short content). */
+    .tsection[data-tier="b"] .acct.open .body,
+    .tsection[data-tier="c"] .acct.open .body{
+      display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      column-gap:36px;align-items:start;}
   }
 
   /* day/night toggle */
@@ -465,10 +487,25 @@
     var allOpen=[].every.call(accts,function(a){return a.classList.contains('open');});
     accts.forEach(function(a){a.classList.toggle('open',!allOpen);});
   }
-  document.querySelectorAll('.ahead').forEach(function(h){
-    function expand(e){if(e.type==='touchend')e.preventDefault();h.parentElement.classList.toggle('open');}
-    h.addEventListener('click',expand);
-    h.addEventListener('touchend',expand);
+  /* Expand/collapse: the whole card is the click target. Links and the
+     disclosure summaries keep their native behavior; clicks inside an open
+     body never collapse the card (that would fight reading and copying);
+     an active text selection never toggles. */
+  document.querySelectorAll('.acct').forEach(function(card){
+    function toggle(e){
+      var t=e.target;
+      while(t&&t!==card){
+        if(t.tagName==='A'||t.tagName==='SUMMARY')return;
+        if(card.classList.contains('open')&&t.classList&&t.classList.contains('body'))return;
+        t=t.parentElement;
+      }
+      var sel=window.getSelection&&window.getSelection();
+      if(sel&&sel.type==='Range')return;
+      if(e.type==='touchend')e.preventDefault();
+      card.classList.toggle('open');
+    }
+    card.addEventListener('click',toggle);
+    card.addEventListener('touchend',toggle);
   });
   document.querySelectorAll('.chip').forEach(function(c){
     function activate(e){
