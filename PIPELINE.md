@@ -330,7 +330,7 @@ The output schema is the contract between the pipeline and the dashboard. It mus
   "metro_region_tag": "Dallas",
   "state_mandate_status": "non-mandate",
 
-  "bullseye_score": 84,
+  "bullseye_score": 88,
   "fit_signal_score": 88,
   "confidence_score": 79,
   "confidence_band": "High",
@@ -739,8 +739,11 @@ its full weight; an inferred signal adds a fraction (`INFERENCE_CREDIT`); a
 subtracts. `fit = achieved / max_positive * 100`,
 clamped 0–100. Matching every key signal lands near 100; a long tail of minor
 signals can never out-score the few heavy ones, and a missing high-weight signal
-costs proportionally more than a missing minor one. `bullseye_score` is then the
-weighted blend `0.6 * fit + 0.4 * confidence`.
+costs proportionally more than a missing minor one. `bullseye_score` is
+`FIT_WEIGHT * fit + CONFIDENCE_WEIGHT * confidence` with **fit-only weights
+(`1.0` / `0.0`)**: confidence qualifies fit (per-signal
+`SIGNAL_CONFIDENCE_CREDIT`, the `confidence_band`) rather than adding points, so
+a low-fit record cannot ride a high-confidence floor into a mid-range score.
 
 Example — cash pay gated, inferred from elective procedures:
 

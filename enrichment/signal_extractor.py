@@ -572,7 +572,9 @@ def _calculate_scores(signals: list[dict], icp_signals: list[dict]) -> dict:
     else:
         confidence_score = NO_SIGNAL_CONFIDENCE
 
-    # Bullseye score: weighted blend of fit and confidence
+    # Bullseye score: weighted combination of fit and confidence. Weights are
+    # fit-only (see constants.FIT_WEIGHT) — confidence qualifies fit through
+    # per-signal credit and the confidence_band, never by adding points.
     bullseye_score = round(FIT_WEIGHT * fit_signal_score + CONFIDENCE_WEIGHT * confidence_score)
     bullseye_score = max(MIN_SCORE, min(MAX_SCORE, bullseye_score))
 

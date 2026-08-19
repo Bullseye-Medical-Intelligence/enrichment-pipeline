@@ -9,7 +9,6 @@ procedure match and thin evidence, even when the blend falls below the fit
 threshold.
 """
 
-import pytest
 
 from enrichment.constants import HIGH_CONFIDENCE_THRESHOLD, HIGH_FIT_THRESHOLD
 from enrichment.signal_extractor import _determine_fit_confidence_status
@@ -56,25 +55,13 @@ def test_boundary_exactly_at_threshold():
     assert result == "HIGH FIT / HIGH EVIDENCE"
 
 
-def test_label_ignores_blended_score():
+def test_label_reads_each_axis_independently():
     """
-    Explicit proof that the function no longer reads the blended score.
-
-    fit=90, confidence=35 → bullseye_score = 0.6*90 + 0.4*35 = 54+14 = 68.
-    68 < HIGH_FIT_THRESHOLD (70), so a blend-based function would return LOW FIT.
-    The correct answer is HIGH FIT / LOW EVIDENCE because fit_signal_score (90)
-    independently clears the threshold.
+    The quadrant label reads fit and confidence directly, never a score derived
+    from the blend weights. fit=90 independently clears HIGH_FIT_THRESHOLD while
+    confidence=35 independently misses HIGH_CONFIDENCE_THRESHOLD — any
+    bullseye_score-derived shortcut would collapse this quadrant the moment the
+    weights move.
     """
-    fit = 90
-    confidence = 35
-    blended = round(0.6 * fit + 0.4 * confidence)
-    assert blended < HIGH_FIT_THRESHOLD, (
-        f"Test precondition: blended score {blended} must be below HIGH_FIT_THRESHOLD "
-        f"{HIGH_FIT_THRESHOLD} to prove independence from the blend"
-    )
-
-    result = _determine_fit_confidence_status(fit_signal_score=fit, confidence_score=confidence)
-    assert result == "HIGH FIT / LOW EVIDENCE", (
-        f"Got '{result}' — function appears to still use the blended score ({blended}) "
-        f"instead of fit_signal_score ({fit})"
-    )
+    result = _determine_fit_confidence_status(fit_signal_score=90, confidence_score=35)
+    assert result == "HIGH FIT / LOW EVIDENCE"

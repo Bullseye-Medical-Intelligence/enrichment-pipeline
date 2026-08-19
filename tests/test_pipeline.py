@@ -487,6 +487,31 @@ class TestScoring:
         # achieved = 30 of an achievable 40 -> 75 (no extra penalty)
         assert scores["fit_signal_score"] == 75
 
+    def test_bullseye_score_is_fit_only(self):
+        # Fit-only weights: bullseye_score equals fit; confidence shapes fit
+        # through per-signal credit, never as an additive term.
+        icp = [{"signal_id": "S-1", "signal_label": "A", "prompt_instruction": "?",
+                "positive_weight": 20},
+               {"signal_id": "S-2", "signal_label": "B", "prompt_instruction": "?",
+                "positive_weight": 30}]
+        signals = [{"signal_id": "S-1", "signal_state": "yes", "confidence": "high"},
+                   {"signal_id": "S-2", "signal_state": "not_found", "confidence": "low"}]
+        scores = _calculate_scores(signals, icp)
+        assert scores["bullseye_score"] == scores["fit_signal_score"]
+
+    def test_high_confidence_cannot_lift_a_low_fit_record(self):
+        # One confirmed minor signal (8 of 100 achievable) at high confidence must
+        # read as a single-digit score — being sure about a bad fit is not fit.
+        icp = [{"signal_id": "S-minor", "signal_label": "Minor", "prompt_instruction": "?",
+                "positive_weight": 8},
+               {"signal_id": "S-major", "signal_label": "Major", "prompt_instruction": "?",
+                "positive_weight": 92}]
+        signals = [{"signal_id": "S-minor", "signal_state": "yes", "confidence": "high"},
+                   {"signal_id": "S-major", "signal_state": "not_found", "confidence": "low"}]
+        scores = _calculate_scores(signals, icp)
+        assert scores["confidence_score"] == 90   # certain about what was found...
+        assert scores["bullseye_score"] == 8      # ...which is a poor fit
+
 
 class TestFemasysCartridgeScoring:
     """Femasys v12 cartridge scored by the unchanged (legacy) engine: every positive

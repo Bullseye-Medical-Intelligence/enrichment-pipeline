@@ -34,8 +34,13 @@ SIGNAL_CONFIDENCE_CREDIT = {"high": 1.0, "medium": 0.75, "low": 0.5}
 MIN_CONTEXT_CHARS = 150
 
 # bullseye_score = FIT_WEIGHT * fit_signal_score + CONFIDENCE_WEIGHT * confidence_score
-FIT_WEIGHT = 0.6
-CONFIDENCE_WEIGHT = 0.4
+# Fit-only weights: an additive confidence term put a floor of
+# CONFIDENCE_WEIGHT * 90 under any record with a single high-confidence signal,
+# so "confidently a bad fit" read as ~40. Confidence must qualify fit, not add
+# points — it already discounts fit per signal (SIGNAL_CONFIDENCE_CREDIT) and
+# reaches reps as confidence_band / fit_confidence_status.
+FIT_WEIGHT = 1.0
+CONFIDENCE_WEIGHT = 0.0
 
 # Tier thresholds
 DEFAULT_BULLSEYE_MIN_SCORE = 90     # fallback when run_config omits bullseye_min_score
@@ -48,9 +53,10 @@ DEFAULT_NEAR_MISS_BAND = 0
 
 # Records scoring below this threshold have insufficient signal evidence to support
 # a Contender call verdict and are assigned Manual Review instead.
-# 50 ≈ one high-confidence confirmed signal of meaningful weight — the minimum
-# evidence floor for a rep call. Scores 30–49 typically represent a single
-# medium-confidence signal, which is too thin to justify outreach.
+# With the fit-only score, 50 = half the achievable positive weight captured —
+# roughly a confirmed primary qualifier of meaningful weight. Thinner captures
+# are too little evidence to justify outreach without an operator look; a
+# confirmed primary can still lift past this gate via floor_tier.
 LOW_SCORE_MANUAL_REVIEW_THRESHOLD = 50
 
 # fit_confidence_status quadrant thresholds

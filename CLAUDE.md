@@ -128,6 +128,13 @@ matching more signals does not mean a higher score.
 - **`confidence_score`** = mean of `CONFIDENCE_SCORE_MAP` across confirmed/inferred
   signals, else `NO_SIGNAL_CONFIDENCE`.
 - **`bullseye_score`** = `FIT_WEIGHT * fit + CONFIDENCE_WEIGHT * confidence`, clamped.
+  Weights are **fit-only (`1.0` / `0.0`)**: an additive confidence term put a
+  ~36-point floor under any record with one high-confidence signal, so
+  "confidently a bad fit" read as ~40. Confidence qualifies fit — through the
+  per-signal `SIGNAL_CONFIDENCE_CREDIT` discount, the client-facing
+  `confidence_band`, and `fit_confidence_status` — it never adds points of its
+  own. For an all-high-confidence record the Bullseye bar is unchanged by this
+  (reaching 90 required fit ≥ 90 under the old blend too).
 
 ### Rep call brief (`signal_extractor.py::_build_call_brief`)
 Every record carries a `call_brief` object. Grounded fields are **derived from the
