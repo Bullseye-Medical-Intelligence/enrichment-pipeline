@@ -74,13 +74,13 @@ Built 2026-06-15. Sits upstream of enrichment. Full operator flow:
 Signals defined per client in `config/clients/{slug}/icp_checklist.json`. Engine is fully generic — no hardcoded specialty/client logic anywhere.
 
 Key signal flags:
-- `required_for_bullseye` — must-have gate; not confirmed = cap at Needs Verification or Contender
+- `required_for_bullseye` — the must-have definition of Bullseye: ALL flagged signals confirmed "yes" = Bullseye regardless of the score threshold (evidence floor + caps still bind; inferred never promotes); not confirmed = cap at Needs Verification (not_found) or Contender (confirmed "no")
 - `cap_tier` / `floor_tier` — ceiling/floor overrides when signal is yes
 - `exclude_if_yes` — confirmed yes → Excluded
 - `reinforces` — one signal inferring another (e.g. listed elective procedures → cash pay inferred)
 - `verification_required` — not_found caps a Bullseye at Needs Verification
 
-Scoring: `fit_signal_score` = share of achievable positive weight actually captured, confidence-weighted. `bullseye_score` = blend of fit + confidence. Score answers: *how confident should a rep be in a fast commercial close?*
+Scoring: `fit_signal_score` = share of achievable positive weight actually captured, confidence-weighted per signal. `bullseye_score` = fit only (the additive confidence term was removed — confidence qualifies fit via per-signal credit and the client-facing band, never adds points). The score orders records within tiers and enforces the 50-point evidence floor; when the ICP defines must-haves, confirming them all is what defines Bullseye. Score answers: *how confident should a rep be in a fast commercial close?*
 
 ---
 

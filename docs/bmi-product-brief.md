@@ -98,16 +98,17 @@ Two independent dimensions — **never averaged**:
 
 - **`fit_signal_score`** (0–100): share of achievable positive weight the practice captures, credit-weighted by evidence confidence (high=1.0, medium=0.75, low=0.5). A low-confidence "yes" contributes less than a verbatim-quoted "yes".
 - **`confidence_score`** (0–100): mean evidence quality across confirmed signals.
-- **`bullseye_score`** = `0.6 × fit + 0.4 × confidence`, clamped 0–100. Threshold: ≥ 90 for Bullseye.
+- **`bullseye_score`** = the fit score (fit-only weights in `constants.py`). Confidence qualifies fit — through the per-signal credit and the client-facing band — but never adds points of its own, so a low-fit record cannot ride high confidence into a mid-range score. The score orders records within tiers; it no longer defines Bullseye when the ICP declares must-haves.
 
 **`HIGH FIT / LOW EVIDENCE` must survive to output.** A practice with strong procedure signals and a single thin source keeps a high fit score and a low confidence score — it is never collapsed into one number that hides the evidence weakness.
 
 ### Tier Ladder
 
 ```
-Bullseye       score ≥ bullseye_min, all must-have signals confirmed, source confidence complete
-Needs Verification  would-be Bullseye but a required must-have signal is not_found
-Contender      solid fit a notch below Bullseye
+Bullseye       every must-have signal confirmed present (the score threshold gates
+               Bullseye only when the ICP defines no must-haves); evidence floor + caps still apply
+Needs Verification  a must-have signal is not_found — one confirmation away from Bullseye
+Contender      a must-have confirmed absent, or a friction cap fired; the rest of the fit is real
 Manual Review  low score / no confirmed evidence, or source_confidence limited/failed (operator review)
 Excluded       any hard exclusion gate fired
 ```

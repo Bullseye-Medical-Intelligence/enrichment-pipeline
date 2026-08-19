@@ -153,9 +153,9 @@ Verification / Contender / Manual Review / Excluded), a filter bar, and the reco
 
 | Tier | Meaning | Action |
 |------|---------|--------|
-| **Bullseye** | High score + all must-haves confirmed | Ready for outreach |
-| **Needs Verification** | Candidate, a key signal unconfirmed | Verify before committing |
-| **Contender** | Solid fit, some signals weak | Worth a call, lower priority |
+| **Bullseye** | Every must-have signal confirmed present | Ready for outreach |
+| **Needs Verification** | A must-have unconfirmed — one answer away from Bullseye | Verify before committing |
+| **Contender** | A must-have confirmed absent or a risk cap fired; real fit otherwise | Worth a call, lower priority |
 | **Manual Review** | Nothing confirmable (often thin/blocked site) | Look before queueing |
 | **Excluded** | An exclusion rule fired | Off the list |
 
@@ -164,6 +164,13 @@ in a dedicated **Site Blocked — Needs Re-crawl** section (not mixed into the s
 **Retry All with Browser** there, or select records and **Re-crawl with Browser**. For a single
 stubborn CAPTCHA-walled site, open the record and use **Paste site content** to supply the page
 text yourself. All re-crawls merge back into the **same run**.
+
+While a re-crawl runs, each affected row shows **live progress** next to its spinner
+("Step 3/8 Web extraction · 14/38 records"). Browser batches are slow by design —
+minutes per site, tens of minutes for a batch — and stay visibly alive the whole
+time; a job reads as failed only when it has genuinely stopped. Starting another
+re-crawl over records that are still mid-refresh is refused with a banner, so a
+double click can never launch an overlapping (double-spend) job.
 
 **Per-record detail** shows the **call brief** (opening line, likely objection, discovery
 question, hours), the **signal checklist** (yes/no/not-found with evidence text and source URL),

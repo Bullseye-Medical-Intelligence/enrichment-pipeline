@@ -700,7 +700,11 @@ Each signal may also carry these optional fields (all default to off):
   are confirmed present" in both directions; `bullseye_min_score` remains the
   Bullseye gate only for ICPs that define no must-have signals. Supersedes
   `verification_required` (it also covers the `not_found` case), so a must-have
-  signal needs only this flag.
+  signal needs only this flag. **Authoring convention:** size must-have weights
+  so a fully-confirmed set clears the 50-point evidence floor — roughly half the
+  profile's total positive weight — or give the primary must-have a
+  `floor_tier`; a trivially-weighted confirmed must-have otherwise parks in
+  Manual Review, which reads as a contradiction.
 - **`required_for_contender`** (bool, default `false`): qualifier gate. When the
   signal is **not** confirmed `"yes"` and **not** inferred (i.e. `not_found` or a
   confirmed `"no"`, with no reinforcement), the record is routed to

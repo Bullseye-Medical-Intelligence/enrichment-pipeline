@@ -261,7 +261,7 @@ templates. Always pass `--config` and `--icp` explicitly.
 | `target_specialty` | Specialty to match (e.g. `"OBGYN"`) |
 | `target_geography` | List of 2-letter state codes (e.g. `["TX", "FL", "GA"]`) |
 | `active_exclusion_rules` | Which exclusion rules fire for this engagement |
-| `bullseye_min_score` | Minimum score for Bullseye tier (default: 90) |
+| `bullseye_min_score` | Bullseye score gate for ICPs that define no must-have signals (default: 90). When the ICP flags `required_for_bullseye` signals, confirming all of them defines Bullseye and this threshold does not hold a record down |
 
 ### `config/clients/<slug>/icp_checklist.json` — change this per engagement
 

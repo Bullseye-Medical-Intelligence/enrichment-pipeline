@@ -407,6 +407,13 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   picture; Needs Verification / Manual Review are omitted only when an analyst
   rejects them. No analyst notes. The client CSVs are unaffected — they still
   ship approved Bullseye/Contender plus all Excluded only.
+- **Handoff card behavior.** Expanding an account card shows everything in one
+  click: the Office Hours and Why It Matters disclosures render `<details open>`
+  (still individually collapsible). Each card's action block carries a
+  **Directions** link — a Google Maps directions URL with the origin omitted so
+  Maps routes from the rep's current location; the destination is built in
+  `sales_export._directions_url` from practice name + city/state/zip, and a
+  record without location context gets no link rather than an ambiguous one.
 - **Brief publishing.** `brief_publisher.py` uploads any brief HTML to Hostinger via
   SFTP (paramiko) with FTP fallback (ftplib). On first publish a tokenized URL is
   created; on republish the same file is overwritten in place so the shared URL never

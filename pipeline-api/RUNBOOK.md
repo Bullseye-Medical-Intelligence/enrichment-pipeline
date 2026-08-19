@@ -205,7 +205,10 @@ output/runs/
     step4_checkpoint.ndjson        ← per-record checkpoint (lets a failed run resume)
     evidence/<record_id>/          ← Evidence Vault: the page text the crawler saw
     reviews.json                   ← your analyst notes and overrides (safe to open/read)
-    refresh_status.json            ← per-record re-enrich job state (spinner data)
+    refresh_status.json            ← per-record re-enrich job state (spinner + live
+                                      progress; running entries carry job_dir → the
+                                      scratch progress.json heartbeat, so a long
+                                      browser batch never falsely reads as failed)
     published_briefs.json          ← links for briefs you published (if any)
     link_check_report.json         ← evidence link check results (if you ran one)
     pipeline_stdout.log            ← pipeline output kept when a run fails
