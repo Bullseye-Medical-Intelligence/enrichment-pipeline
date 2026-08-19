@@ -181,6 +181,20 @@ unset, the engine defaults to physician-first
 (`signal_extractor.DEFAULT_CONTACT_STRATEGY`). Role names belong in cartridges,
 never in engine code (RULE 3).
 
+**Profile-level optional field — `product_context`** (string, ≤700 chars,
+validated in `pipeline-api/icp_profiles.py`): client-approved product copy that
+lets `sales_angle` and the call brief angle hooks toward the product. Injected
+**fenced into the generation section only** (`signal_extractor._PRODUCT_CONTEXT_BLOCK`)
+with three rules the block carries itself: it is the ONLY permitted source of
+product facts (no added claims, pricing, or regulatory status); every hook still
+leads with something observed on the practice's site; and it must never
+influence signal evaluation. The model composes, it never sources — product
+facts come from this human-approved block, practice facts from the website.
+When unset, nothing is injected and hooks stay practice-evidence-only (the
+pre-feature behavior). Authored from the client's own materials and approved by
+them before a client-facing run; the AI builder may draft it, never ship it.
+Product names belong in cartridges, never in engine code (RULE 3).
+
 | Field | Type | Effect |
 |-------|------|--------|
 | `positive_weight` | number | Desirability weight. Negative = friction (a `"yes"` is bad). |

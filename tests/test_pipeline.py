@@ -2382,6 +2382,39 @@ class TestContactStrategyPrompt:
         assert DEFAULT_CONTACT_STRATEGY in prompt
 
 
+class TestProductContextPrompt:
+    """Client-approved product copy, fenced into the generation section only."""
+
+    _SIGNALS = [{"signal_id": "S-01", "signal_label": "Test signal",
+                 "prompt_instruction": "Is it there?", "positive_weight": 10}]
+
+    def test_unset_injects_nothing(self):
+        """No product_context → the prompt carries no product block at all;
+        hooks stay practice-evidence-only exactly as before the feature."""
+        prompt = _build_system_prompt(self._SIGNALS)
+        assert "PRODUCT CONTEXT" not in prompt
+        assert "{product_context_block}" not in prompt
+        assert "{product_context}" not in prompt
+
+    def test_whitespace_only_treated_as_unset(self):
+        prompt = _build_system_prompt(self._SIGNALS, product_context="   ")
+        assert "PRODUCT CONTEXT" not in prompt
+
+    def test_set_injects_fenced_block_in_generation_section(self):
+        copy = "Acme Widget is an FDA-cleared in-office gizmo for treating examplitis."
+        prompt = _build_system_prompt(self._SIGNALS, product_context=copy)
+        assert copy in prompt
+        assert "PRODUCT CONTEXT (for sales_angle and call_brief ONLY" in prompt
+        # The three fencing rules ship with the block.
+        assert "ONLY permitted source of product facts" in prompt
+        assert "leads with something observed on THIS practice's website" in prompt
+        assert "must NOT influence signal evaluation" in prompt
+        # Fenced into the generation section: the block sits immediately before
+        # the generation heading, after the signal-evaluation instructions.
+        assert prompt.index("PRODUCT CONTEXT") < prompt.index("After evaluating signals, generate:")
+        assert "{product_context_block}" not in prompt
+
+
 # ---------------------------------------------------------------------------
 # NPI Lookup — pure-function tests (no HTTP)
 # ---------------------------------------------------------------------------

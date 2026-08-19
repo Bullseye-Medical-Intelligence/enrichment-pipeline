@@ -1,6 +1,7 @@
 """
 sample_run.py
-Reconstructs the Neurolief / Proliv Rx Dallas run from the reference handoff
+Reconstructs the Proliv Rx / Neurolief Dallas run from the reference handoff
+(Neurolief is the manufacturer/client; Proliv Rx is the product)
 and writes the rendered HTML to sample_output.html.
 
 Run:
@@ -551,8 +552,8 @@ EXCLUDED_ACCOUNTS = [
 # ── Assemble run ───────────────────────────────────────────────────────────────
 
 RUN = HandoffRun(
-    product_name="Neurolief",
-    client_name="Proliv Rx",
+    product_name="Proliv Rx",
+    client_name="Neurolief",
     run_date=date(2026, 6, 1),
     specialty_label="Cash-Pay Interventional Psychiatry",
     metro="Dallas",

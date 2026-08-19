@@ -47,6 +47,9 @@ _VALID_CAP_FLOOR_TIERS = ("Contender", "Needs Verification")
 # Max length of an optional per-signal `column_label` (surfaces the signal as an
 # at-a-glance dashboard column). Kept short so table headers stay compact.
 _MAX_COLUMN_LABEL_LEN = 24
+# product_context is client-approved product fact for sales-hook framing. The cap
+# forces tight factual copy — long marketing prose invites the model to embellish.
+_MAX_PRODUCT_CONTEXT_LEN = 700
 
 
 def _normalize_tier_value(value: str) -> str:
@@ -267,6 +270,16 @@ def validate_icp_profile(data: dict) -> None:
     # Profile-level optional fields.
     if "contact_strategy" in data and not isinstance(data.get("contact_strategy"), str):
         raise ValueError("ICP profile 'contact_strategy' must be a string.")
+    if "product_context" in data:
+        product_context = data.get("product_context")
+        if not isinstance(product_context, str):
+            raise ValueError("ICP profile 'product_context' must be a string.")
+        if len(product_context) > _MAX_PRODUCT_CONTEXT_LEN:
+            raise ValueError(
+                f"ICP profile 'product_context' must be {_MAX_PRODUCT_CONTEXT_LEN} "
+                "characters or fewer — a few tight, client-approved sentences of "
+                "product fact, not marketing copy."
+            )
 
 
 def get_icp_profile(icp_profile_id: str) -> dict:

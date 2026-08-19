@@ -95,3 +95,26 @@ the must-have weights — review-call item.
 
 Ingest-only pass over a Northern-CA psychiatry-weighted Outscraper export,
 roster review, then a ~25-record sample enrichment before the full batch.
+
+---
+
+## product_context (added 2026-08-19 — PENDING CLIENT APPROVAL)
+
+Sourced from prolivrx.com (home, /how-it-works/, /clinical-evidence-safety/,
+/patients/, /about-us/) on 2026-08-19. Every sentence is verbatim-or-close from
+the site; nothing inferred. Injected into the extraction prompt's generation
+section only (sales_angle / call_brief) with fencing rules — it can never
+influence signal states or evidence.
+
+Deliberate omissions:
+- **Payment/coverage** — the site states only "Coverage varies. Your doctor or
+  care team can help you understand your options." Hooks must not assert how
+  the device is paid for; the cash-pay signal remains about the PRACTICE's
+  billing model.
+- **"FDA-approved" is the site's own wording** — regulatory phrasing is the
+  client's to own; get it approved as written or corrected by them.
+
+Naming correction: **Neurolief is the manufacturer (the client company);
+Proliv Rx is the product** ("Our flagship therapy, Proliv Rx" — about-us page).
+Earlier repo artifacts had these inverted (sample_run.py demo fixed 2026-08-19);
+check the live dashboard project's client/product fields match this orientation.

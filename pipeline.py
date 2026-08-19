@@ -974,6 +974,7 @@ def run_pipeline(input_file: str, source_type: str,
                     bullseye_min_score=bullseye_min,
                     target_specialty=run_config.get("target_specialty", ""),
                     contact_strategy=icp_data.get("contact_strategy", ""),
+                    product_context=icp_data.get("product_context", ""),
                 ), None
             except Exception as e:
                 err_str = str(e)

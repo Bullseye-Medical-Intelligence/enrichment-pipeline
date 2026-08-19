@@ -118,22 +118,46 @@ DEFAULT_CONTACT_STRATEGY = (
     "fall back to the first listed physician."
 )
 
+# Injected into the generation section ONLY when the ICP profile defines a
+# product_context. The model composes, it never sources: product facts may come
+# only from this operator/client-authored block; practice facts only from the
+# site. When the profile defines none, nothing is injected and the prompt is
+# unchanged — hooks stay practice-evidence-only, exactly as before.
+_PRODUCT_CONTEXT_BLOCK = """PRODUCT CONTEXT (for sales_angle and call_brief ONLY — client-approved copy):
+{product_context}
+Rules for using it:
+- This block is the ONLY permitted source of product facts. NEVER add product capabilities, indications, pricing, payment or insurance claims, regulatory status, or comparisons that are not stated above.
+- Every sales_angle bullet still leads with something observed on THIS practice's website; the product tie-in is at most the second clause. A bullet with no site-observed fact is invalid.
+- This block must NOT influence signal evaluation. Evaluate every signal exactly as if this block did not exist — it never justifies a "yes", raises a confidence, or supplies evidence.
+
+"""
+
 
 def _build_system_prompt(icp_signals: list[dict], target_specialty: str = "",
-                          contact_strategy: str = "") -> str:
+                          contact_strategy: str = "",
+                          product_context: str = "") -> str:
     """Build the cacheable system prompt — identical for every record in a run.
 
     target_specialty is injected so the LLM knows which specialty to evaluate
     wrong_specialty against. contact_strategy is the ICP profile's operator-authored
     guidance for who the primary_contact should be (e.g. a role that owns workflow
-    decisions); defaults to physician-first when the profile defines none. Both are
+    decisions); defaults to physician-first when the profile defines none.
+    product_context is the profile's client-approved product copy, injected fenced
+    into the generation section only (sales_angle / call_brief) — when unset,
+    nothing is injected and hooks stay practice-evidence-only. All three are
     run-constant, so the cache hit rate is unaffected.
     """
+    product_context = (product_context or "").strip()
+    product_block = (
+        _PRODUCT_CONTEXT_BLOCK.replace("{product_context}", product_context)
+        if product_context else ""
+    )
     return (
         _SYSTEM_TEMPLATE
         .replace("{signal_checklist}", _build_signal_checklist(icp_signals))
         .replace("{target_specialty}", target_specialty or "the target specialty")
         .replace("{contact_strategy}", (contact_strategy or "").strip() or DEFAULT_CONTACT_STRATEGY)
+        .replace("{product_context_block}", product_block)
     )
 
 
@@ -781,7 +805,8 @@ def extract_signals(record: dict, icp_signals: list[dict],
                      context_text: str, run_id: str,
                      bullseye_min_score: int = DEFAULT_BULLSEYE_MIN_SCORE,
                      target_specialty: str = "",
-                     contact_strategy: str = "") -> dict:
+                     contact_strategy: str = "",
+                     product_context: str = "") -> dict:
     """
     Run signal extraction for a single record via Claude.
     Populates all enrichment fields on the record and returns it.
@@ -794,6 +819,8 @@ def extract_signals(record: dict, icp_signals: list[dict],
         bullseye_min_score: Minimum score for Bullseye tier.
         target_specialty: Specialty the wrong_specialty exclusion evaluates against.
         contact_strategy: ICP profile guidance for picking the primary contact.
+        product_context: Client-approved product copy for sales_angle/call_brief
+            framing (fenced in the prompt; never influences signal evaluation).
 
     Returns:
         Enriched record dict.
@@ -840,7 +867,9 @@ def extract_signals(record: dict, icp_signals: list[dict],
             return record
 
         client = _get_client()
-        system_prompt = _build_system_prompt(icp_signals, target_specialty, contact_strategy)
+        system_prompt = _build_system_prompt(
+            icp_signals, target_specialty, contact_strategy, product_context
+        )
         user_message = _build_user_message(record, context_text)
         print(f"    Calling Claude ({model}) for signal extraction...")
 

@@ -675,6 +675,15 @@ stalled socket can never hang a run.
 }
 ```
 
+#### Profile-level optional fields
+
+The profile (not a signal) may carry `contact_strategy` (guidance for the call
+brief's key contact) and `product_context` (≤700 chars of client-approved
+product copy that angles `sales_angle` / call-brief hooks toward the product;
+fenced so it can never influence signal states or evidence, and omitted from
+the prompt entirely when unset). Both are operator-authored strings; see
+`CLAUDE.md` for the full contracts.
+
 #### Optional signal tiering fields
 
 Each signal may also carry these optional fields (all default to off):
