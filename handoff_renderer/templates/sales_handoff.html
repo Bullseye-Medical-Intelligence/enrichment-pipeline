@@ -112,6 +112,8 @@
   .aweb{font-size:11.5px;color:var(--mut);text-decoration:none;max-width:210px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .aweb:hover{color:var(--warm);}
+  .adir{font-size:11.5px;font-weight:600;color:var(--warm);text-decoration:none;white-space:nowrap;}
+  .adir:hover{text-decoration:underline;}
   .pill-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
   .tpill{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
     border-radius:100px;padding:5px 11px;}
@@ -143,6 +145,10 @@
   .whylist{list-style:none;padding:0;margin:0;}
   .whylist li{font-size:14px;line-height:1.55;color:#f2efeb;padding:5px 0 5px 20px;position:relative;}
   .whylist li::before{content:"→";position:absolute;left:0;color:var(--acc);font-size:11px;top:7px;}
+  /* in-body disclosures (Office Hours / Why It Matters) open with the card;
+     the caret tracks their open state so the summary still reads as a toggle */
+  .dcaret{display:inline-block;transition:transform .15s;}
+  details[open]>summary .dcaret{transform:rotate(90deg);}
 
   /* signal groups — confirmed evidence only (no "not found" noise) */
   .sig-groups{margin-top:22px;}
@@ -341,6 +347,7 @@
           <span class="aphone none">No phone listed</span>
           {% endif %}
           {% if acct.website_url %}<a class="aweb" href="{{ acct.website_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ acct.website }}</a>{% elif acct.website %}<span class="aweb">{{ acct.website }}</span>{% endif %}
+          {% if acct.directions_url %}<a class="adir" href="{{ acct.directions_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Directions &#8599;</a>{% endif %}
         </div>
         <div class="pill-wrap">
           <span class="tpill {{ acct.tier_info.dot }}">{{ acct.tier_info.pill }}</span>
@@ -404,20 +411,20 @@
       {% if acct.landmine %}<div class="fld"><div class="ey">The Trap</div><div class="landmine">{{ acct.landmine | bold_md }}</div></div>{% endif %}
       {% if acct.hours_of_operation %}
       <div class="fld">
-        <details>
+        <details open>
           <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
-            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Office Hours
+            <span class="dcaret" style="font-size:9px;color:var(--acc);">&#9654;</span> Office Hours
           </summary>
           <div class="body-detail" style="font-size:12.5px;color:var(--txt);margin-top:8px;padding-left:16px;line-height:1.6;">{{ acct.hours_of_operation }}</div>
         </details>
       </div>
       {% endif %}
-      {# Context, collapsed by default — only opened if the rep gets the prospect talking. #}
+      {# Context opens with the card — expanding once shows everything; the summary still collapses it. #}
       {% if acct.why_it_matters or acct.cap_reason %}
       <div class="fld">
-        <details>
+        <details open>
           <summary style="cursor:pointer;font-size:11.5px;font-weight:600;letter-spacing:0.06em;color:var(--mut);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
-            <span style="font-size:9px;color:var(--acc);">&#9654;</span> Why It Matters
+            <span class="dcaret" style="font-size:9px;color:var(--acc);">&#9654;</span> Why It Matters
           </summary>
           <div class="body-detail" style="margin-top:10px;padding-left:16px;">
             {% if acct.cap_reason %}<div style="font-size:12.5px;color:var(--mut);margin-bottom:10px;border-left:2px solid var(--line2);padding-left:10px;">{{ acct.cap_reason }}</div>{% endif %}

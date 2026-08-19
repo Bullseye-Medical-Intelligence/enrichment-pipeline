@@ -435,6 +435,33 @@ def test_contender_cap_reason_strips_numeric_score():
     assert "50-point" not in acct.cap_reason
 
 
+def test_directions_url_encodes_name_and_location():
+    """The handoff Directions link targets name + city/state/zip; origin is omitted
+    so Google Maps routes from the rep's current location."""
+    import sales_export
+    rec = {"practice_name": "NorCal Psychiatry", "address_city": "Sacramento",
+           "address_state": "CA", "address_zip": "95823"}
+    assert sales_export._directions_url(rec) == (
+        "https://www.google.com/maps/dir/?api=1&destination="
+        "NorCal%20Psychiatry%2C%20Sacramento%2C%20CA%2095823"
+    )
+    acct = sales_export._record_to_account(
+        {**rec, "confidence_band": "High", "bullseye_score": 90,
+         "signals": [], "call_brief": {}}, "Bullseye")
+    assert acct.directions_url == sales_export._directions_url(rec)
+
+
+def test_directions_url_requires_name_and_location_context():
+    """A name with no locality (or a locality with no name) gets no link — the
+    destination would be too ambiguous to route to."""
+    import sales_export
+    assert sales_export._directions_url({"practice_name": "Solo Name Only"}) == ""
+    assert sales_export._directions_url({"address_city": "Dallas"}) == ""
+    assert sales_export._directions_url(
+        {"practice_name": "P", "address_city": "Dallas"}
+    ) == "https://www.google.com/maps/dir/?api=1&destination=P%2C%20Dallas"
+
+
 # ---------------------------------------------------------------------------
 # Route: requires a complete run
 # ---------------------------------------------------------------------------

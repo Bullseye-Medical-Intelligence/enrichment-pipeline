@@ -150,6 +150,7 @@ def _prepare_account(acct: Account, qc_reviewer: str, client_facing: bool) -> di
         "cap_reason": acct.cap_reason,
         "hours_of_operation": acct.hours_of_operation,
         "website_url": acct.website_url,
+        "directions_url": acct.directions_url,
         "phone_digits": "".join(c for c in (acct.phone or "") if c.isdigit()),
         "gate_fired": acct.gate_fired,
         "evidence": acct.evidence,

@@ -5,8 +5,6 @@ Tests for the Bullseye Sales Handoff renderer.
 
 from datetime import date
 
-import pytest
-
 from handoff_renderer import Account, Confidence, HandoffRun, Tier, render_handoff
 
 
@@ -91,7 +89,7 @@ def test_no_internal_score_in_client_output():
         if score_str == "0":
             # 0 might appear innocuously (e.g. in CSS), so check with context
             assert f"score={score_str}" not in html
-            assert f"internal_score" not in html
+            assert "internal_score" not in html
         else:
             assert score_str not in html, (
                 f"internal_score {score_str} for '{acct.name}' found in client-facing output"
@@ -309,3 +307,30 @@ def test_excluded_badge_distinct_per_gate():
     # No repeated placeholder from old exclusion_reason pipe-delimited string
     assert "exclusion_reason" not in html
     assert " | " not in html
+
+
+# ── Directions link + in-body disclosures ─────────────────────────────────────
+
+def test_directions_link_rendered_when_set():
+    url = "https://www.google.com/maps/dir/?api=1&destination=Test%20Practice%2C%20Dallas%2C%20TX"
+    run = _make_run(accounts=[_make_account(directions_url=url)])
+    html = render_handoff(run)
+    # Jinja autoescape renders & as &amp; inside the attribute — correct HTML.
+    assert 'href="https://www.google.com/maps/dir/?api=1&amp;destination=Test%20Practice%2C%20Dallas%2C%20TX"' in html
+    assert "Directions" in html
+
+
+def test_no_directions_link_when_absent():
+    run = _make_run(accounts=[_make_account()])
+    html = render_handoff(run)
+    assert 'class="adir"' not in html
+
+
+def test_hours_and_why_it_matters_open_with_the_card():
+    """Both in-body disclosures carry the open attribute: expanding a card shows
+    Office Hours and Why It Matters without a second click."""
+    run = _make_run(accounts=[_make_account(hours_of_operation="Mon-Fri 9-5")])
+    html = render_handoff(run)
+    assert html.count("<details open>") == 2  # Office Hours + Why It Matters
+    assert "<details>" not in html            # nothing left closed by default
+    assert "Office Hours" in html and "Why It Matters" in html

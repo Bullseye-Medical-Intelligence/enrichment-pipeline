@@ -25,7 +25,7 @@ import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -463,6 +463,7 @@ def _record_to_account(rec: dict, tier_str: str, review: dict | None = None) -> 
         phone=record_adapter.format_phone(rec.get("phone") or rec.get("phone_number") or ""),
         website=_extract_domain(website_raw),
         website_url=website_raw or None,
+        directions_url=_directions_url(rec) or None,
         evidence_domain=_extract_domain(website_raw),
         tier=tier,
         confidence=confidence,
@@ -533,6 +534,20 @@ def _format_city(rec: dict) -> str:
         return f"{city} ({zip_code}), {state}" if city else f"({zip_code}), {state}"
     return f"{city}, {state}" if city else state
 
+
+
+def _directions_url(rec: dict) -> str:
+    """Google Maps directions link to the practice; origin omitted so Maps starts from the rep's current location."""
+    name = (rec.get("practice_name") or rec.get("name") or "").strip()
+    city = (rec.get("address_city") or "").strip()
+    state = (rec.get("address_state") or "").strip()
+    zip_code = (rec.get("address_zip") or "").strip()
+    # Name alone is too ambiguous a destination; require some location context.
+    if not name or not (city or state or zip_code):
+        return ""
+    locality = " ".join(p for p in (state, zip_code) if p)
+    destination = ", ".join(p for p in (name, city, locality) if p)
+    return "https://www.google.com/maps/dir/?api=1&destination=" + quote(destination)
 
 
 def _extract_domain(url: str) -> str:

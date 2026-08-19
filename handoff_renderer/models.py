@@ -52,6 +52,7 @@ class Account:
     cap_reason: Optional[str] = None       # why not Bullseye; Contender accounts only
     hours_of_operation: Optional[str] = None  # office hours from call_brief
     website_url: Optional[str] = None       # full URL for href; website holds display domain
+    directions_url: Optional[str] = None    # Google Maps directions link; origin omitted so it starts from the rep's current location
 
     # Populated for EXCLUDED only
     gate_fired: Optional[str] = None
