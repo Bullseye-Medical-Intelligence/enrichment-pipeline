@@ -48,7 +48,11 @@ from ingestion import npi_lookup
 from ingestion.consolidator import consolidate_records
 from ingestion.customer_suppression import load_suppression_list, check_suppression
 from extraction.url_validator import batch_validate_urls
-from extraction.web_extractor import MAX_CRAWL_PAGES, batch_extract
+from extraction.web_extractor import (
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    MAX_CRAWL_PAGES,
+    batch_extract,
+)
 from enrichment.constants import (
     DEFAULT_BULLSEYE_MIN_SCORE,
     MIN_CONTEXT_CHARS,
@@ -644,7 +648,7 @@ def run_pipeline(input_file: str, source_type: str,
         print(f"  [WARN] {w}")
     icp_signals = icp_data.get("signals", [])
 
-    timeout = run_config.get("request_timeout_seconds", 15)
+    timeout = run_config.get("request_timeout_seconds", DEFAULT_REQUEST_TIMEOUT_SECONDS)
     retries = run_config.get("request_retries", 3)
     max_pages = run_config.get("max_pages_per_practice", MAX_CRAWL_PAGES)
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)

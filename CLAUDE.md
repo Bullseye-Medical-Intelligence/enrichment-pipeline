@@ -389,6 +389,18 @@ let scoring and signals decide instead. The `type` column is optional on import.
   run from a server. A malformed value is ignored (crawl proceeds direct). All three
   are read in `extraction/playwright_extractor.py`; the escalation ladder is
   headful → residential proxy → per-record "Paste site content".
+- **Browser crawl wall-clock bound**: one browser crawl runs against a single
+  deadline (`PLAYWRIGHT_MAX_CRAWL_SECONDS`, 60s, `extraction/playwright_extractor.py`).
+  Every step was already bounded individually — navigation timeout, challenge
+  budget, per-subpage timeout — but nothing bounded their sum, so one bot-gated
+  domain could hold an `io_concurrency` worker for minutes. `_crawl_budget_seconds`
+  raises the ceiling when the homepage legitimately needs longer (navigation +
+  settle + the FULL challenge budget), so raising `PIPELINE_BROWSER_CHALLENGE_WAIT_MS`
+  or `request_timeout_seconds` widens the deadline rather than being silently
+  truncated by it — the ceiling governs discretionary subpage depth, never the one
+  page that must be fetched. Reaching it is not an error: pages already captured
+  are returned. `request_timeout_seconds` is the per-navigation timeout on every
+  browser path, including the `recrawl_run.py` post-run pass.
 
 ---
 

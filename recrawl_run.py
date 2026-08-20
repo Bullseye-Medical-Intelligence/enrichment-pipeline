@@ -142,6 +142,7 @@ from extraction.playwright_extractor import crawl_with_playwright
 from enrichment.signal_extractor import extract_signals
 from enrichment.exclusion_checker import apply_exclusions
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
+from extraction.web_extractor import DEFAULT_REQUEST_TIMEOUT_SECONDS
 from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, MIN_CONTEXT_CHARS
 from output.atomic_write import ConcurrentRunChange, guarded_staged_write, stat_fingerprint
 from output.evidence_writer import EVIDENCE_DIRNAME, write_record_evidence
@@ -172,6 +173,8 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
     bullseye_min = run_config.get("bullseye_min_score", DEFAULT_BULLSEYE_MIN_SCORE)
     target_specialty = run_config.get("target_specialty", "")
     max_pages = int(run_config.get("max_pages_per_practice") or DEFAULT_RECRAWL_MAX_PAGES)
+    timeout_ms = int(run_config.get("request_timeout_seconds")
+                     or DEFAULT_REQUEST_TIMEOUT_SECONDS) * 1000
     contact_strategy = ""  # loaded from icp_data if present; not in snapshot
 
     # Try to load contact_strategy from icp snapshot
@@ -237,8 +240,11 @@ def run_browser_recrawl_pass(run_dir: Path, icp_signals: list[dict]) -> dict:
             stats["recrawled"] += 1
 
             # Re-crawl with Playwright at the standard page budget — a re-crawl
-            # must never see less of a site than the first pass did.
-            result = crawl_with_playwright(url=url, max_pages=max_pages)
+            # must never see less of a site than the first pass did — and at the
+            # run's own navigation timeout, so this pass is bounded by the same
+            # config the original crawl obeyed instead of the library default.
+            result = crawl_with_playwright(url=url, max_pages=max_pages,
+                                           timeout_ms=timeout_ms)
 
             if result.error or not result.context_text:
                 print(f"    [FAIL] Re-crawl failed: {result.error or 'no content returned'}")

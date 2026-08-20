@@ -107,6 +107,10 @@ MAX_COMBINED_CHARS = 25000
 MAX_CRAWL_PAGES = 20
 MAX_CRAWL_SECONDS = 30
 
+# Per-request network timeout when the run config sets no request_timeout_seconds.
+# Also the fallback for the browser crawler's per-navigation timeout.
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 15
+
 # A successful crawl yielding fewer than this many characters of usable text is a
 # "thin crawl": the page almost certainly did not render its real content (a JS or
 # bot gate left only nav + boilerplate), so a not_found result cannot be trusted.
@@ -214,7 +218,7 @@ def _apply_successful_extraction(
         record["source_confidence"] = _source_confidence_for_extraction(result)
 
 
-def _fetch_html(url: str, timeout: int = 15, retries: int = 3) -> tuple[str, str, str]:
+def _fetch_html(url: str, timeout: int = DEFAULT_REQUEST_TIMEOUT_SECONDS, retries: int = 3) -> tuple[str, str, str]:
     """
     Fetch HTML from a URL with retry logic.
     Returns (html_content, final_url, error) where error is "" on success.
@@ -409,9 +413,9 @@ def _find_relevant_subpages(html: str, base_url: str,
     return sorted_urls[: max_pages - 1]
 
 
-def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
-                            max_pages: int = MAX_CRAWL_PAGES,
-                            keywords: list[str] = None) -> ExtractionResult:
+def extract_practice_text(url: str, timeout: int = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+                          retries: int = 3, max_pages: int = MAX_CRAWL_PAGES,
+                          keywords: list[str] = None) -> ExtractionResult:
     """
     Extract visible text from a practice website.
     Crawls homepage + up to (max_pages - 1) relevant subpages.
@@ -508,7 +512,7 @@ def extract_practice_text(url: str, timeout: int = 15, retries: int = 3,
     )
 
 
-def batch_extract(records: list[dict], timeout: int = 15,
+def batch_extract(records: list[dict], timeout: int = DEFAULT_REQUEST_TIMEOUT_SECONDS,
                    retries: int = 3, max_pages: int = MAX_CRAWL_PAGES,
                    keywords: list[str] = None, max_workers: int = 1,
                    use_playwright: bool = False,

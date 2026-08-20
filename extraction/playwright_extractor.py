@@ -25,7 +25,6 @@ from web_extractor import (  # noqa: E402
     ExtractionResult,
     MAX_CHARS_PER_PAGE,
     MAX_COMBINED_CHARS,
-    MAX_CRAWL_SECONDS,
     DEFAULT_SUBPAGE_KEYWORDS,
     _find_relevant_subpages,
     _same_registered_domain,
@@ -145,6 +144,25 @@ _looks_like_challenge = looks_like_challenge
 # its own wording.
 _MIN_REAL_TEXT = 200
 
+# Homepage settle budgets (ms), applied after navigation returns.
+_NETWORKIDLE_SETTLE_MS = 8000   # wait for in-flight requests to quiet down
+_LAZY_CONTENT_PAUSE_MS = 1500   # let lazy-rendered content paint
+_SUBPAGE_SETTLE_MS = 800        # subpages get a shorter pause
+
+# A navigation started with less than this left on the clock cannot realistically
+# finish, so the subpage loop stops rather than burning the remainder on a fetch
+# that will time out.
+_MIN_SUBPAGE_BUDGET_MS = 2000
+
+# Nominal wall-clock ceiling for ONE site's browser crawl, in seconds.
+# Every individual step was already bounded (navigation timeout, challenge
+# budget, per-subpage timeout) but nothing bounded their SUM: a bot-gated
+# domain could hold an io_concurrency worker for minutes while the rest of
+# the batch waited on a free slot. See _crawl_budget_seconds for how the
+# challenge budget is protected from this ceiling.
+PLAYWRIGHT_MAX_CRAWL_SECONDS = 60
+
+
 # How long to keep waiting for a challenge to clear, total, in ms. These pages
 # typically run a 5-10s timer; give generous headroom. Operator-overridable.
 def _challenge_wait_budget_ms() -> int:
@@ -152,6 +170,36 @@ def _challenge_wait_budget_ms() -> int:
         return max(5000, int(os.environ.get("PIPELINE_BROWSER_CHALLENGE_WAIT_MS", "25000")))
     except ValueError:
         return 25000
+
+
+def _crawl_budget_seconds(timeout_ms: int) -> float:
+    """Wall-clock ceiling for one site, never shorter than the homepage needs.
+
+    The floor is what a worst-case homepage legitimately costs: one navigation,
+    the settle waits, and the FULL challenge budget. Clamping a Cloudflare wait
+    to a fixed ceiling would defeat the reason the wait exists — these
+    interstitials clear on their own timer, and giving up at 20s of a 25s timer
+    wastes the whole attempt. So raising PIPELINE_BROWSER_CHALLENGE_WAIT_MS (or
+    request_timeout_seconds) widens this deadline instead of being silently
+    truncated by it; the ceiling governs the subpage crawl, which is
+    discretionary depth rather than the one page that must be fetched.
+    """
+    homepage_floor_ms = (
+        timeout_ms
+        + min(timeout_ms, _NETWORKIDLE_SETTLE_MS)
+        + _LAZY_CONTENT_PAUSE_MS
+        + _challenge_wait_budget_ms()
+    )
+    return max(PLAYWRIGHT_MAX_CRAWL_SECONDS, homepage_floor_ms / 1000)
+
+
+def _remaining_ms(deadline: float, cap_ms: int) -> int:
+    """Milliseconds left before `deadline`, capped at `cap_ms`, floored at 1.
+
+    Never returns 0: Playwright reads a 0 timeout as "wait forever", which is
+    the exact opposite of what an exhausted deadline should mean.
+    """
+    return max(1, min(cap_ms, int((deadline - time.monotonic()) * 1000)))
 
 
 def _human_nudge(page) -> None:
@@ -171,19 +219,25 @@ def _wait_for_real_content(page, budget_ms: int, poll_ms: int = 2000):
     no longer a challenge wall AND has rendered meaningful text — or the budget is
     exhausted. Returns (html, final_url). Patience is the point: these interstitials
     clear themselves on a timer (often 5-10s) and only then redirect to the site.
+
+    The budget is measured against the monotonic clock, not by tallying poll
+    steps. Counting steps ignored everything else each round costs (the
+    networkidle wait, re-reading page content), so a nominal 25s budget ran for
+    roughly twice that on a slow challenge — the wait nobody could see was the
+    single largest contributor to an unbounded crawl.
     """
     html = page.content()
     final_url = page.url
-    waited = 0
+    deadline = time.monotonic() + budget_ms / 1000
     while _looks_like_challenge(html) or len(_extract_text_from_html(html)) < _MIN_REAL_TEXT:
-        if waited >= budget_ms:
+        if time.monotonic() >= deadline:
             break
         _human_nudge(page)
-        page.wait_for_timeout(poll_ms)
-        waited += poll_ms
-        # Let any challenge-triggered navigation/network settle before re-reading.
+        page.wait_for_timeout(_remaining_ms(deadline, poll_ms))
+        # Let any challenge-triggered navigation/network settle before re-reading,
+        # inside the same budget rather than on top of it.
         try:
-            page.wait_for_load_state("networkidle", timeout=poll_ms)
+            page.wait_for_load_state("networkidle", timeout=_remaining_ms(deadline, poll_ms))
         except Exception:
             pass
         html = page.content()
@@ -233,17 +287,28 @@ def crawl_with_playwright(
     max_pages: int = 5,
     keywords: list[str] | None = None,
     timeout_ms: int = 30000,
+    max_seconds: float | None = None,
 ) -> ExtractionResult:
     """Extract visible text using a headless Chromium browser.
 
     Falls back gracefully: if Playwright is not installed or the page fails,
     returns an empty ExtractionResult with the error recorded.
 
+    The whole crawl runs against one wall-clock deadline so a single slow or
+    bot-gated domain cannot hold a crawl worker indefinitely. Reaching the
+    deadline is not an error: the homepage is always fetched within it, and
+    subpage depth is discretionary, so an exhausted budget returns whatever
+    pages were captured rather than discarding them.
+
     Args:
         url: Practice homepage URL.
         max_pages: Maximum pages to crawl.
         keywords: Subpage-relevance keywords (defaults to generic set).
-        timeout_ms: Per-navigation timeout in milliseconds.
+        timeout_ms: Per-navigation timeout in milliseconds (from the run
+            config's request_timeout_seconds).
+        max_seconds: Overall wall-clock ceiling. Defaults to
+            _crawl_budget_seconds(timeout_ms), which keeps the full challenge
+            budget intact.
 
     Returns:
         ExtractionResult with combined context_text and metadata.
@@ -253,6 +318,9 @@ def crawl_with_playwright(
 
     if keywords is None:
         keywords = DEFAULT_SUBPAGE_KEYWORDS
+
+    budget_s = _crawl_budget_seconds(timeout_ms) if max_seconds is None else max_seconds
+    deadline = time.monotonic() + budget_s
 
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -293,14 +361,18 @@ def crawl_with_playwright(
                 # --- Homepage ---
                 print(f"    [Playwright] Fetching homepage: {url}")
                 try:
-                    page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                    page.goto(url, timeout=_remaining_ms(deadline, timeout_ms),
+                              wait_until="domcontentloaded")
                     # Let the page (and any JS challenge timer) run: settle to network
                     # idle if we can, then a brief pause for lazy content.
                     try:
-                        page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 8000))
+                        page.wait_for_load_state(
+                            "networkidle",
+                            timeout=_remaining_ms(deadline, min(timeout_ms, _NETWORKIDLE_SETTLE_MS)),
+                        )
                     except Exception:
                         pass
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(_remaining_ms(deadline, _LAZY_CONTENT_PAUSE_MS))
                     html = page.content()
                     final_url = page.url
                     # JS-based challenge pages (Cloudflare "Just a moment...") clear on
@@ -314,7 +386,8 @@ def crawl_with_playwright(
                             print("    [Playwright] Challenge cleared / content loaded.")
                 except PlaywrightTimeout:
                     return ExtractionResult(url=url, context_text="", pages_crawled=[],
-                                            error=f"Timeout after {timeout_ms}ms")
+                                            error=f"Timeout after {timeout_ms}ms "
+                                                  f"(crawl budget {budget_s:.0f}s)")
                 except Exception as e:
                     return ExtractionResult(url=url, context_text="", pages_crawled=[],
                                             error=f"Navigation error: {str(e)[:120]}")
@@ -343,16 +416,23 @@ def crawl_with_playwright(
                 print(f"    [Playwright] Found {len(subpages)} subpages")
 
                 crawled_chars = sum(len(b) for b in all_text_blocks)
-                crawl_deadline = time.monotonic() + MAX_CRAWL_SECONDS
                 for sub_url in subpages:
                     if (len(all_text_blocks) >= max_pages
-                            or crawled_chars >= MAX_COMBINED_CHARS
-                            or time.monotonic() >= crawl_deadline):
+                            or crawled_chars >= MAX_COMBINED_CHARS):
+                        break
+                    # Stop before starting a navigation the deadline cannot cover,
+                    # rather than spending the remainder on a fetch that will time
+                    # out. The homepage text already captured is still returned.
+                    nav_budget_ms = int((deadline - time.monotonic()) * 1000)
+                    if nav_budget_ms < _MIN_SUBPAGE_BUDGET_MS:
+                        print(f"    [Playwright] Crawl budget ({budget_s:.0f}s) reached — "
+                              f"stopping at {len(pages_crawled)} page(s)")
                         break
                     print(f"    [Playwright] Fetching subpage: {sub_url}")
                     try:
-                        page.goto(sub_url, timeout=timeout_ms, wait_until="domcontentloaded")
-                        page.wait_for_timeout(800)
+                        page.goto(sub_url, timeout=min(timeout_ms, nav_budget_ms),
+                                  wait_until="domcontentloaded")
+                        page.wait_for_timeout(_remaining_ms(deadline, _SUBPAGE_SETTLE_MS))
                         sub_html = page.content()
                         sub_final = page.url
                         # Drop subpages that redirected off the practice's domain so
