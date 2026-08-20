@@ -85,6 +85,12 @@ NAME_SIMILARITY_THRESHOLD = 0.85
 MERGE_THRESHOLD = 6        # >= 6 merges
 REVIEW_THRESHOLD = 4       # 4-5 goes to the review queue, never a silent split
 
+# Largest (phone, domain) block the contact path will score. A number appearing
+# on more rows than this is an answering service, a central appointment line, a
+# billing office or a scrape artifact — not one practice's front desk. Oversized
+# blocks are skipped and counted in the summary, never silently dropped.
+MAX_CONTACT_BLOCK = 12
+
 # ---------------------------------------------------------------------------
 # Two domain lists with DIFFERENT semantics. They are not one list with an
 # exception, because they answer different questions:
@@ -296,6 +302,31 @@ def _block_key(ident: dict):
     return None
 
 
+def _contact_block_key(ident: dict, excluded_domains: frozenset[str]):
+    """Second blocking key: (phone, domain). None when either half is missing.
+
+    The address block pins a location; this one catches a practice whose offices
+    were scraped as separate rows behind one front desk. Two offices of one group
+    in different towns share no block key and are therefore never compared at
+    all — nothing rejects the merge, the comparison simply never happens.
+
+    Both halves are required, and that is the whole safety argument. Phone alone
+    would compare every row behind one answering service. Domain alone would
+    compare every clinic in a health system. Together they score exactly
+    MERGE_THRESHOLD, so this path only ever admits a pair that a shared front
+    desk and a shared website already agree on — it adds merges, never review
+    work, because a pair reaching this block cannot land in the review band.
+
+    Umbrella domains are excluded here even though Pass 1 counts them as merge
+    evidence elsewhere. That exemption exists because street and ZIP had already
+    pinned the location; on this path nothing has. Two clinics of one health
+    system sharing a central appointment line must not become one practice.
+    """
+    if ident["phone"] and ident["domain"] and ident["domain"] not in excluded_domains:
+        return (ident["phone"], ident["domain"])
+    return None
+
+
 class _UnitAwareUnionFind:
     """Union-find whose clusters may never accumulate two different units.
 
@@ -328,30 +359,44 @@ class _UnitAwareUnionFind:
         return True
 
 
-def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]) -> dict:
+def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str],
+                              contact_domains_excluded: frozenset[str] = frozenset(),
+                              contact_blocking: bool = True,
+                              max_contact_block: int = MAX_CONTACT_BLOCK) -> dict:
     """Run Pass 1. Returns clustering results without mutating the input."""
     identities = [identity_of(r) for r in records]
     signatures = [_signature(r, i) for r, i in zip(records, identities)]
 
     blocks: dict[tuple, list[int]] = {}
-    unblocked = 0
+    contact_blocks: dict[tuple, list[int]] = {}
+    address_unblocked: set[int] = set()
     for idx, ident in enumerate(identities):
         key = _block_key(ident)
         if key is None:
-            unblocked += 1
-            continue
-        blocks.setdefault(key, []).append(idx)
+            address_unblocked.add(idx)
+        else:
+            blocks.setdefault(key, []).append(idx)
+        if contact_blocking:
+            contact_key = _contact_block_key(ident, contact_domains_excluded)
+            if contact_key is not None:
+                contact_blocks.setdefault(contact_key, []).append(idx)
+    unblocked = len(address_unblocked)
 
     merge_edges: list[tuple[int, list[str], int, int]] = []
     review_edges: list[tuple[int, list[str], int, int]] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    contact_blocks_skipped = 0
 
-    for members in blocks.values():
-        if len(members) < 2:
-            continue
+    def _score_block(members: list[int]) -> None:
+        """Score every not-yet-seen pair in one block onto the edge lists."""
         ordered = sorted(members, key=lambda i: signatures[i])
         for a_pos in range(len(ordered)):
             for b_pos in range(a_pos + 1, len(ordered)):
                 i, j = ordered[a_pos], ordered[b_pos]
+                pair = (i, j) if i < j else (j, i)
+                if pair in seen_pairs:
+                    continue          # already judged via the other block path
+                seen_pairs.add(pair)
                 if units_conflict(identities[i], identities[j]):
                     continue                      # hard stop, never scored
                 score, matched = score_pair(identities[i], identities[j], noise_domains)
@@ -364,6 +409,27 @@ def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]
                     # 4 - 3 = 1 and would be dropped here, unasked, despite the
                     # suite being the strongest location evidence in the data.
                     review_edges.append((score, matched, i, j))
+
+    for members in blocks.values():
+        if len(members) >= 2:
+            _score_block(members)
+
+    # Contact path second, so an address-block verdict always wins the pair.
+    # A row the address path could not key counts as reached only when the
+    # contact path actually COMPARED it — a contact key of its own, in a block
+    # with nobody else in it, is not a rescue.
+    unblocked_reached: set[int] = set()
+    for members in contact_blocks.values():
+        if len(members) < 2:
+            continue
+        if len(members) > max_contact_block:
+            # A number on this many rows is an answering service, a billing
+            # office or a scrape artifact, not one practice's front desk.
+            # Counted, never silently dropped.
+            contact_blocks_skipped += 1
+            continue
+        _score_block(members)
+        unblocked_reached |= address_unblocked.intersection(members)
 
     # Deterministic union order: strongest first, then by normalized signature.
     merge_edges.sort(key=lambda e: (-e[0], signatures[e[2]], signatures[e[3]]))
@@ -380,6 +446,13 @@ def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]
     for idx in range(len(records)):
         clusters.setdefault(union_find.find(idx), []).append(idx)
 
+    # A merge whose two rows never shared an address block came from the contact
+    # path — the number worth watching when this feature's effect is measured.
+    cross_address_merges = sum(
+        1 for _score, _matched, i, j in applied
+        if _block_key(identities[i]) != _block_key(identities[j])
+    )
+
     return {
         "identities": identities,
         "signatures": signatures,
@@ -387,6 +460,9 @@ def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]
         "applied_edges": applied,
         "review_edges": review_edges,
         "unblocked": unblocked,
+        "unblocked_rescued": len(unblocked_reached),
+        "cross_address_merges": cross_address_merges,
+        "contact_blocks_skipped": contact_blocks_skipped,
     }
 
 
@@ -850,7 +926,16 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
                          "rows_merged_away": 0, "review_pairs": 0,
                          "unblocked_count": 0, "multi_location_groups": 0}
 
-    pass1 = _merge_practice_locations(records, noise_domains)
+    settings = (run_config or {}).get("consolidation") or {}
+    pass1 = _merge_practice_locations(
+        records, noise_domains,
+        # A shared front desk is only evidence of one practice when the website
+        # is the practice's own. Noise proves nothing; an umbrella domain proves
+        # ownership, not location, and this path has no address to pin it.
+        contact_domains_excluded=shared_domains,
+        contact_blocking=bool(settings.get("contact_blocking", True)),
+        max_contact_block=int(settings.get("max_contact_block") or MAX_CONTACT_BLOCK),
+    )
     identities = pass1["identities"]
     signatures = pass1["signatures"]
 
@@ -952,6 +1037,14 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         # engine counter rather than something an analysis script recomputes.
         "review_reasons": reason_counts,
         "unblocked_count": pass1["unblocked"],
+        # Of the rows the address block could not key, how many the contact
+        # block reached anyway. unblocked_count stays the address-path figure so
+        # the disclosed gap is not quietly redefined by this feature.
+        "unblocked_rescued_by_contact": pass1["unblocked_rescued"],
+        # Merges whose two rows never shared an address block — the contact
+        # path's entire effect, isolated for measurement (RULE M4).
+        "cross_address_merges": pass1["cross_address_merges"],
+        "contact_blocks_skipped_oversized": pass1["contact_blocks_skipped"],
         "multi_location_groups": multi_location_groups,
         "raw_provider_entries": raw_provider_entries,
         "distinct_providers": distinct_providers,

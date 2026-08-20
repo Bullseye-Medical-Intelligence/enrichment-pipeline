@@ -74,7 +74,8 @@ Every score bound, weight, threshold, and blend factor lives in
 1. **Ingest** — load CSV, normalize to canonical schema, dedup, drop rows missing `practice_name`.
    **Step 1b — NPI enrichment (opt-in)**: populates taxonomy codes and exclusion flags from the public NPPES registry before the structural pre-filter runs. Runs even in `--ingest-only` mode so the roster carries NPI fields. Skip via `npi_enrichment_enabled: false` in run_config.
    **Step 1c — Customer suppression (opt-in)**: excludes existing customers before any crawl or LLM spend. Runs even in `--ingest-only` mode so suppressed records appear as EXCLUDED in every roster view. Triggered by `suppression_list_path` in run_config.
-   **Step 1d — Practice-location consolidation**: collapses provider rows into practice locations (`ingestion/consolidator.py`), so the billable unit is the location, not the row. Pass 1 merges within a building block (zip5 + street) on an additive score; Pass 2 links locations sharing a registrable domain into groups without ever merging them. Runs in `--ingest-only` too. Output contract in `PIPELINE.md`.
+   **Step 1d — Practice-location consolidation**: collapses provider rows into practice locations (`ingestion/consolidator.py`), so the billable unit is the location, not the row. Pass 1 merges on an additive score from two candidate paths — a building block (zip5 + street) and a **contact block (phone + registrable domain)**; Pass 2 links locations sharing a registrable domain into groups without ever merging them. Runs in `--ingest-only` too. Output contract in `PIPELINE.md`.
+   - **The contact block catches one practice behind one front desk.** Two offices of a group in different towns share no address key, so they were never compared — nothing rejected the merge, the comparison never happened, and the practice shipped as two billable accounts with identical signals and double the LLM spend. Both halves of the key are required: phone alone would compare everything behind an answering service, domain alone every clinic in a health system. Together they score exactly `MERGE_THRESHOLD`, so the path adds merges and never review work. **Umbrella domains are excluded here** even though Pass 1 counts them as merge evidence in the address block — that exemption exists only because street and ZIP had already pinned the location. Blocks over `MAX_CONTACT_BLOCK` (12) rows are a shared line, skipped and counted. Off via `consolidation.contact_blocking: false`.
    - **A differing unit is a hard veto and a matching one is worth +3** (`SCORE_UNIT_MATCH`), so address + suite merges on its own. A suite is one leased unit with one front door; the standard is "would a rep knock once or twice", not "same legal entity". Settled by ruling 13 sampled decisions, all 13 merge.
    - **Review queue** holds only what evidence cannot settle: `corroborated` (a second field agrees or conflicts), `phone_absent` (one side has no phone, so nothing is known), and `unit_gate_block` (scored a merge, stopped by the unit veto — mechanical, shown in its own bucket). Sharing a building alone is never a question.
    - **Rulings are additive**, written to the API's `reviews.json` overlay and taking effect on the next run, because consolidation happens at ingest.
@@ -468,7 +469,17 @@ the CLI console summary. Retracting the number without naming its consumers
 leaves the wrong value sitting in three places.
 
 ### The consolidation rates, and what may be quoted
-Measured 2026-08-20 from `--ingest-only` runs, read from `run_log.json`:
+
+> **SUPERSEDED — do not quote until re-measured.** The contact block (phone +
+> domain) added a second candidate path to Pass 1 after these runs, and it can
+> only ever merge more, never less. Both figures below are therefore floors for
+> current engine behaviour, not current behaviour. Re-run both lists through
+> `--ingest-only` and read `run_log.json` before any of this reaches a client or
+> a price. `diagnose_consolidation.py --compare` reports the delta with the flag
+> off and on over the same rows, which is the controlled form (RULE M4).
+
+Measured 2026-08-20 from `--ingest-only` runs, read from `run_log.json`, with the
+contact block **absent**:
 
 | list | gross | post-exclusion |
 |------|-------|----------------|

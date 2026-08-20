@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ingestion.consolidator import (  # noqa: E402
+    MAX_CONTACT_BLOCK,
     MERGE_THRESHOLD,
     NOISE_DOMAINS,
     domain_policy,
@@ -499,16 +500,18 @@ class TestDomainConflictPenalty:
         score, matched = score_pair(left, right, frozenset())
         assert "name" in matched and score == 6      # address 4 + name 2
 
-    def test_different_addresses_are_never_compared(self):
-        """Blocking is (zip5 + street): two locations of one practice at
-        different addresses stay separate records. Pass 2 links them instead."""
+    def test_different_addresses_with_own_contacts_are_never_compared(self):
+        """Address blocking is (zip5 + street), so two locations at different
+        addresses share no key. With their own phones there is no contact key
+        either, and they stay separate records — Pass 2 links them instead."""
         rows = [
-            _row("T-1", "Valley Clinic", street="123 Main St"),
-            _row("T-2", "Valley Clinic", street="900 Oak Ave"),
+            _row("T-1", "Valley Clinic", street="123 Main St", phone="916-555-0100"),
+            _row("T-2", "Valley Clinic", street="900 Oak Ave", phone="916-555-0200"),
         ]
         out, summary = consolidate_records(rows, {})
         assert len(out) == 2
         assert summary["merged_groups"] == 0
+        assert summary["cross_address_merges"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -802,16 +805,18 @@ class TestConfiguration:
         out, summary = consolidate_records([], {})
         assert out == [] and summary["output_count"] == 0
 
-    def test_record_without_address_is_never_blocked(self):
-        """No street or ZIP means no candidate pairs — the record stays its own
-        location and the summary says so rather than guessing."""
+    def test_record_without_address_is_never_address_blocked(self):
+        """No street or ZIP means no address key. With their own phones these
+        rows have no contact key either, so they stay their own locations and
+        the summary reports the gap rather than guessing."""
         rows = [
-            _row("T-1", "Alpha", street="", zip_=""),
-            _row("T-2", "Alpha", street="", zip_=""),
+            _row("T-1", "Alpha", street="", zip_="", phone="916-555-0100"),
+            _row("T-2", "Alpha", street="", zip_="", phone="916-555-0200"),
         ]
         out, summary = consolidate_records(rows, {})
         assert len(out) == 2
         assert summary["unblocked_count"] == 2
+        assert summary["unblocked_rescued_by_contact"] == 0
 
     def test_summary_counts_add_up(self):
         rows = [
@@ -873,13 +878,18 @@ class TestNoiseVersusUmbrella:
         assert "domain" not in score_pair(left, right, NOISE_DOMAINS)[1]
 
     def test_a_real_practice_domain_still_groups(self):
+        """Two genuine offices of one group: own numbers, one website. They stay
+        two locations (the contact block needs a shared phone too) and Pass 2
+        links them into one group."""
         rows = [
             _row("T-1", "Bay Medical A", street="1 A St", zip_="95821",
-                 website="https://baymedgroup.com"),
+                 phone="916-555-0100", website="https://baymedgroup.com"),
             _row("T-2", "Bay Medical B", street="2 B St", zip_="95822",
-                 website="https://baymedgroup.com"),
+                 phone="916-555-0200", website="https://baymedgroup.com"),
         ]
-        assert consolidate_records(rows, {})[1]["multi_location_groups"] == 1
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 2
+        assert summary["multi_location_groups"] == 1
 
     def test_each_list_is_independently_extendable(self):
         rows = [
@@ -964,3 +974,156 @@ class TestNamingChain:
         assert record["practice_name_source"] in {
             "npi_organization", "source_row_organization",
             "domain_derived", "placeholder", "source_row"}
+
+
+# ---------------------------------------------------------------------------
+# Contact blocking — a practice whose offices share one front desk
+# ---------------------------------------------------------------------------
+
+class TestContactBlocking:
+    """The address block pins a location; the contact block catches a practice
+    whose offices were scraped as separate rows behind one phone and one site.
+
+    Two offices in different towns share no address block key, so before this
+    they were never compared at all — nothing rejected the merge, the comparison
+    never happened. Real case: one OBGYN group, two towns, one number, shipped as
+    two billable accounts with byte-identical signals and two Claude calls.
+    """
+
+    _SITE = "https://www.groupobgyn.com"
+    _PHONE = "404-252-1137"
+
+    def _two_towns(self, **over):
+        site = over.pop("website", self._SITE)
+        return [
+            _row("T-1", "Group OBGYN", street="1400 Northside Forsyth Dr",
+                 zip_="30041", phone=self._PHONE, website=site, **over),
+            _row("T-2", "Group OBGYN", street="1310 Satellite Blvd",
+                 zip_="30024", phone=self._PHONE, website=site, **over),
+        ]
+
+    def test_shared_phone_and_domain_merges_across_towns(self):
+        out, summary = consolidate_records(self._two_towns(), {})
+        assert len(out) == 1
+        assert summary["cross_address_merges"] == 1
+
+    def test_umbrella_domain_never_enters_the_contact_block(self):
+        """Two clinics of one health system on a central appointment line.
+
+        Pass 1 counts an umbrella domain as merge evidence elsewhere because
+        street and ZIP had already pinned the location. Here nothing has, so the
+        exemption must not carry over.
+        """
+        umbrella = "https://" + sorted(UMBRELLA_DOMAINS)[0]
+        out, summary = consolidate_records(self._two_towns(website=umbrella), {})
+        assert len(out) == 2
+        assert summary["cross_address_merges"] == 0
+
+    def test_noise_domain_never_enters_the_contact_block(self):
+        noise = "https://" + sorted(NOISE_DOMAINS)[0]
+        out, _ = consolidate_records(self._two_towns(website=noise), {})
+        assert len(out) == 2
+
+    def test_same_domain_different_phones_stays_split(self):
+        """The whole selectivity argument: a multi-office group whose offices
+        have their own numbers is left alone. Domain alone must not merge."""
+        rows = self._two_towns()
+        rows[1]["phone"] = "770-333-4444"
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 2
+
+    def test_missing_phone_or_domain_stays_split(self):
+        for field in ("phone", "website_url"):
+            rows = self._two_towns()
+            rows[1][field] = ""
+            out, _ = consolidate_records(rows, {})
+            assert len(out) == 2, f"merged with no {field} on one side"
+
+    def test_unit_veto_still_holds_on_the_contact_path(self):
+        """Different suites are different practices, whatever else agrees."""
+        rows = self._two_towns()
+        rows[0]["address_unit"] = "Suite 1200"
+        rows[1]["address_unit"] = "Suite 640"
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 2
+
+    def test_contact_path_adds_no_review_work(self):
+        """A pair reaching this block already carries phone + domain, which is
+        exactly MERGE_THRESHOLD, so it can never land in the review band."""
+        out, summary = consolidate_records(self._two_towns(), {})
+        assert len(out) == 1
+        assert summary["review_pairs"] == 0
+        assert summary["review_reasons"] == {}
+
+    def test_oversized_block_is_skipped_and_counted(self):
+        """A number on many rows is an answering service, not a front desk.
+        Skipping it silently would read as 'nothing to merge here'."""
+        rows = [
+            _row(f"T-{i}", f"Practice {i}", street=f"{i} Main St",
+                 zip_=f"300{i:02d}", phone="404-555-0199",
+                 website="https://sharedbilling.example")
+            for i in range(MAX_CONTACT_BLOCK + 3)
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == len(rows)
+        assert summary["contact_blocks_skipped_oversized"] == 1
+
+    def test_block_at_the_cap_is_still_scored(self):
+        rows = [
+            _row(f"T-{i}", "Group OBGYN", street=f"{i} Main St",
+                 zip_=f"300{i:02d}", phone=self._PHONE, website=self._SITE)
+            for i in range(MAX_CONTACT_BLOCK)
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 1
+        assert summary["contact_blocks_skipped_oversized"] == 0
+
+    def test_config_can_turn_it_off(self):
+        out, summary = consolidate_records(
+            self._two_towns(), {"consolidation": {"contact_blocking": False}})
+        assert len(out) == 2
+        assert summary["cross_address_merges"] == 0
+
+    def test_config_can_raise_the_cap(self):
+        rows = [
+            _row(f"T-{i}", "Group OBGYN", street=f"{i} Main St",
+                 zip_=f"300{i:02d}", phone=self._PHONE, website=self._SITE)
+            for i in range(MAX_CONTACT_BLOCK + 2)
+        ]
+        out, _ = consolidate_records(
+            rows, {"consolidation": {"max_contact_block": MAX_CONTACT_BLOCK + 5}})
+        assert len(out) == 1
+
+    def test_address_unblocked_row_reached_by_contact_is_reported(self):
+        """A row with no street cannot be address-blocked (backlog 23). When the
+        contact block reaches it, unblocked_count must still report the address
+        gap rather than being quietly redefined by this feature."""
+        rows = self._two_towns()
+        rows[1]["address_street"] = ""
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 1
+        assert summary["unblocked_count"] == 1
+        assert summary["unblocked_rescued_by_contact"] == 1
+
+    def test_same_address_pair_is_judged_once(self):
+        """A pair sitting in BOTH blocks must not be scored twice — a duplicate
+        review edge would inflate the queue for one relationship."""
+        rows = [
+            _row("T-1", "Group OBGYN", phone=self._PHONE, website=self._SITE),
+            _row("T-2", "Group OBGYN", phone=self._PHONE, website=self._SITE),
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 1
+        # One address-block merge, so the contact path contributed nothing new.
+        assert summary["cross_address_merges"] == 0
+
+    def test_merge_is_order_independent(self):
+        rows = self._two_towns()
+        forward, _ = consolidate_records([dict(r) for r in rows], {})
+        reverse, _ = consolidate_records([dict(r) for r in reversed(rows)], {})
+        assert len(forward) == len(reverse) == 1
+        assert forward[0]["practice_id"] == reverse[0]["practice_id"]
+
+    def test_merged_record_keeps_both_source_rows(self):
+        out, _ = consolidate_records(self._two_towns(), {})
+        assert sorted(out[0]["source_row_ids"]) == ["T-1", "T-2"]

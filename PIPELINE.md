@@ -572,6 +572,26 @@ Settled by ruling thirteen sampled same-suite decisions, all thirteen MERGE,
 including three independent single-physician practices whose only corroboration
 was a shared area code.
 
+**Two candidate paths, one scoring rule.** Pass 1 blocks twice. The **address
+block** is `(zip5, street)` and pins a location. The **contact block** is
+`(phone, registrable domain)` and catches a practice whose offices were scraped
+as separate rows behind one front desk: two offices of one group in different
+towns share no address key, so before this they were never compared at all —
+nothing rejected the merge, the comparison never happened.
+
+Both halves of the contact key are required, and that is the whole safety
+argument. Phone alone would compare every row behind one answering service;
+domain alone would compare every clinic in a health system. Together they score
+exactly `MERGE_THRESHOLD`, so this path only admits pairs a shared front desk and
+a shared website already agree on — it adds merges and never review work, because
+a pair reaching it cannot land in the review band. Noise **and umbrella** domains
+are both excluded here: umbrella counts as merge evidence in the address block
+only because street and ZIP had already pinned the location, and on this path
+nothing has. The unit veto still applies. A `(phone, domain)` block larger than
+`MAX_CONTACT_BLOCK` (12) is a shared line rather than a front desk and is skipped,
+counted in `contact_blocks_skipped_oversized`. Disable with
+`consolidation.contact_blocking: false`.
+
 **Rulings are additive.** An analyst decision is written to the API's `reviews.json`
 overlay, never back into this file. Pipeline output stays immutable.
 

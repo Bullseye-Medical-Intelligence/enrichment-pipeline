@@ -618,6 +618,42 @@ which regenerates properly against the corrected evidence). Revisit only if
 operators report the loss is material in practice — the alternative is
 per-bullet text matching against signal labels, which fails in both directions.
 
+### 32. [RESOLVED 2026-08-20] One practice behind one front desk shipped as two accounts
+Pass 1 blocked only on `(zip5, street)`, so two offices of one group in different
+towns shared no key and were **never compared**. Nothing rejected the merge; the
+comparison never happened. Found on a real record: one OBGYN group, Cumming and
+Suwanee GA, one phone (`404-252-1137`), one website, identical provider lists and
+identical scores of 42. Both were crawled and both ran a full Claude extraction,
+so the only difference between the two cards was the sales angles — two
+independent LLM calls disagreeing on the same page text. The practice has four
+offices; a full list would have billed four times for one account.
+
+**Fixed:** a second candidate path, the contact block `(phone, registrable
+domain)`. Both halves required — phone alone compares everything behind an
+answering service, domain alone every clinic in a health system. Together they
+score exactly `MERGE_THRESHOLD`, so the path adds merges and **never review
+work**: a pair reaching it cannot land in the review band. Umbrella domains are
+excluded here even though the address block counts them as merge evidence, since
+that exemption rested on street and ZIP having already pinned the location.
+Blocks over `MAX_CONTACT_BLOCK` (12) rows are a shared line, skipped and counted.
+The unit veto still applies. Off via `consolidation.contact_blocking: false`.
+
+Verified on six shapes: the Atlanta pattern merges; two health-system clinics on
+a central line, two rows behind a directory listing, two offices with their own
+numbers, and two suites in one building all stay split; a 15-row answering-service
+block is skipped and reported.
+
+**Consequences to hold.** The quoted merge rates in `CLAUDE.md` are superseded
+and marked so — they are now floors, not current behaviour. And a merged location
+carries one address, so the second office's street is no longer on the record
+(`source_row_ids` keeps the provenance). Preserving member addresses is a schema
+change and is not done.
+
+**Partially closes 23:** a street-less row now has a second way to be reached.
+`unblocked_count` still reports the address-path gap unchanged;
+`unblocked_rescued_by_contact` reports how many of those the contact path
+actually compared.
+
 ### 31. A signal override cannot be removed, only re-stated [OPEN]
 Found while documenting finding 26. `signal_overrides` is carried forward
 verbatim by every review path — `save_review`, `stamp_reenriched`, and the QC
