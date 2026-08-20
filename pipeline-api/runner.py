@@ -873,7 +873,12 @@ def _write_single_record_csv(scratch_dir: Path, record: dict, website_url: str) 
     import csv
     import io
 
+    # address_street / address_unit are carried so the scratch record's location
+    # identity matches the source run's. Consolidation is off for scratch runs
+    # (see _write_scratch_config), but a faithful address keeps the derived id
+    # stable either way rather than depending on that alone.
     fieldnames = ["id", "practice_name", "website_url", "phone",
+                  "address_street", "address_unit",
                   "address_city", "address_state", "address_zip", "specialty",
                   "npi_optional"]
     buf = io.StringIO()
@@ -884,6 +889,8 @@ def _write_single_record_csv(scratch_dir: Path, record: dict, website_url: str) 
         "practice_name": record.get("practice_name", ""),
         "website_url": website_url,
         "phone": record.get("phone", ""),
+        "address_street": record.get("address_street", ""),
+        "address_unit": record.get("address_unit", ""),
         "address_city": record.get("address_city", ""),
         "address_state": record.get("address_state", ""),
         "address_zip": record.get("address_zip", ""),
@@ -928,7 +935,7 @@ async def orchestrate_single_recrawl(
         input_path,
         "manual",
         scratch_dir,
-        config_src,
+        _write_scratch_config(scratch_dir, config_src),
         icp_src,
         extra_flags=["--playwright"],
     )
@@ -967,11 +974,8 @@ async def orchestrate_excluded_reenrich(
 
     # Write a modified config with no specialty/geography restriction so the
     # structural pre-filter cannot re-exclude the record before signals are scored.
-    config_data = json.loads(config_src.read_text(encoding="utf-8"))
-    config_data["target_specialty"] = ""
-    config_data["target_geography"] = []
-    override_config_path = scratch_dir / "config_override.json"
-    override_config_path.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+    override_config_path = _write_scratch_config(
+        scratch_dir, config_src, target_specialty="", target_geography=[])
 
     url = (record_adapter.normalize_homepage_url(website_url_override)
            or record_adapter.normalize_homepage_url(record.get("website_url", "")))
@@ -1055,7 +1059,7 @@ async def orchestrate_manual_content_recrawl(
         input_path,
         "manual",
         scratch_dir,
-        config_src,
+        _write_scratch_config(scratch_dir, config_src),
         icp_src,
         extra_flags=extra_flags,
     )
@@ -1074,7 +1078,12 @@ def _write_multi_record_csv(scratch_dir: Path, records: list[dict]) -> Path:
     import csv
     import io
 
+    # address_street / address_unit are carried so the scratch record's location
+    # identity matches the source run's. Consolidation is off for scratch runs
+    # (see _write_scratch_config), but a faithful address keeps the derived id
+    # stable either way rather than depending on that alone.
     fieldnames = ["id", "practice_name", "website_url", "phone",
+                  "address_street", "address_unit",
                   "address_city", "address_state", "address_zip", "specialty",
                   "npi_optional"]
     buf = io.StringIO()
@@ -1087,6 +1096,8 @@ def _write_multi_record_csv(scratch_dir: Path, records: list[dict]) -> Path:
             "practice_name": record.get("practice_name", ""),
             "website_url": url,
             "phone": record.get("phone", ""),
+            "address_street": record.get("address_street", ""),
+            "address_unit": record.get("address_unit", ""),
             "address_city": record.get("address_city", ""),
             "address_state": record.get("address_state", ""),
             "address_zip": record.get("address_zip", ""),
@@ -1180,13 +1191,12 @@ async def orchestrate_batch_reenrich(
     # service subpages edged out of the first crawl are reached on this re-crawl.
     # Everything else (geography, exclusions, client) is preserved from the frozen
     # snapshot so the re-crawl scores by the same rules, just with wider coverage.
-    config_for_run = config_snapshot_src
-    if config_data:
-        config_data["max_pages_per_practice"] = max(
-            int(config_data.get("max_pages_per_practice") or 5), RECRAWL_MAX_PAGES
-        )
-        config_for_run = scratch_dir / PROJECT_CONFIG_SNAPSHOT_FILENAME
-        _write_json(config_for_run, config_data)
+    config_for_run = _write_scratch_config(
+        scratch_dir, config_snapshot_src,
+        max_pages_per_practice=max(
+            int((config_data or {}).get("max_pages_per_practice") or 5), RECRAWL_MAX_PAGES
+        ),
+    )
 
     input_path = _write_multi_record_csv(scratch_dir, selected)
     process = spawn_pipeline(
@@ -1292,7 +1302,7 @@ async def _monitor_batch_reenrich(
                 if _crawl_unreadable(candidate) and not _crawl_unreadable(r):
                     kept_blocked_ids.append(rid)
                     continue
-                records[i] = candidate
+                records[i] = _merge_reenriched_fields(r, candidate)
                 merged_ids.append(rid)
             merged_count = len(merged_ids)
 
@@ -1553,6 +1563,67 @@ def _crawl_unreadable(record: dict) -> bool:
     return record.get("source_confidence") in ("limited", "failed")
 
 
+# Fields a re-enrich legitimately refreshes: everything derived from the crawl
+# and the LLM pass. Everything else on the source record — identity, address,
+# the consolidated provider roster, group and location fields — is preserved,
+# because the scratch run rebuilt the record from a reconstructed one-row CSV
+# and knows nothing about the provider rows consolidated into it. An allowlist
+# fails safe in the right direction: an engine field not listed here goes stale
+# rather than being destroyed.
+_REENRICH_REFRESHED_FIELDS = frozenset({
+    "signals", "sales_angle", "call_brief",
+    "bullseye_score", "fit_signal_score", "confidence_score",
+    "confidence_band", "fit_confidence_status",
+    "target_tier", "tier_cap_reason",
+    "exclusion_status", "exclusion_reason",
+    "enrichment_status", "source_confidence", "date_enriched",
+    "website_url",
+})
+
+
+def _merge_reenriched_fields(source: dict, updated: dict) -> dict:
+    """Return the source record with only the re-enrich's own fields refreshed.
+
+    Replacing the record wholesale destroyed the consolidated roster: a location
+    built from several provider rows came back as a single row, so provider_count
+    fell to 1, source_row_ids lost its members, and the provider list was
+    replaced by a placeholder derived from the practice name.
+
+    The verification object is dropped rather than preserved. It records a GPT
+    pass over the signals that were just replaced, so carrying it forward would
+    attach a verdict to evidence it never examined.
+    """
+    refreshed = {k: v for k, v in updated.items() if k in _REENRICH_REFRESHED_FIELDS}
+    merged = {**source, **refreshed}
+    merged.pop("verification", None)
+    return merged
+
+
+def _write_scratch_config(scratch_dir: Path, config_src: Path, **overrides) -> Path:
+    """Write the scratch run's config: the frozen snapshot with consolidation off.
+
+    A re-enrich scratch run is handed records that are ALREADY practice
+    locations, one CSV row each, so there is nothing left to consolidate. Running
+    Step 1d over them anyway re-derives each location's identity from the
+    reconstructed row and stamps the result over `id` — and the row carries no
+    street or unit, so the identity falls back to domain or phone and the id
+    comes out different from the one the source run stored. That is what made a
+    re-crawl report "did not return the expected record (id mismatch)". On the
+    batch path it is worse: two selected locations at one address would collapse
+    into a single returned record, silently dropping one of them.
+
+    Extra keyword overrides are applied on top for the paths that need them.
+    """
+    config_data = json.loads(config_src.read_text(encoding="utf-8"))
+    consolidation = dict(config_data.get("consolidation") or {})
+    consolidation["enabled"] = False
+    config_data["consolidation"] = consolidation
+    config_data.update(overrides)
+    path = scratch_dir / "config_override.json"
+    _write_json(path, config_data)
+    return path
+
+
 def _merge_recrawled_record(
     source_run_id: str,
     scratch_dir: Path,
@@ -1647,6 +1718,7 @@ def _merge_recrawled_record(
                             "paste the page content.",
                 )
 
+            updated = _merge_reenriched_fields(records[idx], updated)
             records[idx] = updated
 
             # Preserve the wrapper shape; refresh the generation timestamp only.

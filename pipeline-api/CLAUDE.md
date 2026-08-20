@@ -458,6 +458,29 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   rejects new runs over the cap so a small host cannot be exhausted.
 - **Orphan recovery**: on startup (`main.py` lifespan) any run still `pending`/`running`
   is marked `failed` — monitors do not survive a restart, so such runs are orphaned.
+- **Scratch re-enrich runs never re-consolidate.** Every scratch path spawns
+  through `_write_scratch_config`, which copies the frozen project snapshot with
+  `consolidation.enabled = false`. The scratch input is already practice
+  locations, one CSV row each, so Step 1d has nothing to collapse — but running
+  it anyway re-derives each location's identity from the reconstructed row and
+  stamps the result over `id`. The row carried no street or unit, so the identity
+  fell back to domain or phone and the id came out different from the one the
+  source run stored: the merge then reported "did not return the expected record
+  (id mismatch)" and left the record untouched. On the batch path it is worse —
+  two selected locations at one address would collapse into a single returned
+  record, silently dropping one. Both scratch CSV writers also carry
+  `address_street` / `address_unit` now, so the derived id stays stable even if
+  consolidation were left on.
+- **A re-enrich refreshes enrichment, never identity.** `_merge_reenriched_fields`
+  applies only `_REENRICH_REFRESHED_FIELDS` (signals, scores, tier, exclusion,
+  call brief, sales angle, source confidence, website URL) onto the source
+  record. Replacing the record wholesale destroyed the consolidated roster: a
+  location built from several provider rows came back as one, so `provider_count`
+  fell to 1, `source_row_ids` lost its members, and `providers` became a
+  placeholder from the practice name. The allowlist fails safe — a new engine
+  field not listed goes stale rather than being destroyed. The additive
+  `verification` object is dropped, not preserved: it judged the signals that
+  were just replaced.
 - **In-place single-record re-enrich**: the per-record re-crawl and manual-content
   routes do NOT create a new run. They run the one record through the pipeline in a
   hidden scratch dir (`<run_dir>/.recrawl_<token>/`, no `status.json` so it is
