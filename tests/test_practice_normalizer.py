@@ -19,6 +19,7 @@ from ingestion.practice_normalizer import (  # noqa: E402
     identity_of,
     normalize_address_unit,
     normalize_phone,
+    is_dialable_phone,
     normalize_practice_name,
     normalize_zip5,
     registrable_domain,
@@ -150,15 +151,67 @@ class TestZipAndPhone:
         assert normalize_phone("1-916-555-0100") == "9165550100"
         assert normalize_phone("+1 (916) 555-0100") == "9165550100"
 
-    def test_extension_digits_are_a_known_hazard(self):
-        """The rule is 'last 10 digits'. An appended extension shifts the window,
-        so an extension-bearing phone simply fails to match a clean one rather
-        than matching the wrong practice — the safe direction."""
-        assert normalize_phone("916.555.0100 x22") == "6555010022"
-        assert normalize_phone("916.555.0100 x22") != normalize_phone("916-555-0100")
-
     def test_short_phone_is_empty(self):
         assert normalize_phone("555-0100") == ""
+
+
+class TestPhoneExtensions:
+    """An extension's digits are not part of the number and must never shift it.
+
+    Under the old last-ten rule "(916) 431-0860 ext. 4" became 1643108604 — a
+    number that exists nowhere and compares unequal to the same practice's clean
+    listing, quietly under-merging every scraped run that carries extensions.
+    """
+
+    CLEAN = "9165550100"
+
+    def test_every_written_form_of_an_extension_is_stripped(self):
+        for raw in ("916-555-0100 ext. 22", "916-555-0100 ext 22",
+                    "916-555-0100 Ext.22", "916-555-0100 extension 22",
+                    "916-555-0100 x22", "916-555-0100 x 22",
+                    "916-555-0100 xt 22", "916-555-0100 #22",
+                    "(916) 555-0100 ext. 4"):
+            assert normalize_phone(raw) == self.CLEAN, raw
+
+    def test_an_extension_no_longer_defeats_a_match(self):
+        assert normalize_phone("916.555.0100 x22") == normalize_phone("916-555-0100")
+
+    def test_a_label_before_the_number_is_untouched(self):
+        """The x in "fax" has no word boundary before it, so it cannot match."""
+        assert normalize_phone("fax 916-555-0100") == self.CLEAN
+
+
+class TestPhoneValidity:
+    """A number that cannot be dialled is absent, not different.
+
+    The failure modes are not symmetric: a corrupted number silently argues two
+    locations are different, an absent one argues nothing.
+    """
+
+    def test_exchange_starting_zero_or_one_is_absent(self):
+        assert normalize_phone("817-070-9392") == ""
+        assert normalize_phone("210-100-0000") == ""
+
+    def test_area_code_starting_zero_or_one_is_absent(self):
+        assert normalize_phone("174-131-5008") == ""
+        assert normalize_phone("107-043-2002") == ""
+
+    def test_n11_service_codes_are_not_exchanges(self):
+        assert normalize_phone("911-555-0100") == ""
+        assert normalize_phone("916-411-0100") == ""
+
+    def test_a_valid_number_is_unaffected(self):
+        for raw in ("216-431-0860", "281-707-0939", "916-555-0100"):
+            assert normalize_phone(raw) != "", raw
+
+    def test_two_impossible_numbers_do_not_match_each_other(self):
+        """Both normalize to absent, and absent never matches absent as evidence."""
+        assert normalize_phone("174-131-5008") == normalize_phone("107-043-2002") == ""
+
+    def test_is_dialable_phone_is_exposed_for_callers(self):
+        assert is_dialable_phone("2164310860")
+        assert not is_dialable_phone("1741315008")
+        assert not is_dialable_phone("")
 
 
 class TestRegistrableDomain:

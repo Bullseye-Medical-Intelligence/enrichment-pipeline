@@ -259,12 +259,50 @@ def normalize_zip5(raw_zip: str) -> str:
     return digits[:5] if len(digits) >= 5 else ""
 
 
+# An extension is written a dozen ways and its digits are not part of the number.
+# Left in place they shift the last-ten window: "(916) 431-0860 ext. 4" became
+# 1643108604, a number that exists nowhere and compares unequal to itself.
+# "x4" has no word boundary between the x and the digit, so the x alternative
+# anchors only on its left — which also stops it matching the x inside "fax".
+_EXTENSION_RE = re.compile(
+    r"(?:\b(?:ext|extension|xt)\b\.?|\bx|#)\s*\.?\s*\d+\s*$", re.IGNORECASE
+)
+
+# NANP structure. A number failing this cannot be dialled, so it is not evidence
+# of anything — see normalize_phone.
+_NANP_RE = re.compile(r"^[2-9](?!11)\d{2}[2-9](?!11)\d{2}\d{4}$")
+
+
+def strip_phone_extension(raw_phone: str) -> str:
+    """Remove a trailing extension so its digits cannot enter the number."""
+    return _EXTENSION_RE.sub("", (raw_phone or "").strip()).strip(" -.,;:")
+
+
+def is_dialable_phone(digits: str) -> bool:
+    """True when ten digits satisfy NANP structure for a subscriber line.
+
+    Area code and exchange must start 2-9, and neither may be an N11 service
+    code (911, 411 and friends are not exchanges).
+    """
+    return bool(_NANP_RE.match(digits or ""))
+
+
 def normalize_phone(raw_phone: str) -> str:
-    """Digits only, US country code dropped, last 10 kept. "" when under 10."""
-    digits = re.sub(r"\D", "", raw_phone or "")
+    """Comparable ten-digit phone, or "" when the input cannot be dialled.
+
+    A structurally impossible number is returned as EMPTY rather than as a
+    distinct value, and the asymmetry is the whole reason: a corrupted number
+    silently argues two locations are different, while an absent one argues
+    nothing. Absence is the safe default because the failure modes are not
+    symmetric.
+    """
+    digits = re.sub(r"\D", "", strip_phone_extension(raw_phone))
     if len(digits) == 11 and digits.startswith("1"):
         digits = digits[1:]
-    return digits[-10:] if len(digits) >= 10 else ""
+    if len(digits) < 10:
+        return ""
+    candidate = digits[-10:]
+    return candidate if is_dialable_phone(candidate) else ""
 
 
 def registrable_domain(raw_url: str) -> str:
