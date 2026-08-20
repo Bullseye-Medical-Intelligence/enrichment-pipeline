@@ -455,6 +455,23 @@ was caught. The 2,415 reached a dashboard badge, the internal run manifest, and
 the CLI console summary. Retracting the number without naming its consumers
 leaves the wrong value sitting in three places.
 
+### The consolidation rates, and what may be quoted
+Measured 2026-08-20 from `--ingest-only` runs, read from `run_log.json`:
+
+| list | gross | post-exclusion |
+|------|-------|----------------|
+| TX, NPPES registry, OBGYN (`RUN-20260820-053114`) | **29.6%** | **30.8%** |
+| NorCal, Places scrape, psychiatry (`RUN-20260820-053306`) | 36.1% | 35.8% |
+
+Quote the OBGYN registry row. **Do not quote a source-type delta**: the two lists
+differ in source *and* specialty, so the 6.5-point gap is confounded and the
+magnitude is unmeasured for OBGYN. The direction is mechanistically supported
+(NPPES has no website field, so Pass 2 is inert and domain never contributes to a
+Pass 1 merge; a registry row is one provider at one address where a scraper emits
+one practice from several listings), but direction is all it supports. The run
+that would close it — an OBGYN scrape for one metro through the same path — is
+logged in `docs/review-backlog.md`, not run.
+
 ### RULE M4: A measurement of a code change is a controlled experiment.
 To attribute a delta to a change, hold everything else constant and vary only the
 changed function. Two numbers taken from different tree states are not a

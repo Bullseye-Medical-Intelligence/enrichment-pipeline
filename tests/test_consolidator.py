@@ -251,10 +251,15 @@ class TestUnitMatchScoring:
         assert len(out) == 2
 
     def test_a_conflicting_domain_holds_a_same_suite_pair_back_for_review(self):
-        """Two real and different websites at one suite is genuinely ambiguous.
+        """Two real and different websites at one suite go to review, mechanically.
 
         4 + 3 - 3 = 4: under the merge threshold, inside the review band, and
         admitted as corroborated rather than silently merged or silently split.
+
+        This is NOT the one-door standard hesitating — that standard says merge.
+        It is the schema: a record carries exactly one website_url, so merging
+        would force the engine to pick one site and discard the other's evidence.
+        Backlog 22 (multiple URLs per location) is what would let it merge.
         """
         out, summary = self._pair(
             left={"unit": "Suite 360", "website": "https://alpha.com"},

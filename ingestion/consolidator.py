@@ -70,6 +70,15 @@ SCORE_UNIT_MATCH = 3
 # Absence of a phone match is not evidence of difference — one practice
 # legitimately publishes a main line, a scheduling line and a billing line, and
 # penalising that would break the exact case consolidation exists to fix.
+#
+# This penalty also holds back the one case SCORE_UNIT_MATCH would otherwise
+# merge: two real and different sites at the SAME suite land on 4 + 3 - 3 = 4 and
+# go to review. That outcome is MECHANICAL, not a judgement call. The one-door
+# standard says merge; the schema says we cannot, because a record carries
+# exactly one website_url and merging would force the engine to pick one site and
+# discard the other's evidence — losing, on a cash-pay ICP, whichever of the two
+# brands carried the signal. Backlog item 22 (multiple URLs per location) is what
+# would let this merge; until then the pair is a question.
 SCORE_DOMAIN_CONFLICT = -3
 
 NAME_SIMILARITY_THRESHOLD = 0.85

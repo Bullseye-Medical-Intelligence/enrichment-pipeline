@@ -360,8 +360,15 @@ other input constant (RULE M4):
 
 One case is deliberately NOT merged: a same-suite pair whose two sides carry real
 and *different* websites scores 4 + 3 - 3 = 4, under the merge threshold, and is
-admitted for review as `corroborated`. Two genuine websites at one suite is the
-one reading the "one door" standard does not settle on its own.
+admitted for review as `corroborated`.
+
+**The reason is mechanical, not a judgement call.** The one-door standard says
+merge. The schema says we cannot: a record carries exactly ONE `website_url`, so
+merging forces the engine to pick one site and discard the other's evidence. On
+an ICP with a second-brand signal — a practice with a separate med-spa brand at
+the same suite, where the med-spa is the cash-pay evidence — crawling the wrong
+one of the two loses the signal entirely. The schema is the binding constraint,
+so the pair stays in review. See item 22 for what would let it auto-merge.
 
 ### Authoritative consolidation rates (2026-08-20) — the deliverable
 
@@ -385,16 +392,60 @@ figure reported earlier in this workstream.
 | Pass 2 groups | 0 | 26 |
 | no street to match on | 1 | 25 |
 
-**A scraped list collapses harder than a registry list** (36.1% vs 29.6%), and
-the gap widens on the billable population. Two structural reasons, both visible
-above: NPPES carries no website field at all, so Pass 2 finds zero groups and
-domain agreement never contributes to a Pass 1 merge; and a registry row is one
-provider at one enumerated address, where a scraper emits the same practice
-several times from different listings.
+**What is quotable.** The TX row is a clean OBGYN-registry measurement:
+**29.6% gross, 30.8% post-exclusion**. The NorCal row is a real measurement of
+that list, but it is **not a like-for-like comparison** with TX.
+
+**The by-source comparison is CONFOUNDED — directional only.** The two lists
+differ in *two* variables, not one:
+
+| | source | specialty |
+|---|---|---|
+| TX | NPPES registry | OBGYN |
+| NorCal | Places scrape | psychiatry |
+
+Psychiatry has a materially different clustering profile from OBGYN — heavy solo
+practice, therapy groups sharing suites, telehealth-only providers. Some or all
+of the 6.5-point gap may be specialty rather than source, and nothing here
+separates them.
+
+The *direction* is mechanistically supported and specialty-independent: NPPES
+carries no website field at all, so Pass 2 finds zero groups and domain agreement
+never contributes to a Pass 1 merge; and a registry row is one provider at one
+enumerated address, where a scraper emits the same practice several times from
+different listings. The *magnitude* is unmeasured for OBGYN. **Do not quote a
+source-type delta for OBGYN.**
+
+**Outstanding measurement (not run):** an OBGYN scrape for a single metro through
+the same `--ingest-only` path. That is the one run that isolates source from
+specialty and closes the question. It needs a Places scrape we do not currently
+have, so it is logged rather than run.
 
 **The queue is a workflow on scraped input and nearly empty on registry input.**
 The 25 TX pairs are 18 unknown-phone and 7 mechanical unit-gate rejects — no
 judgement calls at all. NorCal's 132 include 29 genuine corroborated conflicts.
+If the next real run holds at that shape, close backlog 21 items (b) and (c) and
+the rotation repair as won't-do, with their measurements attached, rather than
+leaving them open indefinitely.
+
+### 22. One website_url per location blocks a merge the evidence supports [OPEN]
+A practice location carries a single `website_url`, so two rows at one suite with
+two real and different sites cannot be merged without discarding one site's
+evidence. `SCORE_DOMAIN_CONFLICT` currently holds such a pair under the merge
+threshold and routes it to review, which is correct **only because** of this
+schema limit — the one-door standard would otherwise merge it.
+
+The failure this protects against is live on a cash-pay ICP: a practice with a
+separate med-spa brand at the same suite is a Tier 1 signal, and crawling the
+wrong one of the two loses either the clinical or the elective evidence.
+
+**Fix (not started):** multiple website URLs per practice location — the crawler
+visits each and the extracted evidence is combined before signal extraction. That
+is what would let a two-site same-suite pair auto-merge instead of asking. Touches
+the record schema (RULE 4: `PIPELINE.md` plus the `enrichment/scorer.py` validator
+in the same change), the crawl loop, and the Evidence Vault's per-record layout.
+Not started, and not worth starting for this case alone — the driver would be
+multi-brand practices in general.
 
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
