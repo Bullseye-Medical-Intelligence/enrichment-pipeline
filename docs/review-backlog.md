@@ -169,10 +169,12 @@ the example silently reverts the check. **Fix:** accurate message per branch
 
 These two arrived from the review's final (retried) lens after the P1/P2
 resolution pass above ran; both re-verified as still present at the merge.
-Item 15 RESOLVED 2026-08-19 (crawl-mode string folded into the fingerprint,
-pinning test in TestStep4Checkpoint). Item 14 remains OPEN.
+Both are now RESOLVED: item 15 on 2026-08-19 (crawl-mode string folded into
+the fingerprint) and item 14 on 2026-08-20 (UnicodeDecodeError added to the
+catch tuple in every reader of a hand-editable JSON file — reviews.py,
+icp_profiles.py, registry_update.py — with a cp1252 regression test).
 
-### 14. `UnicodeDecodeError` escapes the ReviewsLoadError contract (regression-adjacent)
+### 14. [RESOLVED 2026-08-20] `UnicodeDecodeError` escaped the ReviewsLoadError contract
 `pipeline-api/reviews.py` — `get_reviews` converts damage to `ReviewsLoadError` via
 `except (json.JSONDecodeError, OSError)`, but invalid UTF-8 bytes in reviews.json
 raise `UnicodeDecodeError` during the stream decode — verified empirically: it is

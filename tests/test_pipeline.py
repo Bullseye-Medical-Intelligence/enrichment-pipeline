@@ -17,6 +17,8 @@ Coverage:
 import sys
 import os
 
+import pytest
+
 # Ensure project root is on the path regardless of where pytest is invoked
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -292,6 +294,79 @@ class TestExclusionCanary:
 # ---------------------------------------------------------------------------
 # Step-4 checkpoint
 # ---------------------------------------------------------------------------
+
+class TestAccountLevelLLMFailure:
+    """Running out of credit must halt the run, not degrade it silently.
+
+    A 402 billing_error is a 4xx, so the old path broke out of the retry loop,
+    raised RuntimeError, and marked the record failed. Every remaining record
+    then made its own doomed call and failed the same way. Because a failed
+    record keeps its source_confidence (a good crawl stays "complete"), none of
+    them counted as site-blocked, and the Step 6 evidence gate tiered them all
+    as Manual Review — indistinguishable from genuinely thin evidence, in a run
+    reporting "complete".
+    """
+
+    def test_account_statuses_are_the_ones_the_api_documents(self):
+        from enrichment.signal_extractor import ACCOUNT_ERROR_STATUSES
+        # 401 authentication_error, 402 billing_error, 403 permission_error.
+        assert ACCOUNT_ERROR_STATUSES == frozenset({401, 402, 403})
+
+    def test_message_names_the_cause_an_operator_can_act_on(self):
+        from enrichment.signal_extractor import LLMAccountError
+        text = str(LLMAccountError(402, "Your credit balance is too low"))
+        assert "402" in text
+        assert "credit balance is exhausted" in text
+        assert "Your credit balance is too low" in text   # the API's own words
+
+    def test_it_is_a_runtime_error_but_not_treated_as_one(self):
+        """It subclasses RuntimeError so existing callers still catch a failure,
+        but extract_signals re-raises it rather than recording a per-record fail."""
+        from enrichment.signal_extractor import LLMAccountError
+        assert issubclass(LLMAccountError, RuntimeError)
+
+    def test_extract_signals_lets_it_escape(self, monkeypatch):
+        """The per-record handler must not convert it into a failed record."""
+        import enrichment.signal_extractor as se
+
+        def _boom(*args, **kwargs):
+            raise se.LLMAccountError(402, "Your credit balance is too low")
+
+        monkeypatch.setattr(se, "_call_claude", _boom)
+        monkeypatch.setattr(se, "_get_client", lambda: object())
+        record = {"id": "T-1", "practice_name": "Valley Clinic",
+                  "website_url": "https://valley.example"}
+        with pytest.raises(se.LLMAccountError):
+            se.extract_signals(
+                record=record,
+                icp_signals=[{"signal_id": "S-01", "signal_label": "x",
+                              "prompt_instruction": "x", "positive_weight": 10}],
+                context_text="x" * 5000,
+                run_id="RUN-1",
+            )
+        # And it did NOT quietly stamp the record as a completed failure.
+        assert record.get("enrichment_status") != "failed"
+
+    def test_a_transient_api_error_still_fails_only_that_record(self, monkeypatch):
+        """The halt is scoped to account errors; a 500 stays a per-record failure."""
+        import enrichment.signal_extractor as se
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("Claude API failed after 3 retries: API error 500")
+
+        monkeypatch.setattr(se, "_call_claude", _boom)
+        monkeypatch.setattr(se, "_get_client", lambda: object())
+        record = {"id": "T-1", "practice_name": "Valley Clinic",
+                  "website_url": "https://valley.example"}
+        out = se.extract_signals(
+            record=record,
+            icp_signals=[{"signal_id": "S-01", "signal_label": "x",
+                          "prompt_instruction": "x", "positive_weight": 10}],
+            context_text="x" * 5000,
+            run_id="RUN-1",
+        )
+        assert out["enrichment_status"] == "failed"
+
 
 class TestStep4Checkpoint:
 

@@ -125,6 +125,37 @@ def test_malformed_entry_raises_load_error(tmp_path):
     assert "T-bad" in str(exc.value)
 
 
+def test_invalid_utf8_raises_load_error(tmp_path):
+    """A cp1252-saved reviews.json must fail CLOSED like any other damage.
+
+    UnicodeDecodeError is a ValueError but neither JSONDecodeError nor OSError,
+    so it escaped the catch tuple and propagated raw past every fail-soft
+    handler. A batch re-enrich whose merge had already persisted then crashed
+    while counting, reported "run left untouched" (false), marked every merged
+    record failed, and the operator re-ran — double-spending Claude. Our own
+    recovery message tells operators to hand-repair this file, so a Windows
+    editor writing cp1252 is the plausible trigger.
+    """
+    # "café" in cp1252: the 0xE9 byte is not valid UTF-8.
+    (tmp_path / "reviews.json").write_bytes(
+        b'{"T-1": {"qc_status": "approved", "analyst_note": "caf\xe9"}}'
+    )
+    with pytest.raises(reviews.ReviewsLoadError) as exc:
+        reviews.get_reviews(_RUN_ID, tmp_path)
+    assert "No changes were written" in str(exc.value)
+
+
+def test_invalid_utf8_degrades_on_viewing_surfaces(tmp_path):
+    """The lenient reader must degrade with a warning, not raise, so the
+    operator can still open the run to repair it."""
+    (tmp_path / "reviews.json").write_bytes(
+        b'{"T-1": {"qc_status": "approved", "analyst_note": "caf\xe9"}}'
+    )
+    overlay, warning = reviews.get_reviews_lenient(_RUN_ID, tmp_path)
+    assert overlay == {}
+    assert warning and "could not be read" in warning
+
+
 def test_unreadable_file_raises_load_error(run_dir, monkeypatch):
     def _boom(*a, **k):
         raise OSError("I/O error reading device")

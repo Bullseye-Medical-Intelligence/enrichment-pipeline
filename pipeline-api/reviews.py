@@ -29,8 +29,8 @@ ENRICHED_TARGETS_FILENAME = "enriched_targets.json"
 class ReviewsLoadError(RuntimeError):
     """reviews.json exists but cannot be read as the analyst-review overlay.
 
-    Raised when the file is malformed JSON, unreadable (OSError), or its root is
-    not an object. Callers must treat this as fail-closed: never write a fresh
+    Raised when the file is malformed JSON, not decodable as UTF-8, unreadable
+    (OSError), or its root is not an object. Callers must treat this as fail-closed: never write a fresh
     overlay over the damaged file — a save after a silent empty read would erase
     every prior analyst note, approval, override, and signal edit. The damaged
     file is left untouched so the operator can repair or restore it.
@@ -71,8 +71,8 @@ def get_reviews(run_id: str, run_directory: Path) -> dict[str, dict]:
         no analyst has reviewed anything).
 
     Raises:
-        ReviewsLoadError: the file exists but is malformed, unreadable, or its
-        root is not an object. Fail-closed by design — returning {} here let a
+        ReviewsLoadError: the file exists but is malformed, not decodable as
+        UTF-8, unreadable, or its root is not an object. Fail-closed by design — returning {} here let a
         subsequent save atomically replace the file with only the entry being
         touched, silently erasing all prior analyst work. Write paths and
         client-shipping paths abort before mutating or exporting anything;
@@ -85,7 +85,7 @@ def get_reviews(run_id: str, run_directory: Path) -> dict[str, dict]:
     try:
         with open(reviews_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         logger.error("Failed to read reviews.json for run %s: %s", run_id, e)
         raise ReviewsLoadError(reviews_path, str(e)) from e
     if not isinstance(data, dict):
@@ -143,7 +143,7 @@ def get_reviews_lenient(run_id: str, run_directory: Path) -> tuple[dict[str, dic
     try:
         with open(reviews_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         return {}, (
             f"The analyst review file could not be read ({e}). "
             f"All records are shown as unreviewed. {repair_hint}"
@@ -535,7 +535,7 @@ def _read_original_signal_state(
     try:
         with open(results_path, "r", encoding="utf-8") as f:
             records = record_adapter.normalize_records_payload(json.load(f))
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         logger.error(
             "Failed to read %s while capturing original signal state: %s",
             results_path, e,

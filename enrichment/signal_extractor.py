@@ -182,6 +182,36 @@ def _build_user_message(record: dict, context_text: str) -> str:
 # LLM call with retry
 # ---------------------------------------------------------------------------
 
+# Status codes that describe the ACCOUNT, not the request. Verified against the
+# Claude API error reference: 401 authentication_error (key malformed, revoked or
+# expired), 402 billing_error (billing or payment problem — this is what running
+# out of credit returns), 403 permission_error (key lacks access to the resource).
+# Retrying is pointless and so is moving to the next record.
+ACCOUNT_ERROR_STATUSES: frozenset[int] = frozenset({401, 402, 403})
+
+
+class LLMAccountError(RuntimeError):
+    """The API rejected the call for an account reason, not a per-record one.
+
+    Deliberately NOT a subclass of the per-record failure path: it must escape
+    extract_signals_for_record so the run halts instead of marking every
+    remaining record failed and completing.
+    """
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        reason = {
+            401: "the API key is malformed, revoked or expired",
+            402: "there is a billing or payment problem — most often the credit "
+                 "balance is exhausted",
+            403: "the API key does not have permission for this model or workspace",
+        }.get(status_code, "the account was rejected")
+        super().__init__(
+            f"Claude returned {status_code}: {reason}. "
+            f"API message: {message}"
+        )
+
+
 def _call_claude(system_prompt: str, user_message: str,
                   client: anthropic.Anthropic, model: str,
                   retries: int = 3) -> tuple[str, dict]:
@@ -228,6 +258,15 @@ def _call_claude(system_prompt: str, user_message: str,
             time.sleep(10)  # Extra wait on rate limit
             continue
         except anthropic.APIStatusError as e:
+            # Account-level failures do not resolve by trying the next record:
+            # every remaining call returns the same status. Marking each record
+            # failed and continuing would burn through the roster, land the lot
+            # in Manual Review indistinguishable from genuinely thin evidence,
+            # and report the run complete. Raise past the per-record handler so
+            # the run halts with the reason while the checkpoint keeps the work
+            # already done.
+            if e.status_code in ACCOUNT_ERROR_STATUSES:
+                raise LLMAccountError(e.status_code, e.message) from e
             last_error = f"API error {e.status_code}: {e.message}"
             if e.status_code < 500:
                 break  # Don't retry 4xx
@@ -994,6 +1033,12 @@ def extract_signals(record: dict, icp_signals: list[dict],
             "_llm_exclusion_triggers": [],
             "_llm_exclusion_rationale": "",
         })
+
+    except LLMAccountError:
+        # A RuntimeError subclass, so it would otherwise be caught below and
+        # recorded as a per-record failure. It is not one: the account is
+        # rejected and the next record will fail identically. Let it out.
+        raise
 
     except RuntimeError as e:
         print(f"    [FAIL] Claude API failure: {e}")

@@ -54,7 +54,7 @@ from enrichment.constants import (
     MIN_CONTEXT_CHARS,
 )
 from enrichment.config_validator import validate_icp, validate_run_config
-from enrichment.signal_extractor import extract_signals
+from enrichment.signal_extractor import LLMAccountError, extract_signals
 from enrichment.exclusion_checker import (
     ExclusionCanaryTripped,
     apply_exclusions,
@@ -1039,6 +1039,11 @@ def run_pipeline(input_file: str, source_type: str,
                     contact_strategy=icp_data.get("contact_strategy", ""),
                     product_context=icp_data.get("product_context", ""),
                 ), None
+            except LLMAccountError:
+                # The account is rejected, not this record. Retrying and moving
+                # on would fail every remaining record identically; let it reach
+                # the run-level handler, which halts with the checkpoint intact.
+                raise
             except Exception as e:
                 err_str = str(e)
                 is_rate_limit = (
@@ -1059,7 +1064,27 @@ def run_pipeline(input_file: str, source_type: str,
     with ThreadPoolExecutor(max_workers=max(1, llm_concurrency)) as executor:
         futures = [executor.submit(_extract_with_retry, idx, rec) for idx, rec in to_process]
         for future in as_completed(futures):
-            idx, record, error = future.result()
+            try:
+                idx, record, error = future.result()
+            except LLMAccountError as e:
+                # Stop the run rather than mark every remaining record failed.
+                # Records already extracted are in the checkpoint, so resuming
+                # after the account is fixed continues instead of re-spending.
+                for pending in futures:
+                    pending.cancel()
+                print("\n" + "=" * 72, flush=True)
+                print("  RUN HALTED — the Claude account was rejected", flush=True)
+                print("=" * 72, flush=True)
+                print(f"  {e}", flush=True)
+                print(f"\n  {checkpoint_start + done_count} of {len(records)} records "
+                      "were extracted before this and are saved in the Step 4",
+                      flush=True)
+                print("  checkpoint. Fix the account, then re-run the same command:",
+                      flush=True)
+                print("  extraction resumes from the checkpoint and does not "
+                      "re-spend on them.", flush=True)
+                print("=" * 72, flush=True)
+                raise
             done_count += 1
             total_done = checkpoint_start + done_count
             _write_progress(output_dir, 4, "Signal extraction (Claude)", total_done, len(records))
@@ -1376,6 +1401,11 @@ Examples:
         # A deliberate halt, not a crash: the full diagnostic is already on stdout.
         # A traceback here would read as a bug in the pipeline rather than a bug
         # in the run configuration, which is what this is telling the operator.
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    except LLMAccountError as e:
+        # Same shape: the diagnostic and the resume instructions are on stdout,
+        # and the problem is the account, not the pipeline.
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 

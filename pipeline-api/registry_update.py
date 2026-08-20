@@ -120,7 +120,7 @@ def load_registry(path: Path) -> dict:
         return _empty_registry()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         logger.error("Registry %s exists but is unreadable: %s", path, exc)
         raise RegistryLoadError(
             f"Registry file at {path} exists but could not be read ({exc}). "
@@ -396,7 +396,7 @@ def _load_status_raw(run_id: str) -> Optional[dict]:
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
 
 
@@ -446,7 +446,7 @@ def update_registry_from_run(
         raise LookupError(f"Run '{run_id}' has no enrichment output.")
     try:
         raw = json.loads(enriched_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         raise LookupError(f"Could not read enrichment output: {exc}") from exc
     records = record_adapter.normalize_records_payload(raw)
 
