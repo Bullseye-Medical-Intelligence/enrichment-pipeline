@@ -57,8 +57,7 @@
     {% if pair.evidence %}
     <span class="text-muted small">
       &middot;
-      {%- if pair.evidence.same_unit %} both at {{ pair.evidence.unit_left }}{% endif %}
-      {%- if pair.evidence.domains_conflict %} &middot; different websites{% endif %}
+      {%- if pair.evidence.domains_conflict %} different websites{% endif %}
       {%- if pair.evidence.phone_absent %} &middot; a phone is missing
       {%- elif pair.evidence.phones_differ %} &middot; different phones{% endif %}
       {%- if pair.evidence.both_personal %} &middot; both named as people{% endif %}

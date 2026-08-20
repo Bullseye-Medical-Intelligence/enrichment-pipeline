@@ -288,7 +288,7 @@ comma-split when the trailing parts are credential tokens — both modules live 
 `ingestion/`, so `CREDENTIAL_TOKENS` imports directly. Pipe-separated input is
 already unambiguous and stays as-is. Add a test for `"Jane Smith, MD"`.
 
-### 20. [IN PROGRESS 2026-08-20] A matching suite number scores nothing
+### 20. [RESOLVED 2026-08-20] A matching suite number scored nothing
 `ingestion/consolidator.py` — `units_conflict` only ever *blocks* a merge. A unit
 that MATCHES earns no score, so two records at the same street, ZIP **and suite**
 score exactly the same 4 (address only) as two unrelated tenants of the same
@@ -330,76 +330,38 @@ all 97 admitted pairs into decisions, including the 8 unit-gate blocks, which ar
 mechanical rejects that will never merge. Grouping the 89 same-suite pairs alone
 gives 43.
 
-**Step two, NOT started — the decision this buys.** After the 28 TX rulings come
-back, report the merge/separate split. If the overwhelming majority rule "merge",
-`units_match` becomes a positive scoring term of +3 and this queue disappears. If
-the rulings are mixed, same-suite stays a permanent review trigger and we know
-why. Do not build the scoring term before the rulings: same street + ZIP + suite
-is almost certainly one office, and "almost certainly" is what a review queue is
-for. Over-merging is the invisible error — a wrongly merged pair loses a real
-target permanently and nobody ever sees it.
+**RESOLVED — `SCORE_UNIT_MATCH = 3`, same-suite carve-out deleted.**
 
-### 21. Phone comparison is exact-match, and it is discarding the best evidence [OPEN]
-`ingestion/practice_normalizer.py::normalize_phone` reduces a phone to its last ten
-digits, and `consolidator.score_pair` compares the result for exact equality. Two
-numbers either match or they are unrelated; there is no middle. In a medical office
-a shared NPA-NXX usually means one phone system, and a single wrong digit is a typo,
-not a different practice. **Not started — the weight is not settled.**
+Thirteen decisions were ruled: the top ten by recoverable rows, plus three drawn
+from the tail as a control. **All thirteen MERGE.** The pre-committed rule
+(8+ of 10 -> scoring term) fired.
 
-Three separable pieces, each with its own measured impact. Counts are PROVISIONAL:
-they come from an analysis script over consolidated output, and become authoritative
-once the engine emits them as counters in the consolidation block.
+**The reasoning, which matters more than the count.** A suite is one leased unit
+with one front door, and two competing OBGYN practices do not share one. The
+realistic readings of two providers at one suite are a two-provider practice, an
+office-share arrangement, or a stale record — and under every one of them a rep
+makes ONE call to ONE front desk. So the standard is not "are these the same
+legal entity", it is **"would a rep knock once or twice"**. Same street, same ZIP,
+same suite means one door. That is the commercial unit being sold, and the one the
+cartridge should model.
 
-**(a) Validity check — the strongest and least ambiguous piece.** An impossible
-number is currently just another distinct value, so it scores as evidence of
-DIFFERENCE. Under the NANP an area code and an exchange cannot begin 0 or 1, and
-neither may be an N11 service code.
+The control mattered: it was *weaker* evidence than the top ten and still ruled
+merge. The institutional decisions had shared exchanges and sequential extensions;
+the three control decisions were independent single-physician practices whose only
+corroboration was a shared area code. The rule held on the thinner case.
 
-| | TX registry | NorCal scrape |
-|---|---|---|
-| locations with a phone | 889 | 730 |
-| impossible under the NANP | 7 | 1 |
-| repaired by a number already at the same building | **3** | 0 |
-| valid repair exists, nothing corroborates it | 3 | 1 |
-| no valid repair | 1 (`210-000-0000`) | 0 |
+Effect, isolated by varying only `SCORE_UNIT_MATCH` from 0 to 3 and holding every
+other input constant (RULE M4):
 
-Two distinct causes, and only one of them is ours:
-- **Source rotation (TX, 6 numbers).** NPPES itself carries digits rotated one
-  position: `174-131-5008` is `817-413-1500`, `817-070-9392` is `281-707-0939`,
-  `107-043-2002` is `210-704-3200`. In all three the repaired number is already
-  present on another location at the same street.
-- **Our own normalizer (NorCal, 1 number).** `(916) 431-0860 ext. 4` is eleven
-  digits, so the last-ten rule returns `1643108604`. The extension corrupts the
-  number. Taking the first ten when the last ten are impossible recovers it.
+| list | locations | merged clusters | review pairs |
+|------|-----------|-----------------|--------------|
+| TX registry | 890 -> **845** (-45) | 143 -> 155 | 118 -> **25** |
+| NorCal scrape | 768 -> **726** (-42) | 67 -> 81 | 173 -> **132** |
 
-**Fix:** validate after normalizing. When a number is impossible, attempt the two
-repairs (first-ten instead of last-ten; rotate one position) and accept a repair
-only when the result is already present on another location at the same building.
-When no repair corroborates, treat the number as **absent** rather than distinct —
-an absent phone routes the pair to `phone_absent` review, where a wrong one silently
-argues the two locations are different.
-
-**(b) Shared NPA-NXX as a weak positive term.** Same building, same exchange,
-different subscriber number:
-
-| | TX | NorCal |
-|---|---|---|
-| pairs sharing a building | 907 | 935 |
-| ...sharing NPA-NXX, numbers differ | 276 | 193 |
-| ...not admitted to the queue today | **258** | **153** |
-
-A +1 term is mechanically inert on its own and that is the point to settle first:
-address-only becomes 4+1 = 5, still under `MERGE_THRESHOLD` 6; same-suite becomes
-7+1 = 8, already merging. It changes an outcome only if `shared_exchange` also
-becomes an admission reason — and that would add 258 / 153 pairs to a queue that
-currently holds 89 / 62 same-suite pairs. **Decide the admission question before
-the weight**; a weak score term with no admission reason buys nothing.
-
-**(c) Near-miss numbers.** Pairs at one building differing by exactly one digit:
-52 (TX) and 11 (NorCal); one-position rotations: 4 (TX), 0 (NorCal). Riskier than
-(a) or (b) — `8323257131` vs `8323257133` is one practice's switchboard range, but
-`7134866643` vs `7134866644` is as likely to be two physicians' direct lines. Route
-to review, never to an automatic merge.
+One case is deliberately NOT merged: a same-suite pair whose two sides carry real
+and *different* websites scores 4 + 3 - 3 = 4, under the merge threshold, and is
+admitted for review as `corroborated`. Two genuine websites at one suite is the
+one reading the "one door" standard does not settle on its own.
 
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 

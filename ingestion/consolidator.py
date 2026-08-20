@@ -49,6 +49,17 @@ SCORE_PHONE = 3            # identical normalized phone
 SCORE_DOMAIN = 3           # identical registrable domain, not an aggregator
 SCORE_NAME = 2             # practice-name similarity at or above the threshold
 
+# A matching suite. Set so that address + unit reaches MERGE_THRESHOLD on its
+# own: a suite is one leased unit with one front door, and two competing
+# practices do not share one. The realistic readings of two providers at one
+# suite are a two-provider practice, an office share, or a stale record, and
+# under every one of them a rep knocks once. That is the commercial unit.
+#
+# The gate was asymmetric before this: a DIFFERING unit was a hard veto while a
+# matching one earned nothing, so two providers at one suite scored exactly the
+# same as two unrelated tenants of the building.
+SCORE_UNIT_MATCH = 3
+
 # Conflict penalty. Agreement alone cannot separate "no corroborating data"
 # from "contradicting data": both land on the bare address score, which is why
 # a medical office building full of unrelated practices produced thousands of
@@ -225,6 +236,13 @@ def score_pair(left: dict, right: dict, noise_domains: frozenset[str]) -> tuple[
             and left["street"] == right["street"] and left["zip5"] == right["zip5"]:
         score += SCORE_ADDRESS
         matched.append("address")
+
+    # Only meaningful alongside the address: two "suite 200"s in different
+    # buildings are unrelated. units_conflict has already refused any pair whose
+    # units differ, so reaching here with both units set means they are equal.
+    if "address" in matched and left["unit"] and left["unit"] == right["unit"]:
+        score += SCORE_UNIT_MATCH
+        matched.append("unit")
 
     if left["phone"] and left["phone"] == right["phone"]:
         score += SCORE_PHONE
@@ -668,7 +686,6 @@ def _assign_practice_ids(cluster_items: list[dict], shared_domains: frozenset[st
 # Why a near-match pair was put in front of an analyst. Distinct from the
 # unit-gate blocks, which scored a merge and were stopped by a hard veto.
 REVIEW_REASON_CORROBORATED = "corroborated"
-REVIEW_REASON_SAME_UNIT = "same_unit"
 REVIEW_REASON_PHONE_ABSENT = "phone_absent"
 REVIEW_REASON_UNIT_GATE = "unit_gate_block"
 
@@ -687,23 +704,20 @@ def review_admission(left_item: dict, right_item: dict, score: int,
     something beyond the building says "look again":
 
     - corroborated : a second field matched (phone, domain, name).
-    - same_unit    : both sides name the SAME suite. A suite is a more specific
-                     identifier than a street address, and until now a matching
-                     one scored nothing while a differing one was a hard veto.
     - phone_absent : one side has no phone at all. A DIFFERING phone is weak
                      evidence of difference; an ABSENT phone is no evidence of
                      anything, so the pair is unknown rather than disproven.
                      Looks dead on registry input (NPPES carries a phone on every
                      row) and fires on scraped lists, which often carry none.
+
+    A matching suite is no longer a review reason: SCORE_UNIT_MATCH carries such
+    a pair past MERGE_THRESHOLD, so it merges rather than asking. Thirteen of
+    thirteen sampled same-suite decisions ruled merge, including three
+    independent single-physician practices whose only corroboration was a shared
+    area code — the rule held on the thinner evidence.
     """
     if score >= MERGE_THRESHOLD:
         return REVIEW_REASON_UNIT_GATE
-    # A matching suite is affirmative evidence, so it carries no score floor. The
-    # score model has no positive term for it (a differing unit is a hard veto, a
-    # matching one earns nothing), so a same-suite pair can score below the review
-    # band on an unrelated penalty and would otherwise disappear unasked.
-    if left_item["unit"] and left_item["unit"] == right_item["unit"]:
-        return REVIEW_REASON_SAME_UNIT
     if score < REVIEW_THRESHOLD:
         return ""
     if [f for f in matched_fields if f != "address"]:

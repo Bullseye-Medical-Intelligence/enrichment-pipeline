@@ -552,17 +552,25 @@ Each `review_candidates` entry:
 | `practice_id` | string | The other location in the pair. |
 | `score` | int | Pass 1 score for the pair. |
 | `matched_fields` | array | Which fields agreed (`domain_conflict` marks a disagreement). |
-| `review_reason` | string | Why it was admitted: `same_unit`, `corroborated`, `phone_absent`, or `unit_gate_block`. |
+| `review_reason` | string | Why it was admitted: `corroborated`, `phone_absent`, or `unit_gate_block`. |
 | `evidence` | object | What the engine saw, recorded so a ruling can be read back as data: `same_unit`, `unit_left`, `unit_right`, `domains_conflict`, `domain_left`, `domain_right`, `phones_differ`, `phone_absent`, `both_organizational`, `both_personal`, `rows_left`, `rows_right`, `providers_left`, `providers_right`. |
 
 **Admission rule.** Sharing a building is not a question — on real lists the large
 majority of same-address pairs are unrelated tenants, and queueing them all buries
 the real ones. A pair is admitted only when something beyond the building says look
-again. `same_unit` carries no score floor, because the score model has no positive
-term for a matching unit (a differing unit is a hard veto, a matching one earns
-nothing) and such a pair can otherwise fall below the review band on an unrelated
-penalty. `unit_gate_block` pairs scored a merge and were stopped by the unit veto:
-they are mechanical rejects, not judgement calls, and are labelled separately.
+again. Sharing a **suite** is not a question either, in the other direction:
+`SCORE_UNIT_MATCH` carries such a pair past `MERGE_THRESHOLD`, so it merges rather
+than asking. `unit_gate_block` pairs scored a merge and were stopped by the unit
+veto: they are mechanical rejects, not judgement calls, and are labelled separately.
+
+**Why a suite merges.** A suite is one leased unit with one front door, and two
+competing practices do not share one. The realistic readings of two providers at
+one suite are a two-provider practice, an office share, or a stale record, and
+under every one of them a rep knocks once. The standard is not "same legal entity",
+it is "would a rep knock once or twice" — that is the commercial unit being sold.
+Settled by ruling thirteen sampled same-suite decisions, all thirteen MERGE,
+including three independent single-physician practices whose only corroboration
+was a shared area code.
 
 **Rulings are additive.** An analyst decision is written to the API's `reviews.json`
 overlay, never back into this file. Pipeline output stays immutable.

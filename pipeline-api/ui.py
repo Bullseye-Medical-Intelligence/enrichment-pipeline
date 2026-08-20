@@ -3463,7 +3463,6 @@ async def confirm_queue(
 # mapped to operator-facing copy. Display only — the API never derives a reason.
 _UNIT_GATE_REASON = "unit_gate_block"
 _REVIEW_REASON_LABELS: dict[str, str] = {
-    "same_unit": "Same suite",
     "corroborated": "Second field matched",
     "phone_absent": "One side has no phone",
     _UNIT_GATE_REASON: "Different suites",

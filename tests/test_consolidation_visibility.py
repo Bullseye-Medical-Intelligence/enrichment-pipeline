@@ -344,10 +344,10 @@ class TestEconomics:
 
 class TestReviewQueue:
 
-    def _pair_run(self, env, reason="same_unit", score=4, evidence=None):
+    def _pair_run(self, env, reason="corroborated", score=4, evidence=None):
         evidence = evidence if evidence is not None else {
-            "same_unit": True, "unit_left": "suite 360", "unit_right": "suite 360",
-            "domains_conflict": False, "phones_differ": True, "phone_absent": False,
+            "same_unit": False, "unit_left": "", "unit_right": "",
+            "domains_conflict": True, "phones_differ": False, "phone_absent": False,
             "both_organizational": True, "both_personal": False,
         }
         left = _location("P-1", name="Alpha Womens Health")
@@ -371,9 +371,13 @@ class TestReviewQueue:
         """The analyst is told why they are being asked, and what the engine saw."""
         self._pair_run(env)
         body = _get(f"/dashboard/{_RUN_ID}/consolidation-review").text
-        assert "Same suite" in body
-        assert "both at suite 360" in body
-        assert "different phones" in body
+        assert "Second field matched" in body
+        assert "different websites" in body
+
+    def test_same_suite_is_no_longer_an_admission_label(self, env):
+        """A matching suite now merges, so it can never reach this queue."""
+        from ui import _REVIEW_REASON_LABELS
+        assert "same_unit" not in _REVIEW_REASON_LABELS
 
     def test_unit_gate_blocks_are_a_separate_bucket_with_no_ruling(self, env):
         """Mechanical rejects must never be filed as near-match judgement calls.
