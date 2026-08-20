@@ -288,7 +288,7 @@ comma-split when the trailing parts are credential tokens — both modules live 
 `ingestion/`, so `CREDENTIAL_TOKENS` imports directly. Pipe-separated input is
 already unambiguous and stays as-is. Add a test for `"Jane Smith, MD"`.
 
-### 20. A matching suite number is strong evidence and scores nothing [OPEN]
+### 20. [IN PROGRESS 2026-08-20] A matching suite number scores nothing
 `ingestion/consolidator.py` — `units_conflict` only ever *blocks* a merge. A unit
 that MATCHES earns no score, so two records at the same street, ZIP **and suite**
 score exactly the same 4 (address only) as two unrelated tenants of the same
@@ -306,14 +306,28 @@ present as address-only with *differing* phones. A predicate requiring corrobora
 beyond the shared building would auto-separate all of them, and a missing-phone
 carve-out would not catch a single one (zero rows lack a phone).
 
-**Fix (sequenced, not started):** first carve same-suite pairs into the review
-queue rather than auto-separating them — 186 pairs, which group into **30 building
-decisions** recovering up to 77 billable rows, with the top 10 decisions covering
-75%. Then, once analyst rulings exist, decide whether a unit match should become a
-positive scoring term (which would auto-merge rather than review them). Do not
-promote it to a scoring term before the rulings — same street + ZIP + suite is
-almost certainly one office, but "almost certainly" is what the review queue is
-for.
+**Status.** Step one is SHIPPED: `review_admission` now carves same-suite pairs
+into the review queue instead of auto-separating them, and every ruling captures
+the evidence behind it (`review_candidates[].evidence`). The queue is a
+measurement instrument, not permanent process — one list, then the rule gets set
+from evidence.
+
+Measured after shipping (pairs surviving exclusions, grouped into building
+decisions):
+
+| list | pairs | decisions | same_unit | recoverable rows |
+|------|-------|-----------|-----------|------------------|
+| TX registry | 97 | **28** | 89 | 50 |
+| NorCal scrape | 145 | **50** | 62 | 63 |
+
+**Step two, NOT started — the decision this buys.** After the 28 TX rulings come
+back, report the merge/separate split. If the overwhelming majority rule "merge",
+`units_match` becomes a positive scoring term of +3 and this queue disappears. If
+the rulings are mixed, same-suite stays a permanent review trigger and we know
+why. Do not build the scoring term before the rulings: same street + ZIP + suite
+is almost certainly one office, and "almost certainly" is what a review queue is
+for. Over-merging is the invisible error — a wrongly merged pair loses a real
+target permanently and nobody ever sees it.
 
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
