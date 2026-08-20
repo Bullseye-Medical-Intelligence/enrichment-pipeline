@@ -1232,11 +1232,11 @@ class TestCrossBuildingAddressIntegrity:
 
     def _cross_building(self, base_over=None, sibling_over=None):
         """Base in building A (org NPI so it wins base), sibling in building B."""
-        base = self._office("T-A", "100 North Office Pkwy", "", "Cumming",
+        base = self._office("T-A", "100 North Office Pkwy", "", "Northtown",
                             "30041", npi_entity_type="organization")
         base.update(base_over or {})
         sibling = self._office("T-B", "200 South Office Blvd", "Suite 1201",
-                               "Suwanee", "30024")
+                               "Southport", "30024")
         sibling.update(sibling_over or {})
         return [base, sibling]
 
@@ -1254,14 +1254,14 @@ class TestCrossBuildingAddressIntegrity:
             self._cross_building(base_over={"address_zip": ""}), {})
         rec = out[0]
         assert rec["address_street"] == "100 North Office Pkwy"
-        assert rec["address_zip"] == ""       # not Suwanee's 30024
+        assert rec["address_zip"] == ""       # not the sibling town's 30024
 
     def test_same_building_suite_fill_still_works(self):
         """The fill the suite ruling relies on: a unit-less base row learns its
         suite from a same-building sibling."""
         rows = self._cross_building(
             sibling_over={"address_street": "100 North Office Pkwy",
-                          "address_city": "Cumming", "address_zip": "30041",
+                          "address_city": "Northtown", "address_zip": "30041",
                           "address_unit": "Suite 300"})
         out, _ = consolidate_records(rows, {})
         assert len(out) == 1
@@ -1271,13 +1271,13 @@ class TestCrossBuildingAddressIntegrity:
         """A base row naming no building takes a sibling's WHOLE address —
         including overwriting its stray town — never a hybrid of the two."""
         rows = self._cross_building(
-            base_over={"address_street": "", "address_city": "Suwanee",
+            base_over={"address_street": "", "address_city": "Southport",
                        "address_zip": ""})
         out, _ = consolidate_records(rows, {})
         rec = out[0]
         assert rec["address_street"] == "200 South Office Blvd"
         assert rec["address_unit"] == "Suite 1201"
-        assert rec["address_city"] == "Suwanee"
+        assert rec["address_city"] == "Southport"
         assert rec["address_zip"] == "30024"
 
     def test_non_address_fields_still_fill_from_any_sibling(self):
