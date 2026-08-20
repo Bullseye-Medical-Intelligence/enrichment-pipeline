@@ -519,6 +519,56 @@ The OBGYN Femasys cartridge maps `207VE0102X` → `rei_on_staff` via this mechan
 
 ---
 
+## PRACTICE-LOCATION CONSOLIDATION FIELDS (Step 1d)
+
+When consolidation is enabled, Step 1d collapses provider rows into practice
+locations and each output record IS a practice location. These fields are added
+to the record; every other field in the schema above keeps its meaning.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `practice_id` | string | Deterministic `P-<hash>` identity from normalized keys. Stable across runs. Also copied to `id`, replacing the per-source-row ingest id. |
+| `practice_name_source` | string | How the display name was chosen: `npi_organization` / `organizational_name` / `domain` / `personal_name` / `placeholder`. A multi-provider location is NEVER labelled with one individual's personal name. |
+| `providers` | array | One entry per distinct provider: `name`, `credentials[]`, `npi`, `taxonomy_codes[]`, `specialty`, `source_record_id`. A credential is an attribute here, never a provider of its own. |
+| `provider_count` | int | `len(providers)`. Distinct providers, not raw name strings. |
+| `source_row_ids` | array | Ingest ids of every row merged into this location. |
+| `address_street_normalized` | string | Street with the unit removed. The unit stays in `address_unit` and is never folded back in. |
+| `location_group_id` | string | Pass 2 group identity (shared registrable domain). Empty when ungrouped. |
+| `location_index` / `location_total` | int | Position within the Pass 2 group, e.g. "Location 3 of 6". |
+| `consolidation` | object | Match provenance — see below. |
+
+### `consolidation` object
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `matched_fields` | array | Fields that agreed across the merged rows. |
+| `match_score` | int | Strongest Pass 1 edge score inside the cluster. |
+| `review_candidates` | array | Near-match locations an analyst should rule on. Empty for most records. |
+
+Each `review_candidates` entry:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `practice_id` | string | The other location in the pair. |
+| `score` | int | Pass 1 score for the pair. |
+| `matched_fields` | array | Which fields agreed (`domain_conflict` marks a disagreement). |
+| `review_reason` | string | Why it was admitted: `same_unit`, `corroborated`, `phone_absent`, or `unit_gate_block`. |
+| `evidence` | object | What the engine saw, recorded so a ruling can be read back as data: `same_unit`, `unit_left`, `unit_right`, `domains_conflict`, `domain_left`, `domain_right`, `phones_differ`, `phone_absent`, `both_organizational`, `both_personal`, `rows_left`, `rows_right`, `providers_left`, `providers_right`. |
+
+**Admission rule.** Sharing a building is not a question — on real lists the large
+majority of same-address pairs are unrelated tenants, and queueing them all buries
+the real ones. A pair is admitted only when something beyond the building says look
+again. `same_unit` carries no score floor, because the score model has no positive
+term for a matching unit (a differing unit is a hard veto, a matching one earns
+nothing) and such a pair can otherwise fall below the review band on an unrelated
+penalty. `unit_gate_block` pairs scored a merge and were stopped by the unit veto:
+they are mechanical rejects, not judgement calls, and are labelled separately.
+
+**Rulings are additive.** An analyst decision is written to the API's `reviews.json`
+overlay, never back into this file. Pipeline output stays immutable.
+
+---
+
 ## RUN LOG OUTPUT
 
 Every pipeline run produces a `run_log.json` alongside the enriched targets file:

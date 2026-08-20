@@ -138,10 +138,12 @@ class TestPass1Scoring:
         assert len(out) == 1
         assert summary["merged_groups"] == 1
 
-    def test_unknown_pair_with_no_corroborating_data_goes_to_review(self):
-        """Score 4: same address, neither row has a site, names differ. Genuinely
-        unknown — this is what the review queue is for. Two records survive and
-        each records the other as a candidate."""
+    def test_sharing_only_a_building_is_kept_apart_without_a_question(self):
+        """Score 4 on the address alone: two tenants of one building.
+
+        Measured on real lists, ~91-98% of address-only pairs are unrelated
+        neighbours. They stay separate records, and no analyst is asked.
+        """
         rows = [
             _row("T-1", "Alpha Womens Health", phone="916-555-0100", website=""),
             _row("T-2", "Zeta Fertility Partners", phone="916-555-0999", website=""),
@@ -149,30 +151,31 @@ class TestPass1Scoring:
         score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
         assert score == 4 and matched == ["address"]
         out, summary = consolidate_records(rows, {})
-        assert len(out) == 2
-        assert summary["review_pairs"] == 1
+        assert len(out) == 2                       # still never merged
+        assert summary["review_pairs"] == 0        # and never queued
         for record in out:
-            candidates = record["consolidation"]["review_candidates"]
-            assert len(candidates) == 1 and candidates[0]["score"] == 4
+            assert record["consolidation"]["review_candidates"] == []
 
 
 class TestReviewQueueCounting:
     """The queue's unit is a location pair — one analyst decision — not a row edge."""
 
     def _two_clusters_one_question(self):
-        """Two practices in one building, each built from two rows.
+        """Two names at the SAME SUITE, each built from two rows.
 
         Every A-row scores 4 (address only) against every B-row, so four row-level
-        edges enter the review queue describing a single question: is Valley the
-        same location as Harbor?
+        edges describe a single question: is Valley the same location as Harbor?
+        The shared suite is what admits it — sharing only the building would not.
         """
         return [
-            _row("T-1", "Valley Clinic", phone="916-555-0100",
+            _row("T-1", "Valley Clinic", unit="Suite 360", phone="916-555-0100",
                  website="https://valleyclinic.com"),
-            _row("T-2", "Valley Clinic", phone="916-555-0100",
+            _row("T-2", "Valley Clinic", unit="Suite 360", phone="916-555-0100",
                  website="https://valleyclinic.com"),
-            _row("T-3", "Harbor Health", phone="916-555-0200", website=""),
-            _row("T-4", "Harbor Health", phone="916-555-0200", website=""),
+            _row("T-3", "Harbor Health", unit="Ste 360", phone="916-555-0200",
+                 website=""),
+            _row("T-4", "Harbor Health", unit="Ste 360", phone="916-555-0200",
+                 website=""),
         ]
 
     def test_counts_distinct_location_pairs_not_row_edges(self):
@@ -195,8 +198,10 @@ class TestReviewQueueCounting:
     def test_engine_count_matches_rendered_pairs_on_a_wider_set(self):
         """Three co-located practices: three questions, not nine edges."""
         rows = self._two_clusters_one_question() + [
-            _row("T-5", "Delta Medical", phone="916-555-0300", website=""),
-            _row("T-6", "Delta Medical", phone="916-555-0300", website=""),
+            _row("T-5", "Delta Medical", unit="Suite 360", phone="916-555-0300",
+                 website=""),
+            _row("T-6", "Delta Medical", unit="Suite 360", phone="916-555-0300",
+                 website=""),
         ]
         out, summary = consolidate_records(rows, {})
         assert len(out) == 3
@@ -205,6 +210,123 @@ class TestReviewQueueCounting:
             for r in out for c in r["consolidation"]["review_candidates"]
         }
         assert summary["review_pairs"] == len(rendered) == 3
+
+
+class TestReviewAdmission:
+    """Sharing a building is not a question. Sharing a suite is."""
+
+    def _pair(self, left=None, right=None):
+        left = {"unit": "", "phone": "916-555-0100", "website": "", **(left or {})}
+        right = {"unit": "", "phone": "916-555-0999", "website": "", **(right or {})}
+        rows = [_row("T-1", "Alpha Health", **left),
+                _row("T-2", "Zeta Partners", **right)]
+        return consolidate_records(rows, {})
+
+    def test_building_only_is_not_admitted(self):
+        out, summary = self._pair()
+        assert len(out) == 2 and summary["review_pairs"] == 0
+
+    def test_same_suite_is_admitted(self):
+        out, summary = self._pair(left={"unit": "Suite 360"},
+                                  right={"unit": "Suite 360"})
+        assert len(out) == 2 and summary["review_pairs"] == 1
+        assert summary["review_reasons"] == {"same_unit": 1}
+
+    def test_same_suite_written_differently_is_still_admitted(self):
+        """The admission is only as good as the unit parser."""
+        _, summary = self._pair(left={"unit": "Suite 360"}, right={"unit": "STE #360"})
+        assert summary["review_reasons"] == {"same_unit": 1}
+
+    def test_different_suites_are_not_admitted(self):
+        """Differing units never reach scoring at all — the pairwise gate stops them."""
+        out, summary = self._pair(left={"unit": "Suite 360"},
+                                  right={"unit": "Suite 400"})
+        assert len(out) == 2 and summary["review_pairs"] == 0
+
+    def test_absent_phone_is_admitted(self):
+        """An absent phone is no evidence of anything, so the pair is unknown."""
+        _, summary = self._pair(left={"phone": ""})
+        assert summary["review_reasons"] == {"phone_absent": 1}
+
+    def test_differing_phones_alone_are_not_admitted(self):
+        """A differing phone is weak evidence of difference, not a question."""
+        _, summary = self._pair()
+        assert summary["review_pairs"] == 0
+
+    def test_corroborating_field_is_admitted(self):
+        """Same address and same phone, conflicting domains: a real judgement call."""
+        rows = [
+            _row("T-1", "Dignity Urgent Care", phone="916-555-0100",
+                 website="https://commonspirit.org"),
+            _row("T-2", "Mercy Neurosurgery", phone="916-555-0100",
+                 website="https://dignityhealth.org"),
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 2
+        assert summary["review_reasons"] == {"corroborated": 1}
+
+    def test_unit_gate_blocks_are_labelled_separately(self):
+        """These scored a merge and were stopped by a hard veto — mechanical,
+        not a judgement call, so they must not be filed as near-matches."""
+        rows = [
+            _row("T-1", "Valley Clinic", unit="Suite 200"),
+            _row("T-2", "Valley Clinic", unit=""),
+            _row("T-3", "Valley Clinic", unit="Suite 400"),
+        ]
+        _, summary = consolidate_records(rows, {})
+        assert summary["review_reasons"] == {"unit_gate_block": 1}
+
+
+class TestReviewEvidence:
+    """A ruling is only useful later if what the engine saw is recorded with it."""
+
+    def _candidate(self, rows):
+        out, _ = consolidate_records(rows, {})
+        return out[0]["consolidation"]["review_candidates"][0]
+
+    def test_same_unit_pair_records_its_evidence(self):
+        candidate = self._candidate([
+            _row("T-1", "Alpha Health", unit="Suite 360", phone="916-555-0100",
+                 website="https://alpha.com"),
+            _row("T-2", "Zeta Partners", unit="Ste 360", phone="916-555-0999",
+                 website="https://zeta.com"),
+        ])
+        evidence = candidate["evidence"]
+        assert candidate["review_reason"] == "same_unit"
+        assert evidence["same_unit"] is True
+        assert evidence["unit_left"] == evidence["unit_right"] == "suite 360"
+        assert evidence["domains_conflict"] is True
+        assert evidence["phones_differ"] is True
+        assert evidence["phone_absent"] is False
+
+    def test_personal_versus_organizational_names_are_recorded(self):
+        candidate = self._candidate([
+            _row("T-1", "Jane Smith", unit="Suite 360", phone="916-555-0100",
+                 website=""),
+            _row("T-2", "John Doe", unit="Suite 360", phone="916-555-0999",
+                 website=""),
+        ])
+        assert candidate["evidence"]["both_personal"] is True
+        assert candidate["evidence"]["both_organizational"] is False
+
+    def test_cluster_sizes_are_recorded(self):
+        candidate = self._candidate([
+            _row("T-1", "Alpha Health", unit="Suite 360", phone="916-555-0100"),
+            _row("T-2", "Alpha Health", unit="Suite 360", phone="916-555-0100"),
+            _row("T-3", "Zeta Partners", unit="Suite 360", phone="916-555-0999",
+                 website=""),
+        ])
+        sizes = {candidate["evidence"]["rows_left"], candidate["evidence"]["rows_right"]}
+        assert sizes == {1, 2}
+
+    def test_a_noise_domain_is_not_reported_as_a_conflict(self):
+        candidate = self._candidate([
+            _row("T-1", "Alpha Health", unit="Suite 360", phone="916-555-0100",
+                 website="https://www.facebook.com/alpha"),
+            _row("T-2", "Zeta Partners", unit="Suite 360", phone="916-555-0999",
+                 website="https://zeta.com"),
+        ])
+        assert candidate["evidence"]["domains_conflict"] is False
 
 
 class TestDomainConflictPenalty:

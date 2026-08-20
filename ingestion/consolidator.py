@@ -330,7 +330,12 @@ def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]
                 score, matched = score_pair(identities[i], identities[j], noise_domains)
                 if score >= MERGE_THRESHOLD:
                     merge_edges.append((score, matched, i, j))
-                elif score >= REVIEW_THRESHOLD:
+                else:
+                    # Every non-merge pair in the block is a review CANDIDATE;
+                    # review_admission decides which deserve an analyst. The score
+                    # alone cannot: a same-suite pair whose domains conflict scores
+                    # 4 - 3 = 1 and would be dropped here, unasked, despite the
+                    # suite being the strongest location evidence in the data.
                     review_edges.append((score, matched, i, j))
 
     # Deterministic union order: strongest first, then by normalized signature.
@@ -657,6 +662,98 @@ def _assign_practice_ids(cluster_items: list[dict], shared_domains: frozenset[st
 
 
 # ---------------------------------------------------------------------------
+# Review-queue admission
+# ---------------------------------------------------------------------------
+
+# Why a near-match pair was put in front of an analyst. Distinct from the
+# unit-gate blocks, which scored a merge and were stopped by a hard veto.
+REVIEW_REASON_CORROBORATED = "corroborated"
+REVIEW_REASON_SAME_UNIT = "same_unit"
+REVIEW_REASON_PHONE_ABSENT = "phone_absent"
+REVIEW_REASON_UNIT_GATE = "unit_gate_block"
+
+
+def review_admission(left_item: dict, right_item: dict, score: int,
+                     matched_fields: list[str]) -> str:
+    """Why this near-match pair deserves an analyst, or "" to keep them apart.
+
+    Reads the LOCATION-level unit and phone (any member row contributes), because
+    the question is whether two locations are one, not whether two particular rows
+    are.
+
+    Sharing a building is not evidence of sharing a practice: on real lists the
+    overwhelming majority of address-only pairs are unrelated tenants, and putting
+    them all in a queue buries the real questions. A pair is admitted only when
+    something beyond the building says "look again":
+
+    - corroborated : a second field matched (phone, domain, name).
+    - same_unit    : both sides name the SAME suite. A suite is a more specific
+                     identifier than a street address, and until now a matching
+                     one scored nothing while a differing one was a hard veto.
+    - phone_absent : one side has no phone at all. A DIFFERING phone is weak
+                     evidence of difference; an ABSENT phone is no evidence of
+                     anything, so the pair is unknown rather than disproven.
+                     Looks dead on registry input (NPPES carries a phone on every
+                     row) and fires on scraped lists, which often carry none.
+    """
+    if score >= MERGE_THRESHOLD:
+        return REVIEW_REASON_UNIT_GATE
+    # A matching suite is affirmative evidence, so it carries no score floor. The
+    # score model has no positive term for it (a differing unit is a hard veto, a
+    # matching one earns nothing), so a same-suite pair can score below the review
+    # band on an unrelated penalty and would otherwise disappear unasked.
+    if left_item["unit"] and left_item["unit"] == right_item["unit"]:
+        return REVIEW_REASON_SAME_UNIT
+    if score < REVIEW_THRESHOLD:
+        return ""
+    if [f for f in matched_fields if f != "address"]:
+        return REVIEW_REASON_CORROBORATED
+    if not left_item["phone"] or not right_item["phone"]:
+        return REVIEW_REASON_PHONE_ABSENT
+    return ""
+
+
+def _is_organizational(record: dict) -> bool:
+    """True when the location's name reads as a practice rather than a person."""
+    return _looks_like_organization(record.get("practice_name") or "")
+
+
+def review_evidence(left_item: dict, right_item: dict,
+                    left_id: dict, right_id: dict,
+                    noise_domains: frozenset[str]) -> dict:
+    """Capture what the engine saw, so a ruling can be read back as evidence.
+
+    Recorded alongside the analyst's verdict, this is what settles whether a unit
+    match should become a scoring term: it turns 30 rulings into a dataset rather
+    than 30 opinions.
+    """
+    left, right = left_item["record"], right_item["record"]
+    left_domain = left_id["domain"] if left_id["domain"] not in noise_domains else ""
+    right_domain = right_id["domain"] if right_id["domain"] not in noise_domains else ""
+    left_unit, right_unit = left_item["unit"], right_item["unit"]
+    left_phone, right_phone = left_item["phone"], right_item["phone"]
+    return {
+        "same_unit": bool(left_unit) and left_unit == right_unit,
+        "unit_left": left_unit,
+        "unit_right": right_unit,
+        "domains_conflict": bool(left_domain and right_domain
+                                 and left_domain != right_domain),
+        "domain_left": left_domain,
+        "domain_right": right_domain,
+        "phones_differ": bool(left_phone and right_phone
+                              and left_phone != right_phone),
+        "phone_absent": not left_phone or not right_phone,
+        "both_organizational": _is_organizational(left) and _is_organizational(right),
+        "both_personal": (not _is_organizational(left)
+                          and not _is_organizational(right)),
+        "rows_left": len(left.get("source_row_ids") or []),
+        "rows_right": len(right.get("source_row_ids") or []),
+        "providers_left": len(left.get("providers") or []),
+        "providers_right": len(right.get("providers") or []),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Pass 2 — link locations into groups (never merges)
 # ---------------------------------------------------------------------------
 
@@ -745,6 +842,16 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
             "members": members,
             "identity": identities[_base_index(members, records, signatures)],
             "cluster_signature": "|".join(sorted(signatures[i] for i in members)),
+            # Location-level unit and phone, contributed by ANY member row. The
+            # question an analyst answers is about two locations, not the two rows
+            # whose edge raised it: a cluster whose base row is unit-less can still
+            # be at Suite 360 because a sibling row said so. The unit-aware
+            # union-find guarantees at most one unit per cluster, so this is
+            # unambiguous.
+            "unit": next((identities[m]["unit"] for m in members
+                          if identities[m]["unit"]), ""),
+            "phone": next((identities[m]["phone"] for m in members
+                           if identities[m]["phone"]), ""),
         }
         cluster_items.append(item)
         for member in members:
@@ -752,27 +859,36 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
 
     _assign_practice_ids(cluster_items, shared_domains)
 
-    # Review-queue pairs: scored 4-5, or blocked by the unit gate. Recorded on
-    # both survivors so a near-match is visible to an analyst, never silently
-    # dropped and never silently merged.
+    # Review-queue pairs, recorded on both survivors so a near-match is never
+    # silently merged. review_admission decides which pairs are worth an analyst:
+    # sharing a building alone is not, so those are kept apart without a question.
     # Counted as DISTINCT location pairs, not edges. A cluster absorbs many source
     # rows, so several row-level edges resolve to the same pair of practice_ids —
     # counting edges overstated the queue ~4x and made the dashboard badge disagree
     # with the review page it links to, which already dedupes this way.
     review_pair_keys: set[tuple[str, str]] = set()
+    reason_counts: dict[str, int] = {}
     for score, matched, i, j in pass1["review_edges"]:
         left, right = index_to_item[i], index_to_item[j]
         if left is right:
             continue
-        review_pair_keys.add(
-            tuple(sorted((left["practice_id"], right["practice_id"])))
-        )
+        reason = review_admission(left, right, score, matched)
+        if not reason:
+            continue
+        key = tuple(sorted((left["practice_id"], right["practice_id"])))
+        if key not in review_pair_keys:
+            review_pair_keys.add(key)
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        evidence = review_evidence(left, right, identities[i], identities[j],
+                                   noise_domains)
         for source, other in ((left, right), (right, left)):
             candidates = source["record"]["consolidation"]["review_candidates"]
             entry = {
                 "practice_id": other["practice_id"],
                 "score": score,
                 "matched_fields": matched,
+                "review_reason": reason,
+                "evidence": evidence,
             }
             if entry not in candidates:
                 candidates.append(entry)
@@ -809,6 +925,9 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         "merged_groups": merged_groups,
         "rows_merged_away": len(records) - len(consolidated),
         "review_pairs": len(review_pair_keys),
+        # Split by why each pair was admitted. The same_unit count is the
+        # measurement that settles whether a unit match becomes a scoring term.
+        "review_reasons": reason_counts,
         "unblocked_count": pass1["unblocked"],
         "multi_location_groups": multi_location_groups,
         "raw_provider_entries": raw_provider_entries,
