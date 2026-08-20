@@ -155,9 +155,14 @@ Verification / Contender / Manual Review / Excluded), a filter bar, and the reco
 |------|---------|--------|
 | **Bullseye** | Every must-have signal confirmed present | Ready for outreach |
 | **Needs Verification** | A must-have unconfirmed — one answer away from Bullseye | Verify before committing |
-| **Contender** | A must-have confirmed absent or a risk cap fired; real fit otherwise | Worth a call, lower priority |
+| **Contender** | A must-have confirmed absent, a risk cap fired, or a primary qualifier confirmed on an otherwise thin record; real fit either way | Worth a call, lower priority |
 | **Manual Review** | Nothing confirmable (often thin/blocked site) | Look before queueing |
 | **Excluded** | An exclusion rule fired | Off the list |
+
+A Contender can carry a low score. Some ICP signals are flagged as primary qualifiers (cash-pay,
+for example): confirming one guarantees at least Contender no matter how thin the rest of the
+evidence is, because that alone is worth a dial. Read the tier, not the number — the score orders
+records within a tier, it does not decide the tier.
 
 **Recover blocked sites.** Records whose site was bot-blocked or returned too little text appear
 in a dedicated **Site Blocked — Needs Re-crawl** section (not mixed into the scored table). Use
@@ -190,6 +195,28 @@ it when a site has since changed or a client questions a claim. Snapshots are in
 **Analyst overrides.** Disagree with a classification? Set an **Override** tier and enter a
 reason. Overrides flow into the approved export but never change the underlying scores or the
 immutable output.
+
+**Signal overrides withdraw the copy built on them.** Edit a signal from YES to NO or NOT FOUND
+and the record's **sales angles and prep lines are cleared**, on the dashboard and in every
+deliverable. This is deliberate: the opener and angles were written against the evidence you just
+rejected. The panel names the signal you withdrew so the removal is never a mystery. Office hours,
+the signal checklist, and any angle you added by hand are untouched. Editing a signal *up* to YES
+changes nothing — it can only make the existing copy understate the account.
+
+To get copy back on that record, in order of reliability:
+
+1. **+ Add Angle** — write the hook yourself. Always works, and it survives every later pass.
+2. **Set the signal back to YES** if you conclude the evidence does stand after all. The original
+   copy returns immediately.
+3. **Re-extract Signals** regenerates angles from a fresh Claude pass, but only helps if the new
+   extraction *agrees with you* and returns that signal as NO or NOT FOUND. If Claude still reads
+   it as YES, your override is still a retraction and the new angles are cleared again. A signal
+   override has no expiry: it persists through QC reset, re-enrich, and every post-run pass, and
+   the only way to lift it is to override the signal to a different state yourself.
+
+**Republish after any signal override.** A handoff or report published before the override still
+carries the old copy. The amber dot on the **Sales Handoff** button flags it; republishing now
+genuinely picks the change up.
 
 **Confirm Queue & bulk approve.** Open **Confirm Queue** for the analyst sign-off view (Bullseye
 + Contender pending review). Use **Approve High-Confidence** or **Approve All** to clear the queue

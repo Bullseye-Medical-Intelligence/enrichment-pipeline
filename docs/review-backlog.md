@@ -3,9 +3,16 @@
 **Status: P1-1 through P2-13 RESOLVED** (2026-08-17, one commit per finding,
 each re-verified against the tree before fixing, each with regression tests
 pinning the failure scenario — commits `6f2df64`..`99ed5eb`). The P1/P2 items
-below are kept for their analysis value. **Still open: items 14-15 (tenth-lens
-findings that arrived after the resolution pass), the P3 debt section, and the
-"Previously deferred" section.**
+below are kept for their analysis value. **Still open: item 16 (NPI match rate),
+items 22-23, 28, 30 and 31 (consolidation, handoff and override gaps — each
+blocked on a schema change, a measurement, or a deliberate trade-off), the P3
+debt section, and the "Previously deferred" section.** Items 14-15, 17-21, and
+24-27 are resolved; 29 is closed with no action.
+
+Findings are numbered in the order they were found, not by area. Items 1-15 came
+from the 2026-07-26 adversarial review, 16-23 from the consolidation build, and
+24-30 from the delivery-layer and Sales Handoff work — the last group is what
+sits between correct engine output and what a rep or client actually receives.
 
 Resolution notes that refine the original findings:
 - **P1-5** was the flagged product call: viewing surfaces (results page,
@@ -481,6 +488,156 @@ list it is worth knowing, not worth building yet; the trigger would be a client
 list where address quality is materially worse, or a duplicate found in this
 population.
 
+## Delivery-layer findings (2026-08-20) [ALL RESOLVED]
+
+Four defects between the engine and what a rep or client actually receives. None
+was visible in engine output: every one of them was introduced by a layer
+downstream re-deriving, freezing, or dropping something the engine had already
+decided correctly.
+
+### 24. [RESOLVED 2026-08-20] The display layer re-derived a tier the engine had set
+`record_adapter.displayed_tier` re-applied the low-score Manual Review floor at
+render time, a compatibility shim for runs frozen before that threshold existed.
+The engine lifts a record to Contender when a `floor_tier` signal is confirmed —
+a primary qualifier warrants a call even on a thin score. The shim saw only the
+score and put it straight back to Manual Review.
+
+Because `displayed_tier` also gates the Contact Queue, the client CSVs, the
+client ZIP, and the run-list counts, **every floor-lifted record under 50 points
+was withheld from reps and left out of the client deliverable.** Found on a
+Femasys record with confirmed cash pay, a physician owner, and no hospital
+committee, showing as Manual Review at score 42.
+
+**Fixed:** the shim is deleted; `displayed_tier` resolves the override overlay
+and the legacy `Watchlist` rename only. Re-deriving a tier from one input the
+engine weighs among many cannot be made correct — only the engine sees
+`floor_tier`, `cap_tier`, must-haves, and source confidence together. Teaching
+the shim about `floor_tier` would have kept two copies of the tier ladder in
+hand-maintained sync, which is what produced the bug. Runs enriched before the
+50-point floor existed now show the tier they were written with.
+
+### 25. [RESOLVED 2026-08-20] Nothing bounded a browser crawl's total wall clock
+Navigation timeout, challenge budget, and per-subpage timeout were each bounded;
+their sum was not, so one bot-gated domain could hold an `io_concurrency` worker
+for minutes while the rest of the batch waited for a slot. The largest hidden
+contributor was `_wait_for_real_content`, which tallied `poll_ms` per round and
+ignored what else each round cost (the networkidle wait, re-reading page
+content) — a nominal 25s budget ran roughly double.
+
+**Fixed:** one deadline per site (`PLAYWRIGHT_MAX_CRAWL_SECONDS`, 60s). The
+challenge wait now measures against the monotonic clock, and
+`_crawl_budget_seconds` raises the ceiling when the homepage legitimately needs
+longer, so raising `PIPELINE_BROWSER_CHALLENGE_WAIT_MS` widens the deadline
+rather than being truncated by it. Reaching the deadline is not an error —
+captured pages are returned. Also: `request_timeout_seconds` now reaches every
+browser path; `recrawl_run.py` had been using the library default instead of the
+run's own config.
+
+### 26. [RESOLVED 2026-08-20] A retracted signal left its talk track standing
+`apply_signal_overrides` rebuilt a card's signal chips from the merged signals
+but read `sales_angle` and the `call_brief` prep lines straight off the frozen
+record. An analyst rejecting a false positive left the card still offering an
+opener citing the claim they had just rejected.
+
+The staleness dot made it worse: it detected the override and told the operator
+to republish, but republishing re-rendered the same frozen text, so the
+indicator promised a fix it could not deliver.
+
+**Fixed:** an override that takes a signal from `"yes"` to anything else clears
+`sales_angle` and the evidence-composed `call_brief` fields, and drops the
+retracted entry from `top_evidence`. `hours_of_operation` survives (a fact about
+the practice, not a claim about a signal), as do operator-authored
+`extra_sales_angles`. An override that ADDS evidence changes nothing — it can
+only make the prose understate. The rule lives at the single chokepoint every
+consumer reads through, so dashboard, CSVs, handoff, and client package get it
+at once.
+
+**Found while tracing it:** `pdf_report.build_bullseye_cards_html` never applied
+the overlay at all. The Bullseye Target Report — the flagship client document —
+was handed raw pipeline records, so **a signal an analyst had rejected reached
+the client as a confirmed finding with its original evidence quote intact.**
+`client_exports._approved_records` now merges and strips the internal marker.
+
+### 27. [RESOLVED 2026-08-20] A re-enrich could not find the record it had sent
+A re-enrich runs one record through the pipeline in a scratch dir from a
+reconstructed one-row CSV. Step 1d stamps a location's derived `practice_id`
+over `record["id"]`, and the scratch CSV carried no street or unit, so identity
+fell back to domain or phone and hashed differently. The merge reported an id
+mismatch and left the record unchanged.
+
+Fixing only that would have made things worse: the merge replaced the record
+wholesale, so a location consolidated from several provider rows came back as
+one row — `provider_count` fell to 1, `source_row_ids` lost its members,
+`providers` became a placeholder. The id mismatch had been masking that.
+
+**Fixed:** scratch runs spawn with consolidation disabled (the input is already
+one row per location, so there is nothing to collapse), both CSV writers carry
+address fields so the derived id stays stable regardless, and
+`_merge_reenriched_fields` applies only the fields a re-enrich owns. The
+allowlist fails safe in the right direction: an unlisted engine field goes stale
+rather than being destroyed.
+
+## Sales Handoff audit (2026-08-20) — remaining items
+
+### 28. A floored Contender carries no "elevated by" context [OPEN]
+The client handoff renders no tier reason at all, while the internal one does.
+A `floor_tier`-lifted Contender therefore arrives with no statement of what
+qualified it. Now that finding 24 is fixed these records actually reach the
+deliverable, so the gap is live rather than theoretical.
+
+**Blocked on an engine field.** `exclusion_checker._assign_tier` computes
+`floor_rank` with a `max()` and discards which signal did the lifting, so the
+badge cannot be built from current output. `tier_cap_reason` is the wrong
+carrier — it explains why a record is *not* Bullseye, not why it was elevated.
+
+**Fix (not started):** record the lifting signal on the record, then surface it.
+Touches the output schema (RULE 4: `PIPELINE.md` plus the `enrichment/scorer.py`
+validator in the same change) before any template work.
+
+### 29. Contact-detail fallback on the client card [CLOSED — no action, 2026-08-20]
+Audited claim: a missing phone or address renders blank/`N/A` with no directory
+fallback. **Not what the code does.** A missing phone renders "No phone listed",
+and the card still carries the website link and a Google Maps **Directions**
+link built from practice name + city/state/zip
+(`sales_export._directions_url`). The one-click fallback already exists.
+
+The residual case is a record with no location context at all, which
+deliberately gets no link rather than an ambiguous destination. Surfacing an
+NPPES link was declined: NPI is internal provenance, and the client handoff
+excludes internal fields by design. Recorded so it is not re-litigated.
+
+### 30. Narrative clearing is all-or-nothing per record [OPEN — accepted trade-off]
+Finding 26 clears every angle when any confirmed signal is retracted, even if
+four others still stand. The narrative is composed as a set weighing all signals
+at once, so one claim cannot be cleanly excised from it. This costs rep value on
+records where most evidence survives.
+
+Accepted deliberately: a caveated false claim in a client deliverable is still a
+false claim. Recovery paths exist ("+ Add Angle", or the Re-extract Signals pass,
+which regenerates properly against the corrected evidence). Revisit only if
+operators report the loss is material in practice — the alternative is
+per-bullet text matching against signal labels, which fails in both directions.
+
+### 31. A signal override cannot be removed, only re-stated [OPEN]
+Found while documenting finding 26. `signal_overrides` is carried forward
+verbatim by every review path — `save_review`, `stamp_reenriched`, and the QC
+reset, whose docstring says so explicitly — and no post-run pass touches it.
+There is no UI control to delete one; the edit form only writes a new
+`override_state`.
+
+Consequence, now that an override also withdraws copy: an operator who
+overrides a signal and later wants the record back to pipeline behaviour has no
+"revert to pipeline" action. Re-extract Signals regenerates the angles, but the
+standing override re-clears them unless the fresh extraction happens to agree.
+The workaround is to override the signal to the state the pipeline would have
+produced, which records an operator decision that was never made.
+
+**Fix (not started):** a delete path on `save_signal_override` plus a clear
+control on the signal row, restoring the pipeline state and its original
+evidence. Small and self-contained; `original_state` is already captured on
+first override, so the pipeline value is available to restore to. Worth doing
+before override volume grows.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,
@@ -516,10 +673,11 @@ population.
   both. `ConcurrentRunChange` also covers two distinct conditions (busy vs
   changed); rename or split deliberately. Missing docstrings on the four
   platform-lock helpers.
-- **`_recompute_counts_from_records` entrenches the API-side mirrored threshold**
-  (`record_adapter._LOW_SCORE_MANUAL_REVIEW_THRESHOLD` mirrors
-  `enrichment/constants`) into durable status.json — documented as deliberate in
-  `pipeline-api/CLAUDE.md`, but the mirror is the drift risk RULE 3 warns about.
+- **[RESOLVED 2026-08-20] `_recompute_counts_from_records` entrenched the
+  API-side mirrored threshold** (`record_adapter._LOW_SCORE_MANUAL_REVIEW_THRESHOLD`
+  mirroring `enrichment/constants`) into durable status.json. Filed here as a
+  drift risk; it drifted before it was fixed — see finding 24. The mirror is
+  deleted, not re-synced.
 - **Test overlap:** the effective-tier mapping is pinned four times across
   `test_runner.py`/`test_run_counts.py`; the checkpoint OSError swallows
   (`_init`/`_clear`) log nothing.

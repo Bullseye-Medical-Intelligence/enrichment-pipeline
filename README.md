@@ -61,7 +61,10 @@ Operator browser ──▶ pipeline-api/  (FastAPI, server-rendered HTML, sessio
   CSV → *ingest* (roster only, no spend) → review the roster → *Enrich All* →
   analyst QC in the dashboard (tier overrides, notes, signal overrides — stored as
   an additive `reviews.json` overlay, never touching pipeline output) → client
-  package export (ZIP) and published briefs.
+  package export (ZIP) and published briefs. Rejecting a confirmed signal also
+  withdraws the sales angles and prep lines written against it, everywhere they
+  render, so an analyst's correction cannot be contradicted by copy generated
+  before it.
 - **Post-run passes** (operator-triggered, on a completed run): GPT verification,
   re-score (new weights, no LLM), re-extract (Claude, no re-crawl — page text
   rehydrated from the Evidence Vault), suppression re-check, and per-record /
