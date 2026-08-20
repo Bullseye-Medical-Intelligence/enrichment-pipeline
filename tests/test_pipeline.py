@@ -1458,7 +1458,9 @@ class TestNoWebPresenceExclusion:
         record["_context_text"] = ""
         result = apply_exclusions(record, BASE_RUN_CONFIG)
         assert result["exclusion_status"] == "EXCLUDED"
-        assert "web presence" in (result.get("exclusion_reason") or "").lower()
+        # Wording is owned by whichever check fires first (structural at ingest,
+        # or the Step 6 backstop); both name the missing website.
+        assert "website" in (result.get("exclusion_reason") or "").lower()
 
     def test_url_present_but_validation_failed_not_excluded(self):
         """URL validation failure alone must not trigger no_web_presence.
@@ -2132,36 +2134,72 @@ class TestIngestOnly:
             "website_url": website,
         }
 
+    _CONFIG = {
+        "target_specialty": "OBGYN",
+        "target_geography": ["TX"],
+        "active_exclusion_rules": ["no_web_presence"],
+    }
+
     def test_clear_record_marked_not_enriched(self):
-        out = _finalize_ingest_only([self._roster_record()])
+        out = _finalize_ingest_only([self._roster_record()], self._CONFIG)
         rec = out[0]
         assert rec["enrichment_status"] == "not_enriched"
         assert rec["exclusion_status"] == "CLEAR"
         assert rec["bullseye_score"] == 0
         assert rec["signals"] == []
 
-    def test_no_exclusions_at_import(self):
-        # Wrong geography/specialty must NOT exclude at import — exclusions are
-        # deferred to enrichment time so the operator sees the full roster.
-        out = _finalize_ingest_only([self._roster_record(state="CA")])
+    def test_structural_exclusions_are_decided_at_import(self):
+        """The roster is what a billable count is read from, so it must not shed
+        accounts at the next step. Every structural rule is decided from the
+        ingested row alone, so nothing a crawl could learn changes the verdict."""
+        out = _finalize_ingest_only([self._roster_record(state="CA")], self._CONFIG)
         rec = out[0]
-        assert rec["exclusion_status"] == "CLEAR"
-        assert rec["target_tier"] != "Excluded"
+        assert rec["exclusion_status"] == "EXCLUDED"
+        assert rec["target_tier"] == "Excluded"
+        assert "outside target geography" in rec["exclusion_reason"]
         assert rec["enrichment_status"] == "not_enriched"
 
-    def test_wrong_specialty_not_excluded_at_import(self):
-        out = _finalize_ingest_only([self._roster_record(specialty="Cardiology")])
+    def test_wrong_specialty_excluded_at_import(self):
+        out = _finalize_ingest_only(
+            [self._roster_record(specialty="Cardiology")], self._CONFIG)
+        assert out[0]["exclusion_status"] == "EXCLUDED"
+
+    def test_no_website_excluded_at_import(self):
+        """A row with no URL cannot be crawled, so no later step can learn
+        anything about it. Excluding it here keeps it out of the roster count
+        instead of dropping it after the operator has already quoted one."""
+        out = _finalize_ingest_only([self._roster_record(website="")], self._CONFIG)
         rec = out[0]
-        assert rec["exclusion_status"] == "CLEAR"
-        assert rec["enrichment_status"] == "not_enriched"
+        assert rec["exclusion_status"] == "EXCLUDED"
+        assert "no website url" in rec["exclusion_reason"].lower()
+
+    def test_no_website_is_configurable_not_forced(self):
+        """no_web_presence is opt-in per cartridge. A registry-sourced list has
+        no website field at all, and must not exclude itself wholesale."""
+        config = {**self._CONFIG, "active_exclusion_rules": []}
+        out = _finalize_ingest_only([self._roster_record(website="")], config)
+        assert out[0]["exclusion_status"] == "CLEAR"
+
+    def test_signal_driven_exclusions_do_not_fire_at_import(self):
+        """Only structural rules are decidable here; anything needing a crawl
+        must wait for one."""
+        out = _finalize_ingest_only([self._roster_record()], self._CONFIG)
+        assert out[0]["signals"] == []
+        assert out[0]["exclusion_status"] == "CLEAR"
 
     def test_output_schema_is_complete(self):
         # validate_and_finalize must leave a fully-shaped record the UI can render.
-        out = _finalize_ingest_only([self._roster_record()])
+        out = _finalize_ingest_only([self._roster_record()], self._CONFIG)
         rec = out[0]
         assert isinstance(rec.get("call_brief"), dict)
         assert isinstance(rec.get("sales_angle"), list)
         assert rec.get("qc_status") == "pending"
+
+    def test_internal_trigger_field_never_reaches_output(self):
+        from enrichment.scorer import strip_internal_fields
+        out = _finalize_ingest_only([self._roster_record(website="")], self._CONFIG)
+        assert out[0].get("_structural_triggers") == ["no_web_presence"]
+        assert not any(k.startswith("_") for k in strip_internal_fields(out[0]))
 
     def test_not_enriched_status_survives_validation(self):
         rec = {

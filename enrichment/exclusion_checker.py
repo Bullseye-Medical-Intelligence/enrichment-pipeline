@@ -306,6 +306,21 @@ def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[st
                 f"target specialty '{target_specialty}'."
             )
 
+    # no_web_presence is decidable from the ingested row alone: a record with no
+    # website URL cannot be crawled, so no later step can learn anything about
+    # it. Deciding it here rather than at Step 6 is what lets the roster show it
+    # EXCLUDED before an operator commits to enriching — the roster is what a
+    # billable count is read from, so it must not shed accounts later in the run.
+    # apply_exclusions keeps its own copy as the backstop for the manual-content
+    # path, where page text can arrive without a URL; the `not in triggered`
+    # guard there means a record is never excluded twice for one reason.
+    if "no_web_presence" in active_rules and not (record.get("website_url") or "").strip():
+        triggered.append("no_web_presence")
+        rationale_parts.append(
+            "No website URL on the source row — the practice cannot be "
+            "screened, so it was excluded before any crawl or LLM spend."
+        )
+
     if target_geography and _check_geography(record, target_geography):
         triggered.append("outside_geography")
         state = record.get("address_state", "unknown")

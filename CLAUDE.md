@@ -81,7 +81,7 @@ Every score bound, weight, threshold, and blend factor lives in
    - **Review queue** holds only what evidence cannot settle: `corroborated` (a second field agrees or conflicts), `phone_absent` (one side has no phone, so nothing is known), and `unit_gate_block` (scored a merge, stopped by the unit veto — mechanical, shown in its own bucket). Sharing a building alone is never a question.
    - **Rulings are additive**, written to the API's `reviews.json` overlay and taking effect on the next run, because consolidation happens at ingest.
 
-   **Structural pre-filter** — after Steps 1b–1d, `check_structural_exclusions` drops records that are wrong specialty or outside geography before any crawl or LLM spend. Pre-excluded records skip Steps 2–6 and rejoin at Step 6 as Excluded. (Does NOT run in `--ingest-only` mode.)
+   **Structural pre-filter** — after Steps 1b–1d, `check_structural_exclusions` drops records that are wrong specialty, outside geography, matched by an NPI taxonomy rule, or carrying **no website URL** (`no_web_presence`, configurable), before any crawl or LLM spend. Pre-excluded records skip Steps 2–6 and rejoin at Step 6 as Excluded. Runs in `--ingest-only` too, so a roster count never sheds accounts at the next step. `no_web_presence` is decided here because a row with no URL cannot be crawled, so no later step can learn anything about it; `apply_exclusions` keeps its own copy as the backstop for the manual-content path, where page text can arrive without a URL. **Keep it off for registry-sourced lists** — NPPES carries no website field, so the rule would exclude every row (the canary catches this, but knowing beats being warned).
    **Exclusion canary** — when exclusions remove more than `max_structural_exclusion_share` of the roster (default 0.90, `enrichment/constants.py`), the pre-filter HALTS the run with a diagnostic naming the rules that fired; nothing has been spent yet, and a pre-filter that empties a list is a config or mapping defect until proven otherwise. At Step 6 the same check reports instead of halting — the crawl and LLM spend already happened — and blocks client-package download and brief publishing until an operator acknowledges it with a reason.
 2. **URL validate** — reachability check (`extraction/url_validator.py`), `io_concurrency` workers.
 3. **Web extract** — crawl homepage + subpages (`extraction/web_extractor.py`), `io_concurrency` workers. Every internal page is a candidate except blog/news/legal/auth/commerce noise (`SKIP_PATH_SEGMENTS`); pages are crawled evidence-first (keyword-ranked) until the `MAX_COMBINED_CHARS` text budget is full or the `MAX_CRAWL_PAGES` (20) / `MAX_CRAWL_SECONDS` (30s) bounds are hit. No low per-site page cap.
@@ -95,9 +95,17 @@ Every score bound, weight, threshold, and blend factor lives in
 
 ### `--ingest-only` (roster pass, no spend)
 `--ingest-only` runs Step 1 → Step 1b (NPI enrichment) → Step 1c (customer
-suppression) → Step 8 (output), then exits before any crawl or LLM call
-(`_finalize_ingest_only`). The structural pre-filter does NOT run (it fires
-later in the full flow); customer-suppressed records are written as EXCLUDED.
+suppression) → Step 1d (consolidation) → the structural pre-filter → Step 8
+(output), then exits before any crawl or LLM call (`_finalize_ingest_only`).
+Customer-suppressed and structurally-excluded records are both written as
+EXCLUDED. **Structural exclusions are decided here, not deferred**: every one of
+them (`wrong_specialty`, `outside_geography`, NPI taxonomy rules, and
+`no_web_presence`) is decided from the ingested row alone, so no crawl can
+change the verdict, and an operator reads a billable count off this roster — a
+count that sheds accounts at the next step is the count a client argues with.
+Signal-driven exclusions are NOT evaluated; those need a crawl. The canary
+REPORTS here rather than halting: an operator ran this to see their list, so an
+unmapped website column must produce a loud roster, never no roster.
 Writes the full roster (`enrichment_status = "not_enriched"`, scores 0, no
 signals). Lets an operator review the list before spending budget; enrichment
 is triggered as a separate full run over the same `input.csv`. The API exposes

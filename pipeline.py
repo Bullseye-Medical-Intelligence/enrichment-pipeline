@@ -322,13 +322,18 @@ def _step_progress(output_dir: str, step_num: int, step_name: str):
     return lambda done, total: _write_progress(output_dir, step_num, step_name, done, total)
 
 
-def _finalize_ingest_only(records: list[dict]) -> list[dict]:
+def _finalize_ingest_only(records: list[dict], run_config: dict) -> list[dict]:
     """Shape ingested records for output without crawling or calling any LLM.
 
-    Every record is imported as CLEAR/not_enriched — no exclusions fire at
-    import time. Structural exclusions (wrong_specialty, outside_geography) only
-    run during the full enrichment pass once actual crawl data is available.
-    The standard validation pass completes the output schema.
+    Structural exclusions ARE evaluated here. They are decided entirely from the
+    ingested row — specialty, geography, NPI taxonomy, missing website — so
+    nothing a crawl could learn changes them, and withholding them until the
+    enrichment pass left the roster showing accounts that the very next step
+    would drop. An operator reads a billable count off this roster; a count that
+    sheds accounts later is the count a client argues with.
+
+    Signal-driven exclusions are NOT evaluated: those need a crawl. The standard
+    validation pass completes the output schema.
     """
     finalized = []
     for record in records:
@@ -337,9 +342,18 @@ def _finalize_ingest_only(records: list[dict]) -> list[dict]:
         record["fit_signal_score"] = 0
         record["confidence_score"] = 0
         record["signals"] = []
-        record["exclusion_status"] = "CLEAR"
-        record["exclusion_reason"] = None
-        record["target_tier"] = "Contender"
+        triggered, rationale = check_structural_exclusions(record, run_config)
+        if triggered:
+            record["exclusion_status"] = "EXCLUDED"
+            record["exclusion_reason"] = " ".join(rationale)
+            record["target_tier"] = "Excluded"
+            # Internal (leading underscore, stripped before output): lets the
+            # caller's canary name which rules emptied a roster, not just how many.
+            record["_structural_triggers"] = list(triggered)
+        else:
+            record["exclusion_status"] = "CLEAR"
+            record["exclusion_reason"] = None
+            record["target_tier"] = "Contender"
         record = validate_and_finalize(record)
         finalized.append(record)
     return finalized
@@ -817,7 +831,29 @@ def run_pipeline(input_file: str, source_type: str,
         print(f"\n{'-'*40}")
         print("INGEST-ONLY MODE - Writing roster (no crawl, no LLM)")
         print(f"{'-'*40}")
-        output_records = _finalize_ingest_only(records)
+        output_records = _finalize_ingest_only(records, run_config)
+        # Report, never halt. An operator ran this to SEE their list, so an
+        # unmapped website column or a registry source with no website field
+        # must produce a loud roster rather than no roster at all. Same
+        # diagnostic the pre-filter prints, one step earlier and one step
+        # cheaper: nothing has been spent yet, and the mapping defect it names
+        # is the reason a list empties itself.
+        ingest_rule_counts: dict = {}
+        ingest_rule_examples: dict = {}
+        for r in output_records:
+            if r.get("exclusion_status") != "EXCLUDED":
+                continue
+            for rule in (r.get("_structural_triggers") or ["structural"]):
+                ingest_rule_counts[rule] = ingest_rule_counts.get(rule, 0) + 1
+                ingest_rule_examples.setdefault(rule, r.get("practice_name", ""))
+        ingest_excluded = sum(
+            1 for r in output_records if r.get("exclusion_status") == "EXCLUDED")
+        canary_text = build_exclusion_canary_report(
+            len(output_records), ingest_excluded, ingest_rule_counts,
+            ingest_rule_examples, run_config, stage="ingest",
+        )
+        if canary_text:
+            print(canary_text)
         for r in customer_suppressed:
             r["enrichment_status"] = "not_enriched"
             r["bullseye_score"] = 0
