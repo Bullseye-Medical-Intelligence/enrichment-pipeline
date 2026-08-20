@@ -1,0 +1,625 @@
+"""
+consolidator.py
+Practice-location consolidation at ingest, in two deliberately separate passes.
+
+PASS 1 — merge. Provider rows that describe the same physical practice location
+become one record. Candidates are blocked on (zip5 + street) so the comparison
+is not O(n^2); within a block a differing unit is a hard veto, and otherwise a
+weighted score decides merge / review / separate.
+
+PASS 2 — link, never merge. The surviving locations are grouped by registrable
+domain. A six-office group stays six billable location records and simply gains
+group_id / group_name / location_index / location_count, so a deliverable can
+say "Location 3 of 6" without ever reading as double-billing.
+
+The two passes do not share a decision. Pass 1 answers "is this the same
+location?"; Pass 2 answers "do these locations belong to one organization?".
+
+Both run before any crawl or LLM spend, so the count the no-spend roster preview
+reports is the consolidated count.
+
+Merging is lossless: every input row survives in providers[] / source_row_ids[],
+and the consolidation block records exactly why the rows became one. Identity is
+deterministic — practice_id derives from normalized keys only, never from input
+ordering, time, or randomness — so run comparison, suppression and rescore stay
+stable across runs.
+"""
+
+from __future__ import annotations
+
+import copy
+from difflib import SequenceMatcher
+
+from ingestion.practice_normalizer import identity_of, stable_hash
+
+# ---------------------------------------------------------------------------
+# Scoring — the weights are the contract. Do not implement a conjunctive
+# "same address AND same phone" rule (it splits practices whose providers were
+# scraped with different department numbers) and do not implement a bare OR
+# (it merges unrelated practices sharing a building or a host).
+# ---------------------------------------------------------------------------
+
+SCORE_ADDRESS = 4          # identical street + zip5
+SCORE_PHONE = 3            # identical normalized phone
+SCORE_DOMAIN = 3           # identical registrable domain, not an aggregator
+SCORE_NAME = 2             # practice-name similarity at or above the threshold
+
+NAME_SIMILARITY_THRESHOLD = 0.85
+MERGE_THRESHOLD = 6        # >= 6 merges
+REVIEW_THRESHOLD = 4       # 4-5 goes to the review queue, never a silent split
+
+# Engine default aggregator denylist: domains that many unrelated practices
+# share, where a domain match proves nothing. Generic third-party hosts only —
+# physician directories, social networks, listing sites and site builders.
+# Client, health-system and roll-up domains are deliberately NOT here; those are
+# client-specific and belong in cartridge config via `aggregator_domains` /
+# `additional_aggregator_domains` (RULE 3: no client names in engine source).
+DEFAULT_AGGREGATOR_DOMAINS: frozenset[str] = frozenset({
+    # Physician directories / review sites
+    "healthgrades.com", "zocdoc.com", "vitals.com", "webmd.com", "wellness.com",
+    "ratemds.com", "sharecare.com", "doximity.com", "npidb.org", "npino.com",
+    "healthcare6.com", "findatopdoc.com", "caredash.com", "doctor.com",
+    "md.com", "realself.com", "psychologytoday.com",
+    # General listing / business directories
+    "yelp.com", "yellowpages.com", "mapquest.com", "bbb.org", "manta.com",
+    "chamberofcommerce.com", "dnb.com", "indeed.com", "glassdoor.com",
+    # Social / platform hosts
+    "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com",
+    "google.com", "business.site", "youtube.com",
+    # Generic site builders (a shared host, not a shared practice)
+    "wixsite.com", "wix.com", "squarespace.com", "weebly.com", "wordpress.com",
+    "godaddysites.com", "blogspot.com", "webnode.com", "site123.me",
+})
+
+# Credential tokens split out of a provider name so "Jane Smith, MD" yields a
+# name and a credential rather than one opaque string.
+CREDENTIAL_TOKENS: frozenset[str] = frozenset({
+    "md", "do", "dds", "dmd", "od", "dpm", "dc", "np", "pa", "pa-c", "pac",
+    "rn", "aprn", "fnp", "cnm", "phd", "psyd", "mbbs", "ms", "mph",
+    "facog", "faap", "facs", "facc", "facp", "faan", "fase",
+})
+
+
+def _aggregator_domains(run_config: dict) -> frozenset[str]:
+    """Resolve the denylist: cartridge may replace the default and/or extend it."""
+    settings = (run_config or {}).get("consolidation") or {}
+    override = settings.get("aggregator_domains")
+    base = frozenset(d.strip().lower() for d in override if d) if override is not None \
+        else DEFAULT_AGGREGATOR_DOMAINS
+    extra = settings.get("additional_aggregator_domains") or []
+    return base | frozenset(d.strip().lower() for d in extra if d)
+
+
+def _is_enabled(run_config: dict) -> bool:
+    """Consolidation is on unless a cartridge explicitly disables it."""
+    settings = (run_config or {}).get("consolidation") or {}
+    return bool(settings.get("enabled", True))
+
+
+# ---------------------------------------------------------------------------
+# Deterministic ordering helpers — nothing may depend on input row order
+# ---------------------------------------------------------------------------
+
+def _signature(record: dict, ident: dict) -> str:
+    """Stable per-record sort key built only from normalized values."""
+    return "|".join((
+        ident["zip5"], ident["street"], ident["unit"], ident["phone"],
+        ident["domain"], ident["name"], str(record.get("id") or ""),
+    ))
+
+
+def _name_similarity(a: str, b: str) -> float:
+    """Similarity of two normalized practice names (0.0 when either is empty)."""
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def units_conflict(left: dict, right: dict) -> bool:
+    """True when both identities carry a unit and the units differ.
+
+    This is the hard gate. Two practices in Suite 200 and Suite 400 of one
+    building are different practices, and no score may override that.
+    """
+    return bool(left["unit"]) and bool(right["unit"]) and left["unit"] != right["unit"]
+
+
+def score_pair(left: dict, right: dict, denylist: frozenset[str]) -> tuple[int, list[str]]:
+    """Score one candidate pair; returns (score, matched_fields).
+
+    Additive by design. A practice whose providers were scraped with different
+    department phone numbers still reaches 7 on address + domain, where a
+    conjunctive rule would have split it and shipped duplicates.
+    """
+    score = 0
+    matched: list[str] = []
+
+    if left["street"] and left["zip5"] \
+            and left["street"] == right["street"] and left["zip5"] == right["zip5"]:
+        score += SCORE_ADDRESS
+        matched.append("address")
+
+    if left["phone"] and left["phone"] == right["phone"]:
+        score += SCORE_PHONE
+        matched.append("phone")
+
+    if left["domain"] and left["domain"] == right["domain"] \
+            and left["domain"] not in denylist:
+        score += SCORE_DOMAIN
+        matched.append("domain")
+
+    if _name_similarity(left["name"], right["name"]) >= NAME_SIMILARITY_THRESHOLD:
+        score += SCORE_NAME
+        matched.append("name")
+
+    return score, matched
+
+
+# ---------------------------------------------------------------------------
+# Pass 1 — merge provider rows into practice locations
+# ---------------------------------------------------------------------------
+
+def _block_key(ident: dict):
+    """Blocking key: (zip5, street). None when the record cannot be blocked.
+
+    A record missing either half is never compared to anything and stays its own
+    location. That is the conservative direction — an unblocked record is
+    reported in the summary rather than silently guessed at.
+    """
+    if ident["zip5"] and ident["street"]:
+        return (ident["zip5"], ident["street"])
+    return None
+
+
+class _UnitAwareUnionFind:
+    """Union-find whose clusters may never accumulate two different units.
+
+    The pairwise gate stops a differing-unit pair from ever becoming a merge
+    edge, but transitivity could still join Suite 200 to Suite 400 through a
+    unit-less record. The cluster-level check closes that path.
+    """
+
+    def __init__(self, units: list[str]):
+        self._parent = list(range(len(units)))
+        self._units = [{u} if u else set() for u in units]
+
+    def find(self, i: int) -> int:
+        while self._parent[i] != i:
+            self._parent[i] = self._parent[self._parent[i]]
+            i = self._parent[i]
+        return i
+
+    def union(self, i: int, j: int) -> bool:
+        """Merge two clusters; returns False (and changes nothing) on unit conflict."""
+        root_i, root_j = self.find(i), self.find(j)
+        if root_i == root_j:
+            return True
+        combined = self._units[root_i] | self._units[root_j]
+        if len(combined) > 1:
+            return False
+        low, high = (root_i, root_j) if root_i < root_j else (root_j, root_i)
+        self._parent[high] = low
+        self._units[low] = combined
+        return True
+
+
+def _merge_practice_locations(records: list[dict], denylist: frozenset[str]) -> dict:
+    """Run Pass 1. Returns clustering results without mutating the input."""
+    identities = [identity_of(r) for r in records]
+    signatures = [_signature(r, i) for r, i in zip(records, identities)]
+
+    blocks: dict[tuple, list[int]] = {}
+    unblocked = 0
+    for idx, ident in enumerate(identities):
+        key = _block_key(ident)
+        if key is None:
+            unblocked += 1
+            continue
+        blocks.setdefault(key, []).append(idx)
+
+    merge_edges: list[tuple[int, list[str], int, int]] = []
+    review_edges: list[tuple[int, list[str], int, int]] = []
+
+    for members in blocks.values():
+        if len(members) < 2:
+            continue
+        ordered = sorted(members, key=lambda i: signatures[i])
+        for a_pos in range(len(ordered)):
+            for b_pos in range(a_pos + 1, len(ordered)):
+                i, j = ordered[a_pos], ordered[b_pos]
+                if units_conflict(identities[i], identities[j]):
+                    continue                      # hard stop, never scored
+                score, matched = score_pair(identities[i], identities[j], denylist)
+                if score >= MERGE_THRESHOLD:
+                    merge_edges.append((score, matched, i, j))
+                elif score >= REVIEW_THRESHOLD:
+                    review_edges.append((score, matched, i, j))
+
+    # Deterministic union order: strongest first, then by normalized signature.
+    merge_edges.sort(key=lambda e: (-e[0], signatures[e[2]], signatures[e[3]]))
+
+    union_find = _UnitAwareUnionFind([ident["unit"] for ident in identities])
+    applied: list[tuple[int, list[str], int, int]] = []
+    for score, matched, i, j in merge_edges:
+        if union_find.union(i, j):
+            applied.append((score, matched, i, j))
+        else:
+            review_edges.append((score, matched, i, j))   # blocked by the unit gate
+
+    clusters: dict[int, list[int]] = {}
+    for idx in range(len(records)):
+        clusters.setdefault(union_find.find(idx), []).append(idx)
+
+    return {
+        "identities": identities,
+        "signatures": signatures,
+        "clusters": clusters,
+        "applied_edges": applied,
+        "review_edges": review_edges,
+        "unblocked": unblocked,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Lossless merge of one cluster
+# ---------------------------------------------------------------------------
+
+def _split_credentials(raw_name: str) -> tuple[str, list[str]]:
+    """Split "Jane Smith, MD, FACOG" into ("Jane Smith", ["MD", "FACOG"])."""
+    parts = [p.strip() for p in (raw_name or "").split(",") if p.strip()]
+    if not parts:
+        return "", []
+    name = parts[0]
+    credentials = [p for p in parts[1:]
+                   if p.lower().replace(".", "").replace(" ", "") in CREDENTIAL_TOKENS]
+    return name, credentials
+
+
+def _providers_from_record(record: dict) -> list[dict]:
+    """Build provider entries for one source row.
+
+    The row is the provider unit, so its NPI and taxonomy attach to the row's
+    first named provider. Additional names on the same row get entries without
+    an NPI rather than borrowing one that is not theirs.
+    """
+    names = [n for n in (record.get("provider_names") or []) if str(n).strip()]
+    if not names:
+        names = [record.get("practice_name") or ""]
+    npi = (record.get("npi_number") or record.get("npi_optional") or "") or ""
+    taxonomy = list(record.get("provider_taxonomy_codes") or [])
+    specialty = record.get("specialty") or ""
+    source_id = str(record.get("id") or "")
+
+    entries = []
+    for position, raw_name in enumerate(names):
+        name, credentials = _split_credentials(str(raw_name))
+        if not name:
+            continue
+        entries.append({
+            "name": name,
+            "credentials": credentials,
+            "npi": str(npi) if position == 0 else "",
+            "taxonomy_codes": taxonomy if position == 0 else [],
+            "specialty": specialty,
+            "source_record_id": source_id,
+        })
+    return entries
+
+
+# Generic organizational words used to prefer a practice name over a person's
+# name when a cluster has no organization NPI to borrow from. Industry-generic
+# English only — no specialty, client or brand terms (RULE 3).
+_ORG_NAME_TOKENS: frozenset[str] = frozenset({
+    "medical", "health", "healthcare", "clinic", "clinics", "center", "centre",
+    "group", "associates", "partners", "institute", "foundation", "practice",
+    "care", "services", "specialists", "physicians", "hospital", "offices",
+    "pavilion", "campus", "network", "affiliates", "consultants",
+})
+
+
+def _looks_like_organization(name: str) -> bool:
+    """True when a name reads as a practice rather than an individual."""
+    tokens = {t.strip(".,").lower() for t in (name or "").split()}
+    return bool(tokens & _ORG_NAME_TOKENS)
+
+
+def _pick_practice_name(names: list[str]) -> str:
+    """Best practice name for a merged location, deterministically.
+
+    A merged location is a place, not a person, so an organization-shaped name
+    beats a physician's name. Within each shape the most frequent name wins,
+    ties broken lexicographically.
+    """
+    organizational = [n for n in names if n and _looks_like_organization(n)]
+    return _pick_most_common(organizational) or _pick_most_common(names)
+
+
+def _pick_most_common(values: list[str]) -> str:
+    """Most frequent non-empty value; ties broken lexicographically (deterministic)."""
+    counts: dict[str, int] = {}
+    for value in values:
+        cleaned = (value or "").strip()
+        if cleaned:
+            counts[cleaned] = counts.get(cleaned, 0) + 1
+    if not counts:
+        return ""
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
+def _base_index(members: list[int], records: list[dict], signatures: list[str]) -> int:
+    """Choose the surviving base row deterministically.
+
+    Prefers a row whose NPI resolved to an organization (it already describes the
+    practice rather than one physician), then the most complete row, then the
+    lexicographically smallest signature.
+    """
+    def sort_key(idx: int):
+        record = records[idx]
+        is_org = record.get("npi_entity_type") == "organization"
+        completeness = sum(
+            1 for field in ("website_url", "phone", "address_street",
+                            "address_zip", "address_city", "specialty")
+            if (record.get(field) or "")
+        )
+        return (0 if is_org else 1, -completeness, signatures[idx])
+
+    return sorted(members, key=sort_key)[0]
+
+
+def _merge_cluster(members: list[int], records: list[dict], identities: list[dict],
+                   signatures: list[str], edges: list[tuple]) -> dict:
+    """Build one practice-location record from a cluster of source rows."""
+    ordered = sorted(members, key=lambda i: signatures[i])
+    base_idx = _base_index(members, records, signatures)
+    merged = copy.deepcopy(records[base_idx])
+
+    if len(ordered) > 1:
+        # Fill any field the base row left empty from its siblings, in a fixed
+        # order, so a merge never loses data the input actually carried.
+        for field in ("website_url", "phone", "address_street", "address_unit",
+                      "address_city", "address_state", "address_zip",
+                      "google_place_id", "npi_optional", "specialty",
+                      "metro_region_tag", "state_mandate_status"):
+            if not (merged.get(field) or ""):
+                for idx in ordered:
+                    value = records[idx].get(field) or ""
+                    if value:
+                        merged[field] = value
+                        break
+
+        # A practice name from an organization NPI beats a physician's name.
+        org_names = [records[i].get("npi_practice_name") or "" for i in ordered
+                     if records[i].get("npi_entity_type") == "organization"]
+        org_name = _pick_most_common(org_names)
+        merged["practice_name"] = org_name or _pick_practice_name(
+            [records[i].get("practice_name") or "" for i in ordered]
+        ) or merged.get("practice_name") or ""
+
+    providers: list[dict] = []
+    seen_providers: set[tuple[str, str]] = set()
+    for idx in ordered:
+        for entry in _providers_from_record(records[idx]):
+            key = (entry["name"].strip().lower(), entry["npi"])
+            if key in seen_providers:
+                continue
+            seen_providers.add(key)
+            providers.append(entry)
+    providers.sort(key=lambda p: (p["name"].lower(), p["npi"]))
+
+    taxonomy_union = sorted({
+        code for idx in ordered
+        for code in (records[idx].get("provider_taxonomy_codes") or [])
+    })
+    specialties = sorted({
+        (records[idx].get("specialty") or "").strip()
+        for idx in ordered
+        if (records[idx].get("specialty") or "").strip()
+    })
+
+    cluster_set = set(members)
+    cluster_edges = [e for e in edges if e[2] in cluster_set and e[3] in cluster_set]
+    best_score = max((e[0] for e in cluster_edges), default=0)
+    matched_fields = sorted({f for e in cluster_edges for f in e[1]})
+
+    # The unit is kept as its own field, never left folded inside the street.
+    # Sources routinely ship "2800 L St #500" in one column; the parsed unit is
+    # what guards against over-merging, so it must survive onto the record and
+    # not live only inside the comparison keys.
+    base_identity = identity_of(merged)
+    if not (merged.get("address_unit") or "").strip():
+        merged["address_unit"] = base_identity["unit"]
+    merged["address_street_normalized"] = base_identity["street"]
+    merged["address_unit_normalized"] = base_identity["unit"]
+
+    merged["providers"] = providers
+    merged["provider_count"] = len(providers)
+    merged["specialties"] = specialties
+    merged["provider_taxonomy_codes"] = taxonomy_union
+    merged["source_row_ids"] = sorted(str(records[i].get("id") or "") for i in ordered)
+    merged["consolidation"] = {
+        "rule_fired": "merged" if len(ordered) > 1 else "single",
+        "matched_fields": matched_fields,
+        "score": best_score,
+        "merged_count": len(ordered),
+        "reviewed_by": "",
+        "review_candidates": [],
+    }
+    return merged
+
+
+# ---------------------------------------------------------------------------
+# Deterministic practice identity
+# ---------------------------------------------------------------------------
+
+def _identity_base(ident: dict, denylist: frozenset[str]) -> tuple[str, str]:
+    """Strongest available stable identity for a location, as (kind, key)."""
+    if ident["zip5"] and ident["street"]:
+        return "addr", f"{ident['zip5']}|{ident['street']}|{ident['unit']}"
+    if ident["domain"] and ident["domain"] not in denylist:
+        return "domain", ident["domain"]
+    if ident["phone"]:
+        return "phone", ident["phone"]
+    if ident["name"] and ident["zip5"]:
+        return "namezip", f"{ident['name']}|{ident['zip5']}"
+    return "name", ident["name"]
+
+
+def _assign_practice_ids(cluster_items: list[dict], denylist: frozenset[str]) -> None:
+    """Stamp a deterministic practice_id on each cluster, in place.
+
+    Derived from normalized keys only. When two distinct clusters legitimately
+    share a base key — the review-queue case, where scoring kept them apart at
+    one address — they are disambiguated by their sorted member signatures, so
+    the result is still identical on every run.
+    """
+    by_base: dict[tuple[str, str], list[dict]] = {}
+    for item in cluster_items:
+        by_base.setdefault(_identity_base(item["identity"], denylist), []).append(item)
+
+    for (kind, key), items in by_base.items():
+        if len(items) == 1:
+            items[0]["practice_id"] = "P-" + stable_hash(kind, key)
+            continue
+        for position, item in enumerate(sorted(items, key=lambda it: it["cluster_signature"])):
+            parts = [kind, key] if position == 0 else [kind, key, item["cluster_signature"]]
+            item["practice_id"] = "P-" + stable_hash(*parts)
+
+
+# ---------------------------------------------------------------------------
+# Pass 2 — link locations into groups (never merges)
+# ---------------------------------------------------------------------------
+
+def link_location_groups(records: list[dict], denylist: frozenset[str]) -> int:
+    """Stamp group fields on practice locations sharing a registrable domain.
+
+    Records are never combined here. A group of six locations stays six records;
+    each learns that it is one of six. Denylisted and empty domains never group —
+    a shared directory host says nothing about shared ownership.
+
+    Returns the number of multi-location groups found.
+    """
+    by_domain: dict[str, list[dict]] = {}
+    for record in records:
+        ident = identity_of(record)
+        domain = ident["domain"]
+        if not domain or domain in denylist:
+            continue
+        by_domain.setdefault(domain, []).append(record)
+
+    for record in records:
+        record.setdefault("group_id", "")
+        record.setdefault("group_name", "")
+        record.setdefault("location_index", 1)
+        record.setdefault("location_count", 1)
+
+    multi_location_groups = 0
+    for domain, members in by_domain.items():
+        if len(members) < 2:
+            continue
+        multi_location_groups += 1
+        group_id = "G-" + stable_hash("domain", domain)
+        group_name = _pick_most_common([m.get("practice_name") or "" for m in members])
+        ordered = sorted(members, key=lambda m: (
+            (m.get("address_zip") or ""), (m.get("address_street") or ""),
+            (m.get("address_unit") or ""), str(m.get("practice_id") or m.get("id") or ""),
+        ))
+        for position, member in enumerate(ordered, start=1):
+            member["group_id"] = group_id
+            member["group_name"] = group_name or domain
+            member["location_index"] = position
+            member["location_count"] = len(ordered)
+
+    return multi_location_groups
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dict], dict]:
+    """Run Pass 1 then Pass 2 over ingested records.
+
+    Returns (consolidated_records, summary). The input list is not mutated; the
+    returned records are new objects carrying providers[], source_row_ids[], the
+    consolidation block, a deterministic practice_id, and Pass 2 group fields.
+    """
+    if not records:
+        return [], {"enabled": _is_enabled(run_config), "input_count": 0,
+                    "output_count": 0, "merged_groups": 0, "rows_merged_away": 0,
+                    "review_pairs": 0, "unblocked_count": 0,
+                    "multi_location_groups": 0}
+
+    denylist = _aggregator_domains(run_config)
+    if not _is_enabled(run_config):
+        return records, {"enabled": False, "input_count": len(records),
+                         "output_count": len(records), "merged_groups": 0,
+                         "rows_merged_away": 0, "review_pairs": 0,
+                         "unblocked_count": 0, "multi_location_groups": 0}
+
+    pass1 = _merge_practice_locations(records, denylist)
+    identities = pass1["identities"]
+    signatures = pass1["signatures"]
+
+    cluster_items: list[dict] = []
+    index_to_item: dict[int, dict] = {}
+    for root in sorted(pass1["clusters"], key=lambda r: signatures[r]):
+        members = pass1["clusters"][root]
+        merged = _merge_cluster(members, records, identities, signatures,
+                                pass1["applied_edges"])
+        item = {
+            "record": merged,
+            "members": members,
+            "identity": identities[_base_index(members, records, signatures)],
+            "cluster_signature": "|".join(sorted(signatures[i] for i in members)),
+        }
+        cluster_items.append(item)
+        for member in members:
+            index_to_item[member] = item
+
+    _assign_practice_ids(cluster_items, denylist)
+
+    # Review-queue pairs: scored 4-5, or blocked by the unit gate. Recorded on
+    # both survivors so a near-match is visible to an analyst, never silently
+    # dropped and never silently merged.
+    review_pairs = 0
+    for score, matched, i, j in pass1["review_edges"]:
+        left, right = index_to_item[i], index_to_item[j]
+        if left is right:
+            continue
+        review_pairs += 1
+        for source, other in ((left, right), (right, left)):
+            candidates = source["record"]["consolidation"]["review_candidates"]
+            entry = {
+                "practice_id": other["practice_id"],
+                "score": score,
+                "matched_fields": matched,
+            }
+            if entry not in candidates:
+                candidates.append(entry)
+
+    consolidated: list[dict] = []
+    for item in cluster_items:
+        record = item["record"]
+        record["practice_id"] = item["practice_id"]
+        # practice_id is the record's identity from here on: it is deterministic
+        # and stable across runs, where the ingest id was per-source-row.
+        record["id"] = item["practice_id"]
+        record["consolidation"]["review_candidates"].sort(
+            key=lambda c: (-c["score"], c["practice_id"])
+        )
+        consolidated.append(record)
+
+    consolidated.sort(key=lambda r: str(r.get("practice_id") or ""))
+    multi_location_groups = link_location_groups(consolidated, denylist)
+
+    merged_groups = sum(1 for item in cluster_items if len(item["members"]) > 1)
+    return consolidated, {
+        "enabled": True,
+        "input_count": len(records),
+        "output_count": len(consolidated),
+        "merged_groups": merged_groups,
+        "rows_merged_away": len(records) - len(consolidated),
+        "review_pairs": review_pairs,
+        "unblocked_count": pass1["unblocked"],
+        "multi_location_groups": multi_location_groups,
+    }

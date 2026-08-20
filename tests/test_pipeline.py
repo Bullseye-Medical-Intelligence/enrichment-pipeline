@@ -160,7 +160,8 @@ class TestFullAddressParsing:
 
     def test_city_state_zip(self):
         assert _parse_full_address("Miami, FL 33101") == {
-            "address_city": "Miami", "address_state": "FL", "address_zip": "33101"}
+            "address_city": "Miami", "address_state": "FL", "address_zip": "33101",
+            "address_street": ""}
 
     def test_city_state_no_zip_does_not_crash(self):
         # The optional zip group used to be .strip()'d unconditionally, which
@@ -172,6 +173,12 @@ class TestFullAddressParsing:
         r = _parse_full_address("123 Oak Ave, Suite 5, Miami, FL 33101")
         assert (r["address_city"], r["address_state"], r["address_zip"]) == ("Miami", "FL", "33101")
 
+    def test_street_segment_is_retained_for_consolidation(self):
+        """Everything ahead of "City, ST ZIP" is kept as the street line —
+        consolidation blocks on street + ZIP, so it must survive ingest."""
+        r = _parse_full_address("123 Oak Ave, Suite 5, Miami, FL 33101")
+        assert r["address_street"] == "123 Oak Ave, Suite 5"
+
     def test_street_city_full_state_no_zip(self):
         r = _parse_full_address("500 Main St, Dallas, Texas")
         assert (r["address_city"], r["address_state"], r["address_zip"]) == ("Dallas", "Texas", "")
@@ -181,7 +188,8 @@ class TestFullAddressParsing:
         assert (r["address_state"], r["address_zip"]) == ("TX", "75201-1234")
 
     def test_empty_and_unparseable_return_blanks(self):
-        blank = {"address_city": "", "address_state": "", "address_zip": ""}
+        blank = {"address_city": "", "address_state": "", "address_zip": "",
+                 "address_street": ""}
         assert _parse_full_address("") == blank
         assert _parse_full_address("no delimiters here") == blank
 

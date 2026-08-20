@@ -53,6 +53,10 @@ def _map_row(row: dict, row_num: int) -> dict:
     website_url = _normalize_url(row.get("website") or "")
     phone = _clean_phone(row.get("phone") or row.get("phoneunformatted") or "")
 
+    # Apify Places exports a parsed `street` plus a full `address`; the street
+    # line is what practice-location consolidation blocks on with the ZIP.
+    address_street = (row.get("street") or "").strip()
+    address_unit = (row.get("unit") or "").strip()
     address_city = (row.get("city") or "").strip()
     address_state = _normalize_state((row.get("state") or "").strip())
     address_zip = (row.get("postalcode") or "").strip()
@@ -72,6 +76,8 @@ def _map_row(row: dict, row_num: int) -> dict:
         "google_place_id": google_place_id,
         "website_url": website_url,
         "phone": phone,
+        "address_street": address_street,
+        "address_unit": address_unit,
         "address_city": address_city,
         "address_state": address_state,
         "address_zip": address_zip,

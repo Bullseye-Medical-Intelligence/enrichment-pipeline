@@ -126,13 +126,19 @@ def _parse_full_address(full_address: str) -> dict:
     rather than an earlier street or suite fragment. The state is returned as
     written; the caller normalizes it to a 2-letter abbreviation.
     """
-    result = {"address_city": "", "address_state": "", "address_zip": ""}
+    result = {"address_city": "", "address_state": "", "address_zip": "",
+              "address_street": ""}
     if not full_address:
         return result
 
     parts = [p.strip() for p in full_address.split(",") if p.strip()]
     if len(parts) < 2:
         return result
+
+    # Everything ahead of "City, ST ZIP" is the street line (which may carry a
+    # unit segment such as "Suite 5"). Practice-location consolidation blocks on
+    # street + ZIP, so this segment must survive ingest rather than be discarded.
+    result["address_street"] = ", ".join(parts[:-2])
 
     # The last segment carries the state and an optional zip: "FL", "FL 33101",
     # "TX 75201-1234", or a full state name like "Texas".
@@ -300,6 +306,17 @@ def _map_row(row: dict, row_num: int) -> dict:
     npi = (row.get("npi") or "").strip() or None
     google_place_id = (row.get("place_id") or row.get("google_place_id") or "").strip()
 
+    # Street line: an explicit column when the export has one, else the segment
+    # ahead of "City, ST ZIP" in full_address. Consolidation blocks on
+    # street + ZIP, so this must be captured rather than parsed and dropped.
+    address_street = (
+        row.get("street") or row.get("address_street")
+        or row.get("address_line_1") or row.get("address1") or ""
+    ).strip()
+    if not address_street:
+        address_street = _parse_full_address(full_address)["address_street"]
+    address_unit = (row.get("unit") or row.get("suite") or row.get("address_unit") or "").strip()
+
     # If city/state/zip are missing, try to parse from full_address
     if not address_city or not address_state or not address_zip:
         parsed = _parse_full_address(full_address)
@@ -331,6 +348,8 @@ def _map_row(row: dict, row_num: int) -> dict:
         "google_place_id": google_place_id,
         "website_url": website_url,
         "phone": phone,
+        "address_street": address_street,
+        "address_unit": address_unit,
         "address_city": address_city,
         "address_state": address_state,
         "address_zip": address_zip,

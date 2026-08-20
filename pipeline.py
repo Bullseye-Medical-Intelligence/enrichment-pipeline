@@ -45,6 +45,7 @@ from ingestion.outscraper_adapter import load_outscraper_csv
 from ingestion.manual_adapter import load_manual_csv
 from ingestion.apify_places_adapter import load_apify_places_csv
 from ingestion import npi_lookup
+from ingestion.consolidator import consolidate_records
 from ingestion.customer_suppression import load_suppression_list, check_suppression
 from extraction.url_validator import batch_validate_urls
 from extraction.web_extractor import MAX_CRAWL_PAGES, batch_extract
@@ -738,6 +739,36 @@ def run_pipeline(input_file: str, source_type: str,
         )
 
     # -------------------------------------------------------------------------
+    # STEP 1d: PRACTICE-LOCATION CONSOLIDATION (two passes)
+    # Pass 1 merges provider rows that describe the same physical location;
+    # Pass 2 links surviving locations into multi-location groups WITHOUT
+    # merging them. Runs after NPI enrichment so each provider's taxonomy is
+    # carried into providers[], and before suppression, the ingest-only roster
+    # exit and the structural pre-filter — so no crawl or LLM budget is ever
+    # spent per-provider, and the no-spend roster reports the practice count.
+    # -------------------------------------------------------------------------
+    consolidation_summary = {"enabled": False}
+    if records:
+        _write_progress(output_dir, 1, "Practice consolidation", 0, len(records))
+        records, consolidation_summary = consolidate_records(records, run_config)
+        if consolidation_summary.get("enabled"):
+            print(f"\n{'-'*40}")
+            print("STEP 1d: PRACTICE-LOCATION CONSOLIDATION")
+            print(f"{'-'*40}")
+            print(f"  Pass 1: {consolidation_summary['input_count']} rows -> "
+                  f"{consolidation_summary['output_count']} practice locations "
+                  f"({consolidation_summary['merged_groups']} merged, "
+                  f"{consolidation_summary['rows_merged_away']} rows absorbed)")
+            if consolidation_summary["review_pairs"]:
+                print(f"  Review queue: {consolidation_summary['review_pairs']} near-match "
+                      "pair(s) kept separate for analyst review")
+            if consolidation_summary["unblocked_count"]:
+                print(f"  {consolidation_summary['unblocked_count']} record(s) had no "
+                      "street+ZIP to match on and were left as their own location")
+            print(f"  Pass 2: {consolidation_summary['multi_location_groups']} "
+                  "multi-location group(s) linked (not merged)")
+
+    # -------------------------------------------------------------------------
     # STEP 1c: CUSTOMER SUPPRESSION
     # Exclude existing customers before any crawl or LLM spend. Optional:
     # skipped when suppression_list_path is absent from run_config. Runs before
@@ -934,10 +965,15 @@ def run_pipeline(input_file: str, source_type: str,
             except OSError:
                 manual_parts.append(f"{Path(p).name}|<unreadable>")
         manual_sig = ";".join(manual_parts)
+    # Consolidation settings change which rows become which record, so a
+    # checkpoint written under different settings must not be resumed from.
+    consolidation_cfg = run_config.get("consolidation") or {}
+    consolidation_sig = json.dumps(consolidation_cfg, sort_keys=True, default=str)
     crawl_mode = (
         f"pw={int(bool(use_playwright))}"
         f"|retry={int(bool(auto_browser_retry))}"
         f"|manual={manual_sig}"
+        f"|consolidation={consolidation_sig}"
     )
     checkpoint_fingerprint = _checkpoint_fingerprint(
         input_file, config_path, icp_path, crawl_mode
