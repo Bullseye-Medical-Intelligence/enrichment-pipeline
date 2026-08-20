@@ -59,6 +59,9 @@ class RunStatus(BaseModel):
     consolidation_merged_groups: Optional[int] = None
     consolidation_review_pairs: Optional[int] = None
     consolidation_multi_location_groups: Optional[int] = None
+    # Rows with no parseable street or ZIP. They never enter Pass 1 blocking, so
+    # a duplicate among them is never found. Disclosed, never silent.
+    consolidation_unblocked_count: Optional[int] = None
     # Exclusion canary (engine, Step 6). None for runs predating the check.
     # `_detail` mirrors the engine's structured result; `_ack` is the operator's
     # explicit acknowledgement that clears the client-delivery block.

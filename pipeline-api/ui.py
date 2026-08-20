@@ -2173,6 +2173,12 @@ def _consolidation_display(status) -> dict | None:
         "review_pairs": getattr(status, "consolidation_review_pairs", None) or 0,
         "multi_location_groups": getattr(
             status, "consolidation_multi_location_groups", None) or 0,
+        # Rows that never entered Pass 1 blocking for want of a street or ZIP.
+        # Surfaced beside the collapse line because the collapse line is a promise:
+        # a duplicate inside this population is never found, and that has to be
+        # disclosed rather than discovered by the client.
+        "unblocked_count": getattr(
+            status, "consolidation_unblocked_count", None) or 0,
     }
 
 

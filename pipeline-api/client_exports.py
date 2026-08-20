@@ -272,4 +272,10 @@ def _consolidation_metadata(status) -> dict | None:
         "review_queue_pairs": getattr(status, "consolidation_review_pairs", None) or 0,
         "multi_location_groups": getattr(
             status, "consolidation_multi_location_groups", None) or 0,
+        # Rows that never entered Pass 1 blocking for want of a street or ZIP, and
+        # so could not be deduplicated. The collapse figure above is a promise
+        # about duplicate providers at one location; this is the population that
+        # promise does not cover, and it belongs beside it.
+        "rows_not_eligible_for_consolidation": getattr(
+            status, "consolidation_unblocked_count", None) or 0,
     }

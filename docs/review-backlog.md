@@ -447,6 +447,38 @@ in the same change), the crawl loop, and the Evidence Vault's per-record layout.
 Not started, and not worth starting for this case alone — the driver would be
 multi-brand practices in general.
 
+### 23. Pass 1 blocking is single-path, so a street-less row is invisible [OPEN]
+`ingestion/consolidator.py::_block_key` returns a key only when a record has BOTH
+a normalized zip5 and a street. A record with neither never enters a block, is
+never compared to anything, and is emitted as its own practice location — even
+when it carries a usable phone and domain that would have scored 6 against a
+sibling and merged.
+
+The consequence is commercial, not technical: the collapse figure is a promise
+that duplicate providers at one location are consolidated, and this population
+sits outside that promise. A duplicate hiding in it is never found.
+
+**Measured (from `run_log.json`, `consolidation.unblocked_count`):**
+
+| list | rows not eligible | share |
+|------|-------------------|-------|
+| NorCal scrape (`RUN-20260820-053306`) | 25 of 1,137 | **2.2%** |
+| TX registry (`RUN-20260820-053114`) | 1 of 1,200 | **0.09%** |
+
+A registry list carries an enumerated address on every row; a scrape does not.
+
+**Disclosed now, not fixed.** The count is surfaced beside the collapse line on
+the roster preview, in the run manifest
+(`consolidation.rows_not_eligible_for_consolidation`) and in the CLI summary, so
+the gap is visible rather than silent.
+
+**Fix (not started):** a secondary blocking pass on normalized phone, run for
+records the address block could not key. Same scoring and the same unit gate
+afterwards — only the candidate-generation path changes. At 2.2% of a scraped
+list it is worth knowing, not worth building yet; the trigger would be a client
+list where address quality is materially worse, or a duplicate found in this
+population.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,

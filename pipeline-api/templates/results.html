@@ -317,6 +317,13 @@
     {{ consolidation.practice_locations_display }} practice locations.
     Billable: {{ consolidation.billable_display }}.</strong>
   </div>
+  {% if consolidation.unblocked_count %}
+  <div style="margin-top:4px; font-size:13.5px;">
+    {{ consolidation.unblocked_count }} row{{ "s" if consolidation.unblocked_count != 1 }}
+    had no parseable street or ZIP and {{ "were" if consolidation.unblocked_count != 1 else "was" }}
+    not eligible for consolidation.
+  </div>
+  {% endif %}
   <div class="text-muted small" style="margin-top:4px;">
     {{ consolidation.collapsed }} duplicate provider row{{ "s" if consolidation.collapsed != 1 }} merged
     across {{ consolidation.merged_groups }} practice{{ "s" if consolidation.merged_groups != 1 }}{%

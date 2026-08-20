@@ -769,8 +769,9 @@ def run_pipeline(input_file: str, source_type: str,
                 print(f"  Review queue: {consolidation_summary['review_pairs']} near-match "
                       "pair(s) kept separate for analyst review")
             if consolidation_summary["unblocked_count"]:
-                print(f"  {consolidation_summary['unblocked_count']} record(s) had no "
-                      "street+ZIP to match on and were left as their own location")
+                print(f"  {consolidation_summary['unblocked_count']} row(s) had no "
+                      "parseable street or ZIP and were not eligible for "
+                      "consolidation")
             print(f"  Pass 2: {consolidation_summary['multi_location_groups']} "
                   "multi-location group(s) linked (not merged)")
 

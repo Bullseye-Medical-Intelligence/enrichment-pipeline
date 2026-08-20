@@ -110,6 +110,7 @@ def _write_run(run_directory, records, consolidation=True, canary=None, ack=None
             "consolidation_merged_groups": 180,
             "consolidation_review_pairs": 7,
             "consolidation_multi_location_groups": 12,
+            "consolidation_unblocked_count": 3,
         })
     (run_directory / "status.json").write_text(json.dumps(status))
     (run_directory / "enriched_targets.json").write_text(
@@ -554,3 +555,51 @@ class TestExclusionCanaryGate:
         manifest = json.loads(client_exports.build_run_manifest(
             _RUN_ID, env, runs.get_run(_RUN_ID)))
         assert manifest["exclusion_canary"] is None
+
+
+class TestUnblockedDisclosure:
+    """A row with no street or ZIP never enters Pass 1, so it is never deduplicated.
+
+    The collapse line is a promise that duplicate providers at one location get
+    consolidated. This population is the part that promise does not cover, and a
+    duplicate hiding in it is invisible until a client finds it.
+    """
+
+    def test_roster_preview_discloses_the_count(self, env):
+        """The roster preview is where the collapse line lives, so it is where
+        the exception to the collapse line has to live too."""
+        status = _write_run(env, [_location("P-1")])
+        status["status"] = "ingested"
+        (env / "status.json").write_text(json.dumps(status))
+        assert _consolidation_display(runs.get_run(_RUN_ID))["unblocked_count"] == 3
+        body = _get(f"/dashboard/{_RUN_ID}").text
+        assert "practice locations" in body           # the promise
+        assert "not eligible for consolidation" in body   # and its exception
+        assert "no parseable street or ZIP" in body
+
+    def test_manifest_carries_it_beside_the_collapse(self, env):
+        _write_run(env, [_location("P-1")])
+        manifest = json.loads(client_exports.build_run_manifest(
+            _RUN_ID, env, runs.get_run(_RUN_ID)))
+        block = manifest["consolidation"]
+        assert block["rows_not_eligible_for_consolidation"] == 3
+        assert block["practice_locations"] == 412        # sits next to the promise
+
+    def test_counts_read_through_from_the_run_log(self, env):
+        env.mkdir(parents=True, exist_ok=True)
+        write_run_log(run_id=_RUN_ID, records=[_location("P-1")], errors=[],
+                      warnings=[], input_file="in.csv",
+                      input_source_type="outscraper", records_input=1340,
+                      output_dir=str(env), consolidation=_SUMMARY)
+        (env / "enriched_targets.json").write_text(
+            json.dumps({"records": [_location("P-1")]}))
+        assert runner._read_completion_counts(
+            _RUN_ID)["consolidation_unblocked_count"] == 3
+
+    def test_zero_is_not_announced(self, env):
+        """Nothing to disclose reads as nothing on screen, not as a zero."""
+        status = _write_run(env, [_location("P-1")], consolidation=False)
+        status["status"] = "ingested"
+        (env / "status.json").write_text(json.dumps(status))
+        body = _get(f"/dashboard/{_RUN_ID}").text
+        assert "not eligible for consolidation" not in body
