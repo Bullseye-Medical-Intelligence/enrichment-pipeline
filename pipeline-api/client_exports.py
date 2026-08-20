@@ -132,11 +132,22 @@ def _load_records(run_directory: Path) -> list[dict]:
 
 
 def _approved_records(records: list[dict], all_reviews: dict) -> list[dict]:
-    """Return approved records (per exports.is_approved) sorted by score (desc)."""
-    approved = [
-        rec for rec in records
-        if exports.is_approved(rec, all_reviews.get(record_adapter.get_record_id(rec), {}))
-    ]
+    """Return approved records (per exports.is_approved) sorted by score (desc).
+
+    Records carry the operator signal overlay, with the internal is_override
+    marker stripped. Without it the Bullseye Target Report rendered raw pipeline
+    signal states, so a signal an analyst had rejected still reached the client
+    as confirmed. Selection and ordering read target_tier / exclusion_status /
+    bullseye_score, none of which the overlay touches, so applying it first
+    cannot change which records ship.
+    """
+    approved = []
+    for rec in records:
+        review = all_reviews.get(record_adapter.get_record_id(rec), {})
+        if not exports.is_approved(rec, review):
+            continue
+        approved.append(reviews.strip_override_markers(
+            reviews.apply_signal_overrides(rec, review)))
     approved.sort(key=lambda r: r.get("bullseye_score") or 0, reverse=True)
     return approved
 

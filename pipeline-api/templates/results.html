@@ -687,6 +687,14 @@
                 <h4>Sales Angles</h4>
                 <ul class="sales-list" id="angles-list-{{ rid }}"></ul>
                 {% endif %}
+                {% if record.narrative_cleared_by %}
+                <p class="text-muted small" style="margin:6px 0 0;padding:8px 10px;border-left:2px solid var(--accent);background:var(--surface);">
+                  Angles and opener withheld: you withdrew
+                  <strong>{{ record.narrative_cleared_by | join(", ") }}</strong>, and the
+                  prep lines were written against that evidence. Add an angle below, or
+                  run Re-extract Signals to regenerate them.
+                </p>
+                {% endif %}
                 <div style="margin-top:6px;">
                   <button type="button" class="btn btn-secondary btn-sm"
                     style="font-size:11px;padding:3px 10px;border-radius:100px;"

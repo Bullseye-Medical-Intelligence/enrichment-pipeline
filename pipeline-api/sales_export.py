@@ -352,7 +352,8 @@ def _build_handoff_run(
         # Apply signal overrides and strip the internal is_override marker before the
         # renderer sees the record — the client sees overridden signals as normal confirmed
         # signals with the operator-supplied source_url as the evidence link.
-        merged = _strip_is_override(reviews.apply_signal_overrides(rec, review))
+        merged = reviews.strip_override_markers(
+            reviews.apply_signal_overrides(rec, review))
         accounts.append(_record_to_account(merged, tier_str, review))
 
     return HandoffRun(
@@ -366,21 +367,6 @@ def _build_handoff_run(
         accounts=accounts,
         pattern_insight=None,  # run-level insight is not in the pipeline schema
     )
-
-
-def _strip_is_override(record: dict) -> dict:
-    """Return a shallow copy of record with is_override stripped from every signal.
-
-    is_override is an internal operator marker. It must never appear in
-    client-facing output (handoff renderer, client brief, client package).
-    """
-    signals = record.get("signals")
-    if not signals:
-        return record
-    return {
-        **record,
-        "signals": [{k: v for k, v in sig.items() if k != "is_override"} for sig in signals],
-    }
 
 
 def _manual_review_gate_label(rec: dict) -> str:

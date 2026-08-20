@@ -403,6 +403,13 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   automatic exclusion when the analyst also approves it. Without an explicit
   override_tier, a hard `exclusion_status == "EXCLUDED"` record stays out of the
   approved set.
+- **Records carry the signal overlay.** `_approved_records` applies
+  `reviews.apply_signal_overrides` and strips the internal `is_override` marker
+  before anything renders. Without it the Bullseye Target Report was handed raw
+  pipeline records, so a signal an analyst had rejected still reached the client
+  as confirmed. Selection and ordering read `target_tier` / `exclusion_status` /
+  `bullseye_score`, none of which the overlay touches, so applying it first
+  cannot change which records ship.
 - **Client-safe only.** The ZIP contains exactly 5 files: `Bullseye_Target_Report.html`,
   `Sales_Handoff.html`, `bullseye_accounts.csv`, `contender_accounts.csv`, and
   `excluded_targets.csv`. It never includes `run_log.json`, `reviews.json`, analyst
@@ -545,6 +552,7 @@ The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
 - **No React, npm, or build step (permanent)**: the UI is Jinja2 + plain CSS + minimal vanilla JS only. Never add a frontend framework, a Node/npm toolchain, or a build/bundling step to this repo.
 - **Pipeline output is immutable**: `reviews.py` reads `enriched_targets.json` but never writes to it.
 - **Reviews are additive**: Analyst edits go to `reviews.json` only (atomic writes via tempfile + os.replace).
+- **A retracted signal withdraws the prose built on it**: `reviews.apply_signal_overrides` is the single chokepoint every consumer reads through (dashboard, CSVs, handoff, client package). When an override takes a signal the pipeline confirmed (`"yes"`) to anything else, `sales_angle` and the evidence-composed `call_brief` fields (`why_contact`, `opening_line`, `likely_objection`, `discovery_question`) are cleared and the retracted entry drops out of `top_evidence`. `hours_of_operation` survives (a fact about the practice, not a claim about a signal), as do operator-authored `extra_sales_angles`. The prose cannot be regenerated here — that would be an LLM call outside the ICP builder — so it is withheld rather than shipped citing a claim the analyst already rejected; the operator re-adds a hook with "+ Add Angle" or regenerates properly with "Re-extract Signals". An override that ADDS evidence changes nothing: it can only make the prose understate the account. This is not a copy of the engine's integrity gate — the engine has no concept of the overlay, so nothing downstream of it can know the evidence changed. `reviews.retracted_signal_labels` (call on the raw record, before the merge) gives the operator UI the labels to explain the removal with.
 - **No business logic in templates or app.js**: Tier display logic in Jinja2 (`override_tier or target_tier`). JS only handles UI interactions and fetch() calls.
 - **No hardcoded client, product, or specialty rules**: The UI is generic. No OBGYN, Femasys, fertility, etc.
 - **No client portal, billing, or multi-tenant logic**: Internal team tool only.

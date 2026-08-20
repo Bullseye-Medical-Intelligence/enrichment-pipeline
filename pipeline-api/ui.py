@@ -1292,6 +1292,9 @@ def _load_merged_records(run_id: str, status) -> tuple[list[dict], str]:
         # their state/evidence/source replaced and is_override set, so the
         # template's FOUND/NOT-FOUND grouping reflects the override. Scores and
         # tier pass through untouched; records with no overrides are unchanged.
+        # Read the retracted labels from the record as the pipeline wrote it —
+        # the merge replaces the original states the comparison needs.
+        narrative_cleared_by = reviews.retracted_signal_labels(record, review)
         record = reviews.apply_signal_overrides(record, review)
         # Backfill display fields missing from runs enriched before these fields existed.
         city = record.get("address_city") or ""
@@ -1310,6 +1313,10 @@ def _load_merged_records(run_id: str, status) -> tuple[list[dict], str]:
             # In-place refresh state (running/done/failed + last_refreshed_at),
             # display-only, from <run_dir>/refresh_status.json.
             "refresh": refresh_map.get(record_id),
+            # Signals whose confirmation an operator withdrew, which is why this
+            # record's angles and opener were withheld. Operator-facing only:
+            # exports and the client package re-read from disk and never see it.
+            "narrative_cleared_by": narrative_cleared_by,
         })
     return merged, reviews_warning
 

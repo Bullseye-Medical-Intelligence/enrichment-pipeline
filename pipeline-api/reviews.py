@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 REVIEWS_FILENAME = "reviews.json"
 ENRICHED_TARGETS_FILENAME = "enriched_targets.json"
 
+# call_brief fields composed from the record's signal states at extraction time.
+# An operator override changes those states but cannot rewrite the prose, so
+# these are cleared when an override retracts the evidence behind them.
+# hours_of_operation is deliberately absent: office hours are a fact about the
+# practice, unaffected by any signal, and the engine's own gate keeps them too.
+_EVIDENCE_COMPOSED_BRIEF_FIELDS = (
+    "why_contact", "opening_line", "likely_objection", "discovery_question",
+)
+
 
 class ReviewsLoadError(RuntimeError):
     """reviews.json exists but cannot be read as the analyst-review overlay.
@@ -488,6 +497,91 @@ def save_signal_override(
     return entry
 
 
+def _retracts_evidence(signal: dict, override: dict) -> bool:
+    """True when an override withdraws a signal the pipeline had confirmed.
+
+    Only a retraction can leave a false claim standing in prose composed before
+    the override. An override that ADDS evidence can make the prose understate
+    the account, never overstate it, so it is left alone.
+    """
+    return (signal.get("signal_state") == "yes"
+            and override.get("override_state") != "yes")
+
+
+def retracted_signal_labels(record: dict, review: dict) -> list[str]:
+    """Return the labels of signals whose confirmation an operator withdrew.
+
+    Call with the record as the pipeline wrote it — the comparison needs the
+    original signal_state, which apply_signal_overrides has already replaced.
+    Used by the operator UI to explain why a record's prose was withheld.
+    """
+    overrides = (review or {}).get("signal_overrides") or {}
+    if not overrides:
+        return []
+    labels = []
+    for sig in record.get("signals") or []:
+        override = overrides.get(sig.get("signal_id"))
+        if override and _retracts_evidence(sig, override):
+            labels.append(sig.get("signal_label") or sig.get("signal_id") or "")
+    return [label for label in labels if label]
+
+
+def _evidence_point(entry) -> str:
+    """Return the signal label a top_evidence entry names, whatever its shape.
+
+    The engine writes {"point", "evidence", "source_url"}; runs frozen before
+    that shape carry a bare label string. Both are read, neither raises.
+    """
+    if isinstance(entry, dict):
+        return entry.get("point") or ""
+    return entry if isinstance(entry, str) else ""
+
+
+def _clear_retracted_narrative(record: dict, retracted: list[str]) -> dict:
+    """Return a copy of `record` with prose built on retracted evidence removed.
+
+    The rep-facing prose was composed from the pipeline's signal states, and an
+    override cannot regenerate it: doing so would mean an LLM call outside the
+    ICP builder. So when an analyst withdraws a signal, the honest move is to
+    withhold the prose rather than ship an opener citing a claim they already
+    rejected. The narrative is composed as a set, weighing every signal at once,
+    so one retracted claim cannot be excised from it in isolation.
+
+    Retracted entries also drop out of top_evidence — rejected evidence must not
+    keep rendering as evidence — matched on the signal label. A run frozen with
+    bare-string evidence entries only drops one whose text equals the label
+    exactly; the prose clearing above, which is the actual integrity risk, is
+    unconditional either way. Grounded signal-derived fields and
+    hours_of_operation (a fact about the practice, unaffected by any signal) are
+    untouched, as are operator-authored extra_sales_angles in the overlay.
+    """
+    brief = dict(record.get("call_brief") or {})
+    for field in _EVIDENCE_COMPOSED_BRIEF_FIELDS:
+        if field in brief:
+            brief[field] = ""
+    if "top_evidence" in brief:
+        brief["top_evidence"] = [
+            entry for entry in (brief.get("top_evidence") or [])
+            if _evidence_point(entry) not in retracted
+        ]
+    return {**record, "sales_angle": [], "call_brief": brief}
+
+
+def strip_override_markers(record: dict) -> dict:
+    """Return a copy of `record` with is_override stripped from every signal.
+
+    is_override is an internal operator marker. It must never appear in
+    client-facing output (handoff renderer, client report, client package).
+    """
+    signals = record.get("signals")
+    if not signals:
+        return record
+    return {
+        **record,
+        "signals": [{k: v for k, v in sig.items() if k != "is_override"} for sig in signals],
+    }
+
+
 def apply_signal_overrides(record: dict, review: dict) -> dict:
     """Return a copy of `record` with operator signal overrides applied.
 
@@ -495,6 +589,12 @@ def apply_signal_overrides(record: dict, review: dict) -> dict:
     evidence_text (the override_note, or "Operator-verified" when blank), and
     source_url, and marks the signal with is_override=True. Signals without an
     override pass through unchanged.
+
+    When an override retracts a signal the pipeline had confirmed, the prose
+    composed from it is cleared (see _clear_retracted_narrative) so a rejected
+    claim cannot survive in an opener or sales angle. This is not a copy of the
+    engine's integrity gate: the engine has no concept of the override overlay,
+    so nothing downstream of it can know the evidence changed.
 
     Scores and tier (bullseye_score, fit_signal_score, confidence_score,
     target_tier) are never read or recomputed here — they flow through untouched
@@ -506,11 +606,14 @@ def apply_signal_overrides(record: dict, review: dict) -> dict:
         return record
 
     merged_signals = []
+    retracted = []
     for sig in record.get("signals", []):
         ov = overrides.get(sig.get("signal_id"))
         if not ov:
             merged_signals.append(sig)
             continue
+        if _retracts_evidence(sig, ov):
+            retracted.append(sig.get("signal_label") or "")
         new_sig = dict(sig)
         new_sig["signal_state"] = ov.get("override_state", sig.get("signal_state"))
         new_sig["evidence_text"] = ov.get("override_note") or "Operator-verified"
@@ -518,7 +621,10 @@ def apply_signal_overrides(record: dict, review: dict) -> dict:
         new_sig["is_override"] = True
         merged_signals.append(new_sig)
 
-    return {**record, "signals": merged_signals}
+    merged = {**record, "signals": merged_signals}
+    if retracted:
+        merged = _clear_retracted_narrative(merged, retracted)
+    return merged
 
 
 def _read_original_signal_state(
