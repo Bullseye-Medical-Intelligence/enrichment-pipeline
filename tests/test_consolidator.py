@@ -15,7 +15,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ingestion.consolidator import (  # noqa: E402
-    DEFAULT_AGGREGATOR_DOMAINS,
+    NOISE_DOMAINS,
+    domain_policy,
+    UMBRELLA_DOMAINS,
     consolidate_records,
     link_location_groups,
     score_pair,
@@ -226,7 +228,7 @@ class TestDomainConflictPenalty:
                  website="https://www.zocdoc.com/dr-zeta"),
         ]
         score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]),
-                                    DEFAULT_AGGREGATOR_DOMAINS)
+                                    NOISE_DOMAINS)
         assert score == 4 and matched == ["address"]
 
     def test_reachable_scores_inside_a_block(self):
@@ -303,12 +305,12 @@ class TestAggregatorDenylist:
                  website="https://www.healthgrades.com/dr-zeta"),
         ]
         score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]),
-                                    DEFAULT_AGGREGATOR_DOMAINS)
+                                    NOISE_DOMAINS)
         assert score == 4 and matched == ["address"]      # domain scored nothing
         assert len(consolidate_records(rows, {})[0]) == 2
 
     def test_cartridge_can_extend_the_denylist(self):
-        config = {"consolidation": {"additional_aggregator_domains": ["rollupco.com"]}}
+        config = {"consolidation": {"additional_noise_domains": ["rollupco.com"]}}
         rows = [
             _row("T-1", "Alpha Womens Health", phone="916-555-0100",
                  website="https://rollupco.com/alpha"),
@@ -319,7 +321,7 @@ class TestAggregatorDenylist:
         assert len(consolidate_records(rows, {})[0]) == 1       # default: merges
 
     def test_cartridge_can_replace_the_denylist(self):
-        config = {"consolidation": {"aggregator_domains": ["only-this.com"]}}
+        config = {"consolidation": {"noise_domains": ["only-this.com"]}}
         rows = [
             _row("T-1", "Alpha Womens Health", phone="916-555-0100",
                  website="https://www.healthgrades.com/a"),
@@ -331,9 +333,9 @@ class TestAggregatorDenylist:
 
     def test_engine_default_carries_no_client_or_health_system_names(self):
         """RULE 3: the engine ships generic directory and host domains only."""
-        assert "healthgrades.com" in DEFAULT_AGGREGATOR_DOMAINS
-        assert "facebook.com" in DEFAULT_AGGREGATOR_DOMAINS
-        for domain in DEFAULT_AGGREGATOR_DOMAINS:
+        assert "healthgrades.com" in NOISE_DOMAINS
+        assert "facebook.com" in NOISE_DOMAINS
+        for domain in NOISE_DOMAINS | UMBRELLA_DOMAINS:
             for banned in ("femasys", "neurolief", "proliv", "ormco", "obgyn"):
                 assert banned not in domain
 
@@ -556,7 +558,7 @@ class TestPass2Grouping:
     def test_link_pass_never_merges(self):
         records = self._six_offices()
         before = len(records)
-        link_location_groups(records, DEFAULT_AGGREGATOR_DOMAINS)
+        link_location_groups(records, NOISE_DOMAINS)
         assert len(records) == before
 
 
@@ -603,3 +605,142 @@ class TestConfiguration:
         assert summary["output_count"] == len(out) == 2
         assert summary["rows_merged_away"] == 1
         assert summary["merged_groups"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Two domain lists, two meanings
+# ---------------------------------------------------------------------------
+
+class TestNoiseVersusUmbrella:
+
+    def test_umbrella_domain_is_merge_evidence_in_pass_1(self):
+        """Shared ownership plus an identical street+ZIP (unit gate already run)
+        is the same clinic. An umbrella domain must still score +3."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", phone="916-555-0100",
+                 website="https://www.sutterhealth.org/a"),
+            _row("T-2", "Zeta Fertility Partners", phone="916-555-0999",
+                 website="https://www.sutterhealth.org/z"),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]),
+                                    NOISE_DOMAINS)
+        assert score == 7 and matched == ["address", "domain"]
+        assert len(consolidate_records(rows, {})[0]) == 1
+
+    def test_umbrella_domain_never_forms_a_pass_2_group(self):
+        """Two hundred locations under one system domain are not a commercial
+        group, so an umbrella domain must not link locations."""
+        rows = [
+            _row("T-1", "Alpha", street="1 A St", zip_="95821",
+                 website="https://www.sutterhealth.org/a"),
+            _row("T-2", "Beta", street="2 B St", zip_="95822",
+                 website="https://www.sutterhealth.org/b"),
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert summary["multi_location_groups"] == 0
+        assert all(r["group_id"] == "" for r in out)
+
+    def test_noise_domain_is_excluded_from_both_passes(self):
+        rows = [
+            _row("T-1", "Alpha", street="1 A St", zip_="95821",
+                 website="https://www.healthgrades.com/a"),
+            _row("T-2", "Beta", street="2 B St", zip_="95822",
+                 website="https://www.healthgrades.com/b"),
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert summary["multi_location_groups"] == 0          # not a group
+        left, right = identity_of(rows[0]), identity_of(rows[1])
+        assert "domain" not in score_pair(left, right, NOISE_DOMAINS)[1]
+
+    def test_a_real_practice_domain_still_groups(self):
+        rows = [
+            _row("T-1", "Bay Medical A", street="1 A St", zip_="95821",
+                 website="https://baymedgroup.com"),
+            _row("T-2", "Bay Medical B", street="2 B St", zip_="95822",
+                 website="https://baymedgroup.com"),
+        ]
+        assert consolidate_records(rows, {})[1]["multi_location_groups"] == 1
+
+    def test_each_list_is_independently_extendable(self):
+        rows = [
+            _row("T-1", "Alpha", street="1 A St", zip_="95821",
+                 website="https://rollupco.com/a"),
+            _row("T-2", "Beta", street="2 B St", zip_="95822",
+                 website="https://rollupco.com/b"),
+        ]
+        # As an umbrella domain: no Pass 2 group, but still Pass 1 evidence.
+        cfg = {"consolidation": {"additional_umbrella_domains": ["rollupco.com"]}}
+        assert consolidate_records(rows, cfg)[1]["multi_location_groups"] == 0
+        left, right = identity_of(rows[0]), identity_of(rows[1])
+        noise, umbrella = domain_policy(cfg)
+        assert "rollupco.com" in umbrella and "rollupco.com" not in noise
+        assert score_pair(left, right, noise)[0] >= 0   # still comparable in Pass 1
+
+    def test_lists_carry_no_client_or_specialty_names(self):
+        for domain in NOISE_DOMAINS | UMBRELLA_DOMAINS:
+            for banned in ("femasys", "neurolief", "proliv", "ormco", "obgyn"):
+                assert banned not in domain
+
+
+# ---------------------------------------------------------------------------
+# Naming: never label a multi-provider location with a person's name
+# ---------------------------------------------------------------------------
+
+class TestNamingChain:
+
+    def _cluster(self, names, website="https://valleyclinic.com", **over):
+        rows = [_row(f"T-{i}", n, website=website, **over)
+                for i, n in enumerate(names, start=1)]
+        return consolidate_records(rows, {})[0][0]
+
+    def test_npi_organization_name_wins(self):
+        rows = [
+            _row("T-1", "Andrew Fox"),
+            _row("T-2", "Ardeep K Sekhon", npi_entity_type="organization",
+                 npi_practice_name="Sutter Medical Foundation"),
+        ]
+        record = consolidate_records(rows, {})[0][0]
+        assert record["practice_name"] == "Sutter Medical Foundation"
+        assert record["practice_name_source"] == "npi_organization"
+
+    def test_organization_shaped_source_name_is_next(self):
+        record = self._cluster(["Andrew Fox", "Valley Medical Group", "A K Sekhon"])
+        assert record["practice_name"] == "Valley Medical Group"
+        assert record["practice_name_source"] == "source_row_organization"
+
+    def test_domain_derived_when_every_name_is_a_person(self):
+        """The 56-provider case: no organisation name anywhere, but the domain
+        segments into recognisable words."""
+        record = self._cluster(
+            ["Andres Sciolla", "Andrew Fox", "Ardeep K Sekhon"],
+            website="https://www.suttermedicalfoundation.org/x")
+        assert record["practice_name"] == "Sutter Medical Foundation"
+        assert record["practice_name_source"] == "domain_derived"
+
+    def test_illegible_domain_falls_through_to_a_placeholder(self):
+        """"smgdocs.com" yields nothing legible, and an honest placeholder beats
+        a confidently wrong person's name."""
+        record = self._cluster(
+            ["Andres Sciolla", "Andrew Fox", "Ardeep K Sekhon"],
+            website="https://smgdocs.com")
+        assert record["practice_name"] == "3 providers at 123 Main St"
+        assert record["practice_name_source"] == "placeholder"
+
+    def test_a_person_never_labels_a_multi_provider_location(self):
+        for site in ("https://smgdocs.com", "", "https://www.healthgrades.com/x"):
+            record = self._cluster(
+                ["Andres Sciolla", "Andrew Fox", "Ardeep K Sekhon"], website=site)
+            assert "Sciolla" not in record["practice_name"]
+            assert "Andrew Fox" not in record["practice_name"]
+
+    def test_single_provider_location_keeps_its_person_name(self):
+        """A solo practice really is named after the physician."""
+        out, _ = consolidate_records([_row("T-1", "Andres Sciolla")], {})
+        assert out[0]["practice_name"] == "Andres Sciolla"
+        assert out[0]["practice_name_source"] == "source_row"
+
+    def test_derivation_source_is_always_stamped(self):
+        record = self._cluster(["Valley Medical Group", "Andrew Fox"])
+        assert record["practice_name_source"] in {
+            "npi_organization", "source_row_organization",
+            "domain_derived", "placeholder", "source_row"}

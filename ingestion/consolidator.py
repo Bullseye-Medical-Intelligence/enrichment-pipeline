@@ -60,13 +60,31 @@ NAME_SIMILARITY_THRESHOLD = 0.85
 MERGE_THRESHOLD = 6        # >= 6 merges
 REVIEW_THRESHOLD = 4       # 4-5 goes to the review queue, never a silent split
 
-# Engine default aggregator denylist: domains that many unrelated practices
-# share, where a domain match proves nothing. Generic third-party hosts only —
-# physician directories, social networks, listing sites and site builders.
-# Client, health-system and roll-up domains are deliberately NOT here; those are
-# client-specific and belong in cartridge config via `aggregator_domains` /
-# `additional_aggregator_domains` (RULE 3: no client names in engine source).
-DEFAULT_AGGREGATOR_DOMAINS: frozenset[str] = frozenset({
+# ---------------------------------------------------------------------------
+# Two domain lists with DIFFERENT semantics. They are not one list with an
+# exception, because they answer different questions:
+#
+#   NOISE     — proves nothing about ownership. A directory listing, a social
+#               profile or a site-builder host is a scraping artifact, not the
+#               practice's own web presence. Two records both showing
+#               healthgrades.com tells you nothing at all.
+#               -> contributes 0 in Pass 1; ignored in Pass 2.
+#
+#   UMBRELLA  — proves shared OWNERSHIP but not shared LOCATION. Two rows at an
+#               identical street and ZIP on one health-system domain are very
+#               likely the same clinic, because the address has already pinned
+#               the location and the unit gate has already run.
+#               -> valid merge evidence in Pass 1; ignored in Pass 2, because
+#                  two hundred locations under one system domain are not a
+#                  commercial group.
+#
+# Measured: treating umbrella domains as noise produced MORE locations
+# (810 vs 769) and doubled the review queue — the signature of over-splitting
+# real practices, not of better precision.
+# ---------------------------------------------------------------------------
+
+# NOISE — excluded from both passes.
+NOISE_DOMAINS: frozenset[str] = frozenset({
     # Physician directories / review sites
     "healthgrades.com", "zocdoc.com", "vitals.com", "webmd.com", "wellness.com",
     "ratemds.com", "sharecare.com", "doximity.com", "npidb.org", "npino.com",
@@ -78,25 +96,27 @@ DEFAULT_AGGREGATOR_DOMAINS: frozenset[str] = frozenset({
     # Social / platform hosts
     "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com",
     "google.com", "business.site", "youtube.com",
-    # Generic site builders (a shared host, not a shared practice)
+    # Generic site builders and domain parking (a shared host, not a practice)
     "wixsite.com", "wix.com", "squarespace.com", "weebly.com", "wordpress.com",
     "godaddysites.com", "blogspot.com", "webnode.com", "site123.me",
+    "sedo.com", "sedoparking.com", "afternic.com", "hugedomains.com",
+    "bodis.com", "parkingcrew.net", "above.com", "dan.com",
 })
 
-# Health-system, academic-medical-center and national-operator domains. These
-# are third-party aggregating hosts in exactly the sense above: one domain
-# fronts hundreds of unrelated practices across many states, so a domain match
-# proves nothing about shared identity, and Pass 2 would otherwise link every
-# location of a national system into a single meaningless "group".
+# UMBRELLA — shared ownership, not shared location. Health systems, academic
+# medical centres, private-equity roll-ups and large multi-site groups. Counted
+# as merge evidence in Pass 1 (where street + ZIP already pin the location) and
+# ignored in Pass 2 (where they would link every location of a national system
+# into one meaningless group).
 #
 # Not client-specific and not specialty-specific, so this does not conflict with
 # the no-client-names-in-engine rule — these are infrastructure facts, the same
 # category as a directory host. It is, however, unavoidably INCOMPLETE: there
 # are thousands of systems and new ones appear through consolidation. Treat this
-# as a starting set and extend per cartridge via
-# `additional_aggregator_domains`. A structural guard (capping the size of a
-# Pass 2 group) would cover the tail more reliably than any list can.
-DEFAULT_HEALTH_SYSTEM_DOMAINS: frozenset[str] = frozenset({
+# as a starting set and extend per cartridge via `additional_umbrella_domains`.
+# A structural guard (capping the size of a Pass 2 group) would cover the tail
+# more reliably than any list can.
+UMBRELLA_DOMAINS: frozenset[str] = frozenset({
     # National operators and large multi-state systems
     "hcahealthcare.com", "tenethealth.com", "commonspirit.org", "ascension.org",
     "providence.org", "trinity-health.org", "chsnet.com", "lifepointhealth.net",
@@ -137,14 +157,28 @@ CREDENTIAL_TOKENS: frozenset[str] = frozenset({
 })
 
 
-def _aggregator_domains(run_config: dict) -> frozenset[str]:
-    """Resolve the denylist: cartridge may replace the default and/or extend it."""
-    settings = (run_config or {}).get("consolidation") or {}
-    override = settings.get("aggregator_domains")
-    base = frozenset(d.strip().lower() for d in override if d) if override is not None \
-        else (DEFAULT_AGGREGATOR_DOMAINS | DEFAULT_HEALTH_SYSTEM_DOMAINS)
-    extra = settings.get("additional_aggregator_domains") or []
+def _resolve_domain_list(settings: dict, replace_key: str, extend_key: str,
+                         default: frozenset[str]) -> frozenset[str]:
+    """Resolve one domain list: a cartridge may replace the default and/or extend it."""
+    override = settings.get(replace_key)
+    base = (frozenset(d.strip().lower() for d in override if d)
+            if override is not None else default)
+    extra = settings.get(extend_key) or []
     return base | frozenset(d.strip().lower() for d in extra if d)
+
+
+def domain_policy(run_config: dict) -> tuple[frozenset[str], frozenset[str]]:
+    """Return (noise_domains, umbrella_domains) for this run.
+
+    Two lists, two meanings — see NOISE_DOMAINS / UMBRELLA_DOMAINS. Pass 1
+    disqualifies only noise; Pass 2 and practice identity ignore both.
+    """
+    settings = (run_config or {}).get("consolidation") or {}
+    noise = _resolve_domain_list(
+        settings, "noise_domains", "additional_noise_domains", NOISE_DOMAINS)
+    umbrella = _resolve_domain_list(
+        settings, "umbrella_domains", "additional_umbrella_domains", UMBRELLA_DOMAINS)
+    return noise, umbrella
 
 
 def _is_enabled(run_config: dict) -> bool:
@@ -181,7 +215,7 @@ def units_conflict(left: dict, right: dict) -> bool:
     return bool(left["unit"]) and bool(right["unit"]) and left["unit"] != right["unit"]
 
 
-def score_pair(left: dict, right: dict, denylist: frozenset[str]) -> tuple[int, list[str]]:
+def score_pair(left: dict, right: dict, noise_domains: frozenset[str]) -> tuple[int, list[str]]:
     """Score one candidate pair; returns (score, matched_fields).
 
     Additive by design. A practice whose providers were scraped with different
@@ -206,7 +240,7 @@ def score_pair(left: dict, right: dict, denylist: frozenset[str]) -> tuple[int, 
     left_domain, right_domain = left["domain"], right["domain"]
     comparable_domains = (
         left_domain and right_domain
-        and left_domain not in denylist and right_domain not in denylist
+        and left_domain not in noise_domains and right_domain not in noise_domains
     )
     if comparable_domains:
         if left_domain == right_domain:
@@ -271,7 +305,7 @@ class _UnitAwareUnionFind:
         return True
 
 
-def _merge_practice_locations(records: list[dict], denylist: frozenset[str]) -> dict:
+def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]) -> dict:
     """Run Pass 1. Returns clustering results without mutating the input."""
     identities = [identity_of(r) for r in records]
     signatures = [_signature(r, i) for r, i in zip(records, identities)]
@@ -297,7 +331,7 @@ def _merge_practice_locations(records: list[dict], denylist: frozenset[str]) -> 
                 i, j = ordered[a_pos], ordered[b_pos]
                 if units_conflict(identities[i], identities[j]):
                     continue                      # hard stop, never scored
-                score, matched = score_pair(identities[i], identities[j], denylist)
+                score, matched = score_pair(identities[i], identities[j], noise_domains)
                 if score >= MERGE_THRESHOLD:
                     merge_edges.append((score, matched, i, j))
                 elif score >= REVIEW_THRESHOLD:
@@ -391,15 +425,85 @@ def _looks_like_organization(name: str) -> bool:
     return bool(tokens & _ORG_NAME_TOKENS)
 
 
-def _pick_practice_name(names: list[str]) -> str:
-    """Best practice name for a merged location, deterministically.
+def _segment_domain_label(label: str) -> list[str]:
+    """Split a concatenated domain label into recognisable word segments.
 
-    A merged location is a place, not a person, so an organization-shaped name
-    beats a physician's name. Within each shape the most frequent name wins,
-    ties broken lexicographically.
+    "suttermedicalfoundation" -> ["sutter", "medical", "foundation"] by finding
+    known organisational words inside it. A label with no recognisable word
+    stays whole, which is what the legibility gate then judges.
     """
+    segments: list[str] = []
+    remaining = label
+    while remaining:
+        hit_at, hit_token = None, ""
+        for token in _ORG_NAME_TOKENS:
+            index = remaining.find(token)
+            if index != -1 and (hit_at is None or index < hit_at
+                                or (index == hit_at and len(token) > len(hit_token))):
+                hit_at, hit_token = index, token
+        if hit_at is None:
+            segments.append(remaining)
+            break
+        if hit_at > 0:
+            segments.append(remaining[:hit_at])
+        segments.append(hit_token)
+        remaining = remaining[hit_at + len(hit_token):]
+    return [s for s in segments if s]
+
+
+def _name_from_domain(domain: str) -> str:
+    """Title-cased practice name derived from a registrable domain, or "".
+
+    Only when the result is legible: at least two recognisable word segments, or
+    a single segment of eight or more characters. "suttermedicalfoundation.org"
+    qualifies; "smgdocs.com" does not, and an illegible label is worse than an
+    honest placeholder.
+    """
+    label = (domain or "").split(".")[0].strip()
+    if not label:
+        return ""
+    segments = _segment_domain_label(label)
+    if len(segments) < 2 and len(label) < 8:
+        return ""
+    return " ".join(segment.title() for segment in segments)
+
+
+def _resolve_practice_name(names: list[str], org_names: list[str], domain: str,
+                           provider_count: int, street: str) -> tuple[str, str]:
+    """Resolve a merged location's name. Returns (name, derivation_source).
+
+    HARD CONSTRAINT: a multi-provider location is never labelled with a single
+    individual's personal name. "Andres Sciolla" on a 56-provider location tells
+    a rep it is a solo practice — wrong in a way that changes how they work the
+    call, and careless in a client deliverable. A generic placeholder beats a
+    confidently wrong person's name.
+
+    Chain, first that succeeds:
+      1. organisation name from NPI
+      2. most frequent organisation-shaped name among the source rows
+      3. domain-derived, if legible
+      4. "{n} providers at {street}" placeholder
+    """
+    from_npi = _pick_most_common(org_names)
+    if from_npi:
+        return from_npi, "npi_organization"
+
     organizational = [n for n in names if n and _looks_like_organization(n)]
-    return _pick_most_common(organizational) or _pick_most_common(names)
+    if organizational:
+        return _pick_most_common(organizational), "source_row_organization"
+
+    # Only a single-provider location may carry a person's name.
+    if provider_count <= 1:
+        observed = _pick_most_common(names)
+        if observed:
+            return observed, "source_row"
+
+    from_domain = _name_from_domain(domain)
+    if from_domain:
+        return from_domain, "domain_derived"
+
+    where = street.strip() or "an unlisted address"
+    return f"{provider_count} providers at {where}", "placeholder"
 
 
 def _pick_most_common(values: list[str]) -> str:
@@ -455,14 +559,6 @@ def _merge_cluster(members: list[int], records: list[dict], identities: list[dic
                         merged[field] = value
                         break
 
-        # A practice name from an organization NPI beats a physician's name.
-        org_names = [records[i].get("npi_practice_name") or "" for i in ordered
-                     if records[i].get("npi_entity_type") == "organization"]
-        org_name = _pick_most_common(org_names)
-        merged["practice_name"] = org_name or _pick_practice_name(
-            [records[i].get("practice_name") or "" for i in ordered]
-        ) or merged.get("practice_name") or ""
-
     providers: list[dict] = []
     seen_providers: set[tuple[str, str]] = set()
     for idx in ordered:
@@ -499,6 +595,22 @@ def _merge_cluster(members: list[int], records: list[dict], identities: list[dic
     merged["address_street_normalized"] = base_identity["street"]
     merged["address_unit_normalized"] = base_identity["unit"]
 
+    # Naming runs after providers are known: the never-a-person constraint
+    # depends on how many providers the location actually carries.
+    if len(ordered) > 1:
+        name, name_source = _resolve_practice_name(
+            names=[records[i].get("practice_name") or "" for i in ordered],
+            org_names=[records[i].get("npi_practice_name") or "" for i in ordered
+                       if records[i].get("npi_entity_type") == "organization"],
+            domain=base_identity["domain"],
+            provider_count=len(providers),
+            street=merged.get("address_street") or "",
+        )
+        merged["practice_name"] = name or merged.get("practice_name") or ""
+        merged["practice_name_source"] = name_source
+    else:
+        merged["practice_name_source"] = "source_row"
+
     merged["providers"] = providers
     merged["provider_count"] = len(providers)
     merged["specialties"] = specialties
@@ -519,11 +631,11 @@ def _merge_cluster(members: list[int], records: list[dict], identities: list[dic
 # Deterministic practice identity
 # ---------------------------------------------------------------------------
 
-def _identity_base(ident: dict, denylist: frozenset[str]) -> tuple[str, str]:
+def _identity_base(ident: dict, shared_domains: frozenset[str]) -> tuple[str, str]:
     """Strongest available stable identity for a location, as (kind, key)."""
     if ident["zip5"] and ident["street"]:
         return "addr", f"{ident['zip5']}|{ident['street']}|{ident['unit']}"
-    if ident["domain"] and ident["domain"] not in denylist:
+    if ident["domain"] and ident["domain"] not in shared_domains:
         return "domain", ident["domain"]
     if ident["phone"]:
         return "phone", ident["phone"]
@@ -532,7 +644,7 @@ def _identity_base(ident: dict, denylist: frozenset[str]) -> tuple[str, str]:
     return "name", ident["name"]
 
 
-def _assign_practice_ids(cluster_items: list[dict], denylist: frozenset[str]) -> None:
+def _assign_practice_ids(cluster_items: list[dict], shared_domains: frozenset[str]) -> None:
     """Stamp a deterministic practice_id on each cluster, in place.
 
     Derived from normalized keys only. When two distinct clusters legitimately
@@ -542,7 +654,7 @@ def _assign_practice_ids(cluster_items: list[dict], denylist: frozenset[str]) ->
     """
     by_base: dict[tuple[str, str], list[dict]] = {}
     for item in cluster_items:
-        by_base.setdefault(_identity_base(item["identity"], denylist), []).append(item)
+        by_base.setdefault(_identity_base(item["identity"], shared_domains), []).append(item)
 
     for (kind, key), items in by_base.items():
         if len(items) == 1:
@@ -557,7 +669,7 @@ def _assign_practice_ids(cluster_items: list[dict], denylist: frozenset[str]) ->
 # Pass 2 — link locations into groups (never merges)
 # ---------------------------------------------------------------------------
 
-def link_location_groups(records: list[dict], denylist: frozenset[str]) -> int:
+def link_location_groups(records: list[dict], shared_domains: frozenset[str]) -> int:
     """Stamp group fields on practice locations sharing a registrable domain.
 
     Records are never combined here. A group of six locations stays six records;
@@ -570,7 +682,7 @@ def link_location_groups(records: list[dict], denylist: frozenset[str]) -> int:
     for record in records:
         ident = identity_of(record)
         domain = ident["domain"]
-        if not domain or domain in denylist:
+        if not domain or domain in shared_domains:
             continue
         by_domain.setdefault(domain, []).append(record)
 
@@ -617,14 +729,16 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
                     "review_pairs": 0, "unblocked_count": 0,
                     "multi_location_groups": 0}
 
-    denylist = _aggregator_domains(run_config)
+    noise_domains, umbrella_domains = domain_policy(run_config)
+    # Pass 2 and practice identity ignore both lists; Pass 1 disqualifies only noise.
+    shared_domains = noise_domains | umbrella_domains
     if not _is_enabled(run_config):
         return records, {"enabled": False, "input_count": len(records),
                          "output_count": len(records), "merged_groups": 0,
                          "rows_merged_away": 0, "review_pairs": 0,
                          "unblocked_count": 0, "multi_location_groups": 0}
 
-    pass1 = _merge_practice_locations(records, denylist)
+    pass1 = _merge_practice_locations(records, noise_domains)
     identities = pass1["identities"]
     signatures = pass1["signatures"]
 
@@ -644,7 +758,7 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         for member in members:
             index_to_item[member] = item
 
-    _assign_practice_ids(cluster_items, denylist)
+    _assign_practice_ids(cluster_items, shared_domains)
 
     # Review-queue pairs: scored 4-5, or blocked by the unit gate. Recorded on
     # both survivors so a near-match is visible to an analyst, never silently
@@ -678,7 +792,7 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         consolidated.append(record)
 
     consolidated.sort(key=lambda r: str(r.get("practice_id") or ""))
-    multi_location_groups = link_location_groups(consolidated, denylist)
+    multi_location_groups = link_location_groups(consolidated, shared_domains)
 
     merged_groups = sum(1 for item in cluster_items if len(item["members"]) > 1)
     return consolidated, {
