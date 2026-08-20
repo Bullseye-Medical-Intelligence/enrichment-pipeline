@@ -91,6 +91,12 @@ REVIEW_THRESHOLD = 4       # 4-5 goes to the review queue, never a silent split
 # blocks are skipped and counted in the summary, never silently dropped.
 MAX_CONTACT_BLOCK = 12
 
+# The five fields that together name one postal address. Filled as a unit during
+# cluster merge — never independently — so a merged record can never carry one
+# building's street with another building's suite or ZIP.
+_ADDRESS_FIELDS = ("address_street", "address_unit", "address_city",
+                   "address_state", "address_zip")
+
 # ---------------------------------------------------------------------------
 # Two domain lists with DIFFERENT semantics. They are not one list with an
 # exception, because they answer different questions:
@@ -228,32 +234,55 @@ def _name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def _same_building(left: dict, right: dict) -> bool:
-    """True when two identities give the same street and ZIP."""
-    return bool(left["street"] and left["zip5"]
-                and left["street"] == right["street"]
-                and left["zip5"] == right["zip5"])
+def _zips_disagree(left_zip5: str, right_zip5: str) -> bool:
+    """True only when both ZIPs are present and differ — positive evidence of
+    two buildings. A missing ZIP is missing data, not evidence of anything."""
+    return bool(left_zip5) and bool(right_zip5) and left_zip5 != right_zip5
+
+
+def _vetoable_same_building(left: dict, right: dict) -> bool:
+    """True when nothing says these rows stand in different buildings and the
+    street says they stand in the same one.
+
+    This is the veto's scope, and it is deliberately one notch wider than the
+    strict street+ZIP equality the +3 scoring term uses: on a row whose ZIP was
+    never captured, strict equality would silently disarm the suite ruling for
+    exactly the malformed rows most likely to be duplicates. Two present-and-
+    different ZIPs are positive evidence of two buildings (one street name, two
+    towns) and lift the veto; an absent ZIP does not.
+    """
+    if not (left["street"] and right["street"]) or left["street"] != right["street"]:
+        return False
+    return not _zips_disagree(left["zip5"], right["zip5"])
 
 
 def _unit_key(ident: dict):
-    """The unit qualified by its building, or None when it names no building.
+    """The unit anchored to its street, or None when it names no building.
 
     A bare suite number is not an identity. "Suite 300" in two different
     buildings is two unrelated doors, so a unit only carries information
-    alongside the street and ZIP that place it.
+    alongside the street that places it. The ZIP rides along (possibly empty)
+    so units_collide can tell one street name in two towns apart.
     """
-    if not (ident["unit"] and ident["street"] and ident["zip5"]):
+    if not (ident["unit"] and ident["street"]):
         return None
     return (ident["zip5"], ident["street"], ident["unit"])
 
 
 def units_collide(unit_keys) -> bool:
-    """True when two unit keys name different units of the SAME building."""
-    by_building: dict[tuple, str] = {}
-    for zip5, street, unit in unit_keys:
-        seen = by_building.setdefault((zip5, street), unit)
-        if seen != unit:
-            return True
+    """True when two unit keys name different units of the SAME building.
+
+    Same rule as the pairwise veto: same street, differing units, and no
+    positive ZIP evidence of two buildings. Quadratic over a cluster's unit
+    keys, and clusters are a handful of rows.
+    """
+    keys = list(unit_keys)
+    for a in range(len(keys)):
+        for b in range(a + 1, len(keys)):
+            (zip_a, street_a, unit_a), (zip_b, street_b, unit_b) = keys[a], keys[b]
+            if (street_a == street_b and unit_a != unit_b
+                    and not _zips_disagree(zip_a, zip_b)):
+                return True
     return False
 
 
@@ -274,7 +303,7 @@ def units_conflict(left: dict, right: dict) -> bool:
     """
     if not (left["unit"] and right["unit"]) or left["unit"] == right["unit"]:
         return False
-    return _same_building(left, right)
+    return _vetoable_same_building(left, right)
 
 
 def score_pair(left: dict, right: dict, noise_domains: frozenset[str]) -> tuple[int, list[str]]:
@@ -689,18 +718,53 @@ def _merge_cluster(members: list[int], records: list[dict], identities: list[dic
     merged = copy.deepcopy(records[base_idx])
 
     if len(ordered) > 1:
-        # Fill any field the base row left empty from its siblings, in a fixed
-        # order, so a merge never loses data the input actually carried.
-        for field in ("website_url", "phone", "address_street", "address_unit",
-                      "address_city", "address_state", "address_zip",
-                      "google_place_id", "npi_optional", "specialty",
-                      "metro_region_tag", "state_mandate_status"):
+        # Fill any non-address field the base row left empty from its siblings,
+        # in a fixed order, so a merge never loses data the input carried.
+        for field in ("website_url", "phone", "google_place_id", "npi_optional",
+                      "specialty", "metro_region_tag", "state_mandate_status"):
             if not (merged.get(field) or ""):
                 for idx in ordered:
                     value = records[idx].get(field) or ""
                     if value:
                         merged[field] = value
                         break
+
+        # The address is one fact, not five independent fields. Per-field fill
+        # was safe while every cluster member shared a building (the address
+        # block guaranteed it); the contact path merges across buildings, where
+        # it stitched building A's street to building B's suite — or a
+        # wrong-town ZIP onto the base street — and shipped an address that
+        # does not exist to the rep's Directions link and the practice_id hash.
+        base_ident = identities[base_idx]
+        if base_ident["street"]:
+            # Base names its building: complete it only from siblings standing
+            # in the SAME building (same street, no positive ZIP disagreement).
+            # This is what still carries a sibling's suite onto a unit-less
+            # base row — the merge the suite ruling exists to serve.
+            donors = [idx for idx in ordered if idx != base_idx
+                      and identities[idx]["street"] == base_ident["street"]
+                      and not _zips_disagree(identities[idx]["zip5"], base_ident["zip5"])]
+            for field in _ADDRESS_FIELDS:
+                if not (merged.get(field) or ""):
+                    for idx in donors:
+                        value = records[idx].get(field) or ""
+                        if value:
+                            merged[field] = value
+                            break
+        else:
+            # Base names no building at all: adopt ONE sibling's address
+            # wholesale (preferring a fully-keyed one), overwriting any stray
+            # base city/state — half of one town's address glued to half of
+            # another's is exactly the defect this branch exists to prevent.
+            candidates = sorted(
+                (idx for idx in ordered if identities[idx]["street"]),
+                key=lambda idx: (0 if _block_key(identities[idx]) else 1,
+                                 signatures[idx]),
+            )
+            if candidates:
+                donor = records[candidates[0]]
+                for field in _ADDRESS_FIELDS:
+                    merged[field] = donor.get(field) or ""
 
     providers: list[dict] = []
     seen_providers: set[tuple[str, str]] = set()
@@ -994,14 +1058,16 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
             "members": members,
             "identity": identities[_base_index(members, records, signatures)],
             "cluster_signature": "|".join(sorted(signatures[i] for i in members)),
-            # Location-level unit and phone, contributed by ANY member row. The
-            # question an analyst answers is about two locations, not the two rows
-            # whose edge raised it: a cluster whose base row is unit-less can still
-            # be at Suite 360 because a sibling row said so. The unit-aware
-            # union-find guarantees at most one unit per cluster, so this is
-            # unambiguous.
-            "unit": next((identities[m]["unit"] for m in members
-                          if identities[m]["unit"]), ""),
+            # Location-level unit and phone. The question an analyst answers is
+            # about two locations, not the two rows whose edge raised it: a
+            # cluster whose base row is unit-less can still be at Suite 360
+            # because a sibling row said so. The unit is read from the MERGED
+            # record, not from any member: a contact-path cluster can span
+            # buildings and legitimately hold several units, and the merged
+            # record's unit is the one that belongs to the address the analyst
+            # is shown. Phone stays any-member — the contact path required it
+            # to be shared, and the address path treats it as one fact.
+            "unit": identity_of(merged)["unit"],
             "phone": next((identities[m]["phone"] for m in members
                            if identities[m]["phone"]), ""),
         }

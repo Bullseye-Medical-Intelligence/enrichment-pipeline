@@ -674,6 +674,50 @@ evidence. Small and self-contained; `original_state` is already captured on
 first override, so the pipeline value is available to restore to. Worth doing
 before override volume grows.
 
+## Post-ship audit of the contact-block cluster (2026-08-20) [ALL RESOLVED]
+
+A same-day adversarial audit of commits `f64d376`–`cc95e9d`, run by executing
+the engine over synthetic pairs and a full `--ingest-only` pass rather than by
+re-reading the diffs. Four defects, all fixed in one commit with pinning tests.
+
+### 32. [RESOLVED 2026-08-20] Cross-building merges stitched frankenaddresses
+`_merge_cluster` filled the base row's empty fields per-field from any sibling.
+Safe while every cluster member shared a building (the address block guaranteed
+it); the contact path merges across buildings, where it put building B's suite
+on building A's street — and a wrong-town ZIP onto the base street — and shipped
+an address that does not exist to the rep's Directions link and the practice_id
+hash. **Fixed:** the five address fields fill as one fact — same-building donors
+only when the base names its building; one donor's address adopted wholesale
+when it does not. The same-building suite fill the unit ruling relies on is
+preserved and pinned.
+
+### 33. [RESOLVED 2026-08-20] A missing ZIP silently disarmed the suite veto
+The building-scoped veto required strict street+ZIP equality, so same street +
+differing suites + one absent ZIP merged — in direct and transitive form — on
+exactly the malformed rows most likely to be duplicates. **Fixed:** the veto
+(and the cluster guard, same rule) fires on same street unless two PRESENT ZIPs
+disagree; two present-and-different ZIPs are positive evidence of two buildings
+(one street name, two towns) and lift it.
+
+### 34. [RESOLVED 2026-08-20] An empty state was confidently "outside geography"
+`_check_geography` excluded any record whose `address_state` was empty — the
+rationale read "Practice is in , outside target geography". A state column that
+failed to map became clean-looking screening, invisible below the canary's 90%
+line. Pre-existing, but ingest-time exclusions made it fire on every roster.
+**Fixed:** absent state is not a confirmed mismatch, the same rule specialty
+inference has always documented.
+
+### 35. [RESOLVED 2026-08-20] The contact block's own meter was never persisted
+`cross_address_merges` — the number the feature's effect is measured by — plus
+`unblocked_rescued_by_contact` and `contact_blocks_skipped_oversized` existed in
+the in-memory summary but were dropped by the run-log writer's field copy, so
+RULE M1 had no authoritative source. **Fixed:** all three persist in
+`run_log.json`'s consolidation block.
+
+Also verified working, first end-to-end executions: `diagnose_consolidation.py`
+(both `--compare` and `--domain` modes) and the full `--ingest-only` pass with
+ingest-time structural exclusions, contact merge, and the reporting canary.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,

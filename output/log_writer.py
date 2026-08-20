@@ -120,6 +120,16 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
             },
             "multi_location_groups": int(consolidation.get("multi_location_groups", 0)),
             "unblocked_count": int(consolidation.get("unblocked_count", 0)),
+            # Contact-block accounting (RULE M1: this is where the feature's
+            # effect is measured from). cross_address_merges is the merges only
+            # the (phone, domain) path could see; the other two are its
+            # disclosed limits — rows it rescued from the address-unblocked
+            # set, and shared-line blocks it refused to score.
+            "cross_address_merges": int(consolidation.get("cross_address_merges", 0)),
+            "unblocked_rescued_by_contact": int(
+                consolidation.get("unblocked_rescued_by_contact", 0)),
+            "contact_blocks_skipped_oversized": int(
+                consolidation.get("contact_blocks_skipped_oversized", 0)),
             # provider_entries is the ingested ROW count. These two are the name
             # parsing: raw name strings in, distinct providers out. A gap between
             # them is credential tokens being written where people belong.

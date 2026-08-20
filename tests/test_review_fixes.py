@@ -43,6 +43,20 @@ class TestStructuralExclusions:
         )
         assert triggered == []
 
+    def test_missing_state_is_not_outside_geography(self):
+        """Absent data is not a confirmed mismatch — the rule specialty already
+        follows. A state column that failed to map must produce a visible
+        roster, not a confident 'Practice is in , outside target geography'
+        that reads as clean screening."""
+        triggered, _ = check_structural_exclusions(
+            {"specialty": "OBGYN", "address_state": ""}, self.RC
+        )
+        assert "outside_geography" not in triggered
+        triggered, _ = check_structural_exclusions(
+            {"specialty": "OBGYN"}, self.RC
+        )
+        assert "outside_geography" not in triggered
+
     def test_no_targets_means_no_exclusion(self):
         triggered, _ = check_structural_exclusions(
             {"specialty": "Dentistry", "address_state": "CA"}, {}

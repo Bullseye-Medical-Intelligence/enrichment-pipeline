@@ -1096,6 +1096,45 @@ class TestContactBlocking:
         assert summary["review_pairs"] == 0
         assert summary["review_reasons"] == {}
 
+    def test_missing_zip_does_not_disarm_the_suite_veto(self):
+        """Same street, one ZIP never captured, different suites. Almost
+        certainly one building — the ruling says these stay apart. Strict
+        street+ZIP equality would silently disarm the veto on exactly the
+        malformed rows most likely to be duplicates."""
+        rows = self._two_towns()
+        for r in rows:
+            r["address_street"] = "100 North Office Pkwy"
+        rows[0]["address_unit"], rows[0]["address_zip"] = "Suite 200", "30041"
+        rows[1]["address_unit"], rows[1]["address_zip"] = "Suite 400", ""
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 2
+
+    def test_missing_zip_veto_holds_transitively(self):
+        """The ZIP-less Suite 400 row must not reach Suite 200 through a
+        unit-less bridge either — the cluster guard uses the same rule as the
+        pairwise gate."""
+        base = dict(self._two_towns()[0], address_street="100 North Office Pkwy")
+        rows = [
+            dict(base, id="T-1", address_unit="Suite 200", address_zip="30041"),
+            dict(base, id="T-2", address_unit="", address_zip="30041"),
+            dict(base, id="T-3", address_unit="Suite 400", address_zip=""),
+        ]
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 2
+
+    def test_same_street_name_in_two_towns_is_not_a_conflict(self):
+        """Both ZIPs present and different is positive evidence of two
+        buildings — one street name in two towns. Units coexist and the shared
+        front desk merges them."""
+        rows = self._two_towns()
+        for r in rows:
+            r["address_street"] = "100 Main St"
+        rows[0]["address_unit"] = "Suite 300"
+        rows[1]["address_unit"] = "Suite 1201"
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 1
+
+
     def test_oversized_block_is_skipped_and_counted(self):
         """A number on many rows is an answering service, not a front desk.
         Skipping it silently would read as 'nothing to merge here'."""
@@ -1168,3 +1207,80 @@ class TestContactBlocking:
     def test_merged_record_keeps_both_source_rows(self):
         out, _ = consolidate_records(self._two_towns(), {})
         assert sorted(out[0]["source_row_ids"]) == ["T-1", "T-2"]
+
+
+class TestCrossBuildingAddressIntegrity:
+    """A merged record's address is one fact, not five independent fields.
+
+    Per-field gap-fill was safe while every cluster member shared a building
+    (the address block guaranteed it). The contact path merges across
+    buildings, where independent fill stitched building A's street to building
+    B's suite — or a wrong-town ZIP onto the base street — and shipped an
+    address that does not exist to the rep's Directions link and the
+    practice_id hash.
+    """
+
+    _SITE = "https://www.groupobgyn.example"
+    _PHONE = "404-555-0142"
+
+    def _office(self, rid, street, unit, city, zipc, **over):
+        rec = _row(rid, "Group OBGYN", street=street, unit=unit, zip_=zipc,
+                   phone=self._PHONE, website=self._SITE)
+        rec["address_city"] = city
+        rec.update(over)
+        return rec
+
+    def _cross_building(self, base_over=None, sibling_over=None):
+        """Base in building A (org NPI so it wins base), sibling in building B."""
+        base = self._office("T-A", "100 North Office Pkwy", "", "Cumming",
+                            "30041", npi_entity_type="organization")
+        base.update(base_over or {})
+        sibling = self._office("T-B", "200 South Office Blvd", "Suite 1201",
+                               "Suwanee", "30024")
+        sibling.update(sibling_over or {})
+        return [base, sibling]
+
+    def test_sibling_suite_never_lands_on_the_base_street(self):
+        out, _ = consolidate_records(self._cross_building(), {})
+        assert len(out) == 1
+        rec = out[0]
+        assert rec["address_street"] == "100 North Office Pkwy"
+        assert rec["address_unit"] == ""      # Suite 1201 belongs to building B
+        assert rec["address_zip"] == "30041"
+
+    def test_wrong_town_zip_never_completes_the_base_street(self):
+        """An honest incomplete address beats a confident wrong one."""
+        out, _ = consolidate_records(
+            self._cross_building(base_over={"address_zip": ""}), {})
+        rec = out[0]
+        assert rec["address_street"] == "100 North Office Pkwy"
+        assert rec["address_zip"] == ""       # not Suwanee's 30024
+
+    def test_same_building_suite_fill_still_works(self):
+        """The fill the suite ruling relies on: a unit-less base row learns its
+        suite from a same-building sibling."""
+        rows = self._cross_building(
+            sibling_over={"address_street": "100 North Office Pkwy",
+                          "address_city": "Cumming", "address_zip": "30041",
+                          "address_unit": "Suite 300"})
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 1
+        assert out[0]["address_unit"] == "Suite 300"
+
+    def test_streetless_base_adopts_one_donor_address_wholesale(self):
+        """A base row naming no building takes a sibling's WHOLE address —
+        including overwriting its stray town — never a hybrid of the two."""
+        rows = self._cross_building(
+            base_over={"address_street": "", "address_city": "Suwanee",
+                       "address_zip": ""})
+        out, _ = consolidate_records(rows, {})
+        rec = out[0]
+        assert rec["address_street"] == "200 South Office Blvd"
+        assert rec["address_unit"] == "Suite 1201"
+        assert rec["address_city"] == "Suwanee"
+        assert rec["address_zip"] == "30024"
+
+    def test_non_address_fields_still_fill_from_any_sibling(self):
+        rows = self._cross_building(base_over={"specialty": ""})
+        out, _ = consolidate_records(rows, {})
+        assert out[0]["specialty"] == "OBGYN"

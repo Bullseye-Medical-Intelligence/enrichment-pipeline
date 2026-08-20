@@ -268,12 +268,21 @@ def _specialty_matches(record_specialty: str, target_specialty: str) -> bool:
 
 def _check_geography(record: dict, target_geography: list[str]) -> bool:
     """
-    Return True if the record's state is outside the target geography.
+    Return True if the record's state is CONFIRMED outside the target geography.
     Empty target_geography list means no geography restriction.
+
+    A missing state is missing data, not a confirmed mismatch — the same rule
+    specialty inference already documents ("Unknown" never fires
+    wrong_specialty). Before this guard, a row whose state column failed to map
+    was confidently excluded as "Practice is in , outside target geography" —
+    a mapping defect presenting as clean screening, invisible whenever the
+    exclusion canary's 90% line was not crossed.
     """
     if not target_geography:
         return False
     state = (record.get("address_state") or "").strip().upper()
+    if not state:
+        return False
     geo_upper = [g.strip().upper() for g in target_geography]
     return state not in geo_upper
 
@@ -311,9 +320,14 @@ def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[st
     # it. Deciding it here rather than at Step 6 is what lets the roster show it
     # EXCLUDED before an operator commits to enriching — the roster is what a
     # billable count is read from, so it must not shed accounts later in the run.
-    # apply_exclusions keeps its own copy as the backstop for the manual-content
-    # path, where page text can arrive without a URL; the `not in triggered`
-    # guard there means a record is never excluded twice for one reason.
+    # In a fresh run this fires before manual content loads, so a no-URL record
+    # is excluded even under --manual-content-path (the operator's ruling: no
+    # website is disqualifying by itself). apply_exclusions keeps its own
+    # narrower copy (no URL AND no context text) for the post-run passes —
+    # re-extract/rescore re-apply exclusions without this pre-filter, and there
+    # the context-text guard stops a manual-content record from being newly
+    # excluded on re-score. The `not in triggered` guard there means a record
+    # is never excluded twice for one reason.
     if "no_web_presence" in active_rules and not (record.get("website_url") or "").strip():
         triggered.append("no_web_presence")
         rationale_parts.append(

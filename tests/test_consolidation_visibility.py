@@ -149,6 +149,12 @@ class TestRunLog:
             "review_pairs": 7, "multi_location_groups": 12, "unblocked_count": 3,
             "raw_provider_entries": 1512, "distinct_providers": 1340,
             "review_reasons": {"same_unit": 5, "unit_gate_block": 2},
+            # Contact-block accounting — RULE M1: the (phone, domain) path's
+            # effect is measured from these, so they must persist in the log
+            # rather than living only in the in-memory summary.
+            "cross_address_merges": 0,
+            "unblocked_rescued_by_contact": 0,
+            "contact_blocks_skipped_oversized": 0,
         }
 
     def test_absent_when_consolidation_did_not_run(self, tmp_path):
