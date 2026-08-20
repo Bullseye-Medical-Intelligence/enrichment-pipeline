@@ -136,40 +136,143 @@ class TestPass1Scoring:
         assert len(out) == 1
         assert summary["merged_groups"] == 1
 
-    def test_address_only_goes_to_review_not_merge_and_not_a_silent_split(self):
-        """Score 4: same address, nothing else agrees. Two records survive and
-        each records the other as a review candidate."""
+    def test_unknown_pair_with_no_corroborating_data_goes_to_review(self):
+        """Score 4: same address, neither row has a site, names differ. Genuinely
+        unknown — this is what the review queue is for. Two records survive and
+        each records the other as a candidate."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", phone="916-555-0100", website=""),
+            _row("T-2", "Zeta Fertility Partners", phone="916-555-0999", website=""),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 4 and matched == ["address"]
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 2
+        assert summary["review_pairs"] == 1
+        for record in out:
+            candidates = record["consolidation"]["review_candidates"]
+            assert len(candidates) == 1 and candidates[0]["score"] == 4
+
+
+class TestDomainConflictPenalty:
+    """Agreement alone cannot tell "no data" from "contradicting data" — both
+    land on the bare address score. The conflict penalty separates them."""
+
+    def test_two_practices_one_building_each_with_its_own_site_are_separate(self):
+        """The medical-office-building case: 4 - 3 = 1, below review."""
         rows = [
             _row("T-1", "Alpha Womens Health", phone="916-555-0100",
                  website="https://alpha-health.com"),
             _row("T-2", "Zeta Fertility Partners", phone="916-555-0999",
                  website="https://zeta-fertility.com"),
         ]
-        score, _ = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
-        assert score == 4
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 1
+        assert matched == ["address", "domain_conflict"]
         out, summary = consolidate_records(rows, {})
         assert len(out) == 2
-        assert summary["review_pairs"] == 1
-        for record in out:
-            candidates = record["consolidation"]["review_candidates"]
-            assert len(candidates) == 1
-            assert candidates[0]["score"] == 4
-            assert candidates[0]["matched_fields"] == ["address"]
+        assert summary["review_pairs"] == 0        # never entered the queue
+
+    def test_shared_site_still_merges(self):
+        """6 providers, one practice, one shared site: 4 + 3 = 7."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", phone="916-555-0100"),
+            _row("T-2", "Zeta Fertility Partners", phone="916-555-0999"),
+        ]
+        score, _ = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 7
+        assert len(consolidate_records(rows, {})[0]) == 1
+
+    def test_no_site_but_matching_org_name_still_merges(self):
+        """6 providers, one practice, no site, org name matches: 4 + 2 = 6."""
+        rows = [
+            _row("T-1", "Valley Womens Health", website="", phone="916-555-0100"),
+            _row("T-2", "Valley Women's Health", website="", phone="916-555-0999"),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 6 and matched == ["address", "name"]
+        assert len(consolidate_records(rows, {})[0]) == 1
+
+    def test_differing_phones_are_never_penalised(self):
+        """Absence of a phone match is not evidence of difference — one practice
+        publishes a main line, a scheduling line and a billing line. Penalising
+        that would break the case consolidation exists to fix."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", phone="916-555-0100"),
+            _row("T-2", "Alpha Womens Health", phone="916-555-0999"),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert "phone_conflict" not in matched
+        assert score == 9                       # address 4 + domain 3 + name 2
+        assert len(consolidate_records(rows, {})[0]) == 1
+
+    def test_one_missing_domain_is_not_a_conflict(self):
+        """A row with no website contradicts nothing."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", website="https://alpha-health.com",
+                 phone="916-555-0100"),
+            _row("T-2", "Zeta Fertility Partners", website="", phone="916-555-0999"),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 4 and matched == ["address"]
+
+    def test_two_different_directory_listings_are_not_a_conflict(self):
+        """Denylisted hosts prove nothing in either direction, so two different
+        directory URLs must not be read as two practices."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", phone="916-555-0100",
+                 website="https://www.healthgrades.com/dr-alpha"),
+            _row("T-2", "Zeta Fertility Partners", phone="916-555-0999",
+                 website="https://www.zocdoc.com/dr-zeta"),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]),
+                                    DEFAULT_AGGREGATOR_DOMAINS)
+        assert score == 4 and matched == ["address"]
+
+    def test_reachable_scores_inside_a_block(self):
+        """Blocking is on (zip5 + street), so every in-block pair already carries
+        the +4 address component. With the conflict penalty the reachable sums
+        are 1, 3, 4, 6, 7, 9, 10 and 12 — 5 and 8 remain unreachable, so a
+        review band defined as "5 only" would abolish the queue."""
+        components = {4}                       # address always present in a block
+        reachable = set()
+        for phone in (0, 3):
+            for domain in (0, 3, -3):
+                for name in (0, 2):
+                    reachable.add(4 + phone + domain + name)
+        assert 5 not in reachable and 8 not in reachable
+        assert reachable == {1, 3, 4, 6, 7, 9, 10, 12}
+        assert components <= reachable
 
     def test_phone_match_lifts_review_to_merge(self):
+        """Same address, same phone, neither row has a site: 4 + 3 = 7."""
+        rows = [
+            _row("T-1", "Alpha Womens Health", phone="916-555-0100", website=""),
+            _row("T-2", "Zeta Fertility Partners", phone="916-555-0100", website=""),
+        ]
+        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 7 and matched == ["address", "phone"]
+        assert len(consolidate_records(rows, {})[0]) == 1
+
+    def test_shared_phone_but_conflicting_sites_lands_in_review(self):
+        """Address and phone agree, but two real and different websites disagree:
+        4 + 3 - 3 = 4. Genuinely ambiguous, so it goes to a human rather than
+        being merged or silently split."""
         rows = [
             _row("T-1", "Alpha Womens Health", phone="916-555-0100",
                  website="https://alpha-health.com"),
             _row("T-2", "Zeta Fertility Partners", phone="916-555-0100",
                  website="https://zeta-fertility.com"),
         ]
-        score, matched = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
-        assert score == 7 and matched == ["address", "phone"]
-        assert len(consolidate_records(rows, {})[0]) == 1
+        score, _ = score_pair(identity_of(rows[0]), identity_of(rows[1]), frozenset())
+        assert score == 4
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 2 and summary["review_pairs"] == 1
 
     def test_name_similarity_scores_two(self):
-        left = identity_of(_row("T-1", "Valley Womens Health"))
-        right = identity_of(_row("T-2", "Valley Women's Health", website="https://other.com",
+        left = identity_of(_row("T-1", "Valley Womens Health", website="",
+                                phone="916-555-0100"))
+        right = identity_of(_row("T-2", "Valley Women's Health", website="",
                                  phone="916-555-0999"))
         score, matched = score_pair(left, right, frozenset())
         assert "name" in matched and score == 6      # address 4 + name 2

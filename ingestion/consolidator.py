@@ -44,6 +44,18 @@ SCORE_PHONE = 3            # identical normalized phone
 SCORE_DOMAIN = 3           # identical registrable domain, not an aggregator
 SCORE_NAME = 2             # practice-name similarity at or above the threshold
 
+# Conflict penalty. Agreement alone cannot separate "no corroborating data"
+# from "contradicting data": both land on the bare address score, which is why
+# a medical office building full of unrelated practices produced thousands of
+# identical mid-range pairs. One practice does not have two websites, so two
+# real and different domains are positive evidence of two practices.
+#
+# There is deliberately NO matching penalty for differing phone numbers.
+# Absence of a phone match is not evidence of difference — one practice
+# legitimately publishes a main line, a scheduling line and a billing line, and
+# penalising that would break the exact case consolidation exists to fix.
+SCORE_DOMAIN_CONFLICT = -3
+
 NAME_SIMILARITY_THRESHOLD = 0.85
 MERGE_THRESHOLD = 6        # >= 6 merges
 REVIEW_THRESHOLD = 4       # 4-5 goes to the review queue, never a silent split
@@ -71,6 +83,51 @@ DEFAULT_AGGREGATOR_DOMAINS: frozenset[str] = frozenset({
     "godaddysites.com", "blogspot.com", "webnode.com", "site123.me",
 })
 
+# Health-system, academic-medical-center and national-operator domains. These
+# are third-party aggregating hosts in exactly the sense above: one domain
+# fronts hundreds of unrelated practices across many states, so a domain match
+# proves nothing about shared identity, and Pass 2 would otherwise link every
+# location of a national system into a single meaningless "group".
+#
+# Not client-specific and not specialty-specific, so this does not conflict with
+# the no-client-names-in-engine rule — these are infrastructure facts, the same
+# category as a directory host. It is, however, unavoidably INCOMPLETE: there
+# are thousands of systems and new ones appear through consolidation. Treat this
+# as a starting set and extend per cartridge via
+# `additional_aggregator_domains`. A structural guard (capping the size of a
+# Pass 2 group) would cover the tail more reliably than any list can.
+DEFAULT_HEALTH_SYSTEM_DOMAINS: frozenset[str] = frozenset({
+    # National operators and large multi-state systems
+    "hcahealthcare.com", "tenethealth.com", "commonspirit.org", "ascension.org",
+    "providence.org", "trinity-health.org", "chsnet.com", "lifepointhealth.net",
+    "steward.org", "prospectmedical.com", "upmc.com", "advocatehealth.com",
+    # California and the Pacific Northwest
+    "sutterhealth.org", "suttermedicalfoundation.org", "kp.org",
+    "kaiserpermanente.org", "dignityhealth.org", "adventisthealth.org",
+    "memorialcare.org", "scripps.org", "sharp.com", "cedars-sinai.org",
+    "stanfordhealthcare.org", "ucsfhealth.org", "uclahealth.org",
+    "ucihealth.org", "ucdavis.edu", "ucdavishealth.org", "ucsdhealth.org",
+    "sansumclinic.org", "johnmuirhealth.com", "elcaminohealth.org",
+    "ohsu.edu", "providence.org", "peacehealth.org", "multicare.org",
+    "swedish.org", "virginiamason.org", "legacyhealth.org",
+    # Midwest, South, Northeast
+    "mayoclinic.org", "clevelandclinic.org", "hopkinsmedicine.org",
+    "massgeneralbrigham.org", "nyulangone.org", "mountsinai.org",
+    "northwell.edu", "pennmedicine.org", "jefferson.edu", "templehealth.org",
+    "medstarhealth.org", "christianacare.org", "nm.org", "rush.edu",
+    "uchicagomedicine.org", "henryford.com", "corewellhealth.org",
+    "allina.com", "fairview.org", "healthpartners.com", "sanfordhealth.org",
+    "essentiahealth.org", "ssmhealth.com", "mercy.net", "bjc.org",
+    "bannerhealth.com", "intermountainhealthcare.org", "geisinger.org",
+    "atriumhealth.org", "novanthealth.org", "wellstar.org", "piedmont.org",
+    "emoryhealthcare.org", "inova.org", "sentara.com", "ochsner.org",
+    "houstonmethodist.org", "memorialhermann.org", "bswhealth.com",
+    "utsouthwestern.edu", "mdanderson.org", "adventhealth.com",
+    "orlandohealth.com", "baptisthealth.net", "ynhhs.org",
+    "hartfordhealthcare.org", "lifespan.org", "bmc.org", "bidmc.org",
+    "tuftsmedicine.org", "dartmouth-hitchcock.org", "mainehealth.org",
+})
+
 # Credential tokens split out of a provider name so "Jane Smith, MD" yields a
 # name and a credential rather than one opaque string.
 CREDENTIAL_TOKENS: frozenset[str] = frozenset({
@@ -85,7 +142,7 @@ def _aggregator_domains(run_config: dict) -> frozenset[str]:
     settings = (run_config or {}).get("consolidation") or {}
     override = settings.get("aggregator_domains")
     base = frozenset(d.strip().lower() for d in override if d) if override is not None \
-        else DEFAULT_AGGREGATOR_DOMAINS
+        else (DEFAULT_AGGREGATOR_DOMAINS | DEFAULT_HEALTH_SYSTEM_DOMAINS)
     extra = settings.get("additional_aggregator_domains") or []
     return base | frozenset(d.strip().lower() for d in extra if d)
 
@@ -143,10 +200,21 @@ def score_pair(left: dict, right: dict, denylist: frozenset[str]) -> tuple[int, 
         score += SCORE_PHONE
         matched.append("phone")
 
-    if left["domain"] and left["domain"] == right["domain"] \
-            and left["domain"] not in denylist:
-        score += SCORE_DOMAIN
-        matched.append("domain")
+    # Both domains must be real and non-aggregator before either agreement or
+    # conflict means anything: a shared directory host proves nothing, and two
+    # different directory listings are not two practices.
+    left_domain, right_domain = left["domain"], right["domain"]
+    comparable_domains = (
+        left_domain and right_domain
+        and left_domain not in denylist and right_domain not in denylist
+    )
+    if comparable_domains:
+        if left_domain == right_domain:
+            score += SCORE_DOMAIN
+            matched.append("domain")
+        else:
+            score += SCORE_DOMAIN_CONFLICT
+            matched.append("domain_conflict")
 
     if _name_similarity(left["name"], right["name"]) >= NAME_SIMILARITY_THRESHOLD:
         score += SCORE_NAME
