@@ -33,6 +33,10 @@ _CONSOLIDATION_INTERNAL_COLUMNS = {
     "group_id",
     "location_index",
     "location_count",
+    # How the display name was chosen ("placeholder", "domain", "npi_organization").
+    # An audit trail for an operator reconciling a merge; a client reading
+    # "placeholder" beside a practice name learns only that we guessed.
+    "practice_name_source",
 }
 
 # Internal-only columns stripped from every client-facing CSV export.
@@ -270,7 +274,11 @@ def _build_csv(
         and not k.startswith("_")
     ]
     review_columns = _CLIENT_REVIEW_COLUMNS if client_facing else _REVIEW_COLUMNS
-    all_columns = record_columns + _BRIEF_COLUMNS + review_columns
+    # De-duplicated, order preserved. _BRIEF_COLUMNS names fields the scalar scan
+    # may also have picked up (provider_count exists on a consolidated record and
+    # is derived for a non-consolidated one), and a repeated fieldname makes
+    # DictWriter emit the same column twice.
+    all_columns = list(dict.fromkeys(record_columns + _BRIEF_COLUMNS + review_columns))
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=all_columns, extrasaction="ignore")

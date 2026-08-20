@@ -21,6 +21,7 @@ os.environ.setdefault("UI_PASSWORD", "secret-pw")
 os.environ.setdefault("PIPELINE_REPO_PATH", str(Path(__file__).resolve().parent.parent))
 
 import client_exports  # noqa: E402
+import exports  # noqa: E402
 from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
@@ -629,3 +630,67 @@ def test_roster_delete_rejects_empty_ids(tmp_path, monkeypatch):
         r = client.post(f"/runs/{run_id}/roster/delete", json={"record_ids": []})
 
     assert r.status_code == 422
+
+
+class TestConsolidationExportHygiene:
+    """One row per practice location, and matching artifacts stay operator-side."""
+
+    def _location(self):
+        return {
+            "id": "P-1", "record_id": "P-1", "practice_id": "P-1",
+            "practice_name": "Valley Womens Health",
+            "practice_name_source": "placeholder",
+            "specialty": "OBGYN", "address_city": "Sacramento",
+            "address_state": "CA", "address_zip": "95823",
+            "address_street": "123 Main St", "address_unit": "suite 200",
+            "address_street_normalized": "123 main street",
+            "website_url": "https://valley.example", "phone": "916-555-0100",
+            "bullseye_score": 88, "confidence_band": "High",
+            "target_tier": "Bullseye", "exclusion_status": "CLEAR",
+            "enrichment_status": "complete", "source_confidence": "complete",
+            "qc_status": "accepted", "internal_notes": "internal only",
+            "signals": [], "sales_angle": [],
+            "call_brief": {"why_contact": "Because."},
+            "providers": [
+                {"name": "Jane Smith", "credentials": ["MD"], "npi": "1"},
+                {"name": "Ann Lee", "credentials": ["DO"], "npi": "2"},
+            ],
+            "provider_count": 2,
+            "source_row_ids": ["T-1", "T-2"],
+            "group_id": "G-abc", "group_name": "Valley Health Group",
+            "location_index": 3, "location_count": 6,
+            "consolidation": {"review_candidates": []},
+        }
+
+    def _header(self, client_facing):
+        buf = exports.build_bullseye_csv(
+            "R", None, records=[self._location()], all_reviews={},
+            client_facing=client_facing)
+        return buf.getvalue().decode("utf-8").splitlines()[0].split(",")
+
+    def test_no_column_appears_twice(self):
+        """_BRIEF_COLUMNS names fields the scalar scan can also pick up, and a
+        repeated fieldname makes DictWriter emit the column twice."""
+        for client_facing in (True, False):
+            header = self._header(client_facing)
+            assert len(header) == len(set(header)), header
+
+    def test_naming_provenance_is_operator_only(self):
+        """A client reading "placeholder" beside a name learns only that we guessed."""
+        assert "practice_name_source" not in self._header(client_facing=True)
+        assert "practice_name_source" in self._header(client_facing=False)
+
+    def test_matching_artifacts_stay_out_of_the_client_csv(self):
+        header = self._header(client_facing=True)
+        for column in ("address_street_normalized", "group_id",
+                       "location_index", "location_count", "internal_notes"):
+            assert column not in header, column
+
+    def test_providers_roll_up_into_one_cell_and_never_become_rows(self):
+        buf = exports.build_bullseye_csv(
+            "R", None, records=[self._location()],
+            all_reviews={"P-1": {"qc_status": "approved"}}, client_facing=True)
+        lines = buf.getvalue().decode("utf-8").splitlines()
+        assert len(lines) == 2                       # header plus ONE location
+        assert "providers_flat" in lines[0]
+        assert "Jane Smith" in lines[1] and "Ann Lee" in lines[1]

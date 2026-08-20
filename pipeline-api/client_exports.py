@@ -267,6 +267,7 @@ def _consolidation_metadata(status) -> dict | None:
         "practice_locations": locations,
         "billable_practice_locations": locations,
         "rows_merged_away": max(0, entries - locations),
+        "collapse_rate": (round(1 - locations / entries, 4) if entries else 0),
         "merged_practices": getattr(status, "consolidation_merged_groups", None) or 0,
         "review_queue_pairs": getattr(status, "consolidation_review_pairs", None) or 0,
         "multi_location_groups": getattr(
