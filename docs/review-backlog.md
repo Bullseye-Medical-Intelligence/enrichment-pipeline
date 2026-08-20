@@ -339,6 +339,68 @@ is almost certainly one office, and "almost certainly" is what a review queue is
 for. Over-merging is the invisible error — a wrongly merged pair loses a real
 target permanently and nobody ever sees it.
 
+### 21. Phone comparison is exact-match, and it is discarding the best evidence [OPEN]
+`ingestion/practice_normalizer.py::normalize_phone` reduces a phone to its last ten
+digits, and `consolidator.score_pair` compares the result for exact equality. Two
+numbers either match or they are unrelated; there is no middle. In a medical office
+a shared NPA-NXX usually means one phone system, and a single wrong digit is a typo,
+not a different practice. **Not started — the weight is not settled.**
+
+Three separable pieces, each with its own measured impact. Counts are PROVISIONAL:
+they come from an analysis script over consolidated output, and become authoritative
+once the engine emits them as counters in the consolidation block.
+
+**(a) Validity check — the strongest and least ambiguous piece.** An impossible
+number is currently just another distinct value, so it scores as evidence of
+DIFFERENCE. Under the NANP an area code and an exchange cannot begin 0 or 1, and
+neither may be an N11 service code.
+
+| | TX registry | NorCal scrape |
+|---|---|---|
+| locations with a phone | 889 | 730 |
+| impossible under the NANP | 7 | 1 |
+| repaired by a number already at the same building | **3** | 0 |
+| valid repair exists, nothing corroborates it | 3 | 1 |
+| no valid repair | 1 (`210-000-0000`) | 0 |
+
+Two distinct causes, and only one of them is ours:
+- **Source rotation (TX, 6 numbers).** NPPES itself carries digits rotated one
+  position: `174-131-5008` is `817-413-1500`, `817-070-9392` is `281-707-0939`,
+  `107-043-2002` is `210-704-3200`. In all three the repaired number is already
+  present on another location at the same street.
+- **Our own normalizer (NorCal, 1 number).** `(916) 431-0860 ext. 4` is eleven
+  digits, so the last-ten rule returns `1643108604`. The extension corrupts the
+  number. Taking the first ten when the last ten are impossible recovers it.
+
+**Fix:** validate after normalizing. When a number is impossible, attempt the two
+repairs (first-ten instead of last-ten; rotate one position) and accept a repair
+only when the result is already present on another location at the same building.
+When no repair corroborates, treat the number as **absent** rather than distinct —
+an absent phone routes the pair to `phone_absent` review, where a wrong one silently
+argues the two locations are different.
+
+**(b) Shared NPA-NXX as a weak positive term.** Same building, same exchange,
+different subscriber number:
+
+| | TX | NorCal |
+|---|---|---|
+| pairs sharing a building | 907 | 935 |
+| ...sharing NPA-NXX, numbers differ | 276 | 193 |
+| ...not admitted to the queue today | **258** | **153** |
+
+A +1 term is mechanically inert on its own and that is the point to settle first:
+address-only becomes 4+1 = 5, still under `MERGE_THRESHOLD` 6; same-suite becomes
+7+1 = 8, already merging. It changes an outcome only if `shared_exchange` also
+becomes an admission reason — and that would add 258 / 153 pairs to a queue that
+currently holds 89 / 62 same-suite pairs. **Decide the admission question before
+the weight**; a weak score term with no admission reason buys nothing.
+
+**(c) Near-miss numbers.** Pairs at one building differing by exactly one digit:
+52 (TX) and 11 (NorCal); one-position rotations: 4 (TX), 0 (NorCal). Riskier than
+(a) or (b) — `8323257131` vs `8323257133` is one practice's switchboard range, but
+`7134866643` vs `7134866644` is as likely to be two physicians' direct lines. Route
+to review, never to an automatic merge.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,
