@@ -199,6 +199,70 @@ nothing new, with zero Claude calls. **Fix:** fold the three crawl-mode values
 into the fingerprint hash; test that adding `--playwright` invalidates a
 checkpoint written without it.
 
+## P2 — measured findings from the consolidation build (2026-08-20) [OPEN]
+
+Both were found by measuring the practice-location consolidation work against a
+real 1,137-row list, not by reading code. Numbers below are from that run and are
+reproducible; neither item is started.
+
+### 16. NPI enrichment matches 2.8% of a place-scraped list (visible, not started)
+`ingestion/npi_lookup.py` — measured 32 of 1,137 rows matched (2.8%) on an Apify
+Google Places list. Step 1b is therefore close to a no-op on the source type the
+pipeline actually ingests most often, and every downstream consumer of NPI data
+inherits that: taxonomy-based structural exclusions almost never fire pre-crawl,
+`npi_practice_name` is nearly absent from the consolidation naming chain, and
+provider-level customer suppression can only match the 2.8%. The operator is not
+told any of this — the run reports NPI enrichment as having run, not as having
+found nothing.
+
+Cause is structural, not a bug. The fast path keys on an NPI number in the input
+row; Apify and Outscraper exports carry none, so it never fires. The fallback
+searches NPPES by `organization_name`, but only 20.2% of rows on that list have an
+organization-shaped `practice_name` — the rest are individual physician names
+("Kernick Nancy", "Temporini Humberto D MD"), which an organization-name search
+cannot match by construction.
+
+**Fix (not started):** add an individual-provider lookup — NPPES entity type 1
+searched by parsed `first_name` / `last_name` + `state`, used when the practice
+name parses as a person. Verify against measured lift before adopting; a name+state
+search returns multiple candidates and needs an address tiebreak to stay safe.
+**Interim, cheap, and separate:** make NPI enrichment skippable by source type, or
+report the match rate in the run manifest so a 2.8% run is visibly a 2.8% run.
+
+### 17. `review_pairs` counts row-level edges, so the badge contradicts the page
+`ingestion/consolidator.py::consolidate_records` — the `review_pairs` counter
+increments once per surviving Pass 1 review *edge*. Because a cluster absorbs many
+input rows, several edges resolve to the same pair of merged `practice_id`s.
+Measured on the same list: 2,415 edges versus 607 distinct location pairs, a 4x
+overstatement.
+
+The operator dashboard's review route (`pipeline-api/ui.py::consolidation_review_queue`)
+already dedupes by sorted `(left_id, right_id)`, so the results-page badge reads
+2,415 from the snapshotted status field while the page it links to renders 607.
+The same inflated number reaches the internal run manifest
+(`client_exports.py` → `review_queue_pairs`) and the CLI's console summary.
+**Fix:** count distinct `practice_id` pairs in the engine, where the count is
+produced, so every consumer inherits the corrected number without recomputing it.
+
+### 18. Manual adapter takes `specialty` verbatim, so a registry list self-excludes
+`ingestion/manual_adapter.py:118` —
+`(row.get("specialty") or "").strip() or infer_specialty("", practice_name)`.
+The column value is used as-is; `infer_specialty` runs only as a fallback and is
+handed `""` as the type argument, so it can never resolve a type/taxonomy string.
+Both scraped-source adapters do the opposite: `outscraper_adapter.py:338` and
+`apify_places_adapter.py:67` both call `infer_specialty(type_raw, practice_name)`.
+
+Consequence, verified this session: an NPI-registry-derived CSV carries real NUCC
+taxonomy descriptions ("Obstetrics & Gynecology"). `_specialty_matches
+("Obstetrics & Gynecology", "OBGYN")` returns `False`, so `wrong_specialty` fires
+on every row and the entire list is structurally excluded before any crawl. The
+same string through `infer_specialty` returns `"OBGYN"` and matches. This is a
+plausible operator flow — buy or export an NPI-derived list, upload it as a manual
+CSV — and it fails silently as a fully-excluded run, which reads like a bad list
+rather than a bad mapping. **Fix:** route the column through `infer_specialty` as
+the type argument (`infer_specialty(row.get("specialty") or "", practice_name)`),
+matching the other two adapters; add a test with a taxonomy-description CSV.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,
