@@ -5,6 +5,7 @@ Deterministic — builds a run folder on disk, then asserts the ZIP contents,
 the executive summary context, and the hard-exclusion rule in the approved CSV.
 """
 
+import csv
 import io
 import json
 import os
@@ -25,6 +26,7 @@ import exports  # noqa: E402
 from schema import RunStatus  # noqa: E402
 
 _EXPECTED_FILES = {
+    "Executive_Summary.html",
     "Bullseye_Target_Report.html",
     "Sales_Handoff.html",
     "bullseye_accounts.csv",
@@ -41,7 +43,12 @@ def _build_run(tmp_path):
          "address_state": "TX", "target_tier": "Bullseye", "bullseye_score": 88,
          "confidence_score": 80, "exclusion_status": "CLEAR",
          "sales_angle": ["Strong fit on service lines."],
-         "signals": [{"signal_label": "IUD", "evidence_text": "IUD listed.",
+         "address_zip": "78701", "date_enriched": "2026-05-27",
+         # Shaped as the engine writes a signal (signal_state is what makes it
+         # confirmed) so the evidence columns are exercised, not just present.
+         "signals": [{"signal_id": "S-01", "signal_label": "IUD",
+                      "signal_state": "yes", "positive_weight": 30,
+                      "evidence_text": "IUD listed.",
                       "source_url": "https://alpha.example/services"}]},
         {"record_id": "T-2", "practice_name": "Beta Hospital OBGYN",
          "target_tier": "Excluded", "bullseye_score": 20,
@@ -694,3 +701,72 @@ class TestConsolidationExportHygiene:
         assert len(lines) == 2                       # header plus ONE location
         assert "providers_flat" in lines[0]
         assert "Jane Smith" in lines[1] and "Ann Lee" in lines[1]
+
+
+# ---------------------------------------------------------------------------
+# The package carries proof and a summary, not just verdicts
+# ---------------------------------------------------------------------------
+
+def _package_file(tmp_path, name):
+    _build_run(tmp_path)
+    buf = client_exports.build_client_package("RUN-20260527-143000-aaaa", tmp_path, _status())
+    with zipfile.ZipFile(buf) as zf:
+        return zf.read(name).decode("utf-8")
+
+
+def test_executive_summary_carries_counts_and_methodology(tmp_path):
+    """The summary layer the package shipped without: a client executive had
+    per-account detail and CSVs and nothing answering 'what is my market'."""
+    html = _package_file(tmp_path, "Executive_Summary.html")
+    assert "does not use PHI" in html          # methodology statement intact
+    assert "Screened" in html
+    assert "generation failed" not in html     # not the isolated-error page
+
+
+def test_executive_summary_leaks_no_internal_scores(tmp_path):
+    """Client surfaces show tier and band only — never the numeric score."""
+    html = _package_file(tmp_path, "Executive_Summary.html")
+    for column in ("bullseye_score", "fit_signal_score", "confidence_score"):
+        assert column not in html
+    assert "Confirmed independent." not in html   # nor the analyst note
+
+
+def test_client_csv_carries_the_evidence_behind_the_tier(tmp_path):
+    """Before this, the entire evidence layer reached a client only as rendered
+    HTML — a CRM import got the verdict with none of the proof."""
+    rows = list(csv.DictReader(io.StringIO(
+        _package_file(tmp_path, "bullseye_accounts.csv"))))
+    row = next(r for r in rows if r["practice_name"] == "Alpha Womens Health")
+    assert row["signal_1_id"] == "S-01"
+    assert row["signal_1_claim"] == "IUD"
+    assert row["signal_1_quote"] == "IUD listed."
+    assert row["signal_1_source_url"] == "https://alpha.example/services"
+    assert row["signal_1_captured"] == "2026-05-27"
+
+
+def test_evidence_columns_exist_even_when_a_record_has_none(tmp_path):
+    """A stable header matters more than a compact one: a CRM import maps
+    columns once and every subsequent delivery must match."""
+    rows = list(csv.DictReader(io.StringIO(
+        _package_file(tmp_path, "contender_accounts.csv"))))
+    row = next(r for r in rows if r["practice_name"] == "Gamma Clinic")
+    for suffix in ("id", "claim", "quote", "source_url", "captured"):
+        assert row[f"signal_1_{suffix}"] == ""      # present, and empty
+
+
+def test_client_csv_still_hides_scores_alongside_the_new_columns(tmp_path):
+    rows = list(csv.DictReader(io.StringIO(
+        _package_file(tmp_path, "bullseye_accounts.csv"))))
+    for hidden in ("bullseye_score", "fit_signal_score", "confidence_score",
+                   "analyst_note", "internal_notes"):
+        assert hidden not in rows[0]
+
+
+def test_client_csv_rows_are_territory_grouped(tmp_path):
+    """Ordering only — grouping a rep's town onto consecutive rows. Never a
+    proximity or drive-order claim; the data carries no coordinates."""
+    rows = list(csv.DictReader(io.StringIO(
+        _package_file(tmp_path, "bullseye_accounts.csv"))))
+    assert len(rows) > 1, "need multiple rows for an ordering assertion"
+    keys = [(r.get("address_state", ""), r.get("address_city", "")) for r in rows]
+    assert keys == sorted(keys, key=lambda k: (not k[0], k[0].upper(), k[1].upper()))

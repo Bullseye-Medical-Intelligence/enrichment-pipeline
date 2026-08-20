@@ -410,12 +410,43 @@ doubles as the pipeline's `--config`) and names an ICP profile (the pipeline's
   as confirmed. Selection and ordering read `target_tier` / `exclusion_status` /
   `bullseye_score`, none of which the overlay touches, so applying it first
   cannot change which records ship.
-- **Client-safe only.** The ZIP contains exactly 5 files: `Bullseye_Target_Report.html`,
-  `Sales_Handoff.html`, `bullseye_accounts.csv`, `contender_accounts.csv`, and
-  `excluded_targets.csv`. It never includes `run_log.json`, `reviews.json`, analyst
-  notes, numeric scores, or the raw `enriched_targets.json`. Client-facing CSVs and
-  reports show tier + confidence band only — numeric scores are stripped
-  (`exports._HIDDEN_SCORE_COLUMNS`).
+- **Client-safe only.** The ZIP contains exactly 6 files: `Executive_Summary.html`,
+  `Bullseye_Target_Report.html`, `Sales_Handoff.html`, `bullseye_accounts.csv`,
+  `contender_accounts.csv`, and `excluded_targets.csv`. It never includes
+  `run_log.json`, `reviews.json`, analyst notes, numeric scores, or the raw
+  `enriched_targets.json`. Client-facing CSVs and reports show tier + confidence
+  band only — numeric scores are stripped (`exports._HIDDEN_SCORE_COLUMNS`).
+- **`Executive_Summary.html`** is `pdf_report.build_executive_report_html`, the
+  same renderer brief publishing uses. It was reachable through publish but
+  absent from the package, so the deliverable held per-account detail and CSVs
+  with no summary layer — nothing that answered "what is my market" for a client
+  executive. Its counts and methodology statement derive from the same records
+  and reviews as the rest of the package, so it cannot disagree with the accounts
+  behind it. Generation failure degrades to a visible error page, like the other
+  two renderers, so the ZIP stays well-formed.
+- **Evidence columns (CRM provenance).** Every CSV carries
+  `signal_N_id` / `_claim` / `_quote` / `_source_url` / `_captured` for the top
+  `exports.EVIDENCE_COLUMN_SLOTS` (3) confirmed signals. `signals` is a list and
+  the row builder blanks list-valued fields, so before this the entire evidence
+  layer reached a client only as rendered HTML — a CRM import received the
+  verdict and none of the proof. Rules: only DIRECTLY observed signals qualify
+  (`signal_state == "yes"`, not inferred, carrying both a quote and an http(s)
+  source), because an inferred signal has no verbatim text and filling its quote
+  cell would invent evidence; ordering is by descending weight then `signal_id`
+  so exports are byte-stable; quotes are collapsed to one line and capped at
+  `MAX_QUOTE_CHARS` (250) with a visible ellipsis, since Salesforce/HubSpot
+  truncate silently on import; cells are built from the OVERLAID signals so an
+  analyst correction reaches the CRM exactly as it reaches the handoff. Unused
+  slots are empty strings, never missing keys — a CRM maps columns once and every
+  later delivery must match. `_captured` is the record's `date_enriched`; signals
+  carry no timestamp of their own, so this is the real capture date rather than a
+  per-signal one invented to fill the column.
+- **Territory grouping.** `exports._territory_sorted` orders every CSV by state,
+  city, ZIP, then practice name, so a rep's accounts for one town sit on
+  consecutive rows. This is GROUPING, not routing, and must never be described as
+  route optimization: location data is ZIP/city/state with no coordinates, so two
+  adjacent rows may be a mile or an hour apart and nothing here can tell the
+  difference. Rows with no state sort last rather than interleaving.
 - **Run manifest is internal-only.** `build_run_manifest` produces a provenance
   summary (scope, ICP version, counts, methodology). It is NOT in the client
   package; operators pull it via `GET /runs/{run_id}/download/manifest`.

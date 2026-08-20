@@ -3,11 +3,16 @@ client_exports.py
 Client deliverable package generation for a completed run.
 
 Builds an in-memory ZIP containing:
+  Executive_Summary.html        — market-level counts, tier breakdown, methodology
   Bullseye_Target_Report.html   — per-account intelligence briefs for Bullseye tier
   Sales_Handoff.html            — rep-facing sales handoff (handoff_renderer)
   bullseye_accounts.csv         — Bullseye-tier approved records
   contender_accounts.csv        — Contender-tier records (shipped unless rejected)
   excluded_targets.csv          — all excluded records
+
+The three CSVs carry flattened evidence columns (signal_N_id / _claim / _quote /
+_source_url / _captured) so a CRM import receives the proof behind each tier and
+not just the verdict, and are ordered for territory grouping (state, city, ZIP).
 
 No internal/debug artifacts (run_log.json, reviews.json, raw enriched JSON) are
 included in the package. The run manifest (build_run_manifest) is an
@@ -76,8 +81,12 @@ def build_client_package(run_id: str, run_directory: Path, status) -> io.BytesIO
         run_id, status, project, icp, approved, all_reviews, len(records), excluded_count,
     )
     handoff_bytes = _build_sales_handoff(run_id, run_directory, status)
+    executive_bytes = _build_executive_report(
+        run_id, status, project, icp, approved, all_reviews, len(records), excluded_count,
+    )
 
     files = {
+        "Executive_Summary.html": executive_bytes,
         "Bullseye_Target_Report.html": bullseye_cards_bytes,
         "Sales_Handoff.html": handoff_bytes,
         "bullseye_accounts.csv": bullseye_csv,
@@ -171,6 +180,46 @@ def _error_html(title: str, exc: Exception) -> bytes:
         f"<p>Please contact the operations team.</p>"
         f"</body></html>"
     ).encode("utf-8")
+
+
+def _build_executive_report(
+    run_id: str,
+    status,
+    project: dict,
+    icp: dict,
+    approved: list[dict],
+    all_reviews: dict,
+    screened: int,
+    excluded_count: int,
+) -> bytes:
+    """Render the Executive Summary HTML; return UTF-8 bytes.
+
+    The renderer already existed and was reachable through brief publishing, but
+    the client package shipped without it: the deliverable held per-account
+    detail and CSVs and no summary layer, so a client's executive had nothing to
+    read that answered "what is my market". Its counts, tier breakdown and
+    methodology statement (which disclaims PHI, claims and EMR data) come from
+    the same records and reviews the rest of the package is built from, so the
+    summary can never disagree with the accounts behind it.
+
+    Failure is isolated exactly like the other two renderers: a visible error
+    page keeps the ZIP well-formed and the remaining files intact.
+    """
+    try:
+        from reports import pdf_report
+        return pdf_report.build_executive_report_html(
+            run_id=run_id,
+            status=status,
+            project=project,
+            icp=icp,
+            approved_records=approved,
+            all_reviews=all_reviews,
+            screened=screened,
+            excluded_count=excluded_count,
+        )
+    except Exception as exc:
+        logger.exception("Executive summary generation failed for run %s", run_id)
+        return _error_html("Executive Summary generation failed", exc)
 
 
 def _build_bullseye_cards(

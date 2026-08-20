@@ -227,13 +227,25 @@ is never modified.
 ### 9.5 Export the client deliverable
 
 From a completed run, **Download Client Package** produces a ZIP built from the
-immutable enriched output plus the review overlay. It contains exactly 5 files:
+immutable enriched output plus the review overlay. It contains exactly 6 files:
 
+- `Executive_Summary.html` — market-level summary: screened total, tier breakdown, scope, ICP version, and the methodology statement
 - `Bullseye_Target_Report.html` — self-contained Bullseye target report (HTML)
 - `Sales_Handoff.html` — client-facing handoff covering all 5 tiers (Bullseye, Contender, Needs Verification, Manual Review, Excluded; NV/MR omitted only if an analyst rejects them)
 - `bullseye_accounts.csv` — Bullseye-tier accounts
 - `contender_accounts.csv` — Contender-tier accounts
 - `excluded_targets.csv` — records whose effective tier is Excluded
+
+Each CSV carries the evidence behind the tier as flat columns for CRM import —
+`signal_N_id`, `_claim`, `_quote`, `_source_url`, `_captured` for the top three
+confirmed signals — so sales ops receives the proof, not only the verdict. Only
+directly observed signals qualify (an inferred one has no verbatim text to
+quote), quotes are capped at 250 characters with a visible ellipsis because
+Salesforce and HubSpot truncate silently on import, and unused slots are empty
+strings rather than missing columns so a CRM field mapping keeps working across
+deliveries. Rows are ordered by state, city, then ZIP — **territory grouping**,
+which puts a rep's accounts for one town on consecutive rows. It is not route
+optimization: the data carries no coordinates and makes no proximity claim.
 
 Client-facing CSVs and reports show tier + confidence band only — numeric scores
 are stripped. The package never includes `run_log.json`, `reviews.json`, analyst
