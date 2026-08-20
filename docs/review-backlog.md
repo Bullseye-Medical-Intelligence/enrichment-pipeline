@@ -229,7 +229,7 @@ search returns multiple candidates and needs an address tiebreak to stay safe.
 **Interim, cheap, and separate:** make NPI enrichment skippable by source type, or
 report the match rate in the run manifest so a 2.8% run is visibly a 2.8% run.
 
-### 17. `review_pairs` counts row-level edges, so the badge contradicts the page
+### 17. [RESOLVED 2026-08-20] `review_pairs` counted row-level edges
 `ingestion/consolidator.py::consolidate_records` — the `review_pairs` counter
 increments once per surviving Pass 1 review *edge*. Because a cluster absorbs many
 input rows, several edges resolve to the same pair of merged `practice_id`s.
@@ -244,7 +244,7 @@ The same inflated number reaches the internal run manifest
 **Fix:** count distinct `practice_id` pairs in the engine, where the count is
 produced, so every consumer inherits the corrected number without recomputing it.
 
-### 18. Manual adapter takes `specialty` verbatim, so a registry list self-excludes
+### 18. [RESOLVED 2026-08-20] Manual adapter took `specialty` verbatim
 `ingestion/manual_adapter.py:118` —
 `(row.get("specialty") or "").strip() or infer_specialty("", practice_name)`.
 The column value is used as-is; `infer_specialty` runs only as a fallback and is
@@ -263,7 +263,7 @@ rather than a bad mapping. **Fix:** route the column through `infer_specialty` a
 the type argument (`infer_specialty(row.get("specialty") or "", practice_name)`),
 matching the other two adapters; add a test with a taxonomy-description CSV.
 
-### 19. Credentials become phantom providers, inflating the headline roster number
+### 19. [RESOLVED 2026-08-20] Credentials became phantom providers
 `ingestion/manual_adapter.py::_parse_provider_names` comma-splits when no pipe is
 present, so `"Jane Smith, MD"` becomes two providers, `["Jane Smith", "MD"]`. The
 engine already knows how to handle this — `consolidator._split_credentials` splits
@@ -287,6 +287,33 @@ never-a-person gate, and it ships to clients as `providers_flat` /
 comma-split when the trailing parts are credential tokens — both modules live in
 `ingestion/`, so `CREDENTIAL_TOKENS` imports directly. Pipe-separated input is
 already unambiguous and stays as-is. Add a test for `"Jane Smith, MD"`.
+
+### 20. A matching suite number is strong evidence and scores nothing [OPEN]
+`ingestion/consolidator.py` — `units_conflict` only ever *blocks* a merge. A unit
+that MATCHES earns no score, so two records at the same street, ZIP **and suite**
+score exactly the same 4 (address only) as two unrelated tenants of the same
+building. Both land in the review queue as indistinguishable near-matches.
+
+Measured on the 1,200-row TX NPI-registry list, over the 542 address-only review
+pairs: **177 (32.7%) are at the same non-empty suite**, 107 (19.7%) have a suite on
+one side only, 258 (47.6%) have none. The same-suite clusters are unambiguous —
+41 pairs at 6410 Fannin St Ste 360, 15 at Ste 350, 14 at Ste 210, 12 at 6651 Main
+St Ste 1020 — one practice per suite, each physician listing a direct line.
+
+This is the finding that blocks the matched_fields review predicate. On a registry
+list the phone is present on 100% of rows and is a direct line, so those 177 pairs
+present as address-only with *differing* phones. A predicate requiring corroboration
+beyond the shared building would auto-separate all of them, and a missing-phone
+carve-out would not catch a single one (zero rows lack a phone).
+
+**Fix (sequenced, not started):** first carve same-suite pairs into the review
+queue rather than auto-separating them — 186 pairs, which group into **30 building
+decisions** recovering up to 77 billable rows, with the top 10 decisions covering
+75%. Then, once analyst rulings exist, decide whether a unit match should become a
+positive scoring term (which would auto-merge rather than review them). Do not
+promote it to a scoring term before the rulings — same street + ZIP + suite is
+almost certainly one office, but "almost certainly" is what the review queue is
+for.
 
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
