@@ -228,13 +228,53 @@ def _name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
+def _same_building(left: dict, right: dict) -> bool:
+    """True when two identities give the same street and ZIP."""
+    return bool(left["street"] and left["zip5"]
+                and left["street"] == right["street"]
+                and left["zip5"] == right["zip5"])
+
+
+def _unit_key(ident: dict):
+    """The unit qualified by its building, or None when it names no building.
+
+    A bare suite number is not an identity. "Suite 300" in two different
+    buildings is two unrelated doors, so a unit only carries information
+    alongside the street and ZIP that place it.
+    """
+    if not (ident["unit"] and ident["street"] and ident["zip5"]):
+        return None
+    return (ident["zip5"], ident["street"], ident["unit"])
+
+
+def units_collide(unit_keys) -> bool:
+    """True when two unit keys name different units of the SAME building."""
+    by_building: dict[tuple, str] = {}
+    for zip5, street, unit in unit_keys:
+        seen = by_building.setdefault((zip5, street), unit)
+        if seen != unit:
+            return True
+    return False
+
+
 def units_conflict(left: dict, right: dict) -> bool:
-    """True when both identities carry a unit and the units differ.
+    """True when two rows name different units of the SAME building.
 
     This is the hard gate. Two practices in Suite 200 and Suite 400 of one
     building are different practices, and no score may override that.
+
+    The same-building qualifier is load-bearing, and leaving it out was a real
+    defect. A suite number answers "which door in this building" and nothing
+    else, so it only carries information when both rows stand in the same
+    building. Comparing Suite 300 in one town against Suite 1201 in another and
+    calling that a conflict applies a same-building rule across two buildings —
+    and since every multi-office practice has different suite numbers at its
+    different offices, that veto fired on precisely the pairs the contact block
+    exists to recognise, before they were ever scored.
     """
-    return bool(left["unit"]) and bool(right["unit"]) and left["unit"] != right["unit"]
+    if not (left["unit"] and right["unit"]) or left["unit"] == right["unit"]:
+        return False
+    return _same_building(left, right)
 
 
 def score_pair(left: dict, right: dict, noise_domains: frozenset[str]) -> tuple[int, list[str]]:
@@ -328,16 +368,20 @@ def _contact_block_key(ident: dict, excluded_domains: frozenset[str]):
 
 
 class _UnitAwareUnionFind:
-    """Union-find whose clusters may never accumulate two different units.
+    """Union-find whose clusters may never hold two units of ONE building.
 
-    The pairwise gate stops a differing-unit pair from ever becoming a merge
-    edge, but transitivity could still join Suite 200 to Suite 400 through a
-    unit-less record. The cluster-level check closes that path.
+    The pairwise gate stops a same-building differing-unit pair from becoming a
+    merge edge, but transitivity could still join Suite 200 to Suite 400 through
+    a unit-less record. The cluster-level check closes that path.
+
+    Units in DIFFERENT buildings coexist freely. A practice with an office in
+    Suite 300 of one building and Suite 1201 of another is one practice with two
+    doors, which is exactly what the contact block exists to recognise.
     """
 
-    def __init__(self, units: list[str]):
-        self._parent = list(range(len(units)))
-        self._units = [{u} if u else set() for u in units]
+    def __init__(self, unit_keys: list):
+        self._parent = list(range(len(unit_keys)))
+        self._units = [{k} if k else set() for k in unit_keys]
 
     def find(self, i: int) -> int:
         while self._parent[i] != i:
@@ -351,7 +395,7 @@ class _UnitAwareUnionFind:
         if root_i == root_j:
             return True
         combined = self._units[root_i] | self._units[root_j]
-        if len(combined) > 1:
+        if units_collide(combined):
             return False
         low, high = (root_i, root_j) if root_i < root_j else (root_j, root_i)
         self._parent[high] = low
@@ -434,7 +478,7 @@ def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]
     # Deterministic union order: strongest first, then by normalized signature.
     merge_edges.sort(key=lambda e: (-e[0], signatures[e[2]], signatures[e[3]]))
 
-    union_find = _UnitAwareUnionFind([ident["unit"] for ident in identities])
+    union_find = _UnitAwareUnionFind([_unit_key(ident) for ident in identities])
     applied: list[tuple[int, list[str], int, int]] = []
     for score, matched, i, j in merge_edges:
         if union_find.union(i, j):

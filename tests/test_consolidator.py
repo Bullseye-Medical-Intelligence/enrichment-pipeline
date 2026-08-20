@@ -1039,11 +1039,52 @@ class TestContactBlocking:
             out, _ = consolidate_records(rows, {})
             assert len(out) == 2, f"merged with no {field} on one side"
 
-    def test_unit_veto_still_holds_on_the_contact_path(self):
-        """Different suites are different practices, whatever else agrees."""
+    def test_different_suites_in_different_towns_still_merge(self):
+        """The defect this class was written to fix, and first got wrong.
+
+        A suite number answers "which door in this building". Two offices in two
+        towns of course carry different suite numbers, so vetoing on that fired
+        on exactly the pairs the contact block exists to recognise — and it
+        fired BEFORE scoring, so nothing downstream could recover it. Every
+        multi-office practice on earth has this shape.
+        """
         rows = self._two_towns()
         rows[0]["address_unit"] = "Suite 1200"
         rows[1]["address_unit"] = "Suite 640"
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 1
+        assert summary["cross_address_merges"] == 1
+
+    def test_four_offices_four_towns_become_one_account(self):
+        """The commercial point: one practice, one buying decision, one dial."""
+        rows = [
+            _row(f"T-{n}", "Group OBGYN", street=f"{n}00 Office Way",
+                 unit=f"Suite {n}00", zip_=f"3004{n}", phone=self._PHONE,
+                 website=self._SITE)
+            for n in range(1, 5)
+        ]
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 1
+        assert sorted(out[0]["source_row_ids"]) == ["T-1", "T-2", "T-3", "T-4"]
+
+    def test_same_building_suite_veto_is_untouched(self):
+        """The ruling that settled the suite question stands: within ONE
+        building, differing suites are different practices and never merge."""
+        rows = self._two_towns()
+        rows[1]["address_street"] = rows[0]["address_street"]
+        rows[1]["address_zip"] = rows[0]["address_zip"]
+        rows[0]["address_unit"] = "Suite 200"
+        rows[1]["address_unit"] = "Suite 400"
+        out, _ = consolidate_records(rows, {})
+        assert len(out) == 2
+
+    def test_same_building_transitivity_guard_is_untouched(self):
+        """Suite 200 and Suite 400 must not join through a unit-less sibling."""
+        rows = [
+            _row("T-1", "Alpha Clinic", unit="Suite 200"),
+            _row("T-2", "Alpha Clinic", unit=""),
+            _row("T-3", "Alpha Clinic", unit="Suite 400"),
+        ]
         out, _ = consolidate_records(rows, {})
         assert len(out) == 2
 
