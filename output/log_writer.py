@@ -16,7 +16,8 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
                    warnings: list[str], input_file: str, input_source_type: str,
                    records_input: int, pipeline_version: str = "v1.0",
                    output_dir: str = "./output",
-                   llm_usage: dict | None = None) -> str:
+                   llm_usage: dict | None = None,
+                   consolidation: dict | None = None) -> str:
     """
     Write run_log.json summarizing the pipeline run.
 
@@ -34,6 +35,13 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
             llm_output_tokens, llm_call_count). Omitted from the log when
             None (e.g. ingest-only runs) so pre-capture and no-LLM runs
             are distinguishable from a zero-token run.
+        consolidation: Optional practice-location consolidation summary from
+            ingest (provider entries in, practice locations out, merges,
+            review pairs, groups). Consolidation changes the unit the client
+            is billed on, so the collapse is recorded here as engine output
+            and every downstream surface reads it rather than recomputing it.
+            Omitted when consolidation did not run, which is how a
+            pre-consolidation run stays identifiable.
 
     Returns:
         Absolute path to the written log file.
@@ -95,6 +103,16 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
         "errors": safe_errors,
         "warnings": warnings,
     }
+    if consolidation and consolidation.get("enabled"):
+        log["consolidation"] = {
+            "provider_entries": int(consolidation.get("input_count", 0)),
+            "practice_locations": int(consolidation.get("output_count", 0)),
+            "rows_merged_away": int(consolidation.get("rows_merged_away", 0)),
+            "merged_groups": int(consolidation.get("merged_groups", 0)),
+            "review_pairs": int(consolidation.get("review_pairs", 0)),
+            "multi_location_groups": int(consolidation.get("multi_location_groups", 0)),
+            "unblocked_count": int(consolidation.get("unblocked_count", 0)),
+        }
     if llm_usage is not None:
         log["llm_input_tokens"] = int(llm_usage.get("llm_input_tokens", 0))
         log["llm_output_tokens"] = int(llm_usage.get("llm_output_tokens", 0))

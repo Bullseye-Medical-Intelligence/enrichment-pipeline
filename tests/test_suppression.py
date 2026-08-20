@@ -312,3 +312,85 @@ class TestCheckSuppression:
             assert suppressed  # matches row 2 (coastal+valley at 10001)
         finally:
             os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Consolidation-aware suppression: the record is a practice location that
+# carries every merged provider, so a provider-level customer list must match.
+# ---------------------------------------------------------------------------
+
+class TestSuppressionAfterConsolidation:
+
+    def _practice(self, providers, name="Valley Womens Health",
+                  zip_code="95823", state="CA", npi=""):
+        return {
+            "practice_name": name,
+            "address_zip": zip_code,
+            "address_state": state,
+            "npi_number": npi,
+            "providers": providers,
+        }
+
+    def test_provider_level_list_matches_a_merged_practice(self):
+        """The client's list names individual physicians; the pipeline record is
+        now the practice they work at. One customer provider suppresses the
+        whole location, and the reason names them."""
+        path = _write_csv([{"npi_number": "2222222222"}], ["npi_number"])
+        try:
+            sl = load_suppression_list(path)
+            record = self._practice([
+                {"name": "Jane Smith", "npi": "1111111111"},
+                {"name": "Ann Lee", "npi": "2222222222"},
+                {"name": "Raj Patel", "npi": "3333333333"},
+            ])
+            suppressed, reason = check_suppression(record, sl)
+            assert suppressed
+            assert "Ann Lee" in reason and "2222222222" in reason
+        finally:
+            os.unlink(path)
+
+    def test_practice_level_list_still_matches_on_the_practice_npi(self):
+        path = _write_csv([{"npi_number": "9999999999"}], ["npi_number"])
+        try:
+            sl = load_suppression_list(path)
+            record = self._practice(
+                [{"name": "Jane Smith", "npi": "1111111111"}], npi="9999999999")
+            suppressed, reason = check_suppression(record, sl)
+            assert suppressed and "9999999999" in reason
+        finally:
+            os.unlink(path)
+
+    def test_npi_optional_is_checked_when_enrichment_is_disabled(self):
+        """With npi_enrichment_enabled false there is no npi_number, so the
+        value the source CSV carried must still be matched."""
+        path = _write_csv([{"npi_number": "8888888888"}], ["npi_number"])
+        try:
+            sl = load_suppression_list(path)
+            record = {"practice_name": "Solo", "address_zip": "95823",
+                      "address_state": "CA", "npi_optional": "8888888888"}
+            suppressed, reason = check_suppression(record, sl)
+            assert suppressed and "8888888888" in reason
+        finally:
+            os.unlink(path)
+
+    def test_no_provider_matches_leaves_the_practice_callable(self):
+        path = _write_csv([{"npi_number": "7777777777"}], ["npi_number"])
+        try:
+            sl = load_suppression_list(path)
+            record = self._practice([
+                {"name": "Jane Smith", "npi": "1111111111"},
+                {"name": "Ann Lee", "npi": "2222222222"},
+            ])
+            suppressed, _ = check_suppression(record, sl)
+            assert not suppressed
+        finally:
+            os.unlink(path)
+
+    def test_malformed_provider_entries_never_raise(self):
+        path = _write_csv([{"npi_number": "1111111111"}], ["npi_number"])
+        try:
+            sl = load_suppression_list(path)
+            record = self._practice(["not-a-dict", None, {"name": "X"}, {"npi": None}])
+            assert check_suppression(record, sl)[0] is False
+        finally:
+            os.unlink(path)

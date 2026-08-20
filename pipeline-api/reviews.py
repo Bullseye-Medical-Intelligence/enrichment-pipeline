@@ -198,6 +198,54 @@ def stamp_reenriched(run_id: str, record_id: str, run_directory: Path, kind: str
     return entry
 
 
+def save_consolidation_decision(
+    run_id: str,
+    record_id: str,
+    decision: str,
+    reason: str,
+    username: str,
+    run_directory: Path,
+) -> dict:
+    """Record an analyst's ruling on a Pass 1 review-queue pair.
+
+    Additive overlay, exactly like every other analyst edit: pipeline output is
+    immutable, so this never rewrites enriched_targets.json. "separate" affirms
+    the engine kept the locations apart; "merge" asks for them to be treated as
+    one practice, which takes effect on the next run over the same list because
+    consolidation happens at ingest. A reason is required either way, and the
+    ruling is stamped into the analyst note so it is visible wherever notes are.
+
+    Raises ValueError on an unknown decision or a missing reason.
+    """
+    if decision not in ("merge", "separate"):
+        raise ValueError("decision must be 'merge' or 'separate'")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValueError("A reason is required to resolve a consolidation review pair.")
+
+    with locking.run_lock(run_directory):
+        all_reviews = get_reviews(run_id, run_directory)
+        entry = dict(all_reviews.get(record_id) or default_review())
+        now = datetime.now(timezone.utc).isoformat()
+        entry["consolidation_decision"] = {
+            "decision": decision,
+            "reason": reason,
+            "decided_by": username,
+            "decided_at": now,
+        }
+        verb = "keep separate" if decision == "separate" else "merge"
+        stamp = (f"Consolidation review on {datetime.now(timezone.utc).date().isoformat()}: "
+                 f"{verb} — {reason}")
+        existing = (entry.get("analyst_note") or "").rstrip()
+        entry["analyst_note"] = f"{existing}\n{stamp}".strip() if existing else stamp
+        entry["reviewed_by"] = username
+        entry["reviewed_at"] = now
+
+        all_reviews[record_id] = entry
+        _atomic_write(run_directory / REVIEWS_FILENAME, all_reviews)
+    return entry
+
+
 def save_review(
     run_id: str,
     record_id: str,

@@ -67,6 +67,12 @@ def estimate_run_cost(record_count: int, runs_path: "str | Path") -> dict:
                     continue
                 if data.get("run_type") == "discovery":
                     continue
+                # Only consolidated runs are comparable. A pre-consolidation run
+                # spent its tokens per PROVIDER row, so averaging it into a
+                # per-practice-location estimate understates the new unit by
+                # roughly the collapse ratio.
+                if data.get("consolidation_practice_locations") is None:
+                    continue
                 output_records = data.get("records_output") or 0
                 in_tok = data.get("llm_input_tokens")
                 out_tok = data.get("llm_output_tokens")
@@ -115,12 +121,17 @@ def cost_summary(status) -> dict | None:
     input_tokens = status.llm_input_tokens or 0
     output_tokens = status.llm_output_tokens or 0
     total_cost = estimate_cost_usd(input_tokens, output_tokens)
-    records = status.records_output or 0
+    # The billable unit is the practice location. records_output is already the
+    # consolidated count, and the consolidation figure is preferred when present
+    # so the denominator can never silently fall back to raw input rows.
+    records = (getattr(status, "consolidation_practice_locations", None)
+               or status.records_output or 0)
     return {
         "llm_calls": status.llm_call_count,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "estimated_cost_usd": round(total_cost, 4),
+        "practice_locations": records or None,
         "cost_per_record_usd": round(total_cost / records, 4) if records else None,
         "priced_model": PRICED_MODEL,
         "rates_as_of": LAST_VERIFIED,

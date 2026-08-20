@@ -224,5 +224,31 @@ def _run_metadata(
         "records_screened": screened,
         "records_approved": approved,
         "records_excluded": excluded,
+        # Practice-location consolidation: the billable unit is the practice
+        # location, not the input row, so the manifest reconciles the two.
+        # Absent for runs that predate consolidation.
+        "consolidation": _consolidation_metadata(status),
         "methodology": METHODOLOGY,
+    }
+
+
+def _consolidation_metadata(status) -> dict | None:
+    """Consolidation counts for the manifest, straight from the run's status.
+
+    Returns None when the run predates consolidation, so a reader can tell
+    "not consolidated" from "consolidated nothing".
+    """
+    entries = getattr(status, "consolidation_provider_entries", None)
+    locations = getattr(status, "consolidation_practice_locations", None)
+    if entries is None or locations is None:
+        return None
+    return {
+        "input_provider_entries": entries,
+        "practice_locations": locations,
+        "billable_practice_locations": locations,
+        "rows_merged_away": max(0, entries - locations),
+        "merged_practices": getattr(status, "consolidation_merged_groups", None) or 0,
+        "review_queue_pairs": getattr(status, "consolidation_review_pairs", None) or 0,
+        "multi_location_groups": getattr(
+            status, "consolidation_multi_location_groups", None) or 0,
     }

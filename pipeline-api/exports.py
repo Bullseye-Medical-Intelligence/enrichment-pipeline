@@ -17,9 +17,23 @@ import reviews
 
 logger = logging.getLogger(__name__)
 
-# Rep-facing column derived from the pipeline's call_brief (a nested object, so
-# it is not picked up by the scalar-field column scan).
-_BRIEF_COLUMNS = ["why_contact"]
+# Rep-facing columns derived from nested pipeline output (objects and lists are
+# not picked up by the scalar-field column scan, so each is flattened here).
+# `providers` rolls the practice's providers up into ONE cell — consolidation
+# made the practice location the row, and a provider must never reappear as an
+# extra row. `location_label` renders the Pass 2 group membership as
+# "Location 3 of 6" so a multi-location group reads as a group.
+_BRIEF_COLUMNS = ["why_contact", "providers_flat", "provider_count", "location_label"]
+
+# Internal matching artifacts and raw group keys: useful to an operator
+# reconciling a merge, meaningless in a client deliverable.
+_CONSOLIDATION_INTERNAL_COLUMNS = {
+    "address_street_normalized",
+    "address_unit_normalized",
+    "group_id",
+    "location_index",
+    "location_count",
+}
 
 # Internal-only columns stripped from every client-facing CSV export.
 # Numeric scores: qualitative tier + confidence_band are sufficient for CRM import.
@@ -53,7 +67,41 @@ _CLIENT_REVIEW_COLUMNS = ["displayed_tier"]
 
 # Record-level scalar fields removed from CLIENT-facing CSVs on top of the score
 # columns above: free-text internal notes must never reach a client file.
-_CLIENT_HIDDEN_COLUMNS = {"internal_notes"}
+_CLIENT_HIDDEN_COLUMNS = {"internal_notes"} | _CONSOLIDATION_INTERNAL_COLUMNS
+
+
+def _consolidation_cells(record: dict) -> dict:
+    """Flatten a practice location's providers and group membership into cells.
+
+    One row per practice location is the contract, so every provider the merge
+    absorbed is rendered into a single rolled-up cell. Formatting only — the
+    engine decided who merged and which group a location belongs to.
+    """
+    providers = record.get("providers") or []
+    parts = []
+    for provider in providers:
+        if not isinstance(provider, dict):
+            continue
+        name = (provider.get("name") or "").strip()
+        if not name:
+            continue
+        credentials = ", ".join(provider.get("credentials") or [])
+        parts.append(f"{name}, {credentials}" if credentials else name)
+    # Fall back to the crawl-derived names when a run predates consolidation.
+    if not parts:
+        parts = [str(n) for n in (record.get("provider_names") or []) if str(n).strip()]
+
+    location_count = record.get("location_count") or 0
+    location_index = record.get("location_index") or 0
+    label = ""
+    if record.get("group_id") and location_count > 1 and location_index:
+        label = f"Location {location_index} of {location_count}"
+
+    return {
+        "providers_flat": " | ".join(parts),
+        "provider_count": record.get("provider_count") or len(parts),
+        "location_label": label,
+    }
 
 
 def _escape_csv_cell(value):
@@ -241,6 +289,7 @@ def _build_csv(
         merged = reviews.apply_signal_overrides(rec, review)
         row = {k: (v if not isinstance(v, (dict, list)) else "") for k, v in merged.items()}
         row["why_contact"] = (merged.get("call_brief") or {}).get("why_contact", "")
+        row.update(_consolidation_cells(merged))
         row.update({
             "displayed_tier": record_adapter.displayed_tier(rec, review),
             "qc_status": review.get("qc_status", "pending"),

@@ -1422,6 +1422,7 @@ async def results_page(
     project_context = _build_project_context(run_id)
     progress = runs.read_progress(run_id) if status.status in ("running", "pending") else None
     progress = _enrich_progress(progress)
+    consolidation = _consolidation_display(status)
     readiness = _compute_readiness(merged_records) if status.status == "complete" else None
 
     has_checkpoint = runs.has_step4_checkpoint(run_id)
@@ -1455,6 +1456,7 @@ async def results_page(
         stats=stats,
         project_context=project_context,
         progress=progress,
+        consolidation=consolidation,
         readiness=readiness,
         friendly_error=_friendly_error(status.error_summary),
         has_checkpoint=has_checkpoint,
@@ -2146,6 +2148,32 @@ def _inplace_redirect(run_id: str, record_id: str, result) -> RedirectResponse:
     return RedirectResponse(url=f"/dashboard/{run_id}?{params}", status_code=303)
 
 
+def _consolidation_display(status) -> dict | None:
+    """Format the run's practice-location collapse for display, or None.
+
+    Reads the counts the engine recorded on the run; nothing is recomputed
+    here. Returns None for a run that predates consolidation, so the operator
+    sees nothing rather than a misleading zero.
+    """
+    entries = getattr(status, "consolidation_provider_entries", None)
+    locations = getattr(status, "consolidation_practice_locations", None)
+    if entries is None or locations is None:
+        return None
+    return {
+        "provider_entries": entries,
+        "practice_locations": locations,
+        "billable": locations,
+        "provider_entries_display": f"{entries:,}",
+        "practice_locations_display": f"{locations:,}",
+        "billable_display": f"{locations:,}",
+        "collapsed": max(0, entries - locations),
+        "merged_groups": getattr(status, "consolidation_merged_groups", None) or 0,
+        "review_pairs": getattr(status, "consolidation_review_pairs", None) or 0,
+        "multi_location_groups": getattr(
+            status, "consolidation_multi_location_groups", None) or 0,
+    }
+
+
 def _refresh_busy_redirect(run_id: str, record_id: str, message: str) -> RedirectResponse:
     """Flash a friendly notice when a refresh is refused because one is already running."""
     params = urllib.parse.urlencode({
@@ -2453,7 +2481,13 @@ async def enrich_estimate(
 
     run_directory = runs.run_dir(run_id)
     results_path = run_directory / "enriched_targets.json"
-    record_count = status.records_input
+    # The estimate is priced per practice location, so the denominator is the
+    # consolidated count — never records_input, which is raw CSV rows and would
+    # over-estimate by the size of the collapse.
+    record_count = (
+        getattr(status, "consolidation_practice_locations", None)
+        or status.records_input
+    )
     if results_path.exists():
         try:
             with open(results_path, "r", encoding="utf-8") as f:
@@ -3349,6 +3383,108 @@ async def confirm_queue(
         notice=notice,
         flash=({"type": "error", "message": reviews_warning}
                if reviews_warning else None),
+    )
+
+
+@router.get("/dashboard/{run_id}/consolidation-review", response_class=HTMLResponse)
+async def consolidation_review_queue(
+    request: Request,
+    run_id: str,
+    notice: str = "",
+    username: str = Depends(auth.require_session),
+):
+    """Pass 1 near-match pairs the engine kept separate, for analyst resolution.
+
+    Reads the review_candidates the engine recorded on each record; no matching
+    or scoring happens here. Pairs are shown once (strongest first) with the
+    evidence that produced the score, so an analyst can rule merge or separate.
+    """
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    targets_path = run_directory / "enriched_targets.json"
+    if not targets_path.exists():
+        raise HTTPException(status_code=404, detail="enriched_targets.json not found")
+
+    with open(targets_path, "r", encoding="utf-8") as f:
+        records = record_adapter.normalize_records_payload(json.load(f))
+    all_reviews, reviews_warning = reviews.get_reviews_lenient(run_id, run_directory)
+    status = runs.get_run(run_id)
+
+    by_practice = {
+        (r.get("practice_id") or record_adapter.get_record_id(r)): r for r in records
+    }
+    seen: set[tuple[str, str]] = set()
+    pairs = []
+    for record in records:
+        left_id = record.get("practice_id") or record_adapter.get_record_id(record)
+        consolidation = record.get("consolidation") or {}
+        for candidate in consolidation.get("review_candidates") or []:
+            right_id = candidate.get("practice_id")
+            other = by_practice.get(right_id)
+            if not other:
+                continue
+            key = tuple(sorted((str(left_id), str(right_id))))
+            if key in seen:
+                continue
+            seen.add(key)
+            left_review = all_reviews.get(record_adapter.get_record_id(record), {})
+            right_review = all_reviews.get(record_adapter.get_record_id(other), {})
+            pairs.append({
+                "left": record,
+                "right": other,
+                "left_id": record_adapter.get_record_id(record),
+                "right_id": record_adapter.get_record_id(other),
+                "score": candidate.get("score") or 0,
+                "matched_fields": candidate.get("matched_fields") or [],
+                "decision": (left_review.get("consolidation_decision")
+                             or right_review.get("consolidation_decision")),
+            })
+
+    pairs.sort(key=lambda p: (-p["score"], str(p["left_id"])))
+    unresolved = sum(1 for p in pairs if not p["decision"])
+    return _render(
+        "consolidation_review.html",
+        username=username,
+        run_id=run_id,
+        status=status,
+        pairs=pairs,
+        pair_count=len(pairs),
+        unresolved_count=unresolved,
+        notice=notice,
+        flash=({"type": "error", "message": reviews_warning}
+               if reviews_warning else None),
+    )
+
+
+@router.post("/dashboard/{run_id}/consolidation-review")
+async def consolidation_review_resolve(
+    run_id: str,
+    left_id: str = Form(...),
+    right_id: str = Form(...),
+    decision: str = Form(...),
+    reason: str = Form(default=""),
+    username: str = Depends(auth.require_session),
+):
+    """Record an analyst ruling on one review pair (additive overlay only)."""
+    run_directory = runs.run_dir(run_id)
+    if not runs.is_valid_run_id(run_id) or not run_directory.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    try:
+        for record_id in (left_id, right_id):
+            reviews.save_consolidation_decision(
+                run_id, record_id, decision, reason, username, run_directory)
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}/consolidation-review"
+                f"?notice={urllib.parse.quote(str(e))}",
+            status_code=303,
+        )
+    notice = ("Recorded: keep separate." if decision == "separate"
+              else "Recorded: merge on the next run over this list.")
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}/consolidation-review?notice={urllib.parse.quote(notice)}",
+        status_code=303,
     )
 
 

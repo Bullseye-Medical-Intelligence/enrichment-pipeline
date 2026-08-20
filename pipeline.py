@@ -833,6 +833,7 @@ def run_pipeline(input_file: str, source_type: str,
             records_input=records_input_total,
             pipeline_version=PIPELINE_VERSION,
             output_dir=output_dir,
+            consolidation=consolidation_summary,
         )
         elapsed = time.time() - start_time
         print(f"\n  Ingest complete: {len(output_records)} records in {elapsed:.1f}s")
@@ -1149,6 +1150,7 @@ def run_pipeline(input_file: str, source_type: str,
         pipeline_version=PIPELINE_VERSION,
         output_dir=output_dir,
         llm_usage=llm_usage_totals,
+        consolidation=consolidation_summary,
     )
 
     # The run's output is written — the crash-recovery checkpoint has served its

@@ -49,6 +49,16 @@ class RunStatus(BaseModel):
     llm_input_tokens: Optional[int] = None
     llm_output_tokens: Optional[int] = None
     llm_call_count: Optional[int] = None
+    # Practice-location consolidation, copied from run_log.json. Consolidation
+    # changes the unit the client is billed on, so the collapse is carried on
+    # the run rather than recomputed per surface. None means the run predates
+    # consolidation — display "not applicable", never zero, and never treat a
+    # pre-consolidation record count as a practice-location count.
+    consolidation_provider_entries: Optional[int] = None
+    consolidation_practice_locations: Optional[int] = None
+    consolidation_merged_groups: Optional[int] = None
+    consolidation_review_pairs: Optional[int] = None
+    consolidation_multi_location_groups: Optional[int] = None
     # Run kind. "enrichment" for normal runs; discovery runs write "discovery"
     # in their own status.json shape. Default keeps pre-existing runs as enrichment.
     run_type: str = "enrichment"

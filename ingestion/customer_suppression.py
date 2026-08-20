@@ -183,18 +183,47 @@ def check_suppression(record: dict, suppression: SuppressionList) -> tuple[bool,
     Returns (is_suppressed, reason_string).
     reason_string is empty when not suppressed.
 
-    Match priority (most to least specific):
-    1. NPI exact match
-    2. >= _MIN_TOKENS_ZIP shared significant name tokens AND same ZIP5
-    3. >= _MIN_TOKENS_STATE shared significant name tokens AND same state
+    Works against a provider-level or a practice-level customer list, because
+    consolidation has already made the record a practice location carrying every
+    merged provider in providers[]:
+
+    1. NPI exact match on the practice's own NPI (a practice-level list)
+    2. NPI exact match on ANY merged provider's NPI (a provider-level list)
+    3. >= _MIN_TOKENS_ZIP shared significant name tokens AND same ZIP5
+    4. >= _MIN_TOKENS_STATE shared significant name tokens AND same state
+
+    Behaviour when a suppressed provider sits inside a merged practice: the
+    WHOLE practice location is suppressed, and the reason names the matching
+    provider. Rationale — the billable unit is now the location, and the client
+    already has a relationship at that address, so sending a rep there is the
+    exact waste suppression exists to prevent. Calling an existing customer
+    costs more than skipping one location, and the decision is reversible: the
+    record is EXCLUDED with an auditable reason an analyst can override.
     """
     if suppression.is_empty:
         return False, ""
 
-    # Priority 1 — NPI exact match
-    npi = (record.get("npi_number") or "").strip()
-    if npi and npi in suppression.npi_set:
-        return True, f"Existing customer — NPI match: {npi}"
+    # Priority 1 — the practice's own NPI. npi_number is written by Step 1b's
+    # NPPES enrichment; npi_optional is the value the source CSV carried, and is
+    # checked too so suppression still works when NPI enrichment is disabled.
+    for field in ("npi_number", "npi_optional"):
+        npi = str(record.get(field) or "").strip()
+        if npi and npi in suppression.npi_set:
+            return True, f"Existing customer — NPI match: {npi}"
+
+    # Priority 2 — any merged provider's NPI. One customer provider suppresses
+    # the location; the reason names them so the call is auditable.
+    for provider in record.get("providers") or []:
+        if not isinstance(provider, dict):
+            continue
+        provider_npi = str(provider.get("npi") or "").strip()
+        if provider_npi and provider_npi in suppression.npi_set:
+            provider_name = (provider.get("name") or "").strip()
+            who = f"{provider_name} (NPI {provider_npi})" if provider_name else f"NPI {provider_npi}"
+            return True, (
+                f"Existing customer — provider at this location is a current "
+                f"customer: {who}"
+            )
 
     name = (record.get("practice_name") or "").strip()
     rec_tokens = _name_tokens(name)

@@ -1837,6 +1837,17 @@ def _read_completion_counts(run_id: str) -> dict:
             for usage_key in ("llm_input_tokens", "llm_output_tokens", "llm_call_count"):
                 if usage_key in log:
                     counts[usage_key] = log[usage_key]
+            # Practice-location consolidation: read straight through from the
+            # engine's log. Absent for pre-consolidation runs, which keeps them
+            # distinguishable from a run that consolidated nothing.
+            consolidation = log.get("consolidation")
+            if isinstance(consolidation, dict):
+                counts["consolidation_provider_entries"] = consolidation.get("provider_entries")
+                counts["consolidation_practice_locations"] = consolidation.get("practice_locations")
+                counts["consolidation_merged_groups"] = consolidation.get("merged_groups")
+                counts["consolidation_review_pairs"] = consolidation.get("review_pairs")
+                counts["consolidation_multi_location_groups"] = consolidation.get(
+                    "multi_location_groups")
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("Could not parse run_log.json for run %s: %s", run_id, e)
     else:

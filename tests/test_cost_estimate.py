@@ -21,7 +21,12 @@ from llm_pricing import (
 
 
 def _write_status(runs_dir, run_id, **fields):
-    """Write a minimal status.json into a run subdirectory."""
+    """Write a minimal status.json into a run subdirectory.
+
+    Consolidated by default: the estimate is priced per practice location, so
+    only runs that recorded a practice-location count are comparable history.
+    Pass consolidation_practice_locations=None for a pre-consolidation run.
+    """
     d = runs_dir / run_id
     d.mkdir(parents=True, exist_ok=True)
     base = {
@@ -33,6 +38,7 @@ def _write_status(runs_dir, run_id, **fields):
         "status": "complete",
         "created_at": "2026-01-01T00:00:00Z",
         "run_type": "enrichment",
+        "consolidation_practice_locations": fields.get("records_output", 0),
     }
     base.update(fields)
     (d / "status.json").write_text(json.dumps(base), encoding="utf-8")

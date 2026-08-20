@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Consolidation Review — BEMI Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2>Consolidation Review</h2>
+    <p class="page-subtitle">Run <span style="font-family:monospace;font-size:12px;">{{ run_id }}</span></p>
+  </div>
+  <div class="header-actions">
+    <a class="btn btn-secondary btn-sm" href="/dashboard/{{ run_id }}">&larr; Back to run</a>
+  </div>
+</div>
+
+{% if notice %}<div class="alert alert-info">{{ notice }}</div>{% endif %}
+
+<div class="alert alert-info">
+  <strong>{{ unresolved_count }} of {{ pair_count }} near-match pair{{ "s" if pair_count != 1 }} unresolved.</strong>
+  These scored close enough to be worth a look but not close enough to merge, so the
+  engine kept them as separate practice locations and billed them separately. Ruling
+  <em>keep separate</em> affirms that. Ruling <em>merge</em> is recorded now and takes
+  effect the next time this list is run, because consolidation happens at ingest —
+  pipeline output is never rewritten in place.
+</div>
+
+{% if not pairs %}
+<div class="card"><p class="text-muted" style="padding:18px;">No near-match pairs in this run.</p></div>
+{% endif %}
+
+{% for pair in pairs %}
+<div class="card" style="margin-bottom:10px;">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
+    <span class="badge">Score {{ pair.score }}</span>
+    <span class="text-muted small">matched on {{ pair.matched_fields | join(", ") or "nothing" }}</span>
+    {% if pair.decision %}
+    <span class="badge badge-status-pending" style="margin-left:auto;">
+      Resolved: {{ "keep separate" if pair.decision.decision == "separate" else "merge next run" }}
+      by {{ pair.decision.decided_by }}
+    </span>
+    {% endif %}
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+    {% for side in [pair.left, pair.right] %}
+    <div style="padding:12px 14px;{% if loop.first %}border-right:1px solid var(--border);{% endif %}">
+      <strong>{{ side.practice_name | default("—") }}</strong>
+      <div class="text-muted small" style="margin-top:4px;">
+        {{ side.address_street | default("") }}{% if side.address_unit %}, {{ side.address_unit }}{% endif %}<br>
+        {{ side.address_city | default("") }}, {{ side.address_state | default("") }} {{ side.address_zip | default("") }}<br>
+        {{ side.phone | default("") }}{% if side.website_url %}<br>{{ side.website_url }}{% endif %}
+      </div>
+      <div class="text-muted small" style="margin-top:6px;">
+        {{ side.provider_count | default(0) }} provider{{ "s" if side.provider_count != 1 }}
+        {%- if side.providers %}: {% for p in side.providers[:4] %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if side.providers | length > 4 %} +{{ (side.providers | length) - 4 }} more{% endif %}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="/dashboard/{{ run_id }}/consolidation-review"
+        style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--border);"
+        onsubmit="this.querySelectorAll('button').forEach(function(b){b.disabled=true;});">
+    <input type="hidden" name="left_id" value="{{ pair.left_id }}">
+    <input type="hidden" name="right_id" value="{{ pair.right_id }}">
+    <input type="text" name="reason" class="form-input" required
+           style="flex:1 1 240px;min-width:200px;"
+           placeholder="Reason (required)"
+           value="{{ pair.decision.reason if pair.decision else '' }}">
+    <button type="submit" name="decision" value="separate" class="btn btn-secondary btn-sm">Keep separate</button>
+    <button type="submit" name="decision" value="merge" class="btn btn-primary btn-sm">Merge next run</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

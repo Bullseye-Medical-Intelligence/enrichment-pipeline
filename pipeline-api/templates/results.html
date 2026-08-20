@@ -296,9 +296,26 @@
 {% elif is_ingested %}
 <div class="alert alert-info">
   <strong>Roster loaded — not yet enriched.</strong>
-  {{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }} record(s) ready to enrich
-  ({{ records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }} pre-excluded by specialty/geography/no-web-presence).
-  Review the list below, then click <strong>Enrich All</strong> to run the crawl and signal extraction. No LLM or crawl budget has been spent yet.
+  {% if consolidation %}
+  <div style="margin-top:6px; font-size:15px;">
+    <strong>{{ consolidation.provider_entries_display }} provider entries &rarr;
+    {{ consolidation.practice_locations_display }} practice locations.
+    Billable: {{ consolidation.billable_display }}.</strong>
+  </div>
+  <div class="text-muted small" style="margin-top:4px;">
+    {{ consolidation.collapsed }} duplicate provider row{{ "s" if consolidation.collapsed != 1 }} merged
+    across {{ consolidation.merged_groups }} practice{{ "s" if consolidation.merged_groups != 1 }}{%
+    if consolidation.multi_location_groups %} · {{ consolidation.multi_location_groups }} multi-location
+    group{{ "s" if consolidation.multi_location_groups != 1 }} linked (billed per location){% endif %}{%
+    if consolidation.review_pairs %} · <a href="/dashboard/{{ run_id }}/consolidation-review">{{ consolidation.review_pairs }}
+    near-match pair{{ "s" if consolidation.review_pairs != 1 }} to review</a>{% endif %}
+  </div>
+  {% endif %}
+  <div style="margin-top:6px;">
+    {{ records | rejectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }} record(s) ready to enrich
+    ({{ records | selectattr('exclusion_status', 'equalto', 'EXCLUDED') | list | length }} pre-excluded by specialty/geography/no-web-presence).
+    Review the list below, then click <strong>Enrich All</strong> to run the crawl and signal extraction. No LLM or crawl budget has been spent yet.
+  </div>
 </div>
 {% endif %}
 
@@ -355,11 +372,11 @@
 <div style="margin:10px 0 18px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12.5px;color:var(--ink);">
   <span style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-right:14px;">Run Economics</span>
   {% if cost_summary %}
-  {{ status.records_output }} records &nbsp;·&nbsp;
+  {% if cost_summary.practice_locations %}{{ cost_summary.practice_locations }} practice locations{% else %}{{ status.records_output }} records{% endif %} &nbsp;·&nbsp;
   {{ cost_summary.llm_calls }} LLM calls &nbsp;·&nbsp;
   {{ "{:,}".format(cost_summary.input_tokens) }} in / {{ "{:,}".format(cost_summary.output_tokens) }} out tokens &nbsp;·&nbsp;
   <strong>${{ "%.2f" | format(cost_summary.estimated_cost_usd) }}</strong>
-  {% if cost_summary.cost_per_record_usd is not none %}(${{ "%.3f" | format(cost_summary.cost_per_record_usd) }}/record){% endif %}
+  {% if cost_summary.cost_per_record_usd is not none %}(${{ "%.3f" | format(cost_summary.cost_per_record_usd) }}/{% if cost_summary.practice_locations %}practice location{% else %}record{% endif %}){% endif %}
   <span class="text-muted" style="margin-left:8px;">estimate — rates as of {{ cost_summary.rates_as_of }}</span>
   {% else %}
   <span class="text-muted">cost data not captured for this run</span>
@@ -1235,12 +1252,12 @@ function fetchEnrichEstimate(runId, btn) {
       var basis = data.using_defaults
         ? 'no prior runs to average from — using conservative defaults'
         : (data.history_run_count + ' prior run' + (data.history_run_count === 1 ? '' : 's') + ' averaged');
-      var tokNote = '~' + data.avg_input_tokens_per_record.toLocaleString() + ' input tokens/record · ' + basis;
+      var tokNote = '~' + data.avg_input_tokens_per_record.toLocaleString() + ' input tokens/practice location · ' + basis;
       slot.innerHTML =
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">' +
         '<span style="font-size:13px;">' +
         '<strong>Estimated Claude cost: ' + costStr + '</strong>' +
-        ' &nbsp;<span style="color:#888;font-size:12px;">(' + data.record_count + ' records · ' + tokNote + ')</span>' +
+        ' &nbsp;<span style="color:#888;font-size:12px;">(' + data.record_count + ' practice locations · ' + tokNote + ')</span>' +
         '</span>' +
         '<button type="submit" class="btn btn-submit" style="white-space:nowrap;"' +
         ' onclick="this.textContent=\'Starting enrichment…\'; this.style.opacity=\'0.7\'; document.getElementById(\'enrich-estimate-slot\').querySelector(\'button[type=button]\').style.display=\'none\';">Confirm — Start Enrichment</button>' +
