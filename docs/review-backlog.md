@@ -363,6 +363,39 @@ and *different* websites scores 4 + 3 - 3 = 4, under the merge threshold, and is
 admitted for review as `corroborated`. Two genuine websites at one suite is the
 one reading the "one door" standard does not settle on its own.
 
+### Authoritative consolidation rates (2026-08-20) — the deliverable
+
+Read from pipeline output only, per RULE M1: each list was run through
+`pipeline.py --ingest-only` (no crawl, no LLM spend) and every number below comes
+from that run's `run_log.json` and `enriched_targets.json`. The post-exclusion
+population is derived by calling the engine's own `check_structural_exclusions`
+over engine output, not by reimplementing it. This supersedes every consolidation
+figure reported earlier in this workstream.
+
+| | TX registry (`RUN-20260820-053114`) | NorCal scrape (`RUN-20260820-053306`) |
+|---|---|---|
+| source | NPPES, OBGYN taxonomy, entity type 1 | Apify Google Places, psychiatry |
+| **gross** | 1,200 rows -> **845** locations = **29.6%** | 1,137 rows -> **726** locations = **36.1%** |
+| **post-exclusion (billable)** | 1,125 -> **779** = **30.8%** | 738 -> **474** = **35.8%** |
+| merged clusters | 155 | 81 |
+| rows absorbed | 355 | 411 |
+| distinct providers | 1,265 (of 1,266 raw entries) | 1,137 (of 1,137) |
+| review queue | 25 | 132 |
+| queue composition | phone_absent 18, unit_gate_block 7 | corroborated 29, phone_absent 58, unit_gate_block 45 |
+| Pass 2 groups | 0 | 26 |
+| no street to match on | 1 | 25 |
+
+**A scraped list collapses harder than a registry list** (36.1% vs 29.6%), and
+the gap widens on the billable population. Two structural reasons, both visible
+above: NPPES carries no website field at all, so Pass 2 finds zero groups and
+domain agreement never contributes to a Pass 1 merge; and a registry row is one
+provider at one enumerated address, where a scraper emits the same practice
+several times from different listings.
+
+**The queue is a workflow on scraped input and nearly empty on registry input.**
+The 25 TX pairs are 18 unknown-phone and 7 mechanical unit-gate rejects — no
+judgement calls at all. NorCal's 132 include 29 genuine corroborated conflicts.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,
