@@ -263,6 +263,31 @@ rather than a bad mapping. **Fix:** route the column through `infer_specialty` a
 the type argument (`infer_specialty(row.get("specialty") or "", practice_name)`),
 matching the other two adapters; add a test with a taxonomy-description CSV.
 
+### 19. Credentials become phantom providers, inflating the headline roster number
+`ingestion/manual_adapter.py::_parse_provider_names` comma-splits when no pipe is
+present, so `"Jane Smith, MD"` becomes two providers, `["Jane Smith", "MD"]`. The
+engine already knows how to handle this — `consolidator._split_credentials` splits
+`"Jane Smith, MD, FACOG"` into a name plus credentials against `CREDENTIAL_TOKENS`
+— but it runs per-name in `_providers_from_record`, *after* the adapter has already
+separated the credential into its own string. Alone in its own string the
+credential is `parts[0]`, and the filter only inspects `parts[1:]`, so it survives
+as a provider name.
+
+Measured on the 1,200-row NPPES list: **1,025 of 2,263 provider entries (45.3%)
+are credential-shaped phantoms, affecting 841 of 892 locations.** The largest
+location renders as `"44 providers at 1515 HOLCOMBE BLVD"` where 33 source rows
+produced 33 real providers.
+
+Blast radius is the provider count, not the merge: consolidation blocks and scores
+on address / phone / domain / name, so merge rates are unaffected. But
+`provider_count` is the left-hand side of the roster preview's headline
+("1,340 provider entries -> 412 practice locations"), it feeds the naming chain's
+never-a-person gate, and it ships to clients as `providers_flat` /
+`provider_count` CSV columns. **Fix:** in `_parse_provider_names`, do not
+comma-split when the trailing parts are credential tokens — both modules live in
+`ingestion/`, so `CREDENTIAL_TOKENS` imports directly. Pipe-separated input is
+already unambiguous and stays as-is. Add a test for `"Jane Smith, MD"`.
+
 ## P3 — technical debt (grouped; fix opportunistically) [OPEN]
 
 - **Post-run route boilerplate:** the five trigger routes each repeat cmd build,
