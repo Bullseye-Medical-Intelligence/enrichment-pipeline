@@ -112,6 +112,11 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
             "review_pairs": int(consolidation.get("review_pairs", 0)),
             "multi_location_groups": int(consolidation.get("multi_location_groups", 0)),
             "unblocked_count": int(consolidation.get("unblocked_count", 0)),
+            # provider_entries is the ingested ROW count. These two are the name
+            # parsing: raw name strings in, distinct providers out. A gap between
+            # them is credential tokens being written where people belong.
+            "raw_provider_entries": int(consolidation.get("raw_provider_entries", 0)),
+            "distinct_providers": int(consolidation.get("distinct_providers", 0)),
         }
     if llm_usage is not None:
         log["llm_input_tokens"] = int(llm_usage.get("llm_input_tokens", 0))

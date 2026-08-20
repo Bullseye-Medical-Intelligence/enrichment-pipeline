@@ -48,6 +48,9 @@ _SUMMARY = {
     "enabled": True, "input_count": 1340, "output_count": 412,
     "merged_groups": 180, "rows_merged_away": 928, "review_pairs": 7,
     "unblocked_count": 3, "multi_location_groups": 12,
+    # provider_entries is the ROW count; these two are the name parsing, so a
+    # credential written where a person belongs is visible as a gap.
+    "raw_provider_entries": 1512, "distinct_providers": 1340,
 }
 
 
@@ -137,6 +140,7 @@ class TestRunLog:
             "provider_entries": 1340, "practice_locations": 412,
             "rows_merged_away": 928, "merged_groups": 180,
             "review_pairs": 7, "multi_location_groups": 12, "unblocked_count": 3,
+            "raw_provider_entries": 1512, "distinct_providers": 1340,
         }
 
     def test_absent_when_consolidation_did_not_run(self, tmp_path):

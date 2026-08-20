@@ -30,6 +30,11 @@ from __future__ import annotations
 import copy
 from difflib import SequenceMatcher
 
+from ingestion.credentials import (
+    credential_tokens,
+    is_credential,
+    split_name_and_credentials,
+)
 from ingestion.practice_normalizer import identity_of, stable_hash
 
 # ---------------------------------------------------------------------------
@@ -147,15 +152,6 @@ UMBRELLA_DOMAINS: frozenset[str] = frozenset({
     "hartfordhealthcare.org", "lifespan.org", "bmc.org", "bidmc.org",
     "tuftsmedicine.org", "dartmouth-hitchcock.org", "mainehealth.org",
 })
-
-# Credential tokens split out of a provider name so "Jane Smith, MD" yields a
-# name and a credential rather than one opaque string.
-CREDENTIAL_TOKENS: frozenset[str] = frozenset({
-    "md", "do", "dds", "dmd", "od", "dpm", "dc", "np", "pa", "pa-c", "pac",
-    "rn", "aprn", "fnp", "cnm", "phd", "psyd", "mbbs", "ms", "mph",
-    "facog", "faap", "facs", "facc", "facp", "faan", "fase",
-})
-
 
 def _resolve_domain_list(settings: dict, replace_key: str, extend_key: str,
                          default: frozenset[str]) -> frozenset[str]:
@@ -366,18 +362,7 @@ def _merge_practice_locations(records: list[dict], noise_domains: frozenset[str]
 # Lossless merge of one cluster
 # ---------------------------------------------------------------------------
 
-def _split_credentials(raw_name: str) -> tuple[str, list[str]]:
-    """Split "Jane Smith, MD, FACOG" into ("Jane Smith", ["MD", "FACOG"])."""
-    parts = [p.strip() for p in (raw_name or "").split(",") if p.strip()]
-    if not parts:
-        return "", []
-    name = parts[0]
-    credentials = [p for p in parts[1:]
-                   if p.lower().replace(".", "").replace(" ", "") in CREDENTIAL_TOKENS]
-    return name, credentials
-
-
-def _providers_from_record(record: dict) -> list[dict]:
+def _providers_from_record(record: dict, tokens: frozenset[str]) -> list[dict]:
     """Build provider entries for one source row.
 
     The row is the provider unit, so its NPI and taxonomy attach to the row's
@@ -394,7 +379,12 @@ def _providers_from_record(record: dict) -> list[dict]:
 
     entries = []
     for position, raw_name in enumerate(names):
-        name, credentials = _split_credentials(str(raw_name))
+        name, credentials = split_name_and_credentials(str(raw_name), tokens)
+        if is_credential(name, tokens):
+            # A bare credential is letters, not a person. Reaching here means an
+            # upstream parse separated it from its name; dropping it is correct,
+            # and the run summary reports the drop so the parsing stays auditable.
+            continue
         if not name:
             continue
         entries.append({
@@ -539,7 +529,8 @@ def _base_index(members: list[int], records: list[dict], signatures: list[str]) 
 
 
 def _merge_cluster(members: list[int], records: list[dict], identities: list[dict],
-                   signatures: list[str], edges: list[tuple]) -> dict:
+                   signatures: list[str], edges: list[tuple],
+                   tokens: frozenset[str]) -> dict:
     """Build one practice-location record from a cluster of source rows."""
     ordered = sorted(members, key=lambda i: signatures[i])
     base_idx = _base_index(members, records, signatures)
@@ -562,7 +553,7 @@ def _merge_cluster(members: list[int], records: list[dict], identities: list[dic
     providers: list[dict] = []
     seen_providers: set[tuple[str, str]] = set()
     for idx in ordered:
-        for entry in _providers_from_record(records[idx]):
+        for entry in _providers_from_record(records[idx], tokens):
             key = (entry["name"].strip().lower(), entry["npi"])
             if key in seen_providers:
                 continue
@@ -730,6 +721,7 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
                     "multi_location_groups": 0}
 
     noise_domains, umbrella_domains = domain_policy(run_config)
+    tokens = credential_tokens(run_config)
     # Pass 2 and practice identity ignore both lists; Pass 1 disqualifies only noise.
     shared_domains = noise_domains | umbrella_domains
     if not _is_enabled(run_config):
@@ -747,7 +739,7 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
     for root in sorted(pass1["clusters"], key=lambda r: signatures[r]):
         members = pass1["clusters"][root]
         merged = _merge_cluster(members, records, identities, signatures,
-                                pass1["applied_edges"])
+                                pass1["applied_edges"], tokens)
         item = {
             "record": merged,
             "members": members,
@@ -795,6 +787,15 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
     multi_location_groups = link_location_groups(consolidated, shared_domains)
 
     merged_groups = sum(1 for item in cluster_items if len(item["members"]) > 1)
+    # Both provider numbers are reported so the name parsing is auditable: raw
+    # entries are the name strings the input carried, distinct providers are what
+    # survived credential handling and de-duplication. A large gap means the input
+    # is writing letters where it should be writing people.
+    raw_provider_entries = sum(
+        len([n for n in (record.get("provider_names") or []) if str(n).strip()]) or 1
+        for record in records
+    )
+    distinct_providers = sum(len(r.get("providers") or []) for r in consolidated)
     return consolidated, {
         "enabled": True,
         "input_count": len(records),
@@ -804,4 +805,6 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         "review_pairs": review_pairs,
         "unblocked_count": pass1["unblocked"],
         "multi_location_groups": multi_location_groups,
+        "raw_provider_entries": raw_provider_entries,
+        "distinct_providers": distinct_providers,
     }

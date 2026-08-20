@@ -8,6 +8,7 @@ import csv
 
 # Record-ID and URL normalisation are shared with the Outscraper adapter so the
 # two ingestion paths produce identical IDs and URL formatting.
+from ingestion.credentials import is_credential
 from ingestion.outscraper_adapter import (
     infer_specialty,
     _generate_record_id,
@@ -39,14 +40,29 @@ CANONICAL_FIELDS = [
 
 
 def _parse_provider_names(raw: str) -> list:
-    """Parse provider names from a pipe- or comma-separated string."""
+    """Parse provider names from a pipe- or comma-separated string.
+
+    A comma separates providers in this column, but it also separates a provider
+    from their letters — "Jane Smith, MD" is one person, not two. Comma parts that
+    are credential tokens stay attached to the name preceding them, so the
+    downstream split keeps the credential as an attribute of that provider instead
+    of promoting "MD" to a provider of its own. Pipe-separated input is already
+    unambiguous and is split as-is.
+    """
     if not raw:
         return []
-    # Try pipe-separated first
     if "|" in raw:
         return [n.strip() for n in raw.split("|") if n.strip()]
-    # Fall back to comma-separated
-    return [n.strip() for n in raw.split(",") if n.strip()]
+
+    names: list[str] = []
+    for part in (p.strip() for p in raw.split(",")):
+        if not part:
+            continue
+        if names and is_credential(part):
+            names[-1] = f"{names[-1]}, {part}"
+        else:
+            names.append(part)
+    return names
 
 
 def load_manual_csv(filepath: str) -> list[dict]:
