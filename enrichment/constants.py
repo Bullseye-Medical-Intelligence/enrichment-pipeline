@@ -59,6 +59,14 @@ DEFAULT_NEAR_MISS_BAND = 0
 # confirmed primary can still lift past this gate via floor_tier.
 LOW_SCORE_MANUAL_REVIEW_THRESHOLD = 50
 
+# Share of an ingested roster the structural pre-filter may remove before the run
+# halts. A pre-filter that empties the list is a config or mapping defect until
+# proven otherwise — a specialty label that does not match the cartridge's target
+# string excludes every row, costs nothing, and presents as "no qualified targets"
+# rather than as a bug. Overridden per run via max_structural_exclusion_share;
+# 1.0 disables the halt for a list that really is mostly out of scope.
+STRUCTURAL_EXCLUSION_HALT_SHARE = 0.90
+
 # fit_confidence_status quadrant thresholds
 HIGH_FIT_THRESHOLD = 70
 HIGH_CONFIDENCE_THRESHOLD = 65

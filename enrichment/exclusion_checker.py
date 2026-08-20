@@ -6,7 +6,16 @@ Hard exclusions always fire. Configurable exclusions fire only when listed in ru
 
 import re
 
-from enrichment.constants import DEFAULT_BULLSEYE_MIN_SCORE, EXCLUDED_SCORE_CAP, LOW_SCORE_MANUAL_REVIEW_THRESHOLD
+from enrichment.constants import (
+    DEFAULT_BULLSEYE_MIN_SCORE,
+    EXCLUDED_SCORE_CAP,
+    LOW_SCORE_MANUAL_REVIEW_THRESHOLD,
+    STRUCTURAL_EXCLUSION_HALT_SHARE,
+)
+
+
+class ExclusionCanaryTripped(Exception):
+    """Raised when exclusions removed so much of a roster that it reads as a defect."""
 
 # ---------------------------------------------------------------------------
 # Exclusion rule definitions
@@ -318,6 +327,67 @@ def check_structural_exclusions(record: dict, run_config: dict) -> tuple[list[st
             )
 
     return triggered, rationale_parts
+
+
+def exclusion_canary_share(run_config: dict) -> float:
+    """The share of a roster exclusions may remove before the run is treated as broken."""
+    raw = run_config.get("max_structural_exclusion_share")
+    if raw is None:
+        return STRUCTURAL_EXCLUSION_HALT_SHARE
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return STRUCTURAL_EXCLUSION_HALT_SHARE
+
+
+def build_exclusion_canary_report(
+    total: int,
+    excluded: int,
+    rule_counts: dict,
+    rule_examples: dict,
+    run_config: dict,
+    stage: str,
+) -> str:
+    """Return a diagnostic naming the rules that fired, or "" when the roster is fine.
+
+    A pre-filter that empties a list is a configuration or mapping defect until
+    proven otherwise, and the failure is invisible downstream — it presents as
+    "no qualified targets" rather than as a bug. The caller decides whether to
+    halt or merely report; this builds the message either way.
+    """
+    if total <= 0 or excluded <= 0:
+        return ""
+    share = exclusion_canary_share(run_config)
+    if share >= 1.0 or excluded / total <= share:
+        return ""
+
+    lines = [
+        "=" * 72,
+        f"  EXCLUSION CANARY — {stage} removed {excluded / total * 100:.1f}% of the roster",
+        "=" * 72,
+        f"  {excluded} of {total} ingested records were excluded.",
+        f"  That is above the {share * 100:.0f}% threshold, so this is being treated",
+        "  as a configuration or mapping defect rather than a result.",
+        "",
+        "  Rules that fired:",
+    ]
+    for rule in sorted(rule_counts, key=lambda r: (-rule_counts[r], r)):
+        lines.append(f"    {rule:<28} {rule_counts[rule]} record(s)")
+        example = (rule_examples.get(rule) or "").strip()
+        if example:
+            lines.append(f"      e.g. {example}")
+    lines += [
+        "",
+        "  Check the run config against the values actually present in the input:",
+        "    target_specialty      vs the specialty column / inferred specialty",
+        "    target_geography      vs address_state",
+        "    taxonomy_exclusion_rules vs the NPI taxonomy codes on the records",
+        "",
+        "  To proceed anyway, raise max_structural_exclusion_share in the run",
+        "  config (1.0 disables this check entirely).",
+        "=" * 72,
+    ]
+    return "\n".join(lines)
 
 
 # Priority-ordered mapping of canonical gate keys to the raw rule names that

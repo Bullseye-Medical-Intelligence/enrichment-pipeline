@@ -55,7 +55,12 @@ from enrichment.constants import (
 )
 from enrichment.config_validator import validate_icp, validate_run_config
 from enrichment.signal_extractor import extract_signals
-from enrichment.exclusion_checker import apply_exclusions, check_structural_exclusions
+from enrichment.exclusion_checker import (
+    ExclusionCanaryTripped,
+    apply_exclusions,
+    build_exclusion_canary_report,
+    check_structural_exclusions,
+)
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
 from output.json_writer import write_json
 from output.csv_writer import write_csv
@@ -855,13 +860,32 @@ def run_pipeline(input_file: str, source_type: str,
     # -------------------------------------------------------------------------
     pre_excluded = []
     eligible = []
+    rule_counts: dict = {}
+    rule_examples: dict = {}
     for record in records:
-        triggered, _ = check_structural_exclusions(record, run_config)
+        triggered, rationale = check_structural_exclusions(record, run_config)
+        for rule in triggered:
+            rule_counts[rule] = rule_counts.get(rule, 0) + 1
+            if rule not in rule_examples and rationale:
+                rule_examples[rule] = rationale[0]
         (pre_excluded if triggered else eligible).append(record)
     if pre_excluded:
         print(f"\n  Pre-filter: {len(pre_excluded)} records skip enrichment "
               f"(wrong specialty / outside geography / excluded taxonomy); "
               f"{len(eligible)} eligible")
+
+    # Canary: a pre-filter that empties the roster is a defect until proven
+    # otherwise. Halting here costs nothing (no crawl or LLM spend has happened)
+    # and stops a mapping mismatch from completing as "no qualified targets".
+    canary = build_exclusion_canary_report(
+        len(records), len(pre_excluded), rule_counts, rule_examples,
+        run_config, "structural pre-filter")
+    if canary:
+        print("\n" + canary, flush=True)
+        raise ExclusionCanaryTripped(
+            f"Structural pre-filter excluded {len(pre_excluded)} of {len(records)} "
+            f"records; run halted. See the diagnostic above."
+        )
     records = eligible
 
     if manual_content_path:
@@ -1096,6 +1120,32 @@ def run_pipeline(input_file: str, source_type: str,
     excluded_count = sum(1 for r in records if r.get("exclusion_status") == "EXCLUDED")
     print(f"\n  {excluded_count} records excluded")
 
+    # Same canary at the post-enrichment gate. This one reports rather than halts:
+    # the crawl and LLM spend already happened, so discarding the output would
+    # destroy paid work. It must not pass silently, so the diagnostic goes to the
+    # console and into the run log.
+    final_rule_counts: dict = {}
+    final_rule_examples: dict = {}
+    for record in records:
+        if record.get("exclusion_status") != "EXCLUDED":
+            continue
+        # exclusion_primary_gate is the canonical key for what fired; the triggered
+        # rule list is not persisted on the record and adding it would change the
+        # output contract for a diagnostic.
+        rule = record.get("exclusion_primary_gate") or "unspecified"
+        final_rule_counts[rule] = final_rule_counts.get(rule, 0) + 1
+        if rule not in final_rule_examples:
+            final_rule_examples[rule] = record.get("exclusion_reason") or ""
+    exclusion_canary_report = build_exclusion_canary_report(
+        len(records), excluded_count, final_rule_counts, final_rule_examples,
+        run_config, "exclusion check")
+    if exclusion_canary_report:
+        print("\n" + exclusion_canary_report, flush=True)
+        all_errors.append(
+            f"Exclusion canary: {excluded_count} of {len(records)} records excluded "
+            f"— treat this run as suspect until the config is checked."
+        )
+
     # -------------------------------------------------------------------------
     # STEP 7: SCORING VALIDATION
     # -------------------------------------------------------------------------
@@ -1302,20 +1352,27 @@ Examples:
             print(f"ERROR: Config file not found: {cfg_path}", file=sys.stderr)
             sys.exit(1)
 
-    run_pipeline(
-        input_file=args.input,
-        source_type=args.source,
-        output_dir=args.output_dir,
-        config_path=args.config,
-        icp_path=args.icp,
-        dry_run=args.dry_run,
-        limit=args.limit,
-        use_playwright=args.playwright,
-        auto_browser_retry=args.auto_browser_retry,
-        manual_content_path=args.manual_content_path,
-        ingest_only=args.ingest_only,
-        run_id=args.run_id,
-    )
+    try:
+        run_pipeline(
+            input_file=args.input,
+            source_type=args.source,
+            output_dir=args.output_dir,
+            config_path=args.config,
+            icp_path=args.icp,
+            dry_run=args.dry_run,
+            limit=args.limit,
+            use_playwright=args.playwright,
+            auto_browser_retry=args.auto_browser_retry,
+            manual_content_path=args.manual_content_path,
+            ingest_only=args.ingest_only,
+            run_id=args.run_id,
+        )
+    except ExclusionCanaryTripped as e:
+        # A deliberate halt, not a crash: the full diagnostic is already on stdout.
+        # A traceback here would read as a bug in the pipeline rather than a bug
+        # in the run configuration, which is what this is telling the operator.
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     sys.exit(0)
 

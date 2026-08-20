@@ -211,6 +211,84 @@ class TestManualAdapterStateNormalization:
         assert rec["address_state"] == "TX"
 
 
+class TestManualAdapterSpecialtyResolution:
+    """A registry-derived CSV carries taxonomy descriptions, not cartridge labels."""
+
+    def test_taxonomy_description_resolves_to_canonical_specialty(self):
+        from ingestion.manual_adapter import _map_row
+        rec = _map_row({"practice_name": "Jane Smith",
+                        "specialty": "Obstetrics & Gynecology"}, 2)
+        assert rec["specialty"] == "OBGYN"
+
+    def test_nppes_shaped_row_survives_the_structural_pre_filter(self):
+        """The whole point: an NPPES export must not self-exclude on ingest."""
+        from ingestion.manual_adapter import _map_row
+        from enrichment.exclusion_checker import check_structural_exclusions
+        rec = _map_row({"practice_name": "Jane Smith, MD",
+                        "specialty": "Obstetrics & Gynecology, Gynecology",
+                        "address_state": "TX"}, 2)
+        triggered, _ = check_structural_exclusions(
+            rec, {"target_specialty": "OBGYN", "target_geography": []})
+        assert triggered == []
+
+    def test_unmapped_specialty_label_is_preserved(self):
+        """infer_specialty keeps an unrecognised type as-is, so nothing is lost."""
+        from ingestion.manual_adapter import _map_row
+        rec = _map_row({"practice_name": "X", "specialty": "Concierge Medicine"}, 2)
+        assert rec["specialty"] == "Concierge Medicine"
+
+    def test_missing_specialty_still_falls_back_to_practice_name(self):
+        from ingestion.manual_adapter import _map_row
+        rec = _map_row({"practice_name": "Sacramento OBGYN Associates"}, 2)
+        assert rec["specialty"] == "OBGYN"
+
+
+class TestExclusionCanary:
+    """A pre-filter that empties the roster is a defect until proven otherwise."""
+
+    def test_report_fires_above_the_threshold(self):
+        from enrichment.exclusion_checker import build_exclusion_canary_report
+        report = build_exclusion_canary_report(
+            100, 100, {"wrong_specialty": 100},
+            {"wrong_specialty": "Practice specialty 'Obstetrics & Gynecology' "
+                                "does not match target specialty 'OBGYN'."},
+            {}, "structural pre-filter")
+        assert report
+        assert "wrong_specialty" in report
+        assert "Obstetrics & Gynecology" in report
+        assert "100.0%" in report
+
+    def test_report_is_silent_below_the_threshold(self):
+        from enrichment.exclusion_checker import build_exclusion_canary_report
+        assert build_exclusion_canary_report(
+            100, 50, {"wrong_specialty": 50}, {}, {}, "structural pre-filter") == ""
+
+    def test_threshold_is_configurable_per_run(self):
+        from enrichment.exclusion_checker import build_exclusion_canary_report
+        config = {"max_structural_exclusion_share": 0.5}
+        assert build_exclusion_canary_report(
+            100, 60, {"outside_geography": 60}, {}, config, "structural pre-filter")
+        assert build_exclusion_canary_report(
+            100, 40, {"outside_geography": 40}, {}, config, "structural pre-filter") == ""
+
+    def test_one_point_zero_disables_the_canary(self):
+        from enrichment.exclusion_checker import build_exclusion_canary_report
+        assert build_exclusion_canary_report(
+            100, 100, {"wrong_specialty": 100}, {},
+            {"max_structural_exclusion_share": 1.0}, "structural pre-filter") == ""
+
+    def test_malformed_config_value_falls_back_to_the_default(self):
+        from enrichment.exclusion_checker import exclusion_canary_share
+        from enrichment.constants import STRUCTURAL_EXCLUSION_HALT_SHARE
+        assert exclusion_canary_share(
+            {"max_structural_exclusion_share": "not-a-number"}
+        ) == STRUCTURAL_EXCLUSION_HALT_SHARE
+
+    def test_empty_roster_never_trips(self):
+        from enrichment.exclusion_checker import build_exclusion_canary_report
+        assert build_exclusion_canary_report(0, 0, {}, {}, {}, "pre-filter") == ""
+
+
 # ---------------------------------------------------------------------------
 # Step-4 checkpoint
 # ---------------------------------------------------------------------------

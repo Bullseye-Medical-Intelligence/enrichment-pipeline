@@ -115,7 +115,12 @@ def _map_row(row: dict, row_num: int) -> dict:
         "id": record_id,
         "practice_name": practice_name,
         "provider_names": _parse_provider_names(provider_names_raw),
-        "specialty": (row.get("specialty") or "").strip() or infer_specialty("", practice_name),
+        # Routed through infer_specialty exactly as the two scraped adapters route
+        # their `type` column. Taking the column verbatim let a registry-derived CSV
+        # ("Obstetrics & Gynecology") miss a cartridge's target specialty ("OBGYN")
+        # and self-exclude every row. infer_specialty keeps an unmapped label as-is,
+        # so nothing is lost by resolving first.
+        "specialty": infer_specialty(row.get("specialty") or "", practice_name),
         "npi_optional": npi,
         "website_url": website_url,
         "phone": (row.get("phone") or "").strip(),
