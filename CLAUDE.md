@@ -413,6 +413,49 @@ calls) to this script — it must remain stateless and fast.
 
 ---
 
+<!-- Decision 2026-08-20: Adopted after three numbers in the consolidation
+workstream were retracted post-verification. Quarantined from style rules —
+this is a correctness contract about numbers that leave the building. -->
+
+## Measurement Provenance
+
+A number's authority comes from where it was produced, not from how carefully it
+was computed. Three figures in the consolidation workstream were retracted after
+verification, all from the same cause — an analysis script reading intermediate
+or superseded state:
+
+| retracted | corrected | cause |
+|-----------|-----------|-------|
+| 2,415 review pairs | 607 | row-level edges counted as location pairs |
+| 13.7% shared surname | 5.0% | script matched `"M.D."` as a surname |
+| 174 same-suite pairs | 89 | script read a superseded candidate list |
+
+### RULE M1: Commercial numbers come from pipeline output.
+Any number that will be quoted to a client, appear in a deliverable, or justify a
+pricing decision must be read from the pipeline's own output — `run_log.json`,
+the run manifest, `enriched_targets.json`, or a documented engine counter. Never
+from an analysis script written for the occasion. If the engine does not already
+emit the number, add the counter to the engine and read it back.
+
+### RULE M2: One-off scripts produce PROVISIONAL numbers.
+A number that can only be produced by an ad-hoc script is labelled **PROVISIONAL**
+when reported, together with what would have to exist for it to be authoritative
+("provisional — becomes authoritative once the engine emits `same_unit_pairs` in
+the consolidation block"). Working material is fine; it just has to be labelled.
+
+### RULE M3: A retraction names what consumed the wrong number.
+When correcting a figure, state every surface that consumed the old one before it
+was caught. The 2,415 reached a dashboard badge, the internal run manifest, and
+the CLI console summary. Retracting the number without naming its consumers
+leaves the wrong value sitting in three places.
+
+### RULE M4: A measurement of a code change is a controlled experiment.
+To attribute a delta to a change, hold everything else constant and vary only the
+changed function. Two numbers taken from different tree states are not a
+before/after — they are two observations with an unknown number of causes.
+
+---
+
 ## Open Findings
 
 `docs/review-backlog.md` carries the verified, ranked findings from the latest

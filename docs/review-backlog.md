@@ -315,10 +315,20 @@ from evidence.
 Measured after shipping (pairs surviving exclusions, grouped into building
 decisions):
 
-| list | pairs | decisions | same_unit | recoverable rows |
-|------|-------|-----------|-----------|------------------|
-| TX registry | 97 | **28** | 89 | 50 |
-| NorCal scrape | 145 | **50** | 62 | 63 |
+| list | review pairs | same_unit | decisions | recoverable rows |
+|------|--------------|-----------|-----------|------------------|
+| TX registry (run `RUN-20260820-045154`) | 97 | 89 | **28** | 43 |
+| NorCal scrape (PROVISIONAL) | 145 | 62 | 50 | 63 |
+
+The TX row is read from that run's `run_log.json` (`consolidation.review_pairs`,
+`consolidation.review_reasons`) and its `enriched_targets.json`. The NorCal row is
+**PROVISIONAL** — it comes from an analysis script over cached records, and
+becomes authoritative once that list is run through the pipeline.
+
+An earlier draft of this table said 50 recoverable rows for TX. That figure grouped
+all 97 admitted pairs into decisions, including the 8 unit-gate blocks, which are
+mechanical rejects that will never merge. Grouping the 89 same-suite pairs alone
+gives 43.
 
 **Step two, NOT started — the decision this buys.** After the 28 TX rulings come
 back, report the merge/separate split. If the overwhelming majority rule "merge",

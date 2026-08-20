@@ -51,6 +51,7 @@ _SUMMARY = {
     # provider_entries is the ROW count; these two are the name parsing, so a
     # credential written where a person belongs is visible as a gap.
     "raw_provider_entries": 1512, "distinct_providers": 1340,
+    "review_reasons": {"same_unit": 5, "unit_gate_block": 2},
 }
 
 
@@ -146,6 +147,7 @@ class TestRunLog:
             "rows_merged_away": 928, "merged_groups": 180,
             "review_pairs": 7, "multi_location_groups": 12, "unblocked_count": 3,
             "raw_provider_entries": 1512, "distinct_providers": 1340,
+            "review_reasons": {"same_unit": 5, "unit_gate_block": 2},
         }
 
     def test_absent_when_consolidation_did_not_run(self, tmp_path):

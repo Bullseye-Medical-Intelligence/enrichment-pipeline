@@ -111,6 +111,13 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
             "rows_merged_away": int(consolidation.get("rows_merged_away", 0)),
             "merged_groups": int(consolidation.get("merged_groups", 0)),
             "review_pairs": int(consolidation.get("review_pairs", 0)),
+            # Why each pair was admitted (same_unit / corroborated / phone_absent
+            # / unit_gate_block). Emitted so queue composition is read back from
+            # engine output rather than recomputed by an analysis script.
+            "review_reasons": {
+                str(reason): int(count)
+                for reason, count in (consolidation.get("review_reasons") or {}).items()
+            },
             "multi_location_groups": int(consolidation.get("multi_location_groups", 0)),
             "unblocked_count": int(consolidation.get("unblocked_count", 0)),
             # provider_entries is the ingested ROW count. These two are the name
