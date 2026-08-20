@@ -156,6 +156,57 @@ class TestPass1Scoring:
             assert len(candidates) == 1 and candidates[0]["score"] == 4
 
 
+class TestReviewQueueCounting:
+    """The queue's unit is a location pair — one analyst decision — not a row edge."""
+
+    def _two_clusters_one_question(self):
+        """Two practices in one building, each built from two rows.
+
+        Every A-row scores 4 (address only) against every B-row, so four row-level
+        edges enter the review queue describing a single question: is Valley the
+        same location as Harbor?
+        """
+        return [
+            _row("T-1", "Valley Clinic", phone="916-555-0100",
+                 website="https://valleyclinic.com"),
+            _row("T-2", "Valley Clinic", phone="916-555-0100",
+                 website="https://valleyclinic.com"),
+            _row("T-3", "Harbor Health", phone="916-555-0200", website=""),
+            _row("T-4", "Harbor Health", phone="916-555-0200", website=""),
+        ]
+
+    def test_counts_distinct_location_pairs_not_row_edges(self):
+        """Counting edges overstated a real list 4x (2,415 edges vs 607 pairs)."""
+        out, summary = consolidate_records(self._two_clusters_one_question(), {})
+        assert len(out) == 2
+        assert summary["review_pairs"] == 1
+
+    def test_each_side_records_the_other_once(self):
+        """The engine count must agree with what the review page renders."""
+        out, summary = consolidate_records(self._two_clusters_one_question(), {})
+        for record in out:
+            assert len(record["consolidation"]["review_candidates"]) == 1
+        rendered = {
+            tuple(sorted((r["practice_id"], c["practice_id"])))
+            for r in out for c in r["consolidation"]["review_candidates"]
+        }
+        assert len(rendered) == summary["review_pairs"]
+
+    def test_engine_count_matches_rendered_pairs_on_a_wider_set(self):
+        """Three co-located practices: three questions, not nine edges."""
+        rows = self._two_clusters_one_question() + [
+            _row("T-5", "Delta Medical", phone="916-555-0300", website=""),
+            _row("T-6", "Delta Medical", phone="916-555-0300", website=""),
+        ]
+        out, summary = consolidate_records(rows, {})
+        assert len(out) == 3
+        rendered = {
+            tuple(sorted((r["practice_id"], c["practice_id"])))
+            for r in out for c in r["consolidation"]["review_candidates"]
+        }
+        assert summary["review_pairs"] == len(rendered) == 3
+
+
 class TestDomainConflictPenalty:
     """Agreement alone cannot tell "no data" from "contradicting data" — both
     land on the bare address score. The conflict penalty separates them."""

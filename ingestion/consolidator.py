@@ -755,12 +755,18 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
     # Review-queue pairs: scored 4-5, or blocked by the unit gate. Recorded on
     # both survivors so a near-match is visible to an analyst, never silently
     # dropped and never silently merged.
-    review_pairs = 0
+    # Counted as DISTINCT location pairs, not edges. A cluster absorbs many source
+    # rows, so several row-level edges resolve to the same pair of practice_ids —
+    # counting edges overstated the queue ~4x and made the dashboard badge disagree
+    # with the review page it links to, which already dedupes this way.
+    review_pair_keys: set[tuple[str, str]] = set()
     for score, matched, i, j in pass1["review_edges"]:
         left, right = index_to_item[i], index_to_item[j]
         if left is right:
             continue
-        review_pairs += 1
+        review_pair_keys.add(
+            tuple(sorted((left["practice_id"], right["practice_id"])))
+        )
         for source, other in ((left, right), (right, left)):
             candidates = source["record"]["consolidation"]["review_candidates"]
             entry = {
@@ -802,7 +808,7 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         "output_count": len(consolidated),
         "merged_groups": merged_groups,
         "rows_merged_away": len(records) - len(consolidated),
-        "review_pairs": review_pairs,
+        "review_pairs": len(review_pair_keys),
         "unblocked_count": pass1["unblocked"],
         "multi_location_groups": multi_location_groups,
         "raw_provider_entries": raw_provider_entries,
