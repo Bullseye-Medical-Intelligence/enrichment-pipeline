@@ -13,7 +13,7 @@ actually asks:
 
 Usage:
     python diagnose_consolidation.py --run-dir output/runs/<id>
-    python diagnose_consolidation.py --run-dir output/runs/<id> --domain obgynofatlanta.com
+    python diagnose_consolidation.py --run-dir output/runs/<id> --domain examplepractice.com
     python diagnose_consolidation.py --input data/list.csv --source outscraper --compare
 
 The numbers it prints come from the consolidation engine itself, not from a

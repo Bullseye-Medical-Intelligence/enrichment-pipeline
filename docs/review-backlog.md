@@ -621,8 +621,8 @@ per-bullet text matching against signal labels, which fails in both directions.
 ### 32. [RESOLVED 2026-08-20] One practice behind one front desk shipped as two accounts
 Pass 1 blocked only on `(zip5, street)`, so two offices of one group in different
 towns shared no key and were **never compared**. Nothing rejected the merge; the
-comparison never happened. Found on a real record: one OBGYN group, Cumming and
-Suwanee GA, one phone (`404-252-1137`), one website, identical provider lists and
+comparison never happened. Found on a real record: one OBGYN group with offices
+in two neighbouring towns, one phone, one website, identical provider lists and
 identical scores of 42. Both were crawled and both ran a full Claude extraction,
 so the only difference between the two cards was the sales angles — two
 independent LLM calls disagreeing on the same page text. The practice has four

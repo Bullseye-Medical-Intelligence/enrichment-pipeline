@@ -990,15 +990,15 @@ class TestContactBlocking:
     two billable accounts with byte-identical signals and two Claude calls.
     """
 
-    _SITE = "https://www.groupobgyn.com"
-    _PHONE = "404-252-1137"
+    _SITE = "https://www.groupobgyn.example"
+    _PHONE = "404-555-0142"
 
     def _two_towns(self, **over):
         site = over.pop("website", self._SITE)
         return [
-            _row("T-1", "Group OBGYN", street="1400 Northside Forsyth Dr",
+            _row("T-1", "Group OBGYN", street="100 North Office Pkwy",
                  zip_="30041", phone=self._PHONE, website=site, **over),
-            _row("T-2", "Group OBGYN", street="1310 Satellite Blvd",
+            _row("T-2", "Group OBGYN", street="200 South Office Blvd",
                  zip_="30024", phone=self._PHONE, website=site, **over),
         ]
 
@@ -1028,7 +1028,7 @@ class TestContactBlocking:
         """The whole selectivity argument: a multi-office group whose offices
         have their own numbers is left alone. Domain alone must not merge."""
         rows = self._two_towns()
-        rows[1]["phone"] = "770-333-4444"
+        rows[1]["phone"] = "770-555-0177"
         out, _ = consolidate_records(rows, {})
         assert len(out) == 2
 
