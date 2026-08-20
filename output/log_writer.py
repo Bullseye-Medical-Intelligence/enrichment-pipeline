@@ -17,7 +17,8 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
                    records_input: int, pipeline_version: str = "v1.0",
                    output_dir: str = "./output",
                    llm_usage: dict | None = None,
-                   consolidation: dict | None = None) -> str:
+                   consolidation: dict | None = None,
+                   exclusion_canary: dict | None = None) -> str:
     """
     Write run_log.json summarizing the pipeline run.
 
@@ -118,6 +119,11 @@ def write_run_log(run_id: str, records: list[dict], errors: list[dict],
             "raw_provider_entries": int(consolidation.get("raw_provider_entries", 0)),
             "distinct_providers": int(consolidation.get("distinct_providers", 0)),
         }
+    if exclusion_canary is not None:
+        # Persisted whether or not it tripped, so "not tripped" is distinguishable
+        # from "this run predates the check". The operator UI gates client delivery
+        # on the tripped flag.
+        log["exclusion_canary"] = exclusion_canary
     if llm_usage is not None:
         log["llm_input_tokens"] = int(llm_usage.get("llm_input_tokens", 0))
         log["llm_output_tokens"] = int(llm_usage.get("llm_output_tokens", 0))

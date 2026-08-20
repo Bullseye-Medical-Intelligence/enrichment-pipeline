@@ -340,6 +340,30 @@ def exclusion_canary_share(run_config: dict) -> float:
         return STRUCTURAL_EXCLUSION_HALT_SHARE
 
 
+def build_exclusion_canary_state(
+    total: int,
+    excluded: int,
+    rule_counts: dict,
+    run_config: dict,
+) -> dict:
+    """Structured canary result for the run log, mirroring the printed report.
+
+    Persisted so a run that excluded almost everything stays visibly suspect after
+    the console scrollback is gone. The operator UI gates client delivery on it.
+    """
+    share = exclusion_canary_share(run_config)
+    observed = (excluded / total) if total > 0 else 0.0
+    return {
+        "tripped": bool(total > 0 and excluded > 0 and share < 1.0
+                        and observed > share),
+        "excluded": int(excluded),
+        "total": int(total),
+        "share": round(observed, 4),
+        "threshold": share,
+        "rules": {str(rule): int(count) for rule, count in rule_counts.items()},
+    }
+
+
 def build_exclusion_canary_report(
     total: int,
     excluded: int,

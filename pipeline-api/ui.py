@@ -1423,6 +1423,7 @@ async def results_page(
     progress = runs.read_progress(run_id) if status.status in ("running", "pending") else None
     progress = _enrich_progress(progress)
     consolidation = _consolidation_display(status)
+    exclusion_canary_block = _exclusion_canary_block(status)
     readiness = _compute_readiness(merged_records) if status.status == "complete" else None
 
     has_checkpoint = runs.has_step4_checkpoint(run_id)
@@ -1457,6 +1458,7 @@ async def results_page(
         project_context=project_context,
         progress=progress,
         consolidation=consolidation,
+        exclusion_canary_block=exclusion_canary_block,
         readiness=readiness,
         friendly_error=_friendly_error(status.error_summary),
         has_checkpoint=has_checkpoint,
@@ -2589,6 +2591,34 @@ async def roster_delete(
     return {"removed": removed, "remaining": len(records)}
 
 
+def _exclusion_canary_block(status) -> str:
+    """Why client delivery is blocked by the exclusion canary, or "" when it is not.
+
+    The engine cannot halt at Step 6 without discarding paid crawl and LLM work, so
+    it reports and the block lives here instead: a run that excluded almost
+    everything cannot reach a client until a person acknowledges it by name.
+    """
+    if not getattr(status, "exclusion_canary_tripped", False):
+        return ""
+    if getattr(status, "exclusion_canary_ack", None):
+        return ""
+    detail = getattr(status, "exclusion_canary_detail", None) or {}
+    excluded = detail.get("excluded", 0)
+    total = detail.get("total", 0)
+    share = detail.get("share", 0) or 0
+    rules = detail.get("rules") or {}
+    named = ", ".join(
+        f"{rule} ({count})"
+        for rule, count in sorted(rules.items(), key=lambda kv: (-kv[1], kv[0]))
+    ) or "no rule recorded"
+    return (
+        f"Exclusion canary: {excluded} of {total} records ({share * 100:.1f}%) were "
+        f"excluded by {named}. A run that excludes almost everything is a "
+        f"configuration defect until proven otherwise, so client delivery is blocked. "
+        f"Acknowledge it on the run page, with a reason, to release it."
+    )
+
+
 @router.get("/runs/{run_id}/client-package")
 async def client_package(run_id: str, username: str = Depends(auth.require_session)):
     """Download a client deliverable ZIP for a completed, fully-reviewed run."""
@@ -2600,6 +2630,9 @@ async def client_package(run_id: str, username: str = Depends(auth.require_sessi
             status_code=425,
             detail=f"Run '{run_id}' has not completed (current status: {status.status}).",
         )
+    blocked = _exclusion_canary_block(status)
+    if blocked:
+        raise HTTPException(status_code=409, detail=blocked)
     run_directory = runs.run_dir(run_id)
     pending = _pending_review_count(run_id, run_directory)
     if pending > 0:
@@ -2711,6 +2744,43 @@ async def download_manifest(run_id: str, username: str = Depends(auth.require_se
     )
 
 
+@router.post("/runs/{run_id}/acknowledge-exclusion-canary")
+async def acknowledge_exclusion_canary(
+    run_id: str,
+    reason: str = Form(default=""),
+    username: str = Depends(auth.require_session),
+):
+    """Clear the exclusion-canary block on a run, with a reason and a name.
+
+    The block exists so a near-empty run cannot reach a client silently. Clearing
+    it is a person taking responsibility for that judgement, so a reason is
+    required and the acknowledgement is recorded on the run and in its manifest.
+    """
+    status = runs.get_run(run_id)
+    if status is None or not runs.is_valid_run_id(run_id):
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    reason = (reason or "").strip()
+    if not reason:
+        return RedirectResponse(
+            url=f"/dashboard/{run_id}?notice="
+                + urllib.parse.quote("A reason is required to acknowledge the "
+                                     "exclusion canary.")
+                + "&notice_type=error",
+            status_code=303,
+        )
+    runs.update_run_status(run_id, exclusion_canary_ack={
+        "acknowledged_by": username,
+        "acknowledged_at": datetime.now(timezone.utc).isoformat(),
+        "reason": reason,
+    })
+    return RedirectResponse(
+        url=f"/dashboard/{run_id}?notice="
+            + urllib.parse.quote("Exclusion canary acknowledged. Client delivery "
+                                 "is unblocked for this run."),
+        status_code=303,
+    )
+
+
 @router.post("/runs/{run_id}/publish/{brief_type}")
 async def publish_brief_route(
     run_id: str,
@@ -2730,6 +2800,9 @@ async def publish_brief_route(
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     if status.status != "complete":
         raise HTTPException(status_code=425, detail="Run is not complete")
+    blocked = _exclusion_canary_block(status)
+    if blocked:
+        raise HTTPException(status_code=409, detail=blocked)
     if not config.HOSTINGER_SFTP_HOST:
         raise HTTPException(
             status_code=503, detail="Brief publishing is not configured on this server"
@@ -3386,6 +3459,17 @@ async def confirm_queue(
     )
 
 
+# Engine vocabulary (PIPELINE.md, consolidation.review_candidates.review_reason)
+# mapped to operator-facing copy. Display only — the API never derives a reason.
+_UNIT_GATE_REASON = "unit_gate_block"
+_REVIEW_REASON_LABELS: dict[str, str] = {
+    "same_unit": "Same suite",
+    "corroborated": "Second field matched",
+    "phone_absent": "One side has no phone",
+    _UNIT_GATE_REASON: "Different suites",
+}
+
+
 @router.get("/dashboard/{run_id}/consolidation-review", response_class=HTMLResponse)
 async def consolidation_review_queue(
     request: Request,
@@ -3437,19 +3521,30 @@ async def consolidation_review_queue(
                 "right_id": record_adapter.get_record_id(other),
                 "score": candidate.get("score") or 0,
                 "matched_fields": candidate.get("matched_fields") or [],
+                "review_reason": candidate.get("review_reason") or "",
+                "evidence": candidate.get("evidence") or {},
                 "decision": (left_review.get("consolidation_decision")
                              or right_review.get("consolidation_decision")),
             })
 
     pairs.sort(key=lambda p: (-p["score"], str(p["left_id"])))
-    unresolved = sum(1 for p in pairs if not p["decision"])
+    # Unit-gate blocks scored a merge and were stopped by a hard veto on differing
+    # suites. They are mechanical rejects, not judgement calls, so they are shown
+    # in their own bucket — a "not close enough to merge" framing beside a Score 10
+    # badge is actively misleading to whoever works the queue first.
+    judgement_calls = [p for p in pairs if p["review_reason"] != _UNIT_GATE_REASON]
+    mechanical = [p for p in pairs if p["review_reason"] == _UNIT_GATE_REASON]
+    unresolved = sum(1 for p in judgement_calls if not p["decision"])
     return _render(
         "consolidation_review.html",
         username=username,
         run_id=run_id,
+        mechanical=mechanical,
+        mechanical_count=len(mechanical),
+        reason_labels=_REVIEW_REASON_LABELS,
         status=status,
-        pairs=pairs,
-        pair_count=len(pairs),
+        pairs=judgement_calls,
+        pair_count=len(judgement_calls),
         unresolved_count=unresolved,
         notice=notice,
         flash=({"type": "error", "message": reviews_warning}

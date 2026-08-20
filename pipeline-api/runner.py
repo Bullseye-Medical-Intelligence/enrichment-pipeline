@@ -1848,6 +1848,13 @@ def _read_completion_counts(run_id: str) -> dict:
                 counts["consolidation_review_pairs"] = consolidation.get("review_pairs")
                 counts["consolidation_multi_location_groups"] = consolidation.get(
                     "multi_location_groups")
+            # Exclusion canary: a run that excluded almost everything is a config
+            # defect until an operator says otherwise, so the flag rides on the run
+            # and gates client delivery rather than living only in the console.
+            canary = log.get("exclusion_canary")
+            if isinstance(canary, dict):
+                counts["exclusion_canary_tripped"] = bool(canary.get("tripped"))
+                counts["exclusion_canary_detail"] = canary
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("Could not parse run_log.json for run %s: %s", run_id, e)
     else:

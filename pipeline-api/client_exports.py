@@ -228,7 +228,27 @@ def _run_metadata(
         # location, not the input row, so the manifest reconciles the two.
         # Absent for runs that predate consolidation.
         "consolidation": _consolidation_metadata(status),
+        # A run that excluded almost everything, and the named acknowledgement
+        # that released it for client delivery. Recorded here alongside the other
+        # human judgements on the run.
+        "exclusion_canary": _exclusion_canary_metadata(status),
         "methodology": METHODOLOGY,
+    }
+
+
+def _exclusion_canary_metadata(status) -> dict | None:
+    """Canary state and any operator acknowledgement, or None for older runs."""
+    detail = getattr(status, "exclusion_canary_detail", None)
+    if not isinstance(detail, dict):
+        return None
+    return {
+        "tripped": bool(getattr(status, "exclusion_canary_tripped", False)),
+        "records_excluded": detail.get("excluded"),
+        "records_total": detail.get("total"),
+        "share_excluded": detail.get("share"),
+        "threshold": detail.get("threshold"),
+        "rules_fired": detail.get("rules") or {},
+        "acknowledgement": getattr(status, "exclusion_canary_ack", None),
     }
 
 

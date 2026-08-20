@@ -185,6 +185,21 @@
   </div>
 </div>
 
+{% if exclusion_canary_block %}
+<div class="alert alert-error" style="margin-bottom:14px;">
+  <strong>Client delivery is blocked for this run.</strong>
+  <div style="margin-top:6px;">{{ exclusion_canary_block }}</div>
+  <form method="post" action="/runs/{{ run_id }}/acknowledge-exclusion-canary"
+        style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;"
+        onsubmit="return confirm('Acknowledge that this run legitimately excludes nearly everything? Your name and reason are recorded in the run manifest.');">
+    <input type="text" name="reason" class="form-input" required
+           style="flex:1 1 280px;min-width:220px;"
+           placeholder="Why is this correct? (required)">
+    <button type="submit" class="btn btn-secondary btn-sm">Acknowledge and unblock</button>
+  </form>
+</div>
+{% endif %}
+
 {% if status.status == "complete" %}
 <div class="view-tabs">
   <span class="view-tab active">Review</span>

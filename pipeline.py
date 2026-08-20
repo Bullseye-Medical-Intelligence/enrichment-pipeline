@@ -59,6 +59,7 @@ from enrichment.exclusion_checker import (
     ExclusionCanaryTripped,
     apply_exclusions,
     build_exclusion_canary_report,
+    build_exclusion_canary_state,
     check_structural_exclusions,
 )
 from enrichment.scorer import validate_and_finalize, strip_internal_fields
@@ -1136,6 +1137,8 @@ def run_pipeline(input_file: str, source_type: str,
         final_rule_counts[rule] = final_rule_counts.get(rule, 0) + 1
         if rule not in final_rule_examples:
             final_rule_examples[rule] = record.get("exclusion_reason") or ""
+    exclusion_canary = build_exclusion_canary_state(
+        len(records), excluded_count, final_rule_counts, run_config)
     exclusion_canary_report = build_exclusion_canary_report(
         len(records), excluded_count, final_rule_counts, final_rule_examples,
         run_config, "exclusion check")
@@ -1201,6 +1204,7 @@ def run_pipeline(input_file: str, source_type: str,
         output_dir=output_dir,
         llm_usage=llm_usage_totals,
         consolidation=consolidation_summary,
+        exclusion_canary=exclusion_canary,
     )
 
     # The run's output is written — the crash-recovery checkpoint has served its

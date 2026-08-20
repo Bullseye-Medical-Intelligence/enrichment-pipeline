@@ -59,6 +59,12 @@ class RunStatus(BaseModel):
     consolidation_merged_groups: Optional[int] = None
     consolidation_review_pairs: Optional[int] = None
     consolidation_multi_location_groups: Optional[int] = None
+    # Exclusion canary (engine, Step 6). None for runs predating the check.
+    # `_detail` mirrors the engine's structured result; `_ack` is the operator's
+    # explicit acknowledgement that clears the client-delivery block.
+    exclusion_canary_tripped: Optional[bool] = None
+    exclusion_canary_detail: Optional[dict] = None
+    exclusion_canary_ack: Optional[dict] = None
     # Run kind. "enrichment" for normal runs; discovery runs write "discovery"
     # in their own status.json shape. Default keeps pre-existing runs as enrichment.
     run_type: str = "enrichment"

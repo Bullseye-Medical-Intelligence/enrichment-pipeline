@@ -88,7 +88,7 @@ def _location(rid, name="Valley Womens Health", providers=None, **over):
     return record
 
 
-def _write_run(run_directory, records, consolidation=True):
+def _write_run(run_directory, records, consolidation=True, canary=None, ack=None):
     run_directory.mkdir(parents=True, exist_ok=True)
     status = {
         "run_id": _RUN_ID, "project_id": "P-1", "source_type": "outscraper",
@@ -97,6 +97,11 @@ def _write_run(run_directory, records, consolidation=True):
         "completed_at": "2026-08-20T09:30:00+00:00",
         "records_input": 1340, "records_output": len(records),
     }
+    if canary is not None:
+        status["exclusion_canary_tripped"] = bool(canary.get("tripped"))
+        status["exclusion_canary_detail"] = canary
+    if ack is not None:
+        status["exclusion_canary_ack"] = ack
     if consolidation:
         status.update({
             "consolidation_provider_entries": 1340,
@@ -337,13 +342,20 @@ class TestEconomics:
 
 class TestReviewQueue:
 
-    def _pair_run(self, env):
+    def _pair_run(self, env, reason="same_unit", score=4, evidence=None):
+        evidence = evidence if evidence is not None else {
+            "same_unit": True, "unit_left": "suite 360", "unit_right": "suite 360",
+            "domains_conflict": False, "phones_differ": True, "phone_absent": False,
+            "both_organizational": True, "both_personal": False,
+        }
         left = _location("P-1", name="Alpha Womens Health")
         right = _location("P-2", name="Zeta Fertility Partners")
         left["consolidation"]["review_candidates"] = [
-            {"practice_id": "P-2", "score": 4, "matched_fields": ["address"]}]
+            {"practice_id": "P-2", "score": score, "matched_fields": ["address"],
+             "review_reason": reason, "evidence": evidence}]
         right["consolidation"]["review_candidates"] = [
-            {"practice_id": "P-1", "score": 4, "matched_fields": ["address"]}]
+            {"practice_id": "P-1", "score": score, "matched_fields": ["address"],
+             "review_reason": reason, "evidence": evidence}]
         _write_run(env, [left, right])
 
     def test_queue_lists_each_pair_once(self, env):
@@ -351,7 +363,33 @@ class TestReviewQueue:
         body = _get(f"/dashboard/{_RUN_ID}/consolidation-review").text
         assert "Alpha Womens Health" in body and "Zeta Fertility Partners" in body
         assert body.count("Keep separate") == 1      # one pair, not two mirrored rows
-        assert "1 of 1 near-match pair" in body
+        assert "1 of 1 judgement call" in body
+
+    def test_admission_reason_and_evidence_are_shown(self, env):
+        """The analyst is told why they are being asked, and what the engine saw."""
+        self._pair_run(env)
+        body = _get(f"/dashboard/{_RUN_ID}/consolidation-review").text
+        assert "Same suite" in body
+        assert "both at suite 360" in body
+        assert "different phones" in body
+
+    def test_unit_gate_blocks_are_a_separate_bucket_with_no_ruling(self, env):
+        """Mechanical rejects must never be filed as near-match judgement calls.
+
+        A "not close enough to merge" framing beside a Score 10 badge is the
+        misleading combination this bucket exists to prevent.
+        """
+        self._pair_run(env, reason="unit_gate_block", score=10, evidence={
+            "same_unit": False, "unit_left": "suite 360", "unit_right": "suite 400",
+            "domains_conflict": False, "phones_differ": False, "phone_absent": False,
+            "both_organizational": True, "both_personal": False,
+        })
+        body = _get(f"/dashboard/{_RUN_ID}/consolidation-review").text
+        assert "1 kept apart by the suite rule" in body
+        assert "suite 360 vs suite 400" in body
+        assert "No judgement calls in this run." in body
+        assert "Keep separate" not in body          # no ruling is asked for
+        assert "0 of 0 judgement call" in body
 
     def test_resolution_requires_a_reason(self, env):
         self._pair_run(env)
@@ -397,3 +435,116 @@ class TestReviewQueue:
         with pytest.raises(ValueError):
             reviews.save_consolidation_decision(
                 _RUN_ID, "P-1", "obliterate", "why", "tester", env)
+
+
+# ---------------------------------------------------------------------------
+# Exclusion canary: a near-empty run cannot reach a client silently
+# ---------------------------------------------------------------------------
+
+_TRIPPED = {
+    "tripped": True, "excluded": 1200, "total": 1200, "share": 1.0,
+    "threshold": 0.9, "rules": {"out_of_scope_specialty": 1200},
+}
+
+
+class TestExclusionCanaryGate:
+    """Step 6 reports rather than halts, so the block lives at the delivery edge.
+
+    Halting after the crawl and LLM spend would destroy paid work to punish a
+    config error. Blocking client delivery keeps the work and keeps the decision
+    with a person.
+    """
+
+    def test_engine_writes_the_canary_to_the_run_log(self, tmp_path):
+        write_run_log(run_id=_RUN_ID, records=[_location("P-1")], errors=[],
+                      warnings=[], input_file="in.csv",
+                      input_source_type="outscraper", records_input=1200,
+                      output_dir=str(tmp_path), exclusion_canary=_TRIPPED)
+        log = json.loads((tmp_path / "run_log.json").read_text())
+        assert log["exclusion_canary"] == _TRIPPED
+
+    def test_untripped_state_is_still_recorded(self, tmp_path):
+        """"Not tripped" must be distinguishable from "run predates the check"."""
+        clean = {**_TRIPPED, "tripped": False, "excluded": 3, "share": 0.0025}
+        write_run_log(run_id=_RUN_ID, records=[_location("P-1")], errors=[],
+                      warnings=[], input_file="in.csv",
+                      input_source_type="outscraper", records_input=1200,
+                      output_dir=str(tmp_path), exclusion_canary=clean)
+        log = json.loads((tmp_path / "run_log.json").read_text())
+        assert log["exclusion_canary"]["tripped"] is False
+
+    def test_older_runs_carry_no_canary_block(self, tmp_path):
+        write_run_log(run_id=_RUN_ID, records=[_location("P-1")], errors=[],
+                      warnings=[], input_file="in.csv",
+                      input_source_type="outscraper", records_input=1200,
+                      output_dir=str(tmp_path))
+        assert "exclusion_canary" not in json.loads(
+            (tmp_path / "run_log.json").read_text())
+
+    def test_client_package_is_refused_while_tripped(self, env):
+        _write_run(env, [_location("P-1")], canary=_TRIPPED)
+        response = _get(f"/runs/{_RUN_ID}/client-package")
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert "out_of_scope_specialty" in detail      # names the rule
+        assert "1200 of 1200" in detail and "100.0%" in detail   # and the share
+
+    def test_publish_is_refused_while_tripped(self, env):
+        _write_run(env, [_location("P-1")], canary=_TRIPPED)
+        with TestClient(main.app) as c:
+            c.post("/login", data={"username": "tester", "password": "secret-pw"})
+            response = c.post(f"/runs/{_RUN_ID}/publish/sales-handoff")
+        assert response.status_code == 409
+        assert "out_of_scope_specialty" in response.json()["detail"]
+
+    def test_acknowledgement_unblocks_delivery(self, env):
+        # Contender, so the separate pending-Bullseye-QC guard is not in play.
+        _write_run(env, [_location("P-1", target_tier="Contender")], canary=_TRIPPED)
+        with TestClient(main.app) as c:
+            c.post("/login", data={"username": "tester", "password": "secret-pw"})
+            c.post(f"/runs/{_RUN_ID}/acknowledge-exclusion-canary",
+                   data={"reason": "Client sent an out-of-region list on purpose"},
+                   follow_redirects=False)
+            response = c.get(f"/runs/{_RUN_ID}/client-package")
+        assert response.status_code == 200
+        status = runs.get_run(_RUN_ID)
+        assert status.exclusion_canary_ack["acknowledged_by"] == "tester"
+        assert status.exclusion_canary_ack["reason"].startswith("Client sent")
+
+    def test_acknowledgement_requires_a_reason(self, env):
+        _write_run(env, [_location("P-1")], canary=_TRIPPED)
+        with TestClient(main.app) as c:
+            c.post("/login", data={"username": "tester", "password": "secret-pw"})
+            response = c.post(f"/runs/{_RUN_ID}/acknowledge-exclusion-canary",
+                              data={"reason": "   "}, follow_redirects=False)
+        assert response.status_code == 303
+        assert "reason%20is%20required" in response.headers["location"]
+        assert runs.get_run(_RUN_ID).exclusion_canary_ack is None
+
+    def test_untripped_run_is_never_blocked(self, env):
+        _write_run(env, [_location("P-1", target_tier="Contender")],
+                   canary={**_TRIPPED, "tripped": False, "excluded": 3})
+        assert _get(f"/runs/{_RUN_ID}/client-package").status_code == 200
+
+    def test_run_page_offers_the_acknowledgement(self, env):
+        _write_run(env, [_location("P-1")], canary=_TRIPPED)
+        body = _get(f"/dashboard/{_RUN_ID}").text
+        assert "Client delivery is blocked for this run." in body
+        assert "Acknowledge and unblock" in body
+
+    def test_manifest_records_the_canary_and_the_acknowledgement(self, env):
+        ack = {"acknowledged_by": "tester", "acknowledged_at": "2026-08-20T10:00:00+00:00",
+               "reason": "Deliberately narrow geography"}
+        _write_run(env, [_location("P-1")], canary=_TRIPPED, ack=ack)
+        manifest = json.loads(client_exports.build_run_manifest(
+            _RUN_ID, env, runs.get_run(_RUN_ID)))
+        block = manifest["exclusion_canary"]
+        assert block["tripped"] is True
+        assert block["rules_fired"] == {"out_of_scope_specialty": 1200}
+        assert block["acknowledgement"] == ack
+
+    def test_manifest_omits_the_block_for_older_runs(self, env):
+        _write_run(env, [_location("P-1")])
+        manifest = json.loads(client_exports.build_run_manifest(
+            _RUN_ID, env, runs.get_run(_RUN_ID)))
+        assert manifest["exclusion_canary"] is None
