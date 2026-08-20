@@ -419,15 +419,19 @@ def test_recompute_counts_applies_analyst_override():
     assert counts["contender_count"] == 0
 
 
-def test_recompute_counts_applies_low_score_normalization():
-    """A Contender under the Manual Review threshold already displays as Manual
-    Review on the results page; the counts must not disagree with it."""
+def test_recompute_counts_serve_engine_tier_not_a_score_rederivation():
+    """The engine owns the low-score floor. A Contender it returned at a thin
+    score (a confirmed floor_tier qualifier lifted it) counts as a Contender;
+    re-deriving Manual Review here would disagree with the results page and
+    silently shrink the client deliverable."""
     recs = [
         {"id": "T-1", "target_tier": "Contender", "bullseye_score": 30,
          "exclusion_status": "CLEAR", "enrichment_status": "complete"},
+        {"id": "T-2", "target_tier": "Manual Review", "bullseye_score": 30,
+         "exclusion_status": "CLEAR", "enrichment_status": "complete"},
     ]
     counts = runner._recompute_counts_from_records(recs)
-    assert counts["contender_count"] == 0
+    assert counts["contender_count"] == 1
     assert counts["manual_review_count"] == 1
 
 

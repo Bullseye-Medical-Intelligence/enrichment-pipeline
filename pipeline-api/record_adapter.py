@@ -47,11 +47,6 @@ def zip_to_city_state(zip_code: str) -> tuple[str, str]:
 
 _LEGACY_TIER_ALIAS = {"Watchlist": "Contender"}
 
-# Mirrors LOW_SCORE_MANUAL_REVIEW_THRESHOLD in enrichment/constants.py.
-# Applied at display time so old frozen runs (enriched before the threshold
-# existed) show Manual Review instead of Contender for thin-evidence records.
-_LOW_SCORE_MANUAL_REVIEW_THRESHOLD = 50
-
 # ---------------------------------------------------------------------------
 # Confidence band derivation for old records that pre-date the field
 # ---------------------------------------------------------------------------
@@ -112,25 +107,25 @@ def normalize_records_payload(data) -> list[dict]:
 def displayed_tier(record: dict, review: dict) -> str:
     """Return the effective tier: analyst override if set, else the pipeline tier.
 
-    Analyst overrides bypass all normalization — what the analyst set is final.
-    For pipeline tiers, applies two retroactive normalizations so old frozen runs
-    render correctly without re-enrichment:
-    - "Watchlist" → "Contender" (tier rename)
-    - Contender + score < 50 + enriched → "Manual Review" (threshold raise)
+    The engine owns tiering. This resolves the override overlay and renames the
+    one legacy tier value ("Watchlist" → "Contender"); it never re-derives a
+    tier from the score.
+
+    It used to also re-apply the low-score Manual Review floor here, as a
+    compatibility shim for runs frozen before that threshold existed. That shim
+    outlived its purpose and started contradicting live engine output: the
+    engine's floor_tier guarantee (a confirmed primary qualifier warrants a call
+    even on a thin score) lifts a record to Contender, and the shim knocked it
+    straight back to Manual Review — out of the Contact Queue, the client CSVs,
+    and the client package. Re-deriving a tier from one input the engine
+    considers among many cannot be made correct; only the engine sees them all.
     """
     override = (review or {}).get("override_tier")
     if override:
         return _LEGACY_TIER_ALIAS.get(override, override)
 
     tier = record.get("target_tier", "")
-    tier = _LEGACY_TIER_ALIAS.get(tier, tier)
-
-    if tier == "Contender" and record.get("enrichment_status") not in ("not_enriched", None):
-        score = record.get("bullseye_score") or 0
-        if score < _LOW_SCORE_MANUAL_REVIEW_THRESHOLD:
-            return "Manual Review"
-
-    return tier
+    return _LEGACY_TIER_ALIAS.get(tier, tier)
 
 
 def effective_tier(record: dict, all_reviews: dict) -> str:

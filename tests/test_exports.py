@@ -62,18 +62,29 @@ def test_manual_review_eligible_when_overridden_to_positive_tier():
     assert exports.is_approved(rec, _rev(override="Contender")) is True
 
 
-def test_low_score_enriched_contender_blocked_as_displayed_manual_review():
-    """A Contender promoted to Manual Review by displayed_tier (low score, enriched)
-    must NOT pass the approved gate even though raw target_tier reads 'Contender'."""
+def test_low_score_contender_from_floor_signal_is_eligible():
+    """The engine owns the low-score floor. When it still returns Contender at a
+    thin score — a confirmed floor_tier qualifier lifted the record past the
+    Manual Review gate — the export layer must ship it, not re-derive it away."""
     rec = {
         "target_tier": "Contender", "exclusion_status": "CLEAR",
+        "bullseye_score": 30, "enrichment_status": "enriched",
+    }
+    assert exports.is_approved(rec, _rev()) is True
+
+
+def test_low_score_manual_review_from_engine_still_blocked():
+    """A thin record with no floor signal is tiered Manual Review by the engine,
+    and the approved gate blocks it on that tier — not on the score."""
+    rec = {
+        "target_tier": "Manual Review", "exclusion_status": "CLEAR",
         "bullseye_score": 30, "enrichment_status": "enriched",
     }
     assert exports.is_approved(rec, _rev()) is False
 
 
 def test_high_score_enriched_contender_still_eligible():
-    """A Contender that stays Contender (score above the Manual Review floor) is eligible."""
+    """An ordinary score-driven Contender is eligible."""
     rec = {
         "target_tier": "Contender", "exclusion_status": "CLEAR",
         "bullseye_score": 70, "enrichment_status": "enriched",

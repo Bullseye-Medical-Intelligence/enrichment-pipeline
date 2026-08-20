@@ -77,11 +77,11 @@ class TestCompletionCountsMatchRefresh:
     flipped the first time any refresh-triggering action ran.
     """
 
-    def test_completion_equals_refresh_on_legacy_and_low_score_tiers(self, run_env):
+    def test_completion_equals_refresh_on_legacy_and_engine_tiers(self, run_env):
         _write_records(run_env, [
             _record("T-1", "Bullseye", score=92),
             _record("T-2", "Watchlist", score=80),      # legacy alias → Contender
-            _record("T-3", "Contender", score=30),      # low score → Manual Review
+            _record("T-3", "Manual Review", score=30),  # engine's low-score floor
             _record("T-4", "Excluded", exclusion="EXCLUDED"),
         ])
         (run_env / "run_log.json").write_text(json.dumps({
@@ -96,7 +96,7 @@ class TestCompletionCountsMatchRefresh:
             assert completion[key] == refreshed[key], key
         assert completion["bullseye_count"] == 1
         assert completion["contender_count"] == 1      # Watchlist normalized
-        assert completion["manual_review_count"] == 1  # low-score Contender
+        assert completion["manual_review_count"] == 1
         assert completion["excluded_count"] == 1
 
     def test_completion_counts_follow_existing_override(self, run_env):
@@ -182,13 +182,14 @@ class TestRefreshRunCounts:
         assert counts["excluded_count"] == 0
         assert counts["bullseye_count"] == 1
 
-    def test_low_score_contender_counts_as_manual_review(self, run_env):
-        """Retroactive normalization (Contender + score < 50 -> Manual Review) is
-        applied on the results page; counts must agree rather than diverge."""
+    def test_low_score_contender_counts_as_contender(self, run_env):
+        """The engine owns the low-score floor. A Contender it returned at a thin
+        score (floor_tier qualifier confirmed) counts as a Contender — the counts
+        must not re-derive a Manual Review the engine deliberately did not assign."""
         _write_records(run_env, [_record("T-1", "Contender", score=30)])
         counts = runner.refresh_run_counts(_RUN_ID)
-        assert counts["contender_count"] == 0
-        assert counts["manual_review_count"] == 1
+        assert counts["contender_count"] == 1
+        assert counts["manual_review_count"] == 0
 
     def test_error_count_tracks_enrichment_status(self, run_env):
         _write_records(run_env, [

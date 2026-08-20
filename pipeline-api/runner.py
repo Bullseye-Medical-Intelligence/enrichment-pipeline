@@ -1412,9 +1412,9 @@ def _recompute_counts_from_records(records: list[dict], all_reviews: dict | None
 
     Counts the tier an operator actually sees (record_adapter.displayed_tier),
     not the raw pipeline tier: that is what the results page, the Contact Queue,
-    and every client export already count, and it folds in analyst overrides
-    plus the retroactive tier normalizations applied to old frozen runs. Counting
-    target_tier here instead left the run list disagreeing with the run it links to.
+    and every client export already count, and it folds in analyst overrides.
+    Counting target_tier here instead left the run list disagreeing with the run
+    it links to.
     """
     reviews_map = all_reviews or {}
     tiers = []
@@ -1873,10 +1873,10 @@ def _read_completion_counts(run_id: str) -> dict:
             )
         else:
             # Same semantics as refresh_run_counts — count the tier the
-            # operator sees (effective_tier: overrides + retroactive
-            # normalizations), through the same helper. Counting raw
-            # target_tier here meant a fresh run's counts silently flipped the
-            # first time any refresh-triggering action ran.
+            # operator sees (effective_tier: the engine tier plus the override
+            # overlay), through the same helper. Counting raw target_tier here
+            # meant a fresh run's counts silently flipped the first time any
+            # refresh-triggering action ran.
             counts.update(_recompute_counts_from_records(
                 records, _reviews_for_counts(run_id, directory)
             ))

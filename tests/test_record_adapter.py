@@ -70,6 +70,42 @@ def test_unknown_tier_label_is_verbatim_rank_falls_back():
 
 
 # ---------------------------------------------------------------------------
+# displayed_tier — the engine owns tiering; this layer never re-derives one
+# ---------------------------------------------------------------------------
+
+def test_displayed_tier_serves_engine_tier_verbatim():
+    """The engine's tier is served as-is. Regression: this layer re-applied the
+    low-score Manual Review floor, which knocked a floor_tier-lifted Contender
+    (confirmed primary qualifier, thin overall score) out of the call queue and
+    the client deliverable that the engine had deliberately admitted."""
+    rec = {
+        "target_tier": "Contender", "bullseye_score": 42,
+        "enrichment_status": "complete",
+    }
+    assert record_adapter.displayed_tier(rec, {}) == "Contender"
+
+
+def test_displayed_tier_keeps_engine_manual_review():
+    """The engine's own low-score floor still lands the record in Manual Review;
+    removing the display-layer copy does not weaken the gate."""
+    rec = {
+        "target_tier": "Manual Review", "bullseye_score": 42,
+        "enrichment_status": "complete",
+    }
+    assert record_adapter.displayed_tier(rec, {}) == "Manual Review"
+
+
+def test_displayed_tier_maps_legacy_watchlist():
+    rec = {"target_tier": "Watchlist", "bullseye_score": 80}
+    assert record_adapter.displayed_tier(rec, {}) == "Contender"
+
+
+def test_displayed_tier_override_wins():
+    rec = {"target_tier": "Manual Review", "bullseye_score": 20}
+    assert record_adapter.displayed_tier(rec, {"override_tier": "Bullseye"}) == "Bullseye"
+
+
+# ---------------------------------------------------------------------------
 # signal_column_state — dashboard at-a-glance ICP-signal columns
 # ---------------------------------------------------------------------------
 

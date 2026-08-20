@@ -140,10 +140,9 @@ def is_approved(rec: dict, rev: dict) -> bool:
     if not rev.get("override_tier"):
         if rec.get("exclusion_status") == "EXCLUDED":
             return False
-        # Use the normalized displayed tier, not raw target_tier: a low-score
-        # enriched Contender is promoted to "Manual Review" by displayed_tier,
-        # and must not slip into approved exports just because the stored tier
-        # still reads "Contender".
+        # Read through displayed_tier, not raw target_tier, so the legacy tier
+        # rename resolves and an analyst override is honoured consistently with
+        # every other export gate.
         if record_adapter.displayed_tier(rec, rev) in ("Needs Verification", "Manual Review"):
             return False
     return True
@@ -174,7 +173,7 @@ def build_contender_csv(run_id, run_directory, records=None, all_reviews=None,
     external sales team and ship by default, dropped only when an analyst sets
     qc_status == "rejected". This matches the Sales Handoff, which also drops only
     rejected records. (displayed_tier == "contender" already excludes Excluded /
-    Needs Verification / low-score Manual-Review-promoted records.)
+    Needs Verification / Manual Review records.)
     """
     def _contender(rec: dict, rev: dict) -> bool:
         return (record_adapter.displayed_tier(rec, rev).lower() == "contender"

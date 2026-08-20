@@ -224,8 +224,8 @@ that can move a record between tiers calls `runner.refresh_run_counts(run_id)`
 (rescore, re-extract, re-suppress, and the review-save route; verification writes
 only an additive `verification` object and never changes a tier, so it does not).
 Counts are computed with `record_adapter.effective_tier` — the tier the operator
-actually sees, folding in analyst overrides and the retroactive normalizations
-(`Watchlist`→`Contender`, low-score `Contender`→`Manual Review`) — because that is
+actually sees, folding in analyst overrides and the legacy tier rename
+(`Watchlist`→`Contender`) — because that is
 what the results page, Contact Queue, and client exports already count. Counting
 raw `target_tier` here is what left the run list disagreeing with the run it links
 to. `_recompute_counts_from_records` takes the review overlay for the same reason;
@@ -551,7 +551,7 @@ The web UI is server-rendered HTML served by FastAPI. These rules are permanent:
 - **When a feature is removed**: Delete its routes, templates, CSS, JS, imports, and tests. No dead code.
 - **Override requires reason**: `override_tier` set → `override_reason` required. Enforced in `reviews.py`.
 - **Server is source of truth**: `reviewed_at` always set server-side. JS never sets timestamps.
-- **Final displayed tier**: `override_tier` if set, else pipeline `target_tier`. Always show both.
+- **Final displayed tier**: `override_tier` if set, else pipeline `target_tier`. Always show both. The API never re-derives a tier from score or signals — the engine owns tiering (RULE 3), and it is the only layer that sees every input (`floor_tier`, `cap_tier`, must-haves, source confidence). A display-layer copy of the engine's low-score floor is what dropped `floor_tier`-lifted Contenders out of the Contact Queue, the client CSVs, and the client package.
 - **Contact Priority is a relabel**: the Contact Queue shows a rep-facing label mapped from the displayed tier (`record_adapter.contact_priority`). It is presentation only, never a stored field, and the pipeline's `call_brief` is served unchanged.
 
 ---
