@@ -165,13 +165,79 @@ def _expand_street_tokens(tokens: list[str]) -> str:
     return _collapse(" ".join(out))
 
 
+# A unit fragment can carry more than one designator ("Building A, Suite 360").
+# PRIMARY designators identify the tenant's own space; a floor is implied by a
+# suite number, so it is dropped when a primary is present ("Suite 360, 3rd Floor"
+# is Suite 360). Sorting by rank makes the output order-independent, so
+# "Building A, Suite 360" and "Suite 360, Building A" compare equal.
+_PRIMARY_UNIT_DESIGNATORS: frozenset[str] = frozenset(
+    {"suite", "apt", "unit", "room", "office"}
+)
+_DESIGNATOR_RANK: dict[str, int] = {
+    "bldg": 0, "suite": 1, "apt": 1, "unit": 1, "room": 1, "office": 1,
+    "floor": 2, "dept": 3,
+}
+_CANONICAL_DESIGNATORS: frozenset[str] = frozenset(_UNIT_DESIGNATORS.values())
+
+
+_ORDINAL_RE = re.compile(r"^(\d+)(st|nd|rd|th)$")
+
+
+def _normalize_unit_value_token(token: str) -> str:
+    """Ordinals and cardinals name the same place: "3rd" and "3" are one floor."""
+    match = _ORDINAL_RE.match(token)
+    return match.group(1) if match else token
+
+
+def _designator_first(tokens: list[str]) -> list[str]:
+    """Rewrite English value-first forms ("3rd Floor") as designator-first.
+
+    Units are written both ways in the same column. Without this, "Suite 360,
+    3rd Floor" keeps "3rd" inside the suite value and never equals "Suite 360".
+    """
+    out: list[str] = []
+    for i, token in enumerate(tokens):
+        following_is_value = i + 1 < len(tokens) and _is_unit_value(tokens[i + 1])
+        if (token in _UNIT_DESIGNATORS and not following_is_value
+                and out and _is_unit_value(out[-1])):
+            out.insert(len(out) - 1, token)
+            continue
+        out.append(token)
+    return out
+
+
+def _unit_components(tokens: list[str]) -> list[tuple[str, str]]:
+    """Split a unit fragment into canonical (designator, value) components.
+
+    A stray "#" inside a value is dropped: _tokenize_address isolates it so it can
+    be recognised as a designator, which left "SUITE #114" as "suite # 114" and
+    compared unequal to "suite 114" — the same suite, written two ways.
+    """
+    components: list[tuple[str, list[str]]] = []
+    for token in _designator_first(tokens):
+        canonical = _UNIT_DESIGNATORS.get(token)
+        if canonical and not (token == "#" and components):
+            components.append((canonical, []))
+        elif token == "#":
+            continue                      # stray separator, never part of a value
+        elif components:
+            components[-1][1].append(_normalize_unit_value_token(token))
+        else:
+            # Bare value, e.g. "200", takes the default designator.
+            components.append(("suite", [_normalize_unit_value_token(token)]))
+    return [(designator, _collapse(" ".join(value)))
+            for designator, value in components if value]
+
+
 def _normalize_unit_tokens(tokens: list[str]) -> str:
     """Canonicalize a unit fragment, e.g. ['ste','200'] -> 'suite 200'."""
-    if not tokens:
+    components = _unit_components(tokens)
+    if not components:
         return ""
-    designator = _UNIT_DESIGNATORS.get(tokens[0], tokens[0])
-    value = " ".join(tokens[1:])
-    return _collapse(f"{designator} {value}")
+    if any(d in _PRIMARY_UNIT_DESIGNATORS for d, _ in components):
+        components = [c for c in components if c[0] != "floor"]
+    components.sort(key=lambda c: (_DESIGNATOR_RANK.get(c[0], 9), c[0], c[1]))
+    return _collapse(" ".join(f"{d} {v}" for d, v in components))
 
 
 def normalize_address_street(raw_street: str) -> str:
@@ -180,14 +246,11 @@ def normalize_address_street(raw_street: str) -> str:
 
 
 def normalize_address_unit(raw_unit: str) -> str:
-    """Normalize a unit that arrived in its own column (e.g. 'Ste. 200')."""
-    tokens = _tokenize_address(raw_unit)
-    if not tokens:
-        return ""
-    if tokens[0] in _UNIT_DESIGNATORS:
-        return _normalize_unit_tokens(tokens)
-    # A bare value such as "200" is still a unit; give it the default designator.
-    return _collapse(f"suite {' '.join(tokens)}")
+    """Normalize a unit that arrived in its own column (e.g. 'Ste. 200').
+
+    A bare value such as "200" is still a unit and takes the default designator.
+    """
+    return _normalize_unit_tokens(_tokenize_address(raw_unit))
 
 
 def normalize_zip5(raw_zip: str) -> str:

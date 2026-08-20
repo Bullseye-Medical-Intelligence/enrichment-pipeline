@@ -84,6 +84,58 @@ class TestUnitColumn:
         assert normalize_address_unit("") == ""
 
 
+class TestUnitEquivalence:
+    """A suite is the most specific location identifier the data carries.
+
+    Same-suite is treated as evidence of one practice location, so every way of
+    writing one suite must collapse to one token — and two genuinely different
+    spaces must never collapse into one.
+    """
+
+    SAME_SUITE = [
+        "Ste 360", "Suite 360", "STE 360", "#360", "Ste. 360",
+        "Suite 360, 3rd Floor", "SUITE #360", "Ste #360", "suite 360",
+    ]
+
+    def test_every_spelling_of_one_suite_collapses(self):
+        assert len({normalize_address_unit(s) for s in self.SAME_SUITE}) == 1
+        assert normalize_address_unit("Suite 360") == "suite 360"
+
+    def test_stray_hash_inside_a_value_is_dropped(self):
+        """_tokenize_address isolates '#' so it can BE a designator; after one it
+        is a separator, and keeping it split 'SUITE #114' from 'Suite 114'."""
+        assert normalize_address_unit("SUITE #114") == normalize_address_unit("Suite 114")
+
+    def test_redundant_floor_is_dropped_when_a_suite_is_present(self):
+        assert normalize_address_unit("Suite 360, 3rd Floor") == "suite 360"
+
+    def test_a_floor_alone_is_kept(self):
+        """With no suite, the floor is the only identifier there is."""
+        assert normalize_address_unit("Floor 3") == "floor 3"
+        assert normalize_address_unit("3rd Floor") == "floor 3"
+
+    def test_ordinal_and_cardinal_name_the_same_floor(self):
+        assert normalize_address_unit("3rd Floor") == normalize_address_unit("Floor 3")
+
+    def test_building_qualifier_is_kept_and_order_independent(self):
+        """A building qualifies a suite, so it survives — but writing order must not."""
+        assert (normalize_address_unit("Building A, Suite 360")
+                == normalize_address_unit("Suite 360, Building A")
+                == "bldg a suite 360")
+
+    def test_suite_letter_suffix_is_a_different_space(self):
+        assert normalize_address_unit("Suite 360") != normalize_address_unit("Suite 360A")
+
+    def test_suite_and_floor_are_incomparable(self):
+        assert normalize_address_unit("Suite 300") != normalize_address_unit("Floor 3")
+
+    def test_absence_is_never_a_match(self):
+        assert normalize_address_unit("") != normalize_address_unit("Suite 360")
+
+    def test_different_suites_stay_different(self):
+        assert normalize_address_unit("Suite 360") != normalize_address_unit("Suite 361")
+
+
 class TestZipAndPhone:
     def test_zip5_from_plus_four(self):
         assert normalize_zip5("95823-1234") == "95823"
