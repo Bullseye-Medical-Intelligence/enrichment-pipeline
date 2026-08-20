@@ -939,8 +939,8 @@ def consolidate_records(records: list[dict], run_config: dict) -> tuple[list[dic
         "merged_groups": merged_groups,
         "rows_merged_away": len(records) - len(consolidated),
         "review_pairs": len(review_pair_keys),
-        # Split by why each pair was admitted. The same_unit count is the
-        # measurement that settles whether a unit match becomes a scoring term.
+        # Split by why each pair was admitted, so queue composition is an
+        # engine counter rather than something an analysis script recomputes.
         "review_reasons": reason_counts,
         "unblocked_count": pass1["unblocked"],
         "multi_location_groups": multi_location_groups,

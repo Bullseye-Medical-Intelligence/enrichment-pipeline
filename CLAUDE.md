@@ -446,7 +446,7 @@ emit the number, add the counter to the engine and read it back.
 ### RULE M2: One-off scripts produce PROVISIONAL numbers.
 A number that can only be produced by an ad-hoc script is labelled **PROVISIONAL**
 when reported, together with what would have to exist for it to be authoritative
-("provisional — becomes authoritative once the engine emits `same_unit_pairs` in
+("provisional — becomes authoritative once the engine emits `review_reasons` in
 the consolidation block"). Working material is fine; it just has to be labelled.
 
 ### RULE M3: A retraction names what consumed the wrong number.
