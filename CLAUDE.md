@@ -521,6 +521,14 @@ remain open. `docs/data-boundary-model.md` holds the client/project data-boundar
 analysis awaiting business decisions. Consult both before starting remediation
 work — do not rediscover them.
 
+`docs/code-review-brief.md` is the one-page orientation for an OUTSIDE reviewer
+with no repo context: the rules that look arbitrary but are load-bearing, the
+decisions that look like bugs and are not, and what is genuinely worth attacking.
+Hand it over before any external review. It exists because three review passes
+produced twelve findings of which two were real — the other ten named a module
+that does not exist, described behavior the code contradicts, or proposed a fix
+a written rule forbids, and every one was disprovable in a single command.
+
 ---
 
 ## Testing
