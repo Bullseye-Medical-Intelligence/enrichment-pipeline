@@ -1,0 +1,32 @@
+# robots.txt — bullseyemedical.ai
+# Search and generative-engine crawlers are welcome. Only client briefs are off-limits.
+
+User-agent: *
+Allow: /
+Disallow: /briefs/
+
+# Generative engines explicitly welcomed (GEO): we want our content cited.
+User-agent: GPTBot
+Disallow: /briefs/
+User-agent: OAI-SearchBot
+Disallow: /briefs/
+User-agent: ChatGPT-User
+Disallow: /briefs/
+User-agent: ClaudeBot
+Disallow: /briefs/
+User-agent: anthropic-ai
+Disallow: /briefs/
+User-agent: PerplexityBot
+Disallow: /briefs/
+User-agent: Perplexity-User
+Disallow: /briefs/
+User-agent: Google-Extended
+Disallow: /briefs/
+User-agent: Applebot-Extended
+Disallow: /briefs/
+User-agent: CCBot
+Disallow: /briefs/
+User-agent: meta-externalagent
+Disallow: /briefs/
+
+Sitemap: https://www.bullseyemedical.ai/sitemap.xml
