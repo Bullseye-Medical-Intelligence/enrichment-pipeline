@@ -7,6 +7,32 @@ working guide for how the pipeline behaves and the rules a session must hold.
 
 ---
 
+## Who Builds This
+
+Claude Code is the development team. There is no separate group of engineers to
+hand work to, and that has consequences a session must hold:
+
+- **There is no one to escalate to.** "Flag this for the team" resolves to
+  nobody. Either finish the change, or write it up in `docs/review-backlog.md`
+  with the trigger that should reopen it. A TODO addressed to a future engineer
+  is addressed to no one.
+- **There is no separate QA pass.** Nothing between a change and a client
+  deliverable but the session that made it. A change ships with tests that pin
+  the behaviour it claims, or it is not finished.
+- **The operator is the product owner, not the code reviewer.** They decide what
+  the product should do and rule on judgement calls; they should not have to
+  catch a defect in a diff. Verify the work before presenting it, and say
+  plainly what was verified by execution versus assumed.
+- **Nobody else remembers why.** Institutional memory lives in this file,
+  `PIPELINE.md`, `docs/review-backlog.md`, commit messages, and the code
+  comments explaining decisions that look wrong and are not. A reason left
+  unwritten is a reason lost, and the next session will re-derive it wrongly.
+
+`docs/code-review-brief.md` exists because outside reviewers have no access to
+any of that context. Hand it over before any external review.
+
+---
+
 ## Communication Style
 
 Responses must be brief business and product-focused summaries. Do not break down
